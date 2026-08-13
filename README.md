@@ -40,14 +40,18 @@ Then open `http://localhost:8000`.
 
 ## Hosting on GitHub Pages
 
-1. Push this repo to GitHub (already done if you're reading this from
-   the repo).
-2. In the repo settings, go to **Settings → Pages**.
-3. Under **Build and deployment**, set **Source** to `Deploy from a
-   branch`, branch `main` (or whichever branch you keep this on), folder
-   `/ (root)`.
-4. Save. GitHub will publish the site at
-   `https://<your-username>.github.io/heavy-iron/` within a minute or two.
+Publishing is automated with the workflow at
+`.github/workflows/pages.yml` — it deploys on every push to `main`.
 
-No further configuration is needed — `index.html` at the repo root is
-the entry point.
+One-time setup:
+
+1. In the repo, go to **Settings → Pages**.
+2. Under **Build and deployment**, set **Source** to `GitHub Actions`.
+3. Push (or merge) to `main`. The **Deploy to GitHub Pages** workflow
+   runs automatically and publishes the site at
+   `https://<your-username>.github.io/heavy-iron/` within a minute or
+   two.
+
+You can also trigger a deploy manually from the **Actions** tab
+(`Deploy to GitHub Pages` → **Run workflow**) without needing a new
+push.
