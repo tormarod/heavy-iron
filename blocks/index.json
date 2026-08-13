@@ -1,3 +1,5 @@
 [
+  { "file": "hombre-bloque-1.json", "label": "Hombre — Bloque 1 (plan de inicio)" },
+  { "file": "mujer-bloque-1.json", "label": "Mujer — Bloque 1 (plan de inicio)" },
   { "file": "ejemplo-plantilla.json", "label": "Ejemplo — plantilla de bloque" }
 ]
