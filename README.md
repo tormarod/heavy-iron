@@ -92,10 +92,16 @@ hamstrings are trained twice a week rather than once at the same cost.
 Calves and core are left out on purpose; add them in the plan editor if
 you want them.
 
-**Mujer — equilibrado.** The glute emphasis is untouched. Lateral raises
-go from 0 to 3 sets (there was no side-delt work at all), calves 0 → 7,
-core 0 → 3, and abductors 6 → 3, since Bloque 1 spent six weekly sets on
-two machines doing the same job.
+**Mujer — pierna + cuerpo completo.** Leg volume goes from 37 to 39 sets,
+but the useful change is where it lands: quads go 11 → 14 across three
+sessions instead of two (a leg extension joins day 1, which previously
+had no quad or hamstring work at all). Every upper-body group that was
+sitting at a single weekly exposure now gets two — lateral raises 0 → 6,
+triceps 3 → 6, biceps 3 → 6 — plus calves 0 → 6 and core 0 → 3.
+Abductors drop 6 → 3, since Bloque 1 spent six weekly sets on two
+machines doing the same job. Days run 28 / 25 / 28 sets; if a session
+runs long, the glute kickback is the one marked to cut first (its cue
+says so), since it repeats what the hip thrust already does.
 
 **Order, both plans.** A row now sits between the two presses on the push
 day, so the shoulder press isn't performed on delts and triceps fresh out

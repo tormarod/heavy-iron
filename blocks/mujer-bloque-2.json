@@ -1,9 +1,9 @@
 {
-  "name": "Bloque 2 — equilibrado",
+  "name": "Bloque 2 — pierna + cuerpo completo",
   "days": [
     {
       "name": "Superior + Glúteo",
-      "pair": "Las estaciones 1–3 son compartidas: alternad series mientras el otro descansa. Os separáis en el hip thrust: él sigue con pecho, hombro y tríceps.",
+      "pair": "Las estaciones 1–3 son compartidas: alternad series mientras el otro descansa. Os separáis en el hip thrust: él sigue con pecho, hombro y tríceps mientras tú haces glúteo y cuádriceps.",
       "ex": [
         {
           "id": "chestpress",
@@ -45,9 +45,19 @@
           "rest": 150
         },
         {
+          "id": "legext",
+          "n": "Extensión de cuádriceps",
+          "alt": "o sentadilla búlgara sin peso",
+          "cue": "Nuevo: tercera sesión de cuádriceps de la semana, y sin cargar la espalda",
+          "sets": 3,
+          "reps": "12–15",
+          "rest": 90
+        },
+        {
           "id": "kickback",
           "n": "Patada de glúteo en polea",
           "alt": "cada pierna",
+          "cue": "Si la sesión se alarga, este es el primero que se cae: repite lo que ya hace el hip thrust",
           "sets": 3,
           "reps": "12–15",
           "rest": 90
@@ -63,11 +73,20 @@
           "ss": 1
         },
         {
-          "id": "abs",
-          "n": "Crunch en polea o rueda abdominal",
-          "alt": "o plancha con peso",
+          "id": "pushdown",
+          "n": "Extensiones de tríceps en polea",
+          "alt": "o press francés",
           "sets": 3,
-          "reps": "10–15",
+          "reps": "12–15",
+          "rest": 60,
+          "ss": 1
+        },
+        {
+          "id": "calfseat",
+          "n": "Elevación de gemelos sentado",
+          "alt": "o de pie si no hay máquina",
+          "sets": 3,
+          "reps": "10–20",
           "rest": 60,
           "ss": 1
         }
@@ -75,7 +94,7 @@
     },
     {
       "name": "Pierna fuerte",
-      "pair": "Compartís las estaciones 1–2 (hack y rumano) alternando series. Después él pasa al press con mancuernas y al jalón mientras tú haces búlgara y curl femoral; os reencontráis en la superserie de brazo.",
+      "pair": "Compartís las estaciones 1–2 (hack y rumano) alternando series. Después él pasa al press con mancuernas y al jalón mientras tú haces búlgara y curl femoral; os reencontráis en la superserie de brazo y en las elevaciones laterales.",
       "ex": [
         {
           "id": "hacksquat",
@@ -120,7 +139,7 @@
           "n": "Elevación de gemelos de pie",
           "alt": "o en prensa / multipower",
           "cue": "Pausa 1-2s abajo en el estiramiento",
-          "sets": 4,
+          "sets": 3,
           "reps": "8–15",
           "rest": 90
         },
@@ -143,12 +162,21 @@
           "reps": "12–15",
           "rest": 75,
           "ss": 1
+        },
+        {
+          "id": "lat2",
+          "share": 1,
+          "n": "Elevaciones laterales en polea",
+          "alt": "o con mancuernas",
+          "sets": 3,
+          "reps": "12–20",
+          "rest": 60
         }
       ]
     },
     {
       "name": "Glúteo + Superior",
-      "pair": "Compartís jalón, press inclinado y remo. La prensa pesada es tuya: intercálala mientras él sigue con el press, y al final volvéis a juntaros en la contractora inversa.",
+      "pair": "Compartís jalón, press inclinado y remo, y luego la superserie de deltoide posterior y curl martillo. La prensa pesada es tuya: intercálala mientras él sigue con el press.",
       "ex": [
         {
           "id": "pulldown",
@@ -199,11 +227,22 @@
         },
         {
           "id": "reardelt",
+          "share": 1,
           "n": "Contractora inversa (deltoide posterior)",
           "alt": "o pájaros con mancuernas",
           "sets": 3,
           "reps": "15–20",
           "rest": 0,
+          "ss": 1
+        },
+        {
+          "id": "hammer",
+          "share": 1,
+          "n": "Curl martillo con cuerda",
+          "alt": "o curl martillo con mancuernas",
+          "sets": 3,
+          "reps": "12–15",
+          "rest": 75,
           "ss": 1
         },
         {
@@ -213,16 +252,17 @@
           "cue": "Una sola versión esta vez: dos máquinas de abductor la misma semana era trabajo repetido",
           "sets": 3,
           "reps": "15–20",
-          "rest": 60,
+          "rest": 0,
           "ss": 1
         },
         {
-          "id": "calfseat",
-          "n": "Elevación de gemelos sentado",
-          "alt": "o de pie si no hay máquina",
+          "id": "abs",
+          "n": "Crunch en polea o rueda abdominal",
+          "alt": "o plancha con peso",
           "sets": 3,
-          "reps": "10–20",
-          "rest": 60
+          "reps": "10–15",
+          "rest": 60,
+          "ss": 1
         }
       ]
     }
@@ -232,9 +272,9 @@
     "2": { "r": "2–3 RIR", "t": "Mismo peso que S1, intenta sumar repeticiones. Sube peso solo si llegaste al tope del rango en todas las series." },
     "3": { "r": "2 RIR", "t": "Doble progresión: tope del rango en todas las series → +2,5 kg (o el escalón más pequeño) la semana siguiente." },
     "4": { "r": "1–2 RIR", "t": "Series de trabajo. La última repetición se frena visiblemente." },
-    "5": { "r": "1–2 RIR", "t": "+1 serie en el primer ejercicio de cada día (hip thrust, hack, jalón)." },
+    "5": { "r": "1–2 RIR", "t": "+1 serie en hip thrust, sentadilla hack y jalón al pecho." },
     "6": { "r": "1 RIR", "t": "Semana dura. Mantén el rango completo aunque baje el peso." },
-    "7": { "r": "0–1 RIR", "t": "La más dura. Última serie al fallo SOLO en máquinas y aislamiento — nunca en hack, peso muerto rumano ni hip thrust pesado." },
+    "7": { "r": "0–1 RIR", "t": "+1 serie en prensa. Última serie al fallo SOLO en máquinas y aislamiento — nunca en hack, peso muerto rumano ni hip thrust pesado." },
     "8": { "r": "Descarga", "t": "Mitad de series, ~60% del peso. Nada duro. De eso se trata." }
   }
 }

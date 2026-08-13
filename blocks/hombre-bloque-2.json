@@ -129,6 +129,7 @@
         },
         {
           "id": "lat2",
+          "share": 1,
           "n": "Elevaciones laterales en polea",
           "alt": "o con mancuernas",
           "sets": 4,
@@ -201,6 +202,7 @@
         },
         {
           "id": "hammer",
+          "share": 1,
           "n": "Curl martillo con cuerda",
           "alt": "o curl martillo con mancuernas",
           "sets": 4,
