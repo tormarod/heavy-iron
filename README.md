@@ -67,6 +67,74 @@ the built-in default plans (see `js/data.js`) — handy if you want a
 fresh copy of Bloque 1 as a new block, e.g. to restart a program from
 scratch without losing the original's history.
 
+## Los planes por defecto
+
+The two profiles have deliberately different priorities, and the day
+split follows from them: the men's plan prioritises upper body and
+treats legs as maintenance, the women's plan prioritises legs and keeps
+each muscle on a single day.
+
+**Mujer — músculos separados por día.** Each muscle is trained on exactly
+one day of the week, counting the indirect work compounds do. The plan
+groups the muscles that unavoidably work together and keeps everything
+else apart:
+
+| Día | Músculos |
+|---|---|
+| Cuádriceps + Espalda | cuádriceps, dorsal, deltoide posterior, bíceps |
+| Pecho + Hombro | pecho, deltoide anterior y lateral, tríceps |
+| Glúteo + Isquios | glúteo, isquios, gemelos, core |
+
+Biceps sit with back, and triceps with the presses, on purpose — that's
+what *reduces* their exposure. Splitting them onto their own day would
+mean the pulls hit them indirectly on one day and the curls hit them
+directly on another. Glutes are the single exception: hack squats and
+leg presses train them whatever you do, so they appear on two days. They
+are also the priority muscle, so that's a feature.
+
+Leg volume lands at 31 sets (42% of the week), split as 10 quad sets on
+day 1 and 21 posterior-chain, calf and core sets on day 3. Days run
+26 / 23 / 24 sets.
+
+**Hombre — enfoque superior.** Around 61 hard sets a week go to upper
+body — chest 15, back 14, biceps and triceps 8 each, lateral delts 8 —
+with every upper muscle trained twice a week. Legs get 11 sets of
+maintenance work. Calves and core are left out on purpose; add them in
+the plan editor if you want them.
+
+His days are arranged around hers so the couple stations line up: 12
+shared exercises, spread 5 on day 1, 5 on day 2 and 2 on day 3. The cost
+is that his quads and hamstrings get one session each; for 11 sets of
+maintenance work that's a fair trade for training together.
+
+**Order.** Lateral raises sit between the two presses on the push
+day. With no rows on that day there is nothing else that lets the front
+delts and triceps recover between the chest press and the shoulder press,
+and lateral raises barely touch either. On her day 1 the quad work comes
+first, ahead of the back work, since legs are the priority.
+
+**Progression, both plans.** The week banner states the
+double-progression rule explicitly (hit the top of the rep range on every
+set → add the smallest increment next week), starts at 3 RIR for
+calibration, and restricts week 7's to-failure sets to machines and
+isolation work rather than hack squats, RDLs and heavy hip thrusts.
+
+Run the three days with a rest day between them (e.g. Mon / Wed / Fri).
+
+### The trade-off in the women's plan
+
+One muscle per day means one *session* per muscle per week. Training a
+muscle twice a week beats once when weekly volume is held equal, so this
+costs something — though the effect is small, and it doesn't apply to
+work you wouldn't otherwise do. It also caps useful volume: a muscle's
+whole week now has to fit in one session, and past roughly 10 hard sets
+in a single session the extra ones do much less. That's why quads sit at
+10 and not 14.
+
+If separation stops mattering more than the extra frequency, edit the
+plan in **Editar plan** — or import a new block and leave this one's
+history intact.
+
 ### Block JSON shape
 
 ```json
