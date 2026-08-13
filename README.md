@@ -58,8 +58,6 @@ Two ways to get JSON in:
 [
   { "file": "hombre-bloque-1.json", "label": "Hombre — Bloque 1 (plan de inicio)" },
   { "file": "mujer-bloque-1.json", "label": "Mujer — Bloque 1 (plan de inicio)" },
-  { "file": "hombre-bloque-2.json", "label": "Hombre — Bloque 2 (equilibrado: pierna, gemelo, core)" },
-  { "file": "mujer-bloque-2.json", "label": "Mujer — Bloque 2 (equilibrado: hombro, gemelo, core)" },
   { "file": "ejemplo-plantilla.json", "label": "Ejemplo — plantilla de bloque" }
 ]
 ```
@@ -69,26 +67,17 @@ the built-in default plans (see `js/data.js`) — handy if you want a
 fresh copy of Bloque 1 as a new block, e.g. to restart a program from
 scratch without losing the original's history.
 
-`hombre-bloque-2.json` and `mujer-bloque-2.json` are revised follow-ups
-to those two. They keep the same 3-day shape and the shared/couple
-stations, but redistribute weekly volume — see
-[Bloque 2](#bloque-2--qué-cambia-y-por-qué) below.
+## Los planes por defecto
 
-## Bloque 2 — qué cambia y por qué
-
-The two profiles have deliberately different priorities, and Bloque 2
-keeps them: the men's plan prioritises upper body and treats legs as
-maintenance, the women's plan prioritises glutes and legs. What Bloque 2
-fixes is the parts that weren't a priority call — volume that was spent
-in the wrong place, and ordering that put exercises where they couldn't
-be performed well.
+The two profiles have deliberately different priorities, and the day
+split follows from them: the men's plan prioritises upper body and
+treats legs as maintenance, the women's plan prioritises legs and keeps
+each muscle on a single day.
 
 **Mujer — músculos separados por día.** Each muscle is trained on exactly
-one day of the week, counting indirect work. In Bloque 1 that wasn't
-close to true: biceps got hit on all three days (rows and pulldowns on
-two of them, direct curls on two), and triceps the same. Bloque 2 groups
-the muscles that unavoidably work together and keeps everything else
-apart:
+one day of the week, counting the indirect work compounds do. The plan
+groups the muscles that unavoidably work together and keeps everything
+else apart:
 
 | Día | Músculos |
 |---|---|
@@ -107,25 +96,24 @@ Leg volume lands at 31 sets (42% of the week), split as 10 quad sets on
 day 1 and 21 posterior-chain, calf and core sets on day 3. Days run
 26 / 23 / 24 sets.
 
-**Hombre — enfoque superior.** Upper volume goes from ~53 to ~61 hard
-sets a week: chest 12 → 15, back 13 → 14, and direct arm work 6 → 8 each,
-with every upper muscle trained twice a week. Legs stay at 11 sets,
-exactly where Bloque 1 had them. Calves and core are left out on
-purpose; add them in the plan editor if you want them.
+**Hombre — enfoque superior.** Around 61 hard sets a week go to upper
+body — chest 15, back 14, biceps and triceps 8 each, lateral delts 8 —
+with every upper muscle trained twice a week. Legs get 11 sets of
+maintenance work. Calves and core are left out on purpose; add them in
+the plan editor if you want them.
 
-His days are arranged around hers so the couple stations still line up —
-12 shared exercises, up from 12 in Bloque 1 but now spread evenly (5 on
-day 1, 5 on day 2, 2 on day 3). The cost is that his quads and hamstrings
-drop to one session each; for 11 sets of maintenance work that's a fair
-trade for training together.
+His days are arranged around hers so the couple stations line up: 12
+shared exercises, spread 5 on day 1, 5 on day 2 and 2 on day 3. The cost
+is that his quads and hamstrings get one session each; for 11 sets of
+maintenance work that's a fair trade for training together.
 
-**Order.** Lateral raises now sit between the two presses on the push
+**Order.** Lateral raises sit between the two presses on the push
 day. With no rows on that day there is nothing else that lets the front
 delts and triceps recover between the chest press and the shoulder press,
 and lateral raises barely touch either. On her day 1 the quad work comes
 first, ahead of the back work, since legs are the priority.
 
-**Progression, both plans.** The week banner now states the
+**Progression, both plans.** The week banner states the
 double-progression rule explicitly (hit the top of the rep range on every
 set → add the smallest increment next week), starts at 3 RIR for
 calibration, and restricts week 7's to-failure sets to machines and
@@ -143,9 +131,9 @@ whole week now has to fit in one session, and past roughly 10 hard sets
 in a single session the extra ones do much less. That's why quads sit at
 10 and not 14.
 
-If separation stops mattering more than the extra frequency, the
-`mujer-bloque-2.json` history in git has a twice-a-week version of the
-same exercises.
+If separation stops mattering more than the extra frequency, edit the
+plan in **Editar plan** — or import a new block and leave this one's
+history intact.
 
 ### Block JSON shape
 

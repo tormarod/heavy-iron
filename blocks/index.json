@@ -1,7 +1,5 @@
 [
   { "file": "hombre-bloque-1.json", "label": "Hombre — Bloque 1 (plan de inicio)" },
   { "file": "mujer-bloque-1.json", "label": "Mujer — Bloque 1 (plan de inicio)" },
-  { "file": "hombre-bloque-2.json", "label": "Hombre — Bloque 2 (enfoque superior, pierna de mantenimiento)" },
-  { "file": "mujer-bloque-2.json", "label": "Mujer — Bloque 2 (músculos separados por día)" },
   { "file": "ejemplo-plantilla.json", "label": "Ejemplo — plantilla de bloque" }
 ]
