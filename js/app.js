@@ -177,6 +177,12 @@ function renderBlockBar() {
   newBtn.textContent = '+ Nuevo bloque';
   newBtn.onclick = newBlock;
   host.appendChild(newBtn);
+
+  const importBtn = document.createElement('button');
+  importBtn.className = 'sm';
+  importBtn.textContent = 'Importar JSON';
+  importBtn.onclick = openImportSheet;
+  host.appendChild(importBtn);
 }
 
 function newBlock() {
@@ -197,6 +203,145 @@ function newBlock() {
   save(); render();
   mark('Bloque creado a partir de "' + current.name + '" — edítalo con "Editar plan"');
 }
+
+/* ---------- import block from JSON ----------
+   Lets an external agent (or you, by hand) hand over a block as plain
+   JSON — either pasted in, or committed to blocks/ in this repo and
+   picked from the list, fetched read-only via raw.githubusercontent.com
+   (no token, no write access). See README for the expected JSON shape. */
+const GITHUB_BLOCKS_BASE = 'https://raw.githubusercontent.com/tormarod/heavy-iron/main/blocks';
+
+const GENERIC_IMPORT_PHASE = {
+  1: { r: '2–3 RIR', t: 'Ajustando pesos. Deja repeticiones en la recámara.' },
+  2: { r: '2–3 RIR', t: 'Ajustando pesos. Deja repeticiones en la recámara.' },
+  3: { r: '1–2 RIR', t: 'Series de trabajo. La última repetición se frena.' },
+  4: { r: '1–2 RIR', t: 'Series de trabajo. La última repetición se frena.' },
+  5: { r: '1–2 RIR', t: 'Series de trabajo. La última repetición se frena.' },
+  6: { r: '0–1 RIR', t: 'Series de trabajo. La última repetición se frena.' },
+  7: { r: '0–1 RIR', t: 'La semana más dura. Última serie de cada máquina al fallo.' },
+  8: { r: 'Descarga', t: 'Mitad de series, ~60% del peso. Nada duro. De eso se trata.' },
+};
+
+function slugify(s) {
+  return (s || '').toString().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-+|-+$)/g, '');
+}
+
+function normalizeImportedBlock(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('El JSON no es un objeto válido.');
+  const name = (raw.name && String(raw.name).trim()) || 'Bloque importado';
+  if (!Array.isArray(raw.days) || !raw.days.length) throw new Error('Falta "days" (al menos un día de entrenamiento).');
+
+  const usedIds = new Set();
+  const days = raw.days.map((day, di) => {
+    if (!day || typeof day !== 'object') throw new Error('El día ' + (di + 1) + ' no es válido.');
+    const dayName = (day.name && String(day.name).trim()) || ('Día ' + (di + 1));
+    if (!Array.isArray(day.ex) || !day.ex.length) throw new Error('El día "' + dayName + '" necesita al menos un ejercicio.');
+    const ex = day.ex.map((e, ei) => {
+      if (!e || typeof e !== 'object') throw new Error('Un ejercicio del día "' + dayName + '" no es válido.');
+      const n = e.n && String(e.n).trim();
+      if (!n) throw new Error('Falta el nombre de un ejercicio en "' + dayName + '".');
+      const reps = e.reps != null && String(e.reps).trim();
+      if (!reps) throw new Error('Falta el rango de repeticiones en "' + n + '".');
+      const baseId = e.id ? String(e.id).trim() : (slugify(n) || ('ex-' + di + '-' + ei));
+      let uniqueId = baseId, suffix = 2;
+      while (usedIds.has(uniqueId)) uniqueId = baseId + '-' + (suffix++);
+      usedIds.add(uniqueId);
+      const out = {
+        id: uniqueId, n, reps,
+        sets: Number.isFinite(+e.sets) && +e.sets > 0 ? Math.round(+e.sets) : 3,
+        rest: Number.isFinite(+e.rest) && +e.rest >= 0 ? Math.round(+e.rest) : 90,
+      };
+      if (e.alt) out.alt = String(e.alt);
+      if (e.cue) out.cue = String(e.cue);
+      if (e.add != null && Number.isFinite(+e.add) && +e.add >= 1) out.add = Math.round(+e.add);
+      if (e.share) out.share = 1;
+      if (e.ss) out.ss = 1;
+      return out;
+    });
+    const out = { name: dayName, ex };
+    if (day.pair) out.pair = String(day.pair);
+    return out;
+  });
+
+  let phase = GENERIC_IMPORT_PHASE;
+  if (raw.phase && typeof raw.phase === 'object') {
+    phase = {};
+    for (let w = 1; w <= 8; w++) {
+      const p = raw.phase[w] || raw.phase[String(w)];
+      phase[w] = (p && p.r && p.t) ? { r: String(p.r), t: String(p.t) } : GENERIC_IMPORT_PHASE[w];
+    }
+  }
+
+  return { name, days, phase };
+}
+
+function applyImportedBlock(raw, sourceLabel) {
+  let normalized;
+  try {
+    normalized = normalizeImportedBlock(raw);
+  } catch (e) {
+    $('importError').textContent = e.message;
+    return;
+  }
+  const profile = getProfile();
+  const id = 'block-' + Date.now();
+  profile.blocks[id] = { id, name: normalized.name, createdAt: new Date().toISOString(), days: normalized.days, phase: normalized.phase };
+  profile.blockOrder.push(id);
+  profile.activeBlock = id;
+  profile.week = 1; profile.day = 0;
+  save(); render();
+  $('importSheet').classList.remove('up');
+  mark('Bloque "' + normalized.name + '" importado' + (sourceLabel ? ' (' + sourceLabel + ')' : '') + ' en ' + profile.label);
+}
+
+async function loadRepoBlockList() {
+  const host = $('importRepoList');
+  host.textContent = 'Cargando…';
+  try {
+    const res = await fetch(GITHUB_BLOCKS_BASE + '/index.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const list = await res.json();
+    if (!Array.isArray(list) || !list.length) { host.textContent = 'No hay bloques publicados todavía en blocks/.'; return; }
+    host.innerHTML = '';
+    list.forEach(item => {
+      const label = (item && (item.label || item.file)) || 'bloque';
+      const row = document.createElement('div');
+      row.className = 'import-item';
+      row.innerHTML = '<span></span><button type="button" class="sm">Importar</button>';
+      row.querySelector('span').textContent = label;
+      row.querySelector('button').onclick = async () => {
+        $('importError').textContent = '';
+        try {
+          const r = await fetch(GITHUB_BLOCKS_BASE + '/' + item.file, { cache: 'no-store' });
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          applyImportedBlock(await r.json(), label);
+        } catch (e) {
+          $('importError').textContent = 'No se pudo cargar "' + label + '": ' + e.message;
+        }
+      };
+      host.appendChild(row);
+    });
+  } catch (e) {
+    host.textContent = 'No se pudo conectar con GitHub ahora mismo. Puedes pegar el JSON a mano abajo.';
+  }
+}
+
+function openImportSheet() {
+  $('importBlob').value = '';
+  $('importError').textContent = '';
+  $('importSheet').classList.add('up');
+  loadRepoBlockList();
+}
+
+$('importFromText').onclick = () => {
+  $('importError').textContent = '';
+  let raw;
+  try { raw = JSON.parse($('importBlob').value); } catch (e) { $('importError').textContent = 'Eso no es JSON válido.'; return; }
+  applyImportedBlock(raw, 'texto pegado');
+};
+$('importClose').onclick = () => $('importSheet').classList.remove('up');
+$('importSheet').addEventListener('click', e => { if (e.target.id === 'importSheet') $('importSheet').classList.remove('up'); });
 
 /* ---------- nav ---------- */
 function renderNav() {

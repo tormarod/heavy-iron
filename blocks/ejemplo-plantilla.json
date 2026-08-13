@@ -1,0 +1,59 @@
+{
+  "name": "Bloque de ejemplo",
+  "days": [
+    {
+      "name": "Día A — Empuje",
+      "pair": "Nota opcional para la sesión conjunta de este día.",
+      "ex": [
+        {
+          "n": "Press de banca con barra",
+          "alt": "o press de pecho en máquina",
+          "cue": "Omóplatos retraídos, barra a la altura del pecho",
+          "sets": 4,
+          "add": 5,
+          "reps": "6–10",
+          "rest": 150,
+          "share": 1
+        },
+        {
+          "n": "Elevaciones laterales en polea",
+          "sets": 3,
+          "reps": "12–20",
+          "rest": 60
+        }
+      ]
+    },
+    {
+      "name": "Día B — Tirón",
+      "ex": [
+        {
+          "n": "Remo con barra",
+          "alt": "o remo en máquina",
+          "sets": 4,
+          "reps": "8–12",
+          "rest": 120,
+          "share": 1
+        },
+        {
+          "n": "Curl de bíceps con mancuernas",
+          "sets": 3,
+          "reps": "10–15",
+          "rest": 0,
+          "ss": 1
+        },
+        {
+          "n": "Extensión de tríceps en polea",
+          "sets": 3,
+          "reps": "10–15",
+          "rest": 60,
+          "ss": 1
+        }
+      ]
+    }
+  ],
+  "phase": {
+    "1": { "r": "2–3 RIR", "t": "Ajustando pesos." },
+    "4": { "r": "1–2 RIR", "t": "+1 serie en el primer ejercicio de cada día." },
+    "8": { "r": "Descarga", "t": "Mitad de series, ~60% del peso." }
+  }
+}

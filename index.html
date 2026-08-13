@@ -73,6 +73,27 @@
     </div>
   </div>
 
+  <!-- import block from JSON -->
+  <div class="sheet" id="importSheet">
+    <div class="sheet-box">
+      <div class="sheet-t">Importar bloque desde JSON</div>
+      <p class="sheet-d">Elige un bloque publicado en el repositorio, o pega el JSON a mano (por ejemplo, generado por tu agente de entrenamiento). Se añade como bloque nuevo al perfil actual — no sobrescribe nada.</p>
+
+      <div class="sheet-d" style="margin:0 0 6px;font-weight:600;color:var(--ink);">Bloques disponibles en GitHub</div>
+      <div id="importRepoList" class="sheet-d">Cargando…</div>
+
+      <div class="sheet-hr"></div>
+
+      <div class="sheet-d" style="margin:0 0 6px;font-weight:600;color:var(--ink);">O pega el JSON a mano</div>
+      <textarea id="importBlob" spellcheck="false" placeholder='{"name":"Bloque 2","days":[...],"phase":{...}}'></textarea>
+      <div id="importError" class="status err" style="text-align:left;padding-top:6px;"></div>
+      <div class="sheet-btns">
+        <button class="sm key" id="importFromText">Importar desde el texto</button>
+        <button class="sm" id="importClose">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- exercise progress chart -->
   <div class="sheet" id="chartSheet">
     <div class="sheet-box">
