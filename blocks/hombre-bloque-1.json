@@ -2,6 +2,70 @@
   "name": "Bloque 1",
   "days": [
     {
+      "name": "Empuje",
+      "pair": "Dia casi entero compartido: press de pecho, laterales, press de hombros, contractora y triceps en polea. Tu press inclinado lo haces por tu cuenta.",
+      "ex": [
+        {
+          "id": "chestpress",
+          "share": 1,
+          "n": "Press de pecho en máquina",
+          "alt": "o press de banca con barra",
+          "sets": 4,
+          "add": 5,
+          "reps": "6–10",
+          "rest": 150,
+          "cue": "El ejercicio pesado del día: llega a 10 reps limpias en las 4 series antes de subir peso"
+        },
+        {
+          "id": "lat1",
+          "share": 1,
+          "n": "Elevaciones laterales en polea",
+          "alt": "o con mancuernas",
+          "sets": 4,
+          "reps": "12–20",
+          "rest": 60,
+          "cue": "Van aquí a propósito: hoy no hay remos, y son lo único que deja descansar al hombro frontal entre press y press"
+        },
+        {
+          "id": "shoulderpress",
+          "share": 1,
+          "n": "Press de hombros en máquina",
+          "alt": "o press militar con mancuernas",
+          "sets": 4,
+          "add": 7,
+          "reps": "8–12",
+          "rest": 150
+        },
+        {
+          "id": "inclinepress",
+          "n": "Press inclinado en máquina",
+          "alt": "o press inclinado con mancuernas",
+          "sets": 4,
+          "reps": "8–12",
+          "rest": 150
+        },
+        {
+          "id": "pecdeck",
+          "share": 1,
+          "n": "Contractora / aperturas en polea",
+          "alt": "o aperturas con mancuernas",
+          "sets": 4,
+          "reps": "12–15",
+          "rest": 90,
+          "cue": "Estirar del todo atrás — sin recortar el recorrido"
+        },
+        {
+          "id": "pushdown",
+          "share": 1,
+          "n": "Extensiones de tríceps en polea",
+          "alt": "o press francés",
+          "sets": 4,
+          "reps": "12–15",
+          "rest": 75
+        }
+      ]
+    },
+    {
       "name": "Tirón + Cuádriceps",
       "pair": "Compartis hack, jalon, remo y la superserie final. Ella hace prensa y extension de cuadriceps mientras tu haces tu prensa y el jalon neutro.",
       "ex": [
@@ -70,70 +134,6 @@
           "reps": "12–15",
           "rest": 75,
           "ss": 1
-        }
-      ]
-    },
-    {
-      "name": "Empuje",
-      "pair": "Dia casi entero compartido: press de pecho, laterales, press de hombros, contractora y triceps en polea. Tu press inclinado lo haces por tu cuenta.",
-      "ex": [
-        {
-          "id": "chestpress",
-          "share": 1,
-          "n": "Press de pecho en máquina",
-          "alt": "o press de banca con barra",
-          "sets": 4,
-          "add": 5,
-          "reps": "6–10",
-          "rest": 150,
-          "cue": "El ejercicio pesado del día: llega a 10 reps limpias en las 4 series antes de subir peso"
-        },
-        {
-          "id": "lat1",
-          "share": 1,
-          "n": "Elevaciones laterales en polea",
-          "alt": "o con mancuernas",
-          "sets": 4,
-          "reps": "12–20",
-          "rest": 60,
-          "cue": "Van aquí a propósito: hoy no hay remos, y son lo único que deja descansar al hombro frontal entre press y press"
-        },
-        {
-          "id": "shoulderpress",
-          "share": 1,
-          "n": "Press de hombros en máquina",
-          "alt": "o press militar con mancuernas",
-          "sets": 4,
-          "add": 7,
-          "reps": "8–12",
-          "rest": 150
-        },
-        {
-          "id": "inclinepress",
-          "n": "Press inclinado en máquina",
-          "alt": "o press inclinado con mancuernas",
-          "sets": 4,
-          "reps": "8–12",
-          "rest": 150
-        },
-        {
-          "id": "pecdeck",
-          "share": 1,
-          "n": "Contractora / aperturas en polea",
-          "alt": "o aperturas con mancuernas",
-          "sets": 4,
-          "reps": "12–15",
-          "rest": 90,
-          "cue": "Estirar del todo atrás — sin recortar el recorrido"
-        },
-        {
-          "id": "pushdown",
-          "share": 1,
-          "n": "Extensiones de tríceps en polea",
-          "alt": "o press francés",
-          "sets": 4,
-          "reps": "12–15",
-          "rest": 75
         }
       ]
     },

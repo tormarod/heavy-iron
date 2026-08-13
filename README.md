@@ -81,9 +81,9 @@ else apart:
 
 | Día | Músculos |
 |---|---|
-| Cuádriceps + Espalda | cuádriceps, dorsal, deltoide posterior, bíceps |
-| Pecho + Hombro | pecho, deltoide anterior y lateral, tríceps |
-| Glúteo + Isquios | glúteo, isquios, gemelos, core |
+| 1 · Pecho + Hombro | pecho, deltoide anterior y lateral, tríceps |
+| 2 · Cuádriceps + Espalda | cuádriceps, dorsal, deltoide posterior, bíceps |
+| 3 · Glúteo + Isquios | glúteo, isquios, gemelos, core |
 
 Biceps sit with back, and triceps with the presses, on purpose — that's
 what *reduces* their exposure. Splitting them onto their own day would
@@ -93,8 +93,13 @@ leg presses train them whatever you do, so they appear on two days. They
 are also the priority muscle, so that's a feature.
 
 Leg volume lands at 31 sets (42% of the week), split as 10 quad sets on
-day 1 and 21 posterior-chain, calf and core sets on day 3. Days run
-26 / 23 / 24 sets.
+day 2 and 21 posterior-chain, calf and core sets on day 3. Days run
+23 / 26 / 24 sets.
+
+Her day 2 is the one adjacency the order can't avoid: hack squats and
+leg presses train glutes, so the glute day that follows it starts on
+legs that aren't completely fresh. With a rest day in between that's
+about 48 hours, which is enough.
 
 **Hombre — enfoque superior.** Around 61 hard sets a week go to upper
 body — chest 15, back 14, biceps and triceps 8 each, lateral delts 8 —
@@ -107,11 +112,12 @@ shared exercises, spread 5 on day 1, 5 on day 2 and 2 on day 3. The cost
 is that his quads and hamstrings get one session each; for 11 sets of
 maintenance work that's a fair trade for training together.
 
-**Order.** Lateral raises sit between the two presses on the push
-day. With no rows on that day there is nothing else that lets the front
-delts and triceps recover between the chest press and the shoulder press,
-and lateral raises barely touch either. On her day 1 the quad work comes
-first, ahead of the back work, since legs are the priority.
+**Order.** The week opens with the push day. Lateral raises sit between
+the two presses on it: with no rows that day there is nothing else that
+lets the front delts and triceps recover between the chest press and the
+shoulder press, and lateral raises barely touch either. On her day 2 the
+quad work comes first, ahead of the back work, since legs are the
+priority.
 
 **Progression, both plans.** The week banner states the
 double-progression rule explicitly (hit the top of the rep range on every

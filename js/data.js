@@ -46,6 +46,14 @@ const DEFAULT_PHASE_PAREJA = {
 };
 
 const DEFAULT_DAYS_TU = [
+  { name: 'Empuje', pair: 'Dia casi entero compartido: press de pecho, laterales, press de hombros, contractora y triceps en polea. Tu press inclinado lo haces por tu cuenta.', ex: [
+    { id: 'chestpress', share: 1, n: 'Press de pecho en máquina', alt: 'o press de banca con barra', sets: 4, add: 5, reps: '6–10', rest: 150, cue: 'El ejercicio pesado del día: llega a 10 reps limpias en las 4 series antes de subir peso' },
+    { id: 'lat1', share: 1, n: 'Elevaciones laterales en polea', alt: 'o con mancuernas', sets: 4, reps: '12–20', rest: 60, cue: 'Van aquí a propósito: hoy no hay remos, y son lo único que deja descansar al hombro frontal entre press y press' },
+    { id: 'shoulderpress', share: 1, n: 'Press de hombros en máquina', alt: 'o press militar con mancuernas', sets: 4, add: 7, reps: '8–12', rest: 150 },
+    { id: 'inclinepress', n: 'Press inclinado en máquina', alt: 'o press inclinado con mancuernas', sets: 4, reps: '8–12', rest: 150 },
+    { id: 'pecdeck', share: 1, n: 'Contractora / aperturas en polea', alt: 'o aperturas con mancuernas', sets: 4, reps: '12–15', rest: 90, cue: 'Estirar del todo atrás — sin recortar el recorrido' },
+    { id: 'pushdown', share: 1, n: 'Extensiones de tríceps en polea', alt: 'o press francés', sets: 4, reps: '12–15', rest: 75 },
+  ]},
   { name: 'Tirón + Cuádriceps', pair: 'Compartis hack, jalon, remo y la superserie final. Ella hace prensa y extension de cuadriceps mientras tu haces tu prensa y el jalon neutro.', ex: [
     { id: 'hacksquat', share: 1, n: 'Sentadilla hack', alt: 'o pendular / sentadilla con barra', sets: 3, reps: '8–12', rest: 150, cue: 'Dosis corta de pierna: 3 series bien hechas, profundidad por debajo de la paralela' },
     { id: 'legpress', n: 'Prensa de piernas', alt: '', sets: 3, reps: '10–15', rest: 120 },
@@ -54,14 +62,6 @@ const DEFAULT_DAYS_TU = [
     { id: 'pulldown_n', n: 'Jalón agarre neutro', alt: 'o dominadas asistidas / pullover en polea', sets: 3, reps: '10–12', rest: 120 },
     { id: 'reardelt', share: 1, n: 'Contractora inversa (deltoide posterior)', alt: 'o pájaros con mancuernas', sets: 4, reps: '15–20', rest: 0, ss: 1 },
     { id: 'hammer', share: 1, n: 'Curl martillo con cuerda', alt: 'o curl martillo con mancuernas', sets: 4, reps: '12–15', rest: 75, ss: 1 },
-  ]},
-  { name: 'Empuje', pair: 'Dia casi entero compartido: press de pecho, laterales, press de hombros, contractora y triceps en polea. Tu press inclinado lo haces por tu cuenta.', ex: [
-    { id: 'chestpress', share: 1, n: 'Press de pecho en máquina', alt: 'o press de banca con barra', sets: 4, add: 5, reps: '6–10', rest: 150, cue: 'El ejercicio pesado del día: llega a 10 reps limpias en las 4 series antes de subir peso' },
-    { id: 'lat1', share: 1, n: 'Elevaciones laterales en polea', alt: 'o con mancuernas', sets: 4, reps: '12–20', rest: 60, cue: 'Van aquí a propósito: hoy no hay remos, y son lo único que deja descansar al hombro frontal entre press y press' },
-    { id: 'shoulderpress', share: 1, n: 'Press de hombros en máquina', alt: 'o press militar con mancuernas', sets: 4, add: 7, reps: '8–12', rest: 150 },
-    { id: 'inclinepress', n: 'Press inclinado en máquina', alt: 'o press inclinado con mancuernas', sets: 4, reps: '8–12', rest: 150 },
-    { id: 'pecdeck', share: 1, n: 'Contractora / aperturas en polea', alt: 'o aperturas con mancuernas', sets: 4, reps: '12–15', rest: 90, cue: 'Estirar del todo atrás — sin recortar el recorrido' },
-    { id: 'pushdown', share: 1, n: 'Extensiones de tríceps en polea', alt: 'o press francés', sets: 4, reps: '12–15', rest: 75 },
   ]},
   { name: 'Pecho/Brazo + Isquios', pair: 'Compartis peso muerto rumano y curl femoral al empezar. Despues ella sigue con gluteo, gemelo y abdomen mientras tu haces tu segunda sesion de pecho, espalda y brazo.', ex: [
     { id: 'rdl', share: 1, n: 'Peso muerto rumano en multipower', alt: 'o hiperextensiones a 45°', sets: 3, reps: '8–12', rest: 150, cue: 'Cadera atrás, busca el estiramiento del femoral. Sin redondear la espalda' },
@@ -75,6 +75,15 @@ const DEFAULT_DAYS_TU = [
 ];
 
 const DEFAULT_DAYS_PAREJA = [
+  { name: 'Pecho + Hombro', pair: 'Día casi entero compartido: press de pecho, laterales, press de hombros, contractora y tríceps en polea. Él añade su press inclinado por su cuenta.', ex: [
+    { id: 'chestpress', share: 1, n: 'Press de pecho en máquina', alt: 'o press de banca con barra', sets: 4, add: 5, reps: '6–10', rest: 150, cue: 'Bloque de fuerza — más peso, menos repeticiones' },
+    { id: 'lat1', share: 1, n: 'Elevaciones laterales en polea', alt: 'o con mancuernas', sets: 4, reps: '12–20', rest: 60, cue: 'Van en segundo lugar a propósito: al no haber remos hoy, son lo único que deja descansar al hombro frontal entre press y press' },
+    { id: 'shoulderpress', share: 1, n: 'Press de hombros en máquina', alt: 'o press militar con mancuernas', sets: 3, reps: '8–12', rest: 150 },
+    { id: 'inclinepress', n: 'Press inclinado en máquina', alt: 'o press inclinado con mancuernas', sets: 3, reps: '8–12', rest: 120 },
+    { id: 'pecdeck', share: 1, n: 'Contractora / aperturas en polea', alt: 'o aperturas con mancuernas', sets: 3, reps: '12–15', rest: 90, cue: 'Estirar del todo atrás — sin recortar el recorrido' },
+    { id: 'pushdown', share: 1, n: 'Extensiones de tríceps en polea', alt: 'o press francés', sets: 3, reps: '12–15', rest: 0, ss: 1 },
+    { id: 'ohext', n: 'Extensión de tríceps sobre la cabeza', alt: 'en polea o con mancuerna', sets: 3, reps: '12–15', rest: 75, ss: 1, cue: 'Tríceps solo hoy: los dos ejercicios juntos, y el resto de la semana descansan' },
+  ]},
   { name: 'Cuádriceps + Espalda', pair: 'Compartís hack, jalón, remo y la superserie final. Tú haces prensa y extensión de cuádriceps mientras él hace su prensa y el jalón neutro. Bíceps solo hoy: todo el trabajo de brazo va junto al de dorsal, para que descansen los otros dos días.', ex: [
     { id: 'hacksquat', share: 1, n: 'Sentadilla hack', alt: 'o pendular / sentadilla con barra', sets: 4, add: 5, reps: '8–12', rest: 180, cue: 'Pies algo más altos y abiertos para más glúteo. Empieza el día con lo que más te importa' },
     { id: 'legpress', n: 'Prensa de piernas, pies altos y abiertos', alt: 'o zancadas caminando', sets: 3, reps: '10–15', rest: 150 },
@@ -84,15 +93,6 @@ const DEFAULT_DAYS_PAREJA = [
     { id: 'reardelt', share: 1, n: 'Contractora inversa (deltoide posterior)', alt: 'o pájaros con mancuernas', sets: 3, reps: '15–20', rest: 0, ss: 1 },
     { id: 'cablecurl', n: 'Curl en polea', alt: 'o curl inclinado con mancuernas', sets: 3, reps: '10–15', rest: 75, ss: 1, cue: 'El bíceps ya viene calentito del jalón y el remo: no necesita mucho peso para trabajar' },
     { id: 'hammer', share: 1, n: 'Curl martillo con cuerda', alt: 'o curl martillo con mancuernas', sets: 3, reps: '12–15', rest: 60 },
-  ]},
-  { name: 'Pecho + Hombro', pair: 'Día casi entero compartido: press de pecho, laterales, press de hombros, contractora y tríceps en polea. Él añade su press inclinado por su cuenta.', ex: [
-    { id: 'chestpress', share: 1, n: 'Press de pecho en máquina', alt: 'o press de banca con barra', sets: 4, add: 5, reps: '6–10', rest: 150, cue: 'Bloque de fuerza — más peso, menos repeticiones' },
-    { id: 'lat1', share: 1, n: 'Elevaciones laterales en polea', alt: 'o con mancuernas', sets: 4, reps: '12–20', rest: 60, cue: 'Van en segundo lugar a propósito: al no haber remos hoy, son lo único que deja descansar al hombro frontal entre press y press' },
-    { id: 'shoulderpress', share: 1, n: 'Press de hombros en máquina', alt: 'o press militar con mancuernas', sets: 3, reps: '8–12', rest: 150 },
-    { id: 'inclinepress', n: 'Press inclinado en máquina', alt: 'o press inclinado con mancuernas', sets: 3, reps: '8–12', rest: 120 },
-    { id: 'pecdeck', share: 1, n: 'Contractora / aperturas en polea', alt: 'o aperturas con mancuernas', sets: 3, reps: '12–15', rest: 90, cue: 'Estirar del todo atrás — sin recortar el recorrido' },
-    { id: 'pushdown', share: 1, n: 'Extensiones de tríceps en polea', alt: 'o press francés', sets: 3, reps: '12–15', rest: 0, ss: 1 },
-    { id: 'ohext', n: 'Extensión de tríceps sobre la cabeza', alt: 'en polea o con mancuerna', sets: 3, reps: '12–15', rest: 75, ss: 1, cue: 'Tríceps solo hoy: los dos ejercicios juntos, y el resto de la semana descansan' },
   ]},
   { name: 'Glúteo + Isquios', pair: 'Compartís peso muerto rumano y curl femoral. El resto del día es tuyo: él sigue con pecho, espalda y brazo mientras tú acabas glúteo, gemelo y abdomen.', ex: [
     { id: 'hipthrust', n: 'Hip thrust con barra o máquina', alt: 'o hip thrust en multipower', sets: 4, add: 5, reps: '8–12', rest: 150, cue: 'El ejercicio clave de glúteo. Cárgalo y sube el peso. Barbilla al pecho, pausa 1s arriba' },
