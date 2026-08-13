@@ -23,8 +23,8 @@ body {
 }
 
 #app { min-height: 100vh; padding-bottom: 100px; }
-#app.profile-tu { --signal: #1B3FD0; --signal-soft: #E4E8FA; }
-#app.profile-pareja { --signal: #1D6B4C; --signal-soft: #DFEDE6; }
+#app.profile-hombre { --signal: #1B3FD0; --signal-soft: #E4E8FA; }
+#app.profile-mujer { --signal: #1D6B4C; --signal-soft: #DFEDE6; }
 
 .wrap { max-width: 640px; margin: 0 auto; padding: 0 14px; }
 

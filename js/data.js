@@ -96,11 +96,11 @@ function defaultState() {
   const tuBlock = freshBlock('block-1', 'Bloque 1', DEFAULT_DAYS_TU, DEFAULT_PHASE_TU);
   const parejaBlock = freshBlock('block-1', 'Bloque 1', DEFAULT_DAYS_PAREJA, DEFAULT_PHASE_PAREJA);
   return {
-    activeProfile: 'tu',
+    activeProfile: 'hombre',
     profiles: {
-      tu: {
-        label: 'Tú',
-        theme: 'tu',
+      hombre: {
+        label: 'Hombre',
+        theme: 'hombre',
         blocks: { [tuBlock.id]: tuBlock },
         blockOrder: [tuBlock.id],
         activeBlock: tuBlock.id,
@@ -108,9 +108,9 @@ function defaultState() {
         week: 1,
         day: 0,
       },
-      pareja: {
-        label: 'Pareja',
-        theme: 'pareja',
+      mujer: {
+        label: 'Mujer',
+        theme: 'mujer',
         blocks: { [parejaBlock.id]: parejaBlock },
         blockOrder: [parejaBlock.id],
         activeBlock: parejaBlock.id,

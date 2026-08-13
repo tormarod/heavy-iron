@@ -582,11 +582,11 @@ function restoreFromText(text) {
   } catch (e) { mark('Ese texto no es una copia válida', true); return; }
   const data = parsed && parsed.data ? parsed.data : parsed;
   const ok = data && typeof data === 'object' && data.profiles &&
-    data.profiles.tu && data.profiles.pareja;
+    data.profiles.hombre && data.profiles.mujer;
   if (!ok) { mark('Ese archivo/texto no es una copia válida de Heavy Iron', true); return; }
   if (!confirm('¿Reemplazar TODO tu registro (los dos perfiles) con esta copia? Se sobrescribirá lo que tengas ahora.')) return;
   state = data;
-  if (!state.activeProfile) state.activeProfile = 'tu';
+  if (!state.activeProfile) state.activeProfile = 'hombre';
   save(); render();
   $('sheet').classList.remove('up');
   mark('Registro restaurado');

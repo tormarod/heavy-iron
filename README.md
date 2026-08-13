@@ -6,7 +6,7 @@ browser.
 
 ## Features
 
-- **Two profiles** (Tú / Pareja), each with their own plan, weeks, and
+- **Two profiles** (Hombre / Mujer), each with their own plan, weeks, and
   history.
 - **Blocks**: each profile can have several training blocks (e.g. "Bloque
   1", "Bloque 2"). Use **Nuevo bloque** to start the next one from a copy
