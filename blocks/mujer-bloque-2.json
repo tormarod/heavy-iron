@@ -3,7 +3,7 @@
   "days": [
     {
       "name": "Superior + Glúteo",
-      "pair": "Las estaciones 1–3 son compartidas: alternad series mientras el otro descansa. Os separáis en el hip thrust: él sigue con pecho y cuádriceps.",
+      "pair": "Las estaciones 1–3 son compartidas: alternad series mientras el otro descansa. Os separáis en el hip thrust: él sigue con pecho, hombro y tríceps.",
       "ex": [
         {
           "id": "chestpress",
@@ -75,7 +75,7 @@
     },
     {
       "name": "Pierna fuerte",
-      "pair": "Estaciones 1–3 juntos, alternando series. Él pasa a prensa y gemelos mientras tú terminas la búlgara.",
+      "pair": "Compartís las estaciones 1–2 (hack y rumano) alternando series. Después él pasa al press con mancuernas y al jalón mientras tú haces búlgara y curl femoral; os reencontráis en la superserie de brazo.",
       "ex": [
         {
           "id": "hacksquat",
@@ -89,25 +89,6 @@
           "rest": 180
         },
         {
-          "id": "legcurl",
-          "share": 1,
-          "n": "Curl femoral sentado",
-          "alt": "o curl femoral tumbado",
-          "cue": "Sube de puesto: el femoral entrena con energía, no de sobras",
-          "sets": 3,
-          "reps": "10–15",
-          "rest": 90
-        },
-        {
-          "id": "lunge",
-          "n": "Sentadilla búlgara o zancadas caminando",
-          "alt": "cada pierna",
-          "cue": "Adelantada antes que el peso muerto: exige equilibrio y no aguanta la fatiga del final",
-          "sets": 3,
-          "reps": "10–12",
-          "rest": 120
-        },
-        {
           "id": "rdl",
           "share": 1,
           "n": "Peso muerto rumano en multipower",
@@ -116,6 +97,23 @@
           "sets": 3,
           "reps": "8–12",
           "rest": 150
+        },
+        {
+          "id": "lunge",
+          "n": "Sentadilla búlgara o zancadas caminando",
+          "alt": "cada pierna",
+          "cue": "Adelantada de puesto: exige equilibrio y no aguanta bien la fatiga del final de sesión",
+          "sets": 3,
+          "reps": "10–12",
+          "rest": 120
+        },
+        {
+          "id": "legcurl",
+          "n": "Curl femoral sentado",
+          "alt": "o curl femoral tumbado",
+          "sets": 3,
+          "reps": "10–15",
+          "rest": 90
         },
         {
           "id": "calfstand",
@@ -150,7 +148,7 @@
     },
     {
       "name": "Glúteo + Superior",
-      "pair": "Cuatro estaciones compartidas. Él hace una serie menos de prensa: aprovecha la última mientras prepara la contractora inversa.",
+      "pair": "Compartís jalón, press inclinado y remo. La prensa pesada es tuya: intercálala mientras él sigue con el press, y al final volvéis a juntaros en la contractora inversa.",
       "ex": [
         {
           "id": "pulldown",
@@ -165,7 +163,6 @@
         },
         {
           "id": "legpress",
-          "share": 1,
           "n": "Prensa de piernas, pies altos y abiertos",
           "alt": "",
           "cue": "Sube al puesto 2: es trabajo de glúteo prioritario, no un accesorio del final",

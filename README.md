@@ -71,38 +71,45 @@ scratch without losing the original's history.
 
 `hombre-bloque-2.json` and `mujer-bloque-2.json` are revised follow-ups
 to those two. They keep the same 3-day shape and the shared/couple
-stations, but rebalance weekly volume — see
+stations, but redistribute weekly volume — see
 [Bloque 2](#bloque-2--qué-cambia-y-por-qué) below.
 
 ## Bloque 2 — qué cambia y por qué
 
-Both Bloque 1 plans are upper-body heavy. Counting hard sets per muscle
-per week, the men's plan lands around 12 for chest and 13 for back but
-only 6 for quads and 5 for hamstrings (hamstrings trained once a week),
-with no calf or core work at all. The women's plan is the mirror image:
-plenty of glute and leg volume, but zero lateral-raise work, six weekly
-sets split across two abductor machines that do the same job, and again
-no calves or core.
+The two profiles have deliberately different priorities, and Bloque 2
+keeps them: the men's plan prioritises upper body and treats legs as
+maintenance, the women's plan prioritises glutes and legs. What Bloque 2
+fixes is the parts that weren't a priority call — volume that was spent
+in the wrong place, and ordering that put exercises where they couldn't
+be performed well.
 
-Bloque 2 keeps the structure, the shared stations and the 8-week
-RIR/deload progression, and changes three things:
+**Hombre — enfoque superior.** Upper volume goes from ~53 to ~61 hard
+sets a week, mostly by adding a third weekly chest session (dumbbell
+press on day 2, so chest goes 12 → 15 sets at 3× frequency) and taking
+direct arm work from 6 to 8 sets each. Legs stay at 11 sets, exactly
+where Bloque 1 had them — but split across two days instead of one, so
+hamstrings are trained twice a week rather than once at the same cost.
+Calves and core are left out on purpose; add them in the plan editor if
+you want them.
 
-- **Volume balance.** Hombre: quads 6 → 10 sets, hamstrings 5 → 9 and
-  now trained twice a week, calves 0 → 7, core 0 → 3, with chest and
-  back trimmed slightly to 10 each. Mujer: lateral raises 0 → 3,
-  calves 0 → 7, core 0 → 3, abductors 6 → 3 (one machine instead of
-  two overlapping ones); the glute emphasis is untouched.
-- **Exercise order.** A row now sits between the two presses on the
-  push days so the shoulder press isn't performed on delts and triceps
-  fresh out of a heavy chest press. Leg curls move to second on leg day,
-  the leg press moves up on the women's day 3, and Bulgarian split
-  squats move ahead of the RDL — all so the exercise that most needs
-  fresh legs or balance isn't the last thing in the session.
-- **Progression.** The week banner now states the double-progression
-  rule explicitly (hit the top of the rep range on every set → add the
-  smallest increment next week), starts at 3 RIR for calibration, and
-  restricts week 7's to-failure sets to machines and isolation work
-  rather than hack squats and RDLs.
+**Mujer — equilibrado.** The glute emphasis is untouched. Lateral raises
+go from 0 to 3 sets (there was no side-delt work at all), calves 0 → 7,
+core 0 → 3, and abductors 6 → 3, since Bloque 1 spent six weekly sets on
+two machines doing the same job.
+
+**Order, both plans.** A row now sits between the two presses on the push
+day, so the shoulder press isn't performed on delts and triceps fresh out
+of a heavy chest press. Bulgarian split squats move ahead of the leg
+curl, and the leg press moves up to second on the women's day 3 — the
+exercises that need fresh legs or balance shouldn't be last. The men's
+leg work stays late in the session by design; it's maintenance work on
+machines, so the position costs little.
+
+**Progression, both plans.** The week banner now states the
+double-progression rule explicitly (hit the top of the rep range on every
+set → add the smallest increment next week), starts at 3 RIR for
+calibration, and restricts week 7's to-failure sets to machines and
+isolation work rather than hack squats and RDLs.
 
 Run the three days with a rest day between them (e.g. Mon / Wed / Fri).
 
