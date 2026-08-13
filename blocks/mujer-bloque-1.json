@@ -3,7 +3,7 @@
   "days": [
     {
       "name": "Pecho + Hombro",
-      "pair": "Día casi entero compartido: press de pecho, laterales, press de hombros, contractora y tríceps en polea. Él añade su press inclinado por su cuenta.",
+      "pair": "Compartís las seis primeras estaciones alternando series. Él hace una serie más en press de hombros, inclinado, contractora y tríceps; tú cierras sola con la extensión de tríceps sobre la cabeza.",
       "ex": [
         {
           "id": "chestpress",
@@ -37,6 +37,7 @@
         },
         {
           "id": "inclinepress",
+          "share": 1,
           "n": "Press inclinado en máquina",
           "alt": "o press inclinado con mancuernas",
           "sets": 3,

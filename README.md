@@ -107,10 +107,15 @@ with every upper muscle trained twice a week. Legs get 11 sets of
 maintenance work. Calves and core are left out on purpose; add them in
 the plan editor if you want them.
 
-His days are arranged around hers so the couple stations line up: 12
-shared exercises, spread 5 on day 1, 5 on day 2 and 2 on day 3. The cost
-is that his quads and hamstrings get one session each; for 11 sets of
-maintenance work that's a fair trade for training together.
+His days are arranged around hers so the couple stations line up: 13
+shared exercises, spread 6 on day 1, 5 on day 2 and 2 on day 3. Day 1 is
+shared end to end on his side. The cost is that his quads and hamstrings
+get one session each; for 11 sets of maintenance work that's a fair trade
+for training together.
+
+Shared exercises don't have to carry the same number of sets — most of
+them don't. Whoever has the extra set does it while the other resets the
+machine.
 
 **Order.** The week opens with the push day. Lateral raises sit between
 the two presses on it: with no rows that day there is nothing else that

@@ -20,8 +20,11 @@
      the one exception, since squats and leg presses train them whatever
      else you do.
 
-   The two plans share 12 exercises (marked `share`), spread 5/5/2 across
-   the week, so the sessions can be run together alternating sets. */
+   The two plans share 13 exercises (marked `share`), spread 6/5/2 across
+   the week, so the sessions can be run together alternating sets. Set
+   counts on a shared exercise often differ between the two profiles —
+   that is fine, whoever has the extra set does it while the other
+   resets the machine. */
 
 const DEFAULT_PHASE_TU = {
   1: { r: '3 RIR', t: 'Semana de calibración. Anota pesos y quédate corto: técnica y rango completo.' },
@@ -46,11 +49,11 @@ const DEFAULT_PHASE_PAREJA = {
 };
 
 const DEFAULT_DAYS_TU = [
-  { name: 'Empuje', pair: 'Dia casi entero compartido: press de pecho, laterales, press de hombros, contractora y triceps en polea. Tu press inclinado lo haces por tu cuenta.', ex: [
+  { name: 'Empuje', pair: 'Dia entero compartido: las seis estaciones se alternan. Ella hace una serie menos en press de hombros, inclinado, contractora y triceps, asi que tu serie extra la haces mientras ella prepara la siguiente maquina.', ex: [
     { id: 'chestpress', share: 1, n: 'Press de pecho en máquina', alt: 'o press de banca con barra', sets: 4, add: 5, reps: '6–10', rest: 150, cue: 'El ejercicio pesado del día: llega a 10 reps limpias en las 4 series antes de subir peso' },
     { id: 'lat1', share: 1, n: 'Elevaciones laterales en polea', alt: 'o con mancuernas', sets: 4, reps: '12–20', rest: 60, cue: 'Van aquí a propósito: hoy no hay remos, y son lo único que deja descansar al hombro frontal entre press y press' },
     { id: 'shoulderpress', share: 1, n: 'Press de hombros en máquina', alt: 'o press militar con mancuernas', sets: 4, add: 7, reps: '8–12', rest: 150 },
-    { id: 'inclinepress', n: 'Press inclinado en máquina', alt: 'o press inclinado con mancuernas', sets: 4, reps: '8–12', rest: 150 },
+    { id: 'inclinepress', share: 1, n: 'Press inclinado en máquina', alt: 'o press inclinado con mancuernas', sets: 4, reps: '8–12', rest: 150 },
     { id: 'pecdeck', share: 1, n: 'Contractora / aperturas en polea', alt: 'o aperturas con mancuernas', sets: 4, reps: '12–15', rest: 90, cue: 'Estirar del todo atrás — sin recortar el recorrido' },
     { id: 'pushdown', share: 1, n: 'Extensiones de tríceps en polea', alt: 'o press francés', sets: 4, reps: '12–15', rest: 75 },
   ]},
@@ -75,11 +78,11 @@ const DEFAULT_DAYS_TU = [
 ];
 
 const DEFAULT_DAYS_PAREJA = [
-  { name: 'Pecho + Hombro', pair: 'Día casi entero compartido: press de pecho, laterales, press de hombros, contractora y tríceps en polea. Él añade su press inclinado por su cuenta.', ex: [
+  { name: 'Pecho + Hombro', pair: 'Compartís las seis primeras estaciones alternando series. Él hace una serie más en press de hombros, inclinado, contractora y tríceps; tú cierras sola con la extensión de tríceps sobre la cabeza.', ex: [
     { id: 'chestpress', share: 1, n: 'Press de pecho en máquina', alt: 'o press de banca con barra', sets: 4, add: 5, reps: '6–10', rest: 150, cue: 'Bloque de fuerza — más peso, menos repeticiones' },
     { id: 'lat1', share: 1, n: 'Elevaciones laterales en polea', alt: 'o con mancuernas', sets: 4, reps: '12–20', rest: 60, cue: 'Van en segundo lugar a propósito: al no haber remos hoy, son lo único que deja descansar al hombro frontal entre press y press' },
     { id: 'shoulderpress', share: 1, n: 'Press de hombros en máquina', alt: 'o press militar con mancuernas', sets: 3, reps: '8–12', rest: 150 },
-    { id: 'inclinepress', n: 'Press inclinado en máquina', alt: 'o press inclinado con mancuernas', sets: 3, reps: '8–12', rest: 120 },
+    { id: 'inclinepress', share: 1, n: 'Press inclinado en máquina', alt: 'o press inclinado con mancuernas', sets: 3, reps: '8–12', rest: 120 },
     { id: 'pecdeck', share: 1, n: 'Contractora / aperturas en polea', alt: 'o aperturas con mancuernas', sets: 3, reps: '12–15', rest: 90, cue: 'Estirar del todo atrás — sin recortar el recorrido' },
     { id: 'pushdown', share: 1, n: 'Extensiones de tríceps en polea', alt: 'o press francés', sets: 3, reps: '12–15', rest: 0, ss: 1 },
     { id: 'ohext', n: 'Extensión de tríceps sobre la cabeza', alt: 'en polea o con mancuerna', sets: 3, reps: '12–15', rest: 75, ss: 1, cue: 'Tríceps solo hoy: los dos ejercicios juntos, y el resto de la semana descansan' },

@@ -3,7 +3,7 @@
   "days": [
     {
       "name": "Empuje",
-      "pair": "Dia casi entero compartido: press de pecho, laterales, press de hombros, contractora y triceps en polea. Tu press inclinado lo haces por tu cuenta.",
+      "pair": "Dia entero compartido: las seis estaciones se alternan. Ella hace una serie menos en press de hombros, inclinado, contractora y triceps, asi que tu serie extra la haces mientras ella prepara la siguiente maquina.",
       "ex": [
         {
           "id": "chestpress",
@@ -38,6 +38,7 @@
         },
         {
           "id": "inclinepress",
+          "share": 1,
           "n": "Press inclinado en máquina",
           "alt": "o press inclinado con mancuernas",
           "sets": 4,
