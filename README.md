@@ -101,16 +101,22 @@ leg presses train glutes, so the glute day that follows it starts on
 legs that aren't completely fresh. With a rest day in between that's
 about 48 hours, which is enough.
 
-**Hombre — enfoque superior.** Around 61 hard sets a week go to upper
-body — chest 15, back 14, biceps and triceps 8 each, lateral delts 8 —
-with every upper muscle trained twice a week. Legs get 11 sets of
-maintenance work. Calves and core are left out on purpose; add them in
-the plan editor if you want them.
+**Hombre — enfoque superior.** Around 67 hard sets a week go to upper
+body — chest 15, back 14, biceps 11, lateral delts 8, triceps 8, rear
+delts 7 — with every upper muscle trained twice a week. Legs get 11 sets
+of maintenance work. Calves and core are left out on purpose; add them
+in the plan editor if you want them.
 
-His days are arranged around hers so the couple stations line up: 12
-shared exercises, spread 5 on day 1, 5 on day 2 and 2 on day 3. The cost
-is that his quads and hamstrings get one session each; for 11 sets of
-maintenance work that's a fair trade for training together.
+His days are arranged around hers so the couple stations line up. Both
+profiles run the same number of exercises per day — 7 / 8 / 7 — so the
+two sessions finish together, and 14 of those exercises are shared,
+spread 6 on day 1, 6 on day 2 and 2 on day 3. The cost is that his quads
+and hamstrings get one session each; for 11 sets of maintenance work
+that's a fair trade for training together.
+
+Shared exercises don't have to carry the same number of sets — most of
+them don't. Whoever has the extra set does it while the other resets the
+machine.
 
 **Order.** The week opens with the push day. Lateral raises sit between
 the two presses on it: with no rows that day there is nothing else that

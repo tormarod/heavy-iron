@@ -3,7 +3,7 @@
   "days": [
     {
       "name": "Empuje",
-      "pair": "Dia casi entero compartido: press de pecho, laterales, press de hombros, contractora y triceps en polea. Tu press inclinado lo haces por tu cuenta.",
+      "pair": "Las seis primeras estaciones se alternan. Ella hace una serie menos en press de hombros, inclinado, contractora y triceps, asi que tu serie extra la haces mientras ella prepara la siguiente maquina. El septimo es distinto para cada uno: tu face pull, su extension sobre la cabeza.",
       "ex": [
         {
           "id": "chestpress",
@@ -38,6 +38,7 @@
         },
         {
           "id": "inclinepress",
+          "share": 1,
           "n": "Press inclinado en máquina",
           "alt": "o press inclinado con mancuernas",
           "sets": 4,
@@ -62,12 +63,21 @@
           "sets": 4,
           "reps": "12–15",
           "rest": 75
+        },
+        {
+          "id": "facepull",
+          "n": "Face pull en polea",
+          "alt": "o contractora inversa",
+          "sets": 3,
+          "reps": "15–20",
+          "rest": 60,
+          "cue": "Segunda dosis de deltoide posterior de la semana: equilibra todo el empuje del día"
         }
       ]
     },
     {
       "name": "Tirón + Cuádriceps",
-      "pair": "Compartis hack, jalon, remo y la superserie final. Ella hace prensa y extension de cuadriceps mientras tu haces tu prensa y el jalon neutro.",
+      "pair": "Compartis hack, jalon, remo y la superserie de brazo. Ella anade extension de cuadriceps mientras tu haces el jalon neutro, y cada uno hace su prensa con su posicion de pies.",
       "ex": [
         {
           "id": "hacksquat",
@@ -126,14 +136,23 @@
           "ss": 1
         },
         {
+          "id": "cablecurl",
+          "share": 1,
+          "n": "Curl en polea",
+          "alt": "o curl inclinado con mancuernas",
+          "sets": 3,
+          "reps": "10–15",
+          "rest": 75,
+          "ss": 1
+        },
+        {
           "id": "hammer",
           "share": 1,
           "n": "Curl martillo con cuerda",
           "alt": "o curl martillo con mancuernas",
           "sets": 4,
           "reps": "12–15",
-          "rest": 75,
-          "ss": 1
+          "rest": 60
         }
       ]
     },
