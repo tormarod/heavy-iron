@@ -182,13 +182,13 @@
           "rest": 90
         },
         {
-          "id": "dbpress",
-          "n": "Press plano con mancuernas",
-          "alt": "o fondos en máquina asistida",
+          "id": "cablepress",
+          "n": "Press de pecho en polea alta, de pie",
+          "alt": "poleas por encima del hombro, empuje en diagonal hacia el suelo",
           "sets": 3,
-          "reps": "8–12",
-          "rest": 120,
-          "cue": "Segunda sesión de pecho de la semana — libre y con recorrido largo, distinto a las máquinas del día de empuje"
+          "reps": "10–15",
+          "rest": 90,
+          "cue": "Unico angulo bajo de la semana: paso adelante, tronco algo inclinado, y junta las manos abajo y adentro. Peso moderado, aqui te limita el equilibrio y no el pecho"
         },
         {
           "id": "cablerow",

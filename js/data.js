@@ -77,7 +77,7 @@ const DEFAULT_DAYS_TU = [
   { name: 'Pecho/Brazo + Isquios', pair: 'Compartis peso muerto rumano y curl femoral al empezar. Despues ella sigue con gluteo, gemelo y abdomen mientras tu haces tu segunda sesion de pecho, espalda y brazo.', ex: [
     { id: 'rdl', share: 1, n: 'Peso muerto rumano en multipower', alt: 'o hiperextensiones a 45°', sets: 3, reps: '8–12', rest: 150, cue: 'Cadera atrás, busca el estiramiento del femoral. Sin redondear la espalda' },
     { id: 'legcurl', share: 1, n: 'Curl femoral sentado', alt: 'o curl femoral tumbado', sets: 2, reps: '12–15', rest: 90 },
-    { id: 'dbpress', n: 'Press plano con mancuernas', alt: 'o fondos en máquina asistida', sets: 3, reps: '8–12', rest: 120, cue: 'Segunda sesión de pecho de la semana — libre y con recorrido largo, distinto a las máquinas del día de empuje' },
+    { id: 'cablepress', n: 'Press de pecho en polea alta, de pie', alt: 'poleas por encima del hombro, empuje en diagonal hacia el suelo', sets: 3, reps: '10–15', rest: 90, cue: 'Unico angulo bajo de la semana: paso adelante, tronco algo inclinado, y junta las manos abajo y adentro. Peso moderado, aqui te limita el equilibrio y no el pecho' },
     { id: 'cablerow', n: 'Remo sentado en polea', alt: 'o remo con apoyo pectoral', sets: 3, reps: '10–15', rest: 120 },
     { id: 'inclinecurl', n: 'Curl inclinado en polea', alt: 'o curl inclinado con mancuernas', sets: 4, reps: '10–15', rest: 0, ss: 1, cue: 'Codos por detrás del torso' },
     { id: 'ohext', n: 'Extensión de tríceps sobre la cabeza', alt: 'en polea o con mancuerna', sets: 4, reps: '12–15', rest: 75, ss: 1 },
