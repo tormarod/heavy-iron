@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Heavy Iron — Registro de entrenamiento</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <div class="top">
+    <div class="wrap">
+      <div class="profiles" id="profiles"></div>
+      <div class="blockbar" id="blockbar"></div>
+      <div class="title" id="title"></div>
+      <div class="weeks" id="weeks"></div>
+      <div class="days" id="days"></div>
+    </div>
+  </div>
+  <div class="wrap">
+    <div id="banner"></div>
+    <div class="pair" id="pair"></div>
+    <div class="bar"><i id="barfill" style="width:0%"></i></div>
+    <div id="list"><div class="skel">Cargando tu registro…</div></div>
+    <div class="foot">
+      <p class="note" id="note"></p>
+      <div class="foot-btns">
+        <button class="sm" id="copyPrev">Copiar pesos de la semana anterior</button>
+        <button class="sm" id="editPlan">Editar plan</button>
+        <button class="sm" id="clearDay">Borrar este día</button>
+        <button class="sm" id="backup">Copia de seguridad</button>
+        <button class="sm warn" id="wipe">Borrar todos los datos</button>
+      </div>
+      <div class="status" id="status"></div>
+    </div>
+  </div>
+
+  <!-- backup / restore -->
+  <div class="sheet" id="sheet">
+    <div class="sheet-box">
+      <div class="sheet-t">Copia de seguridad</div>
+      <p class="sheet-d">Descarga un archivo con todo tu registro (los dos perfiles) y guárdalo donde quieras. Para restaurar, carga ese mismo archivo aquí.</p>
+      <div class="sheet-btns">
+        <button class="sm key" id="bDownload">Descargar copia (.json)</button>
+        <button class="sm" id="bUploadBtn">Cargar copia (archivo)</button>
+        <input type="file" id="bUpload" accept="application/json,.json" style="display:none">
+      </div>
+      <div class="sheet-hr"></div>
+      <p class="sheet-d">O, si prefieres copiar el texto a mano (por ejemplo para pegarlo en una nota o un correo):</p>
+      <textarea id="blob" spellcheck="false"></textarea>
+      <div class="sheet-btns">
+        <button class="sm" id="bCopy">Copiar texto</button>
+        <button class="sm" id="bRestore">Restaurar desde el texto</button>
+        <button class="sm" id="bClose">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- plan editor -->
+  <div class="sheet" id="planSheet">
+    <div class="sheet-box">
+      <div class="sheet-t">Editar plan</div>
+      <p class="sheet-d">Cambia nombres, series, repeticiones o descansos. Los cambios afectan solo al bloque actual — el historial ya registrado no se toca.</p>
+      <label class="pe-field-lbl">Nombre del bloque</label>
+      <input type="text" id="peBlockName" style="width:100%;padding:8px;font-family:'Archivo';font-size:13px;font-weight:700;border:1px solid var(--line);border-radius:2px;background:var(--paper);color:var(--ink);margin-bottom:14px;">
+      <div id="peDays"></div>
+      <div class="sheet-btns">
+        <button class="sm key" id="peSave">Guardar cambios</button>
+        <button class="sm" id="peClose">Cerrar sin guardar</button>
+        <button class="sm warn" id="peDeleteBlock">Eliminar este bloque</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- exercise progress chart -->
+  <div class="sheet" id="chartSheet">
+    <div class="sheet-box">
+      <div class="sheet-t" id="chartTitle">Progreso</div>
+      <p class="sheet-d" id="chartSub"></p>
+      <div class="chart-wrap" id="chartHost"></div>
+      <div class="sheet-btns">
+        <button class="sm" id="chartClose">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="timer" id="timer">
+    <div class="timer-fill" id="tfill"></div>
+    <div class="timer-in">
+      <div>
+        <div class="timer-lbl" id="tlbl">Descanso</div>
+        <div class="timer-val" id="tval">0:00</div>
+      </div>
+      <div class="timer-msg" id="tmsg"></div>
+      <button class="timer-btn" id="tskip">Saltar</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
