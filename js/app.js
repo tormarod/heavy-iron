@@ -2,7 +2,8 @@ const STORAGE_KEY = 'heavy-iron-v1';
 
 let state = null;
 let ready = false;
-let tId = null, tLeft = 0, tTotal = 0, tOver = false;
+let tId = null, tEndAt = 0, tTotal = 0, tOverNotified = false;
+let wakeLock = null;
 
 const $ = id => document.getElementById(id);
 const slot = (w, d) => 'w' + w + '-d' + d;
@@ -73,36 +74,44 @@ function lastTime(profile, blockId, d, exId, beforeWeek) {
   return null;
 }
 
-/* ---------- rest timer ---------- */
+/* ---------- rest timer ----------
+   The countdown is driven off a wall-clock end time (tEndAt), not a
+   decrementing counter, so it self-corrects instantly when the phone
+   was locked/backgrounded and setInterval got throttled or paused —
+   the moment you look at the screen again it shows the real elapsed
+   time instead of whatever it happened to freeze at. The Wake Lock
+   request below tries to stop the screen from locking in the first
+   place while a rest period is running, on browsers that support it. */
 function startRest(sec, label) {
   if (!sec) return;
   clearInterval(tId);
-  tLeft = sec; tTotal = sec; tOver = false;
+  tEndAt = Date.now() + sec * 1000;
+  tTotal = sec; tOverNotified = false;
   $('timer').classList.add('up');
   $('timer').classList.remove('over');
   $('tlbl').textContent = 'Descanso · ' + label;
   $('tmsg').textContent = 'Prueba de la frase: si puedes hablar sin quedarte sin aire, ya estás listo.';
   tick();
   tId = setInterval(tick, 1000);
+  requestWakeLock();
 }
 
 function tick() {
   const v = $('tval'), f = $('tfill');
-  if (tLeft > 0) {
-    tLeft--;
-    v.textContent = Math.floor(tLeft / 60) + ':' + String(tLeft % 60).padStart(2, '0');
-    f.style.width = (tLeft / tTotal * 100) + '%';
+  const left = Math.round((tEndAt - Date.now()) / 1000);
+  if (left > 0) {
+    v.textContent = Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
+    f.style.width = (left / tTotal * 100) + '%';
   } else {
-    if (!tOver) {
-      tOver = true;
+    if (!tOverNotified) {
+      tOverNotified = true;
       $('timer').classList.add('over');
       $('tlbl').textContent = 'Vamos';
       $('tmsg').textContent = 'Se acabó el descanso. Siguiente serie.';
       f.style.width = '100%';
       if (navigator.vibrate) navigator.vibrate([200, 80, 200]);
     }
-    tLeft--;
-    const over = Math.abs(tLeft);
+    const over = Math.abs(left);
     v.textContent = '+' + Math.floor(over / 60) + ':' + String(over % 60).padStart(2, '0');
     if (over > 180) stopRest();
   }
@@ -111,8 +120,26 @@ function tick() {
 function stopRest() {
   clearInterval(tId); tId = null;
   $('timer').classList.remove('up', 'over');
+  releaseWakeLock();
 }
 $('tskip').onclick = stopRest;
+
+async function requestWakeLock() {
+  try {
+    if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
+  } catch (e) { /* not supported, or permission denied — countdown still self-corrects on tick */ }
+}
+
+function releaseWakeLock() {
+  if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && tId) {
+    tick();
+    requestWakeLock();
+  }
+});
 
 /* ---------- profile / block bars ---------- */
 function renderProfiles() {
