@@ -1,0 +1,235 @@
+{
+  "name": "Bloque 1",
+  "days": [
+    {
+      "name": "Superior + Glúteo",
+      "pair": "Las estaciones 1–3 son compartidas: alternad series mientras el otro descansa. Os separáis en la contractora: él hace pecho y hombro, tú pasas al hip thrust.",
+      "ex": [
+        {
+          "id": "chestpress",
+          "n": "Press de pecho en máquina",
+          "alt": "o press de banca con barra",
+          "sets": 3,
+          "reps": "6–10",
+          "rest": 150,
+          "share": 1,
+          "cue": "Bloque de fuerza — más peso, menos repeticiones"
+        },
+        {
+          "id": "shoulderpress",
+          "n": "Press de hombros en máquina",
+          "alt": "o press militar con mancuernas",
+          "sets": 3,
+          "reps": "6–10",
+          "rest": 150,
+          "share": 1
+        },
+        {
+          "id": "cablerow",
+          "n": "Remo sentado en polea",
+          "alt": "o remo con apoyo pectoral",
+          "sets": 3,
+          "reps": "8–12",
+          "rest": 120,
+          "share": 1
+        },
+        {
+          "id": "hipthrust",
+          "n": "Hip thrust con barra o máquina",
+          "alt": "o hip thrust en multipower",
+          "sets": 4,
+          "add": 4,
+          "reps": "8–12",
+          "rest": 150,
+          "cue": "El ejercicio clave de glúteo. Cárgalo y sube el peso."
+        },
+        {
+          "id": "kickback",
+          "n": "Patada de glúteo en polea",
+          "alt": "cada pierna",
+          "sets": 3,
+          "reps": "12–15",
+          "rest": 90
+        },
+        {
+          "id": "abduction1",
+          "n": "Máquina de abductores",
+          "alt": "inclínate ligeramente hacia delante",
+          "sets": 3,
+          "reps": "15–20",
+          "rest": 60
+        }
+      ]
+    },
+    {
+      "name": "Pierna fuerte",
+      "pair": "Casi toda la sesión es compartida: estaciones 1–3 juntos, alternando series. Él se va a jalones y brazo mientras tú terminas con zancadas y abductores.",
+      "ex": [
+        {
+          "id": "hacksquat",
+          "n": "Sentadilla hack",
+          "alt": "o pendular / sentadilla con barra",
+          "sets": 4,
+          "reps": "8–12",
+          "rest": 150,
+          "share": 1,
+          "cue": "Pies algo más altos y abiertos para más glúteo"
+        },
+        {
+          "id": "rdl",
+          "n": "Peso muerto rumano en multipower",
+          "alt": "o con barra libre",
+          "sets": 4,
+          "reps": "8–12",
+          "rest": 150,
+          "share": 1,
+          "cue": "Lleva la cadera atrás, busca el estiramiento del femoral"
+        },
+        {
+          "id": "legcurl",
+          "n": "Curl femoral sentado",
+          "alt": "",
+          "sets": 3,
+          "reps": "12–15",
+          "rest": 90,
+          "share": 1
+        },
+        {
+          "id": "lunge",
+          "n": "Zancadas caminando o sentadilla búlgara",
+          "alt": "cada pierna",
+          "sets": 3,
+          "reps": "10–12",
+          "rest": 120
+        },
+        {
+          "id": "cablecurl",
+          "n": "Curl en polea",
+          "alt": "o curl inclinado con mancuernas",
+          "sets": 3,
+          "reps": "10–15",
+          "rest": 0,
+          "ss": 1,
+          "share": 1
+        },
+        {
+          "id": "ohext",
+          "n": "Extensión de tríceps sobre la cabeza",
+          "alt": "o extensiones en polea",
+          "sets": 3,
+          "reps": "12–15",
+          "rest": 90,
+          "ss": 1,
+          "share": 1
+        }
+      ]
+    },
+    {
+      "name": "Glúteo + Superior",
+      "pair": "Cuatro de seis estaciones compartidas. Él hace tres series de prensa y tú cuatro: aprovecha la última mientras él prepara la contractora inversa.",
+      "ex": [
+        {
+          "id": "pulldown",
+          "n": "Jalón al pecho, agarre ancho",
+          "alt": "o dominadas asistidas",
+          "sets": 3,
+          "add": 4,
+          "reps": "6–10",
+          "rest": 150,
+          "share": 1,
+          "cue": "Bloque de fuerza — más peso, menos repeticiones"
+        },
+        {
+          "id": "inclinepress",
+          "n": "Press inclinado en máquina",
+          "alt": "o press inclinado con mancuernas",
+          "sets": 3,
+          "reps": "8–12",
+          "rest": 120,
+          "share": 1
+        },
+        {
+          "id": "csrow",
+          "n": "Remo en máquina con apoyo pectoral",
+          "alt": "o remo con barra",
+          "sets": 3,
+          "reps": "8–12",
+          "rest": 120,
+          "share": 1
+        },
+        {
+          "id": "legpress",
+          "n": "Prensa de piernas, pies altos y abiertos",
+          "alt": "",
+          "sets": 4,
+          "add": 6,
+          "reps": "10–15",
+          "rest": 150,
+          "share": 1,
+          "cue": "Pies altos = más glúteo y menos cuádriceps"
+        },
+        {
+          "id": "backext",
+          "n": "Hiperextensiones a 45°",
+          "alt": "con disco al pecho, redondeando un poco arriba",
+          "sets": 4,
+          "reps": "10–15",
+          "rest": 120
+        },
+        {
+          "id": "reardelt",
+          "n": "Contractora inversa (deltoide posterior)",
+          "alt": "o pájaros con mancuernas",
+          "sets": 3,
+          "reps": "15–20",
+          "rest": 0,
+          "ss": 1,
+          "share": 1
+        },
+        {
+          "id": "abduction2",
+          "n": "Abducción de cadera en polea de pie",
+          "alt": "o máquina de abductores",
+          "sets": 3,
+          "reps": "15–20",
+          "rest": 60,
+          "ss": 1
+        }
+      ]
+    }
+  ],
+  "phase": {
+    "1": {
+      "r": "2–3 RIR",
+      "t": "Ajustando pesos. Deja repeticiones en la recámara."
+    },
+    "2": {
+      "r": "2–3 RIR",
+      "t": "Ajustando pesos. Deja repeticiones en la recámara."
+    },
+    "3": {
+      "r": "1–2 RIR",
+      "t": "Series de trabajo. La última repetición se frena."
+    },
+    "4": {
+      "r": "1–2 RIR",
+      "t": "+1 serie en hip thrust y en jalón al pecho."
+    },
+    "5": {
+      "r": "1–2 RIR",
+      "t": "Series de trabajo. La última repetición se frena."
+    },
+    "6": {
+      "r": "0–1 RIR",
+      "t": "+1 serie en prensa. Lleva el trabajo de glúteo al fallo."
+    },
+    "7": {
+      "r": "0–1 RIR",
+      "t": "La semana más dura. Última serie de cada máquina al fallo."
+    },
+    "8": {
+      "r": "Descarga",
+      "t": "Mitad de series, ~60% del peso. Nada duro. De eso se trata."
+    }
+  }
+}

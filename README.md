@@ -56,9 +56,16 @@ Two ways to get JSON in:
 
 ```json
 [
+  { "file": "hombre-bloque-1.json", "label": "Hombre — Bloque 1 (plan de inicio)" },
+  { "file": "mujer-bloque-1.json", "label": "Mujer — Bloque 1 (plan de inicio)" },
   { "file": "ejemplo-plantilla.json", "label": "Ejemplo — plantilla de bloque" }
 ]
 ```
+
+`hombre-bloque-1.json` and `mujer-bloque-1.json` are exported copies of
+the built-in default plans (see `js/data.js`) — handy if you want a
+fresh copy of Bloque 1 as a new block, e.g. to restart a program from
+scratch without losing the original's history.
 
 ### Block JSON shape
 

@@ -1,0 +1,250 @@
+{
+  "name": "Bloque 1",
+  "days": [
+    {
+      "name": "Superior A",
+      "pair": "Estaciones 1-3 compartidas: alternad series mientras la otra descansa. Os separais en la contractora: ella pasa al hip thrust y tu terminas pecho y hombro.",
+      "ex": [
+        {
+          "id": "chestpress",
+          "share": 1,
+          "n": "Press de pecho en máquina",
+          "alt": "o press de banca con barra",
+          "sets": 4,
+          "add": 4,
+          "reps": "6–10",
+          "rest": 150
+        },
+        {
+          "id": "shoulderpress",
+          "share": 1,
+          "n": "Press de hombros en máquina",
+          "alt": "o press militar con mancuernas",
+          "sets": 4,
+          "add": 6,
+          "reps": "8–12",
+          "rest": 150
+        },
+        {
+          "id": "cablerow",
+          "share": 1,
+          "n": "Remo sentado en polea",
+          "alt": "o remo con apoyo pectoral",
+          "sets": 3,
+          "reps": "10–15",
+          "rest": 120
+        },
+        {
+          "id": "pecdeck",
+          "n": "Contractora / aperturas en polea",
+          "alt": "o aperturas con mancuernas",
+          "sets": 4,
+          "reps": "12–15",
+          "rest": 90,
+          "cue": "Estirar del todo atrás — sin recortar el recorrido"
+        },
+        {
+          "id": "lat1",
+          "n": "Elevaciones laterales en polea",
+          "alt": "o con mancuernas",
+          "sets": 3,
+          "reps": "12–20",
+          "rest": 0,
+          "ss": 1
+        },
+        {
+          "id": "pushdown",
+          "n": "Extensiones de tríceps en polea",
+          "alt": "o press francés",
+          "sets": 3,
+          "reps": "12–15",
+          "rest": 90,
+          "ss": 1
+        },
+        {
+          "id": "lat1x",
+          "n": "Elevaciones laterales en polea",
+          "alt": "serie extra — mismo peso, suelta",
+          "sets": 1,
+          "reps": "12–20",
+          "rest": 60
+        }
+      ]
+    },
+    {
+      "name": "Pierna + Brazo",
+      "pair": "Estaciones 1-3 compartidas, mas la superserie de brazo. Ella anade zancadas y abductores mientras tu haces jalon y laterales.",
+      "ex": [
+        {
+          "id": "hacksquat",
+          "share": 1,
+          "n": "Sentadilla hack",
+          "alt": "o pendular / sentadilla con barra",
+          "sets": 3,
+          "reps": "8–12",
+          "rest": 150
+        },
+        {
+          "id": "rdl",
+          "share": 1,
+          "n": "Peso muerto rumano en multipower",
+          "alt": "o hiperextensiones a 45°",
+          "sets": 3,
+          "reps": "8–12",
+          "rest": 150
+        },
+        {
+          "id": "legcurl",
+          "share": 1,
+          "n": "Curl femoral sentado",
+          "alt": "",
+          "sets": 2,
+          "reps": "12–15",
+          "rest": 90
+        },
+        {
+          "id": "pulldown_n",
+          "n": "Jalón agarre neutro",
+          "alt": "o dominadas asistidas",
+          "sets": 3,
+          "reps": "10–12",
+          "rest": 120
+        },
+        {
+          "id": "inclinecurl",
+          "share": 1,
+          "n": "Curl inclinado en polea",
+          "alt": "o curl inclinado con mancuernas",
+          "sets": 3,
+          "reps": "10–15",
+          "rest": 0,
+          "ss": 1,
+          "cue": "Codos por detrás del torso"
+        },
+        {
+          "id": "ohext",
+          "share": 1,
+          "n": "Extensión de tríceps sobre la cabeza",
+          "alt": "en polea o con mancuerna",
+          "sets": 3,
+          "reps": "12–15",
+          "rest": 90,
+          "ss": 1
+        },
+        {
+          "id": "lat2",
+          "n": "Elevaciones laterales en polea",
+          "alt": "o con mancuernas",
+          "sets": 4,
+          "reps": "12–20",
+          "rest": 60
+        }
+      ]
+    },
+    {
+      "name": "Superior B",
+      "pair": "Cinco de seis estaciones compartidas. Ella hace cuatro series de prensa y tu tres: aprovecha para descansar mientras termina.",
+      "ex": [
+        {
+          "id": "pulldown_w",
+          "share": 1,
+          "n": "Jalón al pecho, agarre ancho",
+          "alt": "o dominadas",
+          "sets": 4,
+          "add": 4,
+          "reps": "8–12",
+          "rest": 150
+        },
+        {
+          "id": "inclinepress",
+          "share": 1,
+          "n": "Press inclinado en máquina",
+          "alt": "o press inclinado con mancuernas",
+          "sets": 4,
+          "add": 6,
+          "reps": "8–12",
+          "rest": 150
+        },
+        {
+          "id": "csrow",
+          "share": 1,
+          "n": "Remo en máquina con apoyo pectoral",
+          "alt": "o remo con barra",
+          "sets": 3,
+          "reps": "10–15",
+          "rest": 120
+        },
+        {
+          "id": "legpress",
+          "share": 1,
+          "n": "Prensa de piernas",
+          "alt": "",
+          "sets": 3,
+          "reps": "10–15",
+          "rest": 120
+        },
+        {
+          "id": "reardelt",
+          "share": 1,
+          "n": "Contractora inversa (deltoide posterior)",
+          "alt": "o pájaros con mancuernas",
+          "sets": 3,
+          "reps": "15–20",
+          "rest": 0,
+          "ss": 1
+        },
+        {
+          "id": "hammer",
+          "n": "Curl martillo con cuerda",
+          "alt": "o curl martillo con mancuernas",
+          "sets": 3,
+          "reps": "12–15",
+          "rest": 60,
+          "ss": 1
+        },
+        {
+          "id": "reardeltx",
+          "n": "Contractora inversa",
+          "alt": "serie extra — mismo peso, suelta",
+          "sets": 1,
+          "reps": "15–20",
+          "rest": 60
+        }
+      ]
+    }
+  ],
+  "phase": {
+    "1": {
+      "r": "2–3 RIR",
+      "t": "Ajustando pesos. Deja repeticiones en la recámara."
+    },
+    "2": {
+      "r": "2–3 RIR",
+      "t": "Ajustando pesos. Deja repeticiones en la recámara."
+    },
+    "3": {
+      "r": "1–2 RIR",
+      "t": "Series de trabajo. La última repetición se frena."
+    },
+    "4": {
+      "r": "1–2 RIR",
+      "t": "+1 serie en el primer ejercicio de Superior A y Superior B."
+    },
+    "5": {
+      "r": "1–2 RIR",
+      "t": "Series de trabajo. La última repetición se frena."
+    },
+    "6": {
+      "r": "0–1 RIR",
+      "t": "+1 serie en press de hombros y press inclinado."
+    },
+    "7": {
+      "r": "0–1 RIR",
+      "t": "La semana más dura. Última serie de cada máquina al fallo."
+    },
+    "8": {
+      "r": "Descarga",
+      "t": "Mitad de series, ~60% del peso. Nada duro. De eso se trata."
+    }
+  }
+}

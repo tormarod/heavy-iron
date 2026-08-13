@@ -1,6 +1,12 @@
 /* Default seed data — used only the first time the app runs on a device
    (or after "Borrar todos los datos"). Editing after that happens through
-   the "Editar plan" screen in the app itself, not this file. */
+   the "Editar plan" screen in the app itself, not this file.
+
+   This has to stay hardcoded (not fetched) so the app boots with a real
+   plan on the very first load, offline included. blocks/hombre-bloque-1.json
+   and blocks/mujer-bloque-1.json are exported copies of the same content
+   for the "Importar JSON" flow (e.g. resetting to Bloque 1) — if you edit
+   the plans here, regenerate those two files to match, or they'll drift. */
 
 const DEFAULT_PHASE_TU = {
   1: { r: '2–3 RIR', t: 'Ajustando pesos. Deja repeticiones en la recámara.' },
