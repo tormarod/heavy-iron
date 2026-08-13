@@ -78,7 +78,7 @@
     },
     {
       "name": "Cuádriceps + Espalda",
-      "pair": "Compartís hack, jalón, remo y la superserie final. Tú haces prensa y extensión de cuádriceps mientras él hace su prensa y el jalón neutro. Bíceps solo hoy: todo el trabajo de brazo va junto al de dorsal, para que descansen los otros dos días.",
+      "pair": "Compartís hack, prensa, jalón, remo y la superserie de brazo. En la prensa cambiad la posición de pies entre series: tú altos y abiertos, él en el centro. Tú añades extensión de cuádriceps mientras él hace el jalón neutro. Bíceps solo hoy: todo el trabajo de brazo va junto al de dorsal, para que descansen los otros dos días.",
       "ex": [
         {
           "id": "hacksquat",
@@ -93,11 +93,13 @@
         },
         {
           "id": "legpress",
-          "n": "Prensa de piernas, pies altos y abiertos",
+          "share": 1,
+          "n": "Prensa de piernas",
           "alt": "o zancadas caminando",
           "sets": 3,
           "reps": "10–15",
-          "rest": 150
+          "rest": 150,
+          "cue": "Pies altos y abiertos — más glúteo y menos cuádriceps. Él los pone en el centro: cambiad la posición entre series"
         },
         {
           "id": "legext",

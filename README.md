@@ -109,8 +109,8 @@ in the plan editor if you want them.
 
 His days are arranged around hers so the couple stations line up. Both
 profiles run the same number of exercises per day — 7 / 8 / 7 — so the
-two sessions finish together, and 14 of those exercises are shared,
-spread 6 on day 1, 6 on day 2 and 2 on day 3. The cost is that his quads
+two sessions finish together, and 15 of those exercises are shared,
+spread 6 on day 1, 7 on day 2 and 2 on day 3. The cost is that his quads
 and hamstrings get one session each; for 11 sets of maintenance work
 that's a fair trade for training together.
 

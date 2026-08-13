@@ -21,8 +21,8 @@
      else you do.
 
    Both profiles run the same number of exercises per day (7/8/7) so the
-   two sessions finish together. The two plans share 14 of them (marked
-   `share`), spread 6/6/2 across the week, so they can be run together
+   two sessions finish together. The two plans share 15 of them (marked
+   `share`), spread 6/7/2 across the week, so they can be run together
    alternating sets. Set counts on a shared exercise often differ between
    the two profiles — that is fine, whoever has the extra set does it
    while the other resets the machine. */
@@ -59,9 +59,9 @@ const DEFAULT_DAYS_TU = [
     { id: 'pushdown', share: 1, n: 'Extensiones de tríceps en polea', alt: 'o press francés', sets: 4, reps: '12–15', rest: 75 },
     { id: 'facepull', n: 'Face pull en polea', alt: 'o contractora inversa', sets: 3, reps: '15–20', rest: 60, cue: 'Segunda dosis de deltoide posterior de la semana: equilibra todo el empuje del día' },
   ]},
-  { name: 'Tirón + Cuádriceps', pair: 'Compartis hack, jalon, remo y la superserie de brazo. Ella anade extension de cuadriceps mientras tu haces el jalon neutro, y cada uno hace su prensa con su posicion de pies.', ex: [
+  { name: 'Tirón + Cuádriceps', pair: 'Compartis hack, prensa, jalon, remo y la superserie de brazo. En la prensa cambiad la posicion de pies entre series: tu en el centro, ella altos y abiertos. Ella anade extension de cuadriceps mientras tu haces el jalon neutro.', ex: [
     { id: 'hacksquat', share: 1, n: 'Sentadilla hack', alt: 'o pendular / sentadilla con barra', sets: 3, reps: '8–12', rest: 150, cue: 'Dosis corta de pierna: 3 series bien hechas, profundidad por debajo de la paralela' },
-    { id: 'legpress', n: 'Prensa de piernas', alt: '', sets: 3, reps: '10–15', rest: 120 },
+    { id: 'legpress', share: 1, n: 'Prensa de piernas', alt: '', sets: 3, reps: '10–15', rest: 120, cue: 'Pies a media altura y a la anchura de los hombros — mas cuadriceps. Ella los pone altos y abiertos: cambiad la posicion entre series' },
     { id: 'pulldown_w', share: 1, n: 'Jalón al pecho, agarre ancho', alt: 'o dominadas', sets: 4, add: 5, reps: '8–12', rest: 150, cue: 'El ejercicio pesado del día. Pecho arriba, codos hacia los bolsillos' },
     { id: 'csrow', share: 1, n: 'Remo en máquina con apoyo pectoral', alt: 'o remo con barra', sets: 4, reps: '10–15', rest: 120 },
     { id: 'pulldown_n', n: 'Jalón agarre neutro', alt: 'o dominadas asistidas / pullover en polea', sets: 3, reps: '10–12', rest: 120 },
@@ -90,9 +90,9 @@ const DEFAULT_DAYS_PAREJA = [
     { id: 'pushdown', share: 1, n: 'Extensiones de tríceps en polea', alt: 'o press francés', sets: 3, reps: '12–15', rest: 0, ss: 1 },
     { id: 'ohext', n: 'Extensión de tríceps sobre la cabeza', alt: 'en polea o con mancuerna', sets: 3, reps: '12–15', rest: 75, ss: 1, cue: 'Tríceps solo hoy: los dos ejercicios juntos, y el resto de la semana descansan' },
   ]},
-  { name: 'Cuádriceps + Espalda', pair: 'Compartís hack, jalón, remo y la superserie final. Tú haces prensa y extensión de cuádriceps mientras él hace su prensa y el jalón neutro. Bíceps solo hoy: todo el trabajo de brazo va junto al de dorsal, para que descansen los otros dos días.', ex: [
+  { name: 'Cuádriceps + Espalda', pair: 'Compartís hack, prensa, jalón, remo y la superserie de brazo. En la prensa cambiad la posición de pies entre series: tú altos y abiertos, él en el centro. Tú añades extensión de cuádriceps mientras él hace el jalón neutro. Bíceps solo hoy: todo el trabajo de brazo va junto al de dorsal, para que descansen los otros dos días.', ex: [
     { id: 'hacksquat', share: 1, n: 'Sentadilla hack', alt: 'o pendular / sentadilla con barra', sets: 4, add: 5, reps: '8–12', rest: 180, cue: 'Pies algo más altos y abiertos para más glúteo. Empieza el día con lo que más te importa' },
-    { id: 'legpress', n: 'Prensa de piernas, pies altos y abiertos', alt: 'o zancadas caminando', sets: 3, reps: '10–15', rest: 150 },
+    { id: 'legpress', share: 1, n: 'Prensa de piernas', alt: 'o zancadas caminando', sets: 3, reps: '10–15', rest: 150, cue: 'Pies altos y abiertos — más glúteo y menos cuádriceps. Él los pone en el centro: cambiad la posición entre series' },
     { id: 'legext', n: 'Extensión de cuádriceps', alt: 'o sentadilla búlgara', sets: 3, reps: '12–15', rest: 90, cue: 'Cierra el cuádriceps aquí: es el único día que lo entrenas' },
     { id: 'pulldown', share: 1, n: 'Jalón al pecho, agarre ancho', alt: 'o dominadas asistidas', sets: 4, add: 7, reps: '8–12', rest: 150, cue: 'Pecho arriba, codos hacia los bolsillos' },
     { id: 'csrow', share: 1, n: 'Remo en máquina con apoyo pectoral', alt: 'o remo sentado en polea', sets: 3, reps: '10–15', rest: 120 },

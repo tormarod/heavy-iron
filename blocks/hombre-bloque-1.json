@@ -77,7 +77,7 @@
     },
     {
       "name": "Tirón + Cuádriceps",
-      "pair": "Compartis hack, jalon, remo y la superserie de brazo. Ella anade extension de cuadriceps mientras tu haces el jalon neutro, y cada uno hace su prensa con su posicion de pies.",
+      "pair": "Compartis hack, prensa, jalon, remo y la superserie de brazo. En la prensa cambiad la posicion de pies entre series: tu en el centro, ella altos y abiertos. Ella anade extension de cuadriceps mientras tu haces el jalon neutro.",
       "ex": [
         {
           "id": "hacksquat",
@@ -91,11 +91,13 @@
         },
         {
           "id": "legpress",
+          "share": 1,
           "n": "Prensa de piernas",
           "alt": "",
           "sets": 3,
           "reps": "10–15",
-          "rest": 120
+          "rest": 120,
+          "cue": "Pies a media altura y a la anchura de los hombros — mas cuadriceps. Ella los pone altos y abiertos: cambiad la posicion entre series"
         },
         {
           "id": "pulldown_w",
