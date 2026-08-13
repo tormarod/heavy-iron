@@ -3,7 +3,7 @@
   "days": [
     {
       "name": "Pecho + Hombro",
-      "pair": "Compartís las seis primeras estaciones alternando series. Él hace una serie más en press de hombros, inclinado, contractora y tríceps; tú cierras sola con la extensión de tríceps sobre la cabeza.",
+      "pair": "Compartís las seis primeras estaciones alternando series. Él hace una serie más en press de hombros, inclinado, contractora y tríceps. El séptimo es distinto para cada uno: tú la extensión sobre la cabeza, él un face pull.",
       "ex": [
         {
           "id": "chestpress",
@@ -140,6 +140,7 @@
         },
         {
           "id": "cablecurl",
+          "share": 1,
           "n": "Curl en polea",
           "alt": "o curl inclinado con mancuernas",
           "sets": 3,
