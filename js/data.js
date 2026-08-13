@@ -38,14 +38,19 @@ const DEFAULT_PHASE_TU = {
   8: { r: 'Descarga', t: 'Mitad de series, ~60% del peso. Nada duro. De eso se trata.' },
 };
 
+/* Her RIR ramp starts higher and climbs slower than his on purpose: she
+   trains around 4 RIR, so a banner asking for 0–1 would just be ignored.
+   Week 3 is the important one — a single set to true failure on a machine,
+   where failing is safe, is what makes every other number on this scale
+   mean something. */
 const DEFAULT_PHASE_PAREJA = {
-  1: { r: '3 RIR', t: 'Semana de calibración. Anota pesos y quédate corta: técnica y rango completo.' },
-  2: { r: '2–3 RIR', t: 'Mismo peso que S1, intenta sumar repeticiones. Sube peso solo si llegaste al tope del rango en todas las series.' },
-  3: { r: '2 RIR', t: 'Doble progresión: tope del rango en todas las series → +2,5 kg (o el escalón más pequeño) la semana siguiente.' },
-  4: { r: '1–2 RIR', t: 'Series de trabajo. La última repetición se frena visiblemente.' },
-  5: { r: '1–2 RIR', t: '+1 serie en sentadilla hack, press de pecho e hip thrust.' },
-  6: { r: '1 RIR', t: 'Semana dura. Cada músculo se entrena un solo día: no te guardes nada, no hay segunda oportunidad esta semana.' },
-  7: { r: '0–1 RIR', t: '+1 serie en jalón al pecho y peso muerto rumano. Última serie al fallo SOLO en máquinas y aislamiento — nunca en hack, rumano ni hip thrust pesado.' },
+  1: { r: '4 RIR', t: 'Semana de reconocimiento. Técnica y rango completo, sin apretar. Anota los pesos.' },
+  2: { r: '3–4 RIR', t: 'Mismo peso que S1, intenta sumar repeticiones. Doble progresión: solo subes peso cuando llegas al tope del rango en todas las series.' },
+  3: { r: '3 RIR', t: 'Serie de calibración: en la contractora de pecho (día 1), lleva la última serie hasta no poder con otra repetición completa. Así sabes dónde está el fallo de verdad.' },
+  4: { r: '2–3 RIR', t: 'Series de trabajo. La última repetición se frena visiblemente.' },
+  5: { r: '2–3 RIR', t: '+1 serie en sentadilla hack, press de pecho e hip thrust.' },
+  6: { r: '2 RIR', t: 'Semana dura. Cada músculo se entrena un solo día, así que la sesión tiene que valer.' },
+  7: { r: '1–2 RIR', t: '+1 serie en jalón al pecho y peso muerto rumano. Última serie al fallo SOLO en máquinas de aislamiento — nunca en hack, rumano ni hip thrust pesado.' },
   8: { r: 'Descarga', t: 'Mitad de series, ~60% del peso. Nada duro. De eso se trata.' },
 };
 
