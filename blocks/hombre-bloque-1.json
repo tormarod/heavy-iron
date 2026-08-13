@@ -77,7 +77,7 @@
     },
     {
       "name": "Tirón + Cuádriceps",
-      "pair": "Compartis hack, jalon, remo y la superserie de brazo. Ella anade extension de cuadriceps mientras tu haces el jalon neutro, y cada uno hace su prensa con su posicion de pies.",
+      "pair": "Compartis hack, prensa, jalon, remo y la superserie de brazo. En la prensa cambiad la posicion de pies entre series: tu en el centro, ella altos y abiertos. Ella anade extension de cuadriceps mientras tu haces el jalon neutro.",
       "ex": [
         {
           "id": "hacksquat",
@@ -86,16 +86,18 @@
           "alt": "o pendular / sentadilla con barra",
           "sets": 3,
           "reps": "8–12",
-          "rest": 150,
+          "rest": 180,
           "cue": "Dosis corta de pierna: 3 series bien hechas, profundidad por debajo de la paralela"
         },
         {
           "id": "legpress",
+          "share": 1,
           "n": "Prensa de piernas",
           "alt": "",
           "sets": 3,
           "reps": "10–15",
-          "rest": 120
+          "rest": 150,
+          "cue": "Pies a media altura y a la anchura de los hombros — mas cuadriceps. Ella los pone altos y abiertos: cambiad la posicion entre series"
         },
         {
           "id": "pulldown_w",
@@ -180,13 +182,13 @@
           "rest": 90
         },
         {
-          "id": "dbpress",
-          "n": "Press plano con mancuernas",
-          "alt": "o fondos en máquina asistida",
+          "id": "cablepress",
+          "n": "Press de pecho en polea alta, de pie",
+          "alt": "poleas por encima del hombro, empuje en diagonal hacia el suelo",
           "sets": 3,
-          "reps": "8–12",
-          "rest": 120,
-          "cue": "Segunda sesión de pecho de la semana — libre y con recorrido largo, distinto a las máquinas del día de empuje"
+          "reps": "10–15",
+          "rest": 90,
+          "cue": "Unico angulo bajo de la semana: paso adelante, tronco algo inclinado, y junta las manos abajo y adentro. Peso moderado, aqui te limita el equilibrio y no el pecho"
         },
         {
           "id": "cablerow",

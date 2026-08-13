@@ -109,8 +109,8 @@ in the plan editor if you want them.
 
 His days are arranged around hers so the couple stations line up. Both
 profiles run the same number of exercises per day — 7 / 8 / 7 — so the
-two sessions finish together, and 14 of those exercises are shared,
-spread 6 on day 1, 6 on day 2 and 2 on day 3. The cost is that his quads
+two sessions finish together, and 15 of those exercises are shared,
+spread 6 on day 1, 7 on day 2 and 2 on day 3. The cost is that his quads
 and hamstrings get one session each; for 11 sets of maintenance work
 that's a fair trade for training together.
 
@@ -125,11 +125,21 @@ shoulder press, and lateral raises barely touch either. On her day 2 the
 quad work comes first, ahead of the back work, since legs are the
 priority.
 
-**Progression, both plans.** The week banner states the
-double-progression rule explicitly (hit the top of the rep range on every
-set → add the smallest increment next week), starts at 3 RIR for
-calibration, and restricts week 7's to-failure sets to machines and
-isolation work rather than hack squats, RDLs and heavy hip thrusts.
+**Progression.** Both week banners state the double-progression rule
+explicitly (hit the top of the rep range on every set → add the smallest
+increment next week) and restrict week 7's to-failure sets to machines
+and isolation work rather than hack squats, RDLs and heavy hip thrusts.
+
+The two RIR ramps differ, because the two lifters do. His runs 3 RIR in
+week 1 down to 0–1 by week 7. Hers starts at 4 and ends at 1–2, which is
+a real progression from where she actually trains rather than a number
+she'd read past. Week 3 carries the part that matters: one set to true
+failure on the pec deck, where failing is safe and costs nothing.
+Self-reported RIR is unreliable until you have felt the end of a set —
+novices routinely call a genuine 1–2 RIR "four" — so that single set is
+what makes every other number on her scale mean something. If it turns
+out she was closer to failure than she thought, the targets correct
+themselves from week 4 on.
 
 Run the three days with a rest day between them (e.g. Mon / Wed / Fri).
 

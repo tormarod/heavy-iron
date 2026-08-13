@@ -21,8 +21,8 @@
      else you do.
 
    Both profiles run the same number of exercises per day (7/8/7) so the
-   two sessions finish together. The two plans share 14 of them (marked
-   `share`), spread 6/6/2 across the week, so they can be run together
+   two sessions finish together. The two plans share 15 of them (marked
+   `share`), spread 6/7/2 across the week, so they can be run together
    alternating sets. Set counts on a shared exercise often differ between
    the two profiles — that is fine, whoever has the extra set does it
    while the other resets the machine. */
@@ -38,14 +38,19 @@ const DEFAULT_PHASE_TU = {
   8: { r: 'Descarga', t: 'Mitad de series, ~60% del peso. Nada duro. De eso se trata.' },
 };
 
+/* Her RIR ramp starts higher and climbs slower than his on purpose: she
+   trains around 4 RIR, so a banner asking for 0–1 would just be ignored.
+   Week 3 is the important one — a single set to true failure on a machine,
+   where failing is safe, is what makes every other number on this scale
+   mean something. */
 const DEFAULT_PHASE_PAREJA = {
-  1: { r: '3 RIR', t: 'Semana de calibración. Anota pesos y quédate corta: técnica y rango completo.' },
-  2: { r: '2–3 RIR', t: 'Mismo peso que S1, intenta sumar repeticiones. Sube peso solo si llegaste al tope del rango en todas las series.' },
-  3: { r: '2 RIR', t: 'Doble progresión: tope del rango en todas las series → +2,5 kg (o el escalón más pequeño) la semana siguiente.' },
-  4: { r: '1–2 RIR', t: 'Series de trabajo. La última repetición se frena visiblemente.' },
-  5: { r: '1–2 RIR', t: '+1 serie en sentadilla hack, press de pecho e hip thrust.' },
-  6: { r: '1 RIR', t: 'Semana dura. Cada músculo se entrena un solo día: no te guardes nada, no hay segunda oportunidad esta semana.' },
-  7: { r: '0–1 RIR', t: '+1 serie en jalón al pecho y peso muerto rumano. Última serie al fallo SOLO en máquinas y aislamiento — nunca en hack, rumano ni hip thrust pesado.' },
+  1: { r: '4 RIR', t: 'Semana de reconocimiento. Técnica y rango completo, sin apretar. Anota los pesos.' },
+  2: { r: '3–4 RIR', t: 'Mismo peso que S1, intenta sumar repeticiones. Doble progresión: solo subes peso cuando llegas al tope del rango en todas las series.' },
+  3: { r: '3 RIR', t: 'Serie de calibración: en la contractora de pecho (día 1), lleva la última serie hasta no poder con otra repetición completa. Así sabes dónde está el fallo de verdad.' },
+  4: { r: '2–3 RIR', t: 'Series de trabajo. La última repetición se frena visiblemente.' },
+  5: { r: '2–3 RIR', t: '+1 serie en sentadilla hack, press de pecho e hip thrust.' },
+  6: { r: '2 RIR', t: 'Semana dura. Cada músculo se entrena un solo día, así que la sesión tiene que valer.' },
+  7: { r: '1–2 RIR', t: '+1 serie en jalón al pecho y peso muerto rumano. Última serie al fallo SOLO en máquinas de aislamiento — nunca en hack, rumano ni hip thrust pesado.' },
   8: { r: 'Descarga', t: 'Mitad de series, ~60% del peso. Nada duro. De eso se trata.' },
 };
 
@@ -59,9 +64,9 @@ const DEFAULT_DAYS_TU = [
     { id: 'pushdown', share: 1, n: 'Extensiones de tríceps en polea', alt: 'o press francés', sets: 4, reps: '12–15', rest: 75 },
     { id: 'facepull', n: 'Face pull en polea', alt: 'o contractora inversa', sets: 3, reps: '15–20', rest: 60, cue: 'Segunda dosis de deltoide posterior de la semana: equilibra todo el empuje del día' },
   ]},
-  { name: 'Tirón + Cuádriceps', pair: 'Compartis hack, jalon, remo y la superserie de brazo. Ella anade extension de cuadriceps mientras tu haces el jalon neutro, y cada uno hace su prensa con su posicion de pies.', ex: [
-    { id: 'hacksquat', share: 1, n: 'Sentadilla hack', alt: 'o pendular / sentadilla con barra', sets: 3, reps: '8–12', rest: 150, cue: 'Dosis corta de pierna: 3 series bien hechas, profundidad por debajo de la paralela' },
-    { id: 'legpress', n: 'Prensa de piernas', alt: '', sets: 3, reps: '10–15', rest: 120 },
+  { name: 'Tirón + Cuádriceps', pair: 'Compartis hack, prensa, jalon, remo y la superserie de brazo. En la prensa cambiad la posicion de pies entre series: tu en el centro, ella altos y abiertos. Ella anade extension de cuadriceps mientras tu haces el jalon neutro.', ex: [
+    { id: 'hacksquat', share: 1, n: 'Sentadilla hack', alt: 'o pendular / sentadilla con barra', sets: 3, reps: '8–12', rest: 180, cue: 'Dosis corta de pierna: 3 series bien hechas, profundidad por debajo de la paralela' },
+    { id: 'legpress', share: 1, n: 'Prensa de piernas', alt: '', sets: 3, reps: '10–15', rest: 150, cue: 'Pies a media altura y a la anchura de los hombros — mas cuadriceps. Ella los pone altos y abiertos: cambiad la posicion entre series' },
     { id: 'pulldown_w', share: 1, n: 'Jalón al pecho, agarre ancho', alt: 'o dominadas', sets: 4, add: 5, reps: '8–12', rest: 150, cue: 'El ejercicio pesado del día. Pecho arriba, codos hacia los bolsillos' },
     { id: 'csrow', share: 1, n: 'Remo en máquina con apoyo pectoral', alt: 'o remo con barra', sets: 4, reps: '10–15', rest: 120 },
     { id: 'pulldown_n', n: 'Jalón agarre neutro', alt: 'o dominadas asistidas / pullover en polea', sets: 3, reps: '10–12', rest: 120 },
@@ -72,7 +77,7 @@ const DEFAULT_DAYS_TU = [
   { name: 'Pecho/Brazo + Isquios', pair: 'Compartis peso muerto rumano y curl femoral al empezar. Despues ella sigue con gluteo, gemelo y abdomen mientras tu haces tu segunda sesion de pecho, espalda y brazo.', ex: [
     { id: 'rdl', share: 1, n: 'Peso muerto rumano en multipower', alt: 'o hiperextensiones a 45°', sets: 3, reps: '8–12', rest: 150, cue: 'Cadera atrás, busca el estiramiento del femoral. Sin redondear la espalda' },
     { id: 'legcurl', share: 1, n: 'Curl femoral sentado', alt: 'o curl femoral tumbado', sets: 2, reps: '12–15', rest: 90 },
-    { id: 'dbpress', n: 'Press plano con mancuernas', alt: 'o fondos en máquina asistida', sets: 3, reps: '8–12', rest: 120, cue: 'Segunda sesión de pecho de la semana — libre y con recorrido largo, distinto a las máquinas del día de empuje' },
+    { id: 'cablepress', n: 'Press de pecho en polea alta, de pie', alt: 'poleas por encima del hombro, empuje en diagonal hacia el suelo', sets: 3, reps: '10–15', rest: 90, cue: 'Unico angulo bajo de la semana: paso adelante, tronco algo inclinado, y junta las manos abajo y adentro. Peso moderado, aqui te limita el equilibrio y no el pecho' },
     { id: 'cablerow', n: 'Remo sentado en polea', alt: 'o remo con apoyo pectoral', sets: 3, reps: '10–15', rest: 120 },
     { id: 'inclinecurl', n: 'Curl inclinado en polea', alt: 'o curl inclinado con mancuernas', sets: 4, reps: '10–15', rest: 0, ss: 1, cue: 'Codos por detrás del torso' },
     { id: 'ohext', n: 'Extensión de tríceps sobre la cabeza', alt: 'en polea o con mancuerna', sets: 4, reps: '12–15', rest: 75, ss: 1 },
@@ -85,14 +90,14 @@ const DEFAULT_DAYS_PAREJA = [
     { id: 'chestpress', share: 1, n: 'Press de pecho en máquina', alt: 'o press de banca con barra', sets: 4, add: 5, reps: '6–10', rest: 150, cue: 'Bloque de fuerza — más peso, menos repeticiones' },
     { id: 'lat1', share: 1, n: 'Elevaciones laterales en polea', alt: 'o con mancuernas', sets: 4, reps: '12–20', rest: 60, cue: 'Van en segundo lugar a propósito: al no haber remos hoy, son lo único que deja descansar al hombro frontal entre press y press' },
     { id: 'shoulderpress', share: 1, n: 'Press de hombros en máquina', alt: 'o press militar con mancuernas', sets: 3, reps: '8–12', rest: 150 },
-    { id: 'inclinepress', share: 1, n: 'Press inclinado en máquina', alt: 'o press inclinado con mancuernas', sets: 3, reps: '8–12', rest: 120 },
+    { id: 'inclinepress', share: 1, n: 'Press inclinado en máquina', alt: 'o press inclinado con mancuernas', sets: 3, reps: '8–12', rest: 150 },
     { id: 'pecdeck', share: 1, n: 'Contractora / aperturas en polea', alt: 'o aperturas con mancuernas', sets: 3, reps: '12–15', rest: 90, cue: 'Estirar del todo atrás — sin recortar el recorrido' },
     { id: 'pushdown', share: 1, n: 'Extensiones de tríceps en polea', alt: 'o press francés', sets: 3, reps: '12–15', rest: 0, ss: 1 },
     { id: 'ohext', n: 'Extensión de tríceps sobre la cabeza', alt: 'en polea o con mancuerna', sets: 3, reps: '12–15', rest: 75, ss: 1, cue: 'Tríceps solo hoy: los dos ejercicios juntos, y el resto de la semana descansan' },
   ]},
-  { name: 'Cuádriceps + Espalda', pair: 'Compartís hack, jalón, remo y la superserie final. Tú haces prensa y extensión de cuádriceps mientras él hace su prensa y el jalón neutro. Bíceps solo hoy: todo el trabajo de brazo va junto al de dorsal, para que descansen los otros dos días.', ex: [
+  { name: 'Cuádriceps + Espalda', pair: 'Compartís hack, prensa, jalón, remo y la superserie de brazo. En la prensa cambiad la posición de pies entre series: tú altos y abiertos, él en el centro. Tú añades extensión de cuádriceps mientras él hace el jalón neutro. Bíceps solo hoy: todo el trabajo de brazo va junto al de dorsal, para que descansen los otros dos días.', ex: [
     { id: 'hacksquat', share: 1, n: 'Sentadilla hack', alt: 'o pendular / sentadilla con barra', sets: 4, add: 5, reps: '8–12', rest: 180, cue: 'Pies algo más altos y abiertos para más glúteo. Empieza el día con lo que más te importa' },
-    { id: 'legpress', n: 'Prensa de piernas, pies altos y abiertos', alt: 'o zancadas caminando', sets: 3, reps: '10–15', rest: 150 },
+    { id: 'legpress', share: 1, n: 'Prensa de piernas', alt: 'o zancadas caminando', sets: 3, reps: '10–15', rest: 150, cue: 'Pies altos y abiertos — más glúteo y menos cuádriceps. Él los pone en el centro: cambiad la posición entre series' },
     { id: 'legext', n: 'Extensión de cuádriceps', alt: 'o sentadilla búlgara', sets: 3, reps: '12–15', rest: 90, cue: 'Cierra el cuádriceps aquí: es el único día que lo entrenas' },
     { id: 'pulldown', share: 1, n: 'Jalón al pecho, agarre ancho', alt: 'o dominadas asistidas', sets: 4, add: 7, reps: '8–12', rest: 150, cue: 'Pecho arriba, codos hacia los bolsillos' },
     { id: 'csrow', share: 1, n: 'Remo en máquina con apoyo pectoral', alt: 'o remo sentado en polea', sets: 3, reps: '10–15', rest: 120 },
