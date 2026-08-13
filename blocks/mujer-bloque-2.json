@@ -1,0 +1,243 @@
+{
+  "name": "Bloque 2 — equilibrado",
+  "days": [
+    {
+      "name": "Superior + Glúteo",
+      "pair": "Las estaciones 1–3 son compartidas: alternad series mientras el otro descansa. Os separáis en el hip thrust: él sigue con pecho y cuádriceps.",
+      "ex": [
+        {
+          "id": "chestpress",
+          "share": 1,
+          "n": "Press de pecho en máquina",
+          "alt": "o press de banca con barra",
+          "cue": "Bloque de fuerza — más peso, menos repeticiones",
+          "sets": 3,
+          "reps": "6–10",
+          "rest": 150
+        },
+        {
+          "id": "cablerow",
+          "share": 1,
+          "n": "Remo sentado en polea",
+          "alt": "o remo con apoyo pectoral",
+          "cue": "Va aquí a propósito: da descanso al hombro antes del press militar",
+          "sets": 3,
+          "reps": "8–12",
+          "rest": 120
+        },
+        {
+          "id": "shoulderpress",
+          "share": 1,
+          "n": "Press de hombros en máquina",
+          "alt": "o press militar con mancuernas",
+          "sets": 3,
+          "reps": "8–12",
+          "rest": 150
+        },
+        {
+          "id": "hipthrust",
+          "n": "Hip thrust con barra o máquina",
+          "alt": "o hip thrust en multipower",
+          "cue": "El ejercicio clave de glúteo. Cárgalo y sube el peso. Barbilla al pecho, pausa 1s arriba",
+          "sets": 4,
+          "add": 5,
+          "reps": "8–12",
+          "rest": 150
+        },
+        {
+          "id": "kickback",
+          "n": "Patada de glúteo en polea",
+          "alt": "cada pierna",
+          "sets": 3,
+          "reps": "12–15",
+          "rest": 90
+        },
+        {
+          "id": "lat1",
+          "n": "Elevaciones laterales en polea",
+          "alt": "o con mancuernas",
+          "cue": "Nuevo en este bloque: es lo que da forma al hombro y equilibra la cintura",
+          "sets": 3,
+          "reps": "12–20",
+          "rest": 0,
+          "ss": 1
+        },
+        {
+          "id": "abs",
+          "n": "Crunch en polea o rueda abdominal",
+          "alt": "o plancha con peso",
+          "sets": 3,
+          "reps": "10–15",
+          "rest": 60,
+          "ss": 1
+        }
+      ]
+    },
+    {
+      "name": "Pierna fuerte",
+      "pair": "Estaciones 1–3 juntos, alternando series. Él pasa a prensa y gemelos mientras tú terminas la búlgara.",
+      "ex": [
+        {
+          "id": "hacksquat",
+          "share": 1,
+          "n": "Sentadilla hack",
+          "alt": "o pendular / sentadilla con barra",
+          "cue": "Pies algo más altos y abiertos para más glúteo",
+          "sets": 4,
+          "add": 5,
+          "reps": "8–12",
+          "rest": 180
+        },
+        {
+          "id": "legcurl",
+          "share": 1,
+          "n": "Curl femoral sentado",
+          "alt": "o curl femoral tumbado",
+          "cue": "Sube de puesto: el femoral entrena con energía, no de sobras",
+          "sets": 3,
+          "reps": "10–15",
+          "rest": 90
+        },
+        {
+          "id": "lunge",
+          "n": "Sentadilla búlgara o zancadas caminando",
+          "alt": "cada pierna",
+          "cue": "Adelantada antes que el peso muerto: exige equilibrio y no aguanta la fatiga del final",
+          "sets": 3,
+          "reps": "10–12",
+          "rest": 120
+        },
+        {
+          "id": "rdl",
+          "share": 1,
+          "n": "Peso muerto rumano en multipower",
+          "alt": "o con barra libre",
+          "cue": "Lleva la cadera atrás, busca el estiramiento del femoral",
+          "sets": 3,
+          "reps": "8–12",
+          "rest": 150
+        },
+        {
+          "id": "calfstand",
+          "n": "Elevación de gemelos de pie",
+          "alt": "o en prensa / multipower",
+          "cue": "Pausa 1-2s abajo en el estiramiento",
+          "sets": 4,
+          "reps": "8–15",
+          "rest": 90
+        },
+        {
+          "id": "cablecurl",
+          "share": 1,
+          "n": "Curl en polea",
+          "alt": "o curl inclinado con mancuernas",
+          "sets": 3,
+          "reps": "10–15",
+          "rest": 0,
+          "ss": 1
+        },
+        {
+          "id": "ohext",
+          "share": 1,
+          "n": "Extensión de tríceps sobre la cabeza",
+          "alt": "o extensiones en polea",
+          "sets": 3,
+          "reps": "12–15",
+          "rest": 75,
+          "ss": 1
+        }
+      ]
+    },
+    {
+      "name": "Glúteo + Superior",
+      "pair": "Cuatro estaciones compartidas. Él hace una serie menos de prensa: aprovecha la última mientras prepara la contractora inversa.",
+      "ex": [
+        {
+          "id": "pulldown",
+          "share": 1,
+          "n": "Jalón al pecho, agarre ancho",
+          "alt": "o dominadas asistidas",
+          "cue": "Bloque de fuerza — más peso, menos repeticiones",
+          "sets": 3,
+          "add": 5,
+          "reps": "6–10",
+          "rest": 150
+        },
+        {
+          "id": "legpress",
+          "share": 1,
+          "n": "Prensa de piernas, pies altos y abiertos",
+          "alt": "",
+          "cue": "Sube al puesto 2: es trabajo de glúteo prioritario, no un accesorio del final",
+          "sets": 4,
+          "add": 7,
+          "reps": "10–15",
+          "rest": 150
+        },
+        {
+          "id": "inclinepress",
+          "share": 1,
+          "n": "Press inclinado en máquina",
+          "alt": "o press inclinado con mancuernas",
+          "sets": 3,
+          "reps": "8–12",
+          "rest": 120
+        },
+        {
+          "id": "csrow",
+          "share": 1,
+          "n": "Remo en máquina con apoyo pectoral",
+          "alt": "o remo con barra",
+          "sets": 3,
+          "reps": "8–12",
+          "rest": 120
+        },
+        {
+          "id": "backext",
+          "n": "Hiperextensiones a 45°",
+          "alt": "con disco al pecho, redondeando un poco arriba",
+          "sets": 3,
+          "reps": "10–15",
+          "rest": 120
+        },
+        {
+          "id": "reardelt",
+          "n": "Contractora inversa (deltoide posterior)",
+          "alt": "o pájaros con mancuernas",
+          "sets": 3,
+          "reps": "15–20",
+          "rest": 0,
+          "ss": 1
+        },
+        {
+          "id": "abduction",
+          "n": "Abducción de cadera (máquina o polea)",
+          "alt": "inclínate ligeramente hacia delante",
+          "cue": "Una sola versión esta vez: dos máquinas de abductor la misma semana era trabajo repetido",
+          "sets": 3,
+          "reps": "15–20",
+          "rest": 60,
+          "ss": 1
+        },
+        {
+          "id": "calfseat",
+          "n": "Elevación de gemelos sentado",
+          "alt": "o de pie si no hay máquina",
+          "sets": 3,
+          "reps": "10–20",
+          "rest": 60
+        }
+      ]
+    }
+  ],
+  "phase": {
+    "1": { "r": "3 RIR", "t": "Semana de calibración. Anota pesos y quédate corta: técnica y rango completo." },
+    "2": { "r": "2–3 RIR", "t": "Mismo peso que S1, intenta sumar repeticiones. Sube peso solo si llegaste al tope del rango en todas las series." },
+    "3": { "r": "2 RIR", "t": "Doble progresión: tope del rango en todas las series → +2,5 kg (o el escalón más pequeño) la semana siguiente." },
+    "4": { "r": "1–2 RIR", "t": "Series de trabajo. La última repetición se frena visiblemente." },
+    "5": { "r": "1–2 RIR", "t": "+1 serie en el primer ejercicio de cada día (hip thrust, hack, jalón)." },
+    "6": { "r": "1 RIR", "t": "Semana dura. Mantén el rango completo aunque baje el peso." },
+    "7": { "r": "0–1 RIR", "t": "La más dura. Última serie al fallo SOLO en máquinas y aislamiento — nunca en hack, peso muerto rumano ni hip thrust pesado." },
+    "8": { "r": "Descarga", "t": "Mitad de series, ~60% del peso. Nada duro. De eso se trata." }
+  }
+}

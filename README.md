@@ -58,6 +58,8 @@ Two ways to get JSON in:
 [
   { "file": "hombre-bloque-1.json", "label": "Hombre — Bloque 1 (plan de inicio)" },
   { "file": "mujer-bloque-1.json", "label": "Mujer — Bloque 1 (plan de inicio)" },
+  { "file": "hombre-bloque-2.json", "label": "Hombre — Bloque 2 (equilibrado: pierna, gemelo, core)" },
+  { "file": "mujer-bloque-2.json", "label": "Mujer — Bloque 2 (equilibrado: hombro, gemelo, core)" },
   { "file": "ejemplo-plantilla.json", "label": "Ejemplo — plantilla de bloque" }
 ]
 ```
@@ -66,6 +68,43 @@ Two ways to get JSON in:
 the built-in default plans (see `js/data.js`) — handy if you want a
 fresh copy of Bloque 1 as a new block, e.g. to restart a program from
 scratch without losing the original's history.
+
+`hombre-bloque-2.json` and `mujer-bloque-2.json` are revised follow-ups
+to those two. They keep the same 3-day shape and the shared/couple
+stations, but rebalance weekly volume — see
+[Bloque 2](#bloque-2--qué-cambia-y-por-qué) below.
+
+## Bloque 2 — qué cambia y por qué
+
+Both Bloque 1 plans are upper-body heavy. Counting hard sets per muscle
+per week, the men's plan lands around 12 for chest and 13 for back but
+only 6 for quads and 5 for hamstrings (hamstrings trained once a week),
+with no calf or core work at all. The women's plan is the mirror image:
+plenty of glute and leg volume, but zero lateral-raise work, six weekly
+sets split across two abductor machines that do the same job, and again
+no calves or core.
+
+Bloque 2 keeps the structure, the shared stations and the 8-week
+RIR/deload progression, and changes three things:
+
+- **Volume balance.** Hombre: quads 6 → 10 sets, hamstrings 5 → 9 and
+  now trained twice a week, calves 0 → 7, core 0 → 3, with chest and
+  back trimmed slightly to 10 each. Mujer: lateral raises 0 → 3,
+  calves 0 → 7, core 0 → 3, abductors 6 → 3 (one machine instead of
+  two overlapping ones); the glute emphasis is untouched.
+- **Exercise order.** A row now sits between the two presses on the
+  push days so the shoulder press isn't performed on delts and triceps
+  fresh out of a heavy chest press. Leg curls move to second on leg day,
+  the leg press moves up on the women's day 3, and Bulgarian split
+  squats move ahead of the RDL — all so the exercise that most needs
+  fresh legs or balance isn't the last thing in the session.
+- **Progression.** The week banner now states the double-progression
+  rule explicitly (hit the top of the rep range on every set → add the
+  smallest increment next week), starts at 3 RIR for calibration, and
+  restricts week 7's to-failure sets to machines and isolation work
+  rather than hack squats and RDLs.
+
+Run the three days with a rest day between them (e.g. Mon / Wed / Fri).
 
 ### Block JSON shape
 
