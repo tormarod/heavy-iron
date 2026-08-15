@@ -6,7 +6,23 @@ let tId = null, tEndAt = 0, tTotal = 0, tOverNotified = false;
 let wakeLock = null;
 
 const $ = id => document.getElementById(id);
-const slot = (w, d) => 'w' + w + '-d' + d;
+
+/* Log rows are filed under a day's *id*, not its position, so days can be
+   added, retired or reordered without the weeks logged under them moving
+   with the shuffle. Legacy data was keyed by index ('w3-d1'), so migrate()
+   below hands the old days the ids 'd0', 'd1', … — the keys come out
+   identical and nothing has to be rewritten. */
+const slot = (w, dayId) => 'w' + w + '-' + dayId;
+
+let uidN = 0;
+const uid = prefix => prefix + '-' + Date.now().toString(36) + '-' + (uidN++);
+
+/* Retired days/exercises stay in the block with an `off` flag instead of
+   being spliced out: the session only ever shows the live ones, but the
+   plan keeps enough of the retired item to put it back exactly where it
+   was, and its log is never touched. */
+const dayList = block => block.days.filter(d => !d.off);
+const exList = day => day.ex.filter(e => !e.off);
 
 /* ---------- storage ---------- */
 function load() {
@@ -17,9 +33,30 @@ function load() {
     state = defaultState();
   }
   if (!state.profiles) state = defaultState();
+  migrate();
   ready = true;
   mark('Cargado');
   render();
+}
+
+function migrate() {
+  Object.keys(state.profiles).forEach(pk => {
+    const profile = state.profiles[pk];
+    Object.keys(profile.blocks || {}).forEach(bk => {
+      const block = profile.blocks[bk];
+      if (!Array.isArray(block.days)) return;
+      const used = new Set();
+      block.days.forEach((day, i) => {
+        let id = day.id;
+        if (!id || used.has(id)) {
+          id = 'd' + i;
+          while (used.has(id)) id = uid('d');
+        }
+        day.id = id;
+        used.add(id);
+      });
+    });
+  });
 }
 
 let saveT = null;
@@ -53,19 +90,62 @@ function setsFor(ex, w) {
   return n;
 }
 
-function entry(profile, blockId, w, d, exId, n) {
+/* The stored rows are the record and are never shortened: dropping a set
+   in the plan editor hides the last row from the session, it does not
+   delete what was logged in it. Put the set back — this week or next
+   block — and the numbers are still there. entry() only pads and returns
+   the slice the current plan asks for; the row objects it hands back are
+   the stored ones, so editing them writes straight through. */
+function rowsFor(profile, blockId, w, dayId, exId) {
   if (!profile.log[blockId]) profile.log[blockId] = {};
-  const k = slot(w, d);
+  const k = slot(w, dayId);
   if (!profile.log[blockId][k]) profile.log[blockId][k] = {};
   if (!profile.log[blockId][k][exId]) profile.log[blockId][k][exId] = [];
-  const a = profile.log[blockId][k][exId];
+  return profile.log[blockId][k][exId];
+}
+
+function entry(profile, blockId, w, dayId, exId, n) {
+  const a = rowsFor(profile, blockId, w, dayId, exId);
   while (a.length < n) a.push({ w: '', r: '', done: false });
   return a.slice(0, n);
 }
 
-function lastTime(profile, blockId, d, exId, beforeWeek) {
+const rowUsed = r => !!(r && (r.done || (r.w !== '' && r.w != null) || (r.r !== '' && r.r != null)));
+
+/* Rows logged past what the current plan shows — kept, but out of sight. */
+function parkedRows(profile, blockId, w, dayId, exId, n) {
+  const a = profile.log[blockId] && profile.log[blockId][slot(w, dayId)] && profile.log[blockId][slot(w, dayId)][exId];
+  return a && a.length > n ? a.slice(n).filter(rowUsed).length : 0;
+}
+
+function loggedSets(profile, blockId, dayId, exId) {
+  let n = 0;
+  for (let w = 1; w <= 8; w++) {
+    const s = profile.log[blockId] && profile.log[blockId][slot(w, dayId)];
+    if (s && s[exId]) n += s[exId].filter(rowUsed).length;
+  }
+  return n;
+}
+
+function loggedSetsDay(profile, blockId, day) {
+  return day.ex.reduce((t, ex) => t + loggedSets(profile, blockId, day.id, ex.id), 0);
+}
+
+function purgeExLog(profile, blockId, dayId, exId) {
+  const blk = profile.log[blockId];
+  if (!blk) return;
+  for (let w = 1; w <= 8; w++) { const s = blk[slot(w, dayId)]; if (s) delete s[exId]; }
+}
+
+function purgeDayLog(profile, blockId, dayId) {
+  const blk = profile.log[blockId];
+  if (!blk) return;
+  for (let w = 1; w <= 8; w++) delete blk[slot(w, dayId)];
+}
+
+function lastTime(profile, blockId, dayId, exId, beforeWeek) {
   for (let w = beforeWeek - 1; w >= 1; w--) {
-    const s = profile.log[blockId] && profile.log[blockId][slot(w, d)];
+    const s = profile.log[blockId] && profile.log[blockId][slot(w, dayId)];
     if (s && s[exId]) {
       const done = s[exId].filter(x => x.done && x.w !== '');
       if (done.length) return { week: w, sets: done };
@@ -196,6 +276,9 @@ function newBlock() {
   clone.id = id;
   clone.name = name;
   clone.createdAt = new Date().toISOString();
+  /* Retired days/exercises exist to guard the old block's history, and the
+     new block has none — copy the plan as it is actually trained. */
+  clone.days = dayList(clone).map(d => { d.ex = exList(d); return d; });
   profile.blocks[id] = clone;
   profile.blockOrder.push(id);
   profile.activeBlock = id;
@@ -233,6 +316,7 @@ function normalizeImportedBlock(raw) {
   if (!Array.isArray(raw.days) || !raw.days.length) throw new Error('Falta "days" (al menos un día de entrenamiento).');
 
   const usedIds = new Set();
+  const usedDayIds = new Set();
   const days = raw.days.map((day, di) => {
     if (!day || typeof day !== 'object') throw new Error('El día ' + (di + 1) + ' no es válido.');
     const dayName = (day.name && String(day.name).trim()) || ('Día ' + (di + 1));
@@ -259,7 +343,10 @@ function normalizeImportedBlock(raw) {
       if (e.ss) out.ss = 1;
       return out;
     });
-    const out = { name: dayName, ex };
+    let dayId = day.id ? String(day.id).trim() : ('d' + di);
+    while (!dayId || usedDayIds.has(dayId)) dayId = uid('d');
+    usedDayIds.add(dayId);
+    const out = { id: dayId, name: dayName, ex };
     if (day.pair) out.pair = String(day.pair);
     return out;
   });
@@ -347,6 +434,7 @@ $('importSheet').addEventListener('click', e => { if (e.target.id === 'importShe
 function renderNav() {
   const profile = getProfile();
   const block = getBlock();
+  const days = dayList(block);
 
   $('title').textContent = 'Registro de entrenamiento · ' + block.name + ' · ' + profile.label;
 
@@ -355,8 +443,8 @@ function renderNav() {
     const b = document.createElement('button');
     b.className = 'wk' + (w === profile.week ? ' on' : '') + (w === 8 ? ' deload' : '');
     b.textContent = w === 8 ? 'DL' : w;
-    const has = [0, 1, 2].some(d => {
-      const s = profile.log[block.id] && profile.log[block.id][slot(w, d)];
+    const has = days.some(d => {
+      const s = profile.log[block.id] && profile.log[block.id][slot(w, d.id)];
       return s && Object.values(s).some(a => a.some(x => x.done));
     });
     if (has) { const dot = document.createElement('span'); dot.className = 'dot'; b.appendChild(dot); }
@@ -365,7 +453,7 @@ function renderNav() {
   }
 
   $('days').innerHTML = '';
-  block.days.forEach((d, i) => {
+  days.forEach((d, i) => {
     const b = document.createElement('button');
     b.className = 'day' + (i === profile.day ? ' on' : '');
     b.innerHTML = '<span class="day-n">Día ' + (i + 1) + '</span><span class="day-t"></span>';
@@ -380,6 +468,12 @@ function render() {
   if (!ready) return;
   const profile = getProfile();
   const block = getBlock();
+
+  /* A block always keeps one live day: retiring every day would leave the
+     session with nothing to draw, so the first one comes back. */
+  if (!dayList(block).length && block.days.length) delete block.days[0].off;
+  const days = dayList(block);
+  if (!(profile.day >= 0) || profile.day > days.length - 1) profile.day = 0;
 
   renderProfiles();
   renderBlockBar();
@@ -397,7 +491,7 @@ function render() {
   bannerDiv.querySelector('.banner-r').textContent = ph.t;
   $('banner').appendChild(bannerDiv);
 
-  const day = block.days[profile.day];
+  const day = days[profile.day];
   $('pair').textContent = day.pair || '';
   $('pair').style.display = day.pair ? 'flex' : 'none';
 
@@ -405,17 +499,17 @@ function render() {
   list.innerHTML = '';
   let total = 0, doneN = 0;
 
-  day.ex.forEach((ex, i) => {
+  exList(day).forEach((ex, i) => {
     const n = setsFor(ex, profile.week);
-    const rows = entry(profile, block.id, profile.week, profile.day, ex.id, n);
-    profile.log[block.id][slot(profile.week, profile.day)][ex.id] = rows;
+    const rows = entry(profile, block.id, profile.week, day.id, ex.id, n);
+    const parked = parkedRows(profile, block.id, profile.week, day.id, ex.id, n);
     const allDone = rows.every(r => r.done);
     total += n; doneN += rows.filter(r => r.done).length;
 
     const card = document.createElement('div');
     card.className = 'ex' + (allDone ? ' complete' : '') + (ex.share ? ' shared' : '');
 
-    const prev = lastTime(profile, block.id, profile.day, ex.id, profile.week);
+    const prev = lastTime(profile, block.id, day.id, ex.id, profile.week);
     const prevTxt = prev
       ? '<div class="last"><span class="tag">Sem. ' + prev.week + '</span><span><b>' +
         prev.sets.map(s => s.w + '×' + (s.r || '?')).join('</b> · <b>') + '</b></span></div>'
@@ -433,7 +527,14 @@ function render() {
         '<div class="ex-rest">' + (ex.rest ? 'desc. ' + (ex.rest >= 60 ? (ex.rest / 60).toFixed(ex.rest % 60 ? 1 : 0).replace('.0', '') + ' min' : ex.rest + 's') : 'superserie →') + '</div>' +
         '<button class="ex-chart-btn" type="button">Progreso ↗</button></div>' +
       '</div>' + prevTxt +
-      '<div class="sets"></div>';
+      '<div class="sets"></div>' +
+      (parked ? '<div class="ex-parked"></div>' : '');
+
+    if (parked) {
+      card.querySelector('.ex-parked').textContent = parked === 1
+        ? 'Hay 1 serie registrada por encima de las que pide el plan. Se guarda: sube las series de este ejercicio para volver a verla.'
+        : 'Hay ' + parked + ' series registradas por encima de las que pide el plan. Se guardan: sube las series de este ejercicio para volver a verlas.';
+    }
 
     const nameEl = card.querySelector('.ex-name');
     nameEl.appendChild(document.createTextNode(ex.n));
@@ -443,7 +544,7 @@ function render() {
     if (ex.alt) card.querySelector('.ex-alt').textContent = ex.alt;
     if (ex.cue) card.querySelector('.ex-cue').textContent = ex.cue;
 
-    card.querySelector('.ex-chart-btn').onclick = () => openChart(ex, profile.day);
+    card.querySelector('.ex-chart-btn').onclick = () => openChart(ex, day.id);
 
     const box = card.querySelector('.sets');
     rows.forEach((r, si) => {
@@ -474,30 +575,33 @@ function render() {
 
   $('barfill').style.width = total ? (doneN / total * 100) + '%' : '0%';
   $('note').textContent = doneN === total
-    ? 'Sesión completa — ' + total + ' series registradas. Siguiente: ' + block.days[(profile.day + 1) % block.days.length].name + (profile.day === block.days.length - 1 ? ', semana ' + (profile.week + 1) : '') + '.'
+    ? 'Sesión completa — ' + total + ' series registradas. Siguiente: ' + days[(profile.day + 1) % days.length].name + (profile.day === days.length - 1 ? ', semana ' + (profile.week + 1) : '') + '.'
     : doneN + ' de ' + total + ' series hechas. Llega al tope del rango en todas las series y sube el peso el próximo día.';
 }
 
 /* ---------- day/data actions ---------- */
+function currentDay() {
+  const days = dayList(getBlock());
+  return days[Math.min(getProfile().day, days.length - 1)];
+}
+
 $('copyPrev').onclick = () => {
-  const profile = getProfile(), block = getBlock();
-  const src = profile.log[block.id] && profile.log[block.id][slot(profile.week - 1, profile.day)];
+  const profile = getProfile(), block = getBlock(), day = currentDay();
+  const src = profile.log[block.id] && profile.log[block.id][slot(profile.week - 1, day.id)];
   if (profile.week === 1 || !src) { mark('No hay nada registrado en la semana ' + (profile.week - 1) + ' para este día'); return; }
-  block.days[profile.day].ex.forEach(ex => {
+  exList(day).forEach(ex => {
     const from = src[ex.id]; if (!from) return;
-    const to = entry(profile, block.id, profile.week, profile.day, ex.id, setsFor(ex, profile.week));
+    const to = entry(profile, block.id, profile.week, day.id, ex.id, setsFor(ex, profile.week));
     to.forEach((r, i) => { if (!r.done) r.w = (from[i] || from[from.length - 1] || {}).w || ''; });
-    profile.log[block.id][slot(profile.week, profile.day)][ex.id] = to;
   });
   save(); render();
   mark('Pesos copiados de la semana ' + (profile.week - 1) + ' — supéralos');
 };
 
 $('clearDay').onclick = () => {
-  const profile = getProfile(), block = getBlock();
-  const dayName = block.days[profile.day].name;
-  if (!confirm('¿Borrar todas las series de ' + dayName + ', semana ' + profile.week + '?')) return;
-  if (profile.log[block.id]) delete profile.log[block.id][slot(profile.week, profile.day)];
+  const profile = getProfile(), block = getBlock(), day = currentDay();
+  if (!confirm('¿Borrar todas las series de ' + day.name + ', semana ' + profile.week + '?')) return;
+  if (profile.log[block.id]) delete profile.log[block.id][slot(profile.week, day.id)];
   save(); render();
   mark('Día borrado');
 };
@@ -510,56 +614,187 @@ $('wipe').onclick = () => {
   mark('Registro de ' + profile.label + ' borrado');
 };
 
-/* ---------- plan editor ---------- */
+/* ---------- plan editor ----------
+   Everything here edits a *draft* copy of the block; nothing reaches the
+   real block (or the log) until "Guardar cambios". Structural edits are
+   built so the logged sets survive them: exercises and days keep their
+   ids when moved or renamed, dropping a set only hides the row, and
+   removing something that has history retires it instead of deleting it.
+   Erasing logged sets for good takes a second, explicit click in
+   "Retirados". */
 let draftBlock = null;
+let draftPurge = [];
 
 $('editPlan').onclick = () => {
   draftBlock = JSON.parse(JSON.stringify(getBlock()));
+  draftPurge = [];
   $('peBlockName').value = draftBlock.name;
   renderPlanEditor();
   $('planSheet').classList.add('up');
 };
 
-function renderPlanEditor() {
-  const host = $('peDays');
-  host.innerHTML = '';
-  draftBlock.days.forEach((day, di) => {
-    const box = document.createElement('div');
-    box.className = 'pe-day';
-    box.innerHTML =
-      '<div class="pe-day-head">' +
-        '<input type="text" class="pe-day-name" placeholder="Nombre del día">' +
-        '<textarea class="pe-day-pair" placeholder="Nota de pareja para este día (opcional)"></textarea>' +
-      '</div><div class="pe-exlist"></div>';
-    box.querySelector('.pe-day-name').value = day.name;
-    box.querySelector('.pe-day-name').oninput = e => { day.name = e.target.value; };
-    box.querySelector('.pe-day-pair').value = day.pair || '';
-    box.querySelector('.pe-day-pair').oninput = e => { day.pair = e.target.value; };
-
-    const exlist = box.querySelector('.pe-exlist');
-    day.ex.forEach((ex, ei) => exlist.appendChild(buildExRow(day, ei)));
-
-    const addBtn = document.createElement('button');
-    addBtn.type = 'button';
-    addBtn.className = 'pe-add-ex';
-    addBtn.textContent = '+ Añadir ejercicio';
-    addBtn.onclick = () => {
-      day.ex.push({ id: 'ex-' + Date.now(), n: '', alt: '', cue: '', sets: 3, reps: '10–15', rest: 90, share: 0, ss: 0 });
-      renderPlanEditor();
-    };
-    box.appendChild(addBtn);
-    host.appendChild(box);
-  });
+function newExercise() {
+  return { id: uid('ex'), n: '', alt: '', cue: '', sets: 3, reps: '10–15', rest: 90, share: 0, ss: 0 };
 }
 
-function buildExRow(day, ei) {
-  const ex = day.ex[ei];
+/* Swap with the nearest live neighbour, leaving retired items parked
+   where they are. */
+function moveLive(arr, item, dir) {
+  const i = arr.indexOf(item);
+  let j = i + dir;
+  while (j >= 0 && j < arr.length && arr[j].off) j += dir;
+  if (i < 0 || j < 0 || j >= arr.length) return;
+  arr[i] = arr[j];
+  arr[j] = item;
+}
+
+function setsLabel(n) { return n + (n === 1 ? ' serie registrada' : ' series registradas'); }
+
+function renderPlanEditor() {
+  const host = $('peDays');
+  const profile = getProfile();
+  host.innerHTML = '';
+
+  const live = dayList(draftBlock);
+  live.forEach((day, pos) => host.appendChild(buildDayBox(profile, day, pos, live.length)));
+
+  const addDay = document.createElement('button');
+  addDay.type = 'button';
+  addDay.className = 'pe-add-ex';
+  addDay.textContent = '+ Añadir día';
+  addDay.onclick = () => {
+    draftBlock.days.push({ id: uid('d'), name: 'Día ' + (live.length + 1), ex: [newExercise()] });
+    renderPlanEditor();
+  };
+  host.appendChild(addDay);
+
+  renderRetired(host, profile);
+}
+
+function buildDayBox(profile, day, pos, liveCount) {
+  const box = document.createElement('div');
+  box.className = 'pe-day';
+  box.innerHTML =
+    '<div class="pe-bar">' +
+      '<span class="pe-bar-n">Día ' + (pos + 1) + '</span>' +
+      '<span class="pe-log-tag"></span>' +
+      '<span class="pe-tools">' +
+        '<button type="button" class="pe-icon-btn d-up" title="Subir día">↑</button>' +
+        '<button type="button" class="pe-icon-btn d-down" title="Bajar día">↓</button>' +
+        '<button type="button" class="pe-icon-btn danger d-del">Quitar día</button>' +
+      '</span>' +
+    '</div>' +
+    '<div class="pe-day-head">' +
+      '<input type="text" class="pe-day-name" placeholder="Nombre del día">' +
+      '<textarea class="pe-day-pair" placeholder="Nota de pareja para este día (opcional)"></textarea>' +
+    '</div><div class="pe-exlist"></div>';
+
+  const logged = loggedSetsDay(profile, draftBlock.id, day);
+  if (logged) box.querySelector('.pe-log-tag').textContent = setsLabel(logged);
+
+  box.querySelector('.pe-day-name').value = day.name;
+  box.querySelector('.pe-day-name').oninput = e => { day.name = e.target.value; };
+  box.querySelector('.pe-day-pair').value = day.pair || '';
+  box.querySelector('.pe-day-pair').oninput = e => { day.pair = e.target.value; };
+
+  const up = box.querySelector('.d-up'), down = box.querySelector('.d-down'), del = box.querySelector('.d-del');
+  up.disabled = pos === 0;
+  down.disabled = pos === liveCount - 1;
+  del.disabled = liveCount === 1;
+  up.onclick = () => { moveLive(draftBlock.days, day, -1); renderPlanEditor(); };
+  down.onclick = () => { moveLive(draftBlock.days, day, 1); renderPlanEditor(); };
+  del.onclick = () => {
+    if (logged) {
+      if (!confirm('"' + day.name + '" tiene ' + setsLabel(logged) + ' en este bloque.\n\nSe retira del plan y deja de aparecer en la sesión, pero su registro se conserva y puedes devolverlo desde "Retirados", al final de esta pantalla.')) return;
+      day.off = 1;
+    } else {
+      if (!confirm('¿Quitar "' + day.name + '" del bloque? No tiene nada registrado.')) return;
+      draftBlock.days.splice(draftBlock.days.indexOf(day), 1);
+    }
+    renderPlanEditor();
+  };
+
+  const exlist = box.querySelector('.pe-exlist');
+  const liveEx = exList(day);
+  liveEx.forEach((ex, i) => exlist.appendChild(buildExRow(profile, day, ex, i, liveEx.length)));
+
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'pe-add-ex';
+  addBtn.textContent = '+ Añadir ejercicio';
+  addBtn.onclick = () => { day.ex.push(newExercise()); renderPlanEditor(); };
+  box.appendChild(addBtn);
+  return box;
+}
+
+function renderRetired(host, profile) {
+  const items = [];
+  draftBlock.days.forEach(day => {
+    if (day.off) { items.push({ day }); return; }
+    day.ex.forEach(ex => { if (ex.off) items.push({ day, ex }); });
+  });
+  if (!items.length) return;
+
+  const box = document.createElement('div');
+  box.className = 'pe-retired';
+  box.innerHTML =
+    '<div class="pe-bar"><span class="pe-bar-n">Retirados</span></div>' +
+    '<p class="pe-retired-d">Fuera del plan, con su registro intacto. Al restaurarlos vuelven con todo lo que tenían anotado.</p>';
+
+  items.forEach(it => {
+    const isDay = !it.ex;
+    const logged = isDay ? loggedSetsDay(profile, draftBlock.id, it.day)
+                         : loggedSets(profile, draftBlock.id, it.day.id, it.ex.id);
+    const row = document.createElement('div');
+    row.className = 'pe-arch';
+    row.innerHTML =
+      '<span class="pe-arch-l"><b></b><i></i></span>' +
+      '<span class="pe-tools">' +
+        '<button type="button" class="pe-icon-btn a-back">Restaurar</button>' +
+        '<button type="button" class="pe-icon-btn danger a-del">' + (logged ? 'Borrar registro' : 'Borrar') + '</button>' +
+      '</span>';
+    row.querySelector('b').textContent = isDay ? ('Día · ' + it.day.name) : (it.ex.n || 'Ejercicio sin nombre');
+    row.querySelector('i').textContent = (isDay ? '' : it.day.name + ' · ') + (logged ? setsLabel(logged) : 'sin registro');
+    row.querySelector('.a-back').onclick = () => {
+      if (isDay) delete it.day.off; else delete it.ex.off;
+      renderPlanEditor();
+    };
+    row.querySelector('.a-del').onclick = () => {
+      const what = isDay ? ('el día "' + it.day.name + '"') : ('"' + (it.ex.n || 'este ejercicio') + '"');
+      const msg = logged
+        ? '¿Borrar ' + what + ' y sus ' + setsLabel(logged) + ' definitivamente? No se puede deshacer.'
+        : '¿Borrar ' + what + ' del bloque? No tiene nada registrado.';
+      if (!confirm(msg)) return;
+      if (isDay) {
+        draftBlock.days.splice(draftBlock.days.indexOf(it.day), 1);
+        draftPurge.push({ dayId: it.day.id });
+      } else {
+        it.day.ex.splice(it.day.ex.indexOf(it.ex), 1);
+        draftPurge.push({ dayId: it.day.id, exId: it.ex.id });
+      }
+      renderPlanEditor();
+    };
+    box.appendChild(row);
+  });
+
+  host.appendChild(box);
+}
+
+function buildExRow(profile, day, ex, pos, liveCount) {
   const row = document.createElement('div');
   row.className = 'pe-ex';
   row.innerHTML =
+    '<div class="pe-bar">' +
+      '<span class="pe-bar-n">' + (pos + 1) + '</span>' +
+      '<span class="pe-log-tag"></span>' +
+      '<span class="pe-tools">' +
+        '<button type="button" class="pe-icon-btn e-up" title="Subir ejercicio">↑</button>' +
+        '<button type="button" class="pe-icon-btn e-down" title="Bajar ejercicio">↓</button>' +
+        '<button type="button" class="pe-icon-btn danger e-del">Quitar</button>' +
+      '</span>' +
+    '</div>' +
     '<div class="pe-row">' +
       '<div style="flex:1;min-width:140px;"><span class="pe-field-lbl">Ejercicio</span><input type="text" class="f-n"></div>' +
-      '<button type="button" class="pe-ex-del">Eliminar</button>' +
     '</div>' +
     '<div class="pe-row"><div style="flex:1;min-width:140px;"><span class="pe-field-lbl">Alternativa</span><input type="text" class="f-alt"></div></div>' +
     '<div class="pe-row"><div style="flex:1;min-width:140px;"><span class="pe-field-lbl">Nota / cue</span><input type="text" class="f-cue"></div></div>' +
@@ -592,29 +827,64 @@ function buildExRow(day, ei) {
   row.querySelector('.f-share').onchange = e => { if (e.target.checked) ex.share = 1; else delete ex.share; };
   row.querySelector('.f-ss').checked = !!ex.ss;
   row.querySelector('.f-ss').onchange = e => { if (e.target.checked) ex.ss = 1; else delete ex.ss; };
-  row.querySelector('.pe-ex-del').onclick = () => { day.ex.splice(ei, 1); renderPlanEditor(); };
+
+  const logged = loggedSets(profile, draftBlock.id, day.id, ex.id);
+  if (logged) row.querySelector('.pe-log-tag').textContent = setsLabel(logged);
+
+  const up = row.querySelector('.e-up'), down = row.querySelector('.e-down'), del = row.querySelector('.e-del');
+  up.disabled = pos === 0;
+  down.disabled = pos === liveCount - 1;
+  del.disabled = liveCount === 1;
+  up.onclick = () => { moveLive(day.ex, ex, -1); renderPlanEditor(); };
+  down.onclick = () => { moveLive(day.ex, ex, 1); renderPlanEditor(); };
+  del.onclick = () => {
+    if (logged) {
+      if (!confirm('"' + (ex.n || 'Este ejercicio') + '" tiene ' + setsLabel(logged) + ' en este bloque.\n\nSe retira del plan y deja de aparecer en la sesión, pero su registro se conserva y puedes devolverlo desde "Retirados", al final de esta pantalla.')) return;
+      ex.off = 1;
+    } else {
+      day.ex.splice(day.ex.indexOf(ex), 1);
+    }
+    renderPlanEditor();
+  };
 
   return row;
 }
 
 $('peSave').onclick = () => {
   draftBlock.name = $('peBlockName').value.trim() || draftBlock.name;
-  for (const day of draftBlock.days) {
-    if (!day.ex.length) { alert('Cada día necesita al menos un ejercicio.'); return; }
-    for (const ex of day.ex) {
-      if (!ex.n.trim()) { alert('Todos los ejercicios necesitan un nombre.'); return; }
-      if (!ex.reps || !String(ex.reps).trim()) { alert('Falta el rango de repeticiones en "' + (ex.n || 'un ejercicio') + '".'); return; }
+  const days = dayList(draftBlock);
+  if (!days.length) { alert('El bloque necesita al menos un día.'); return; }
+  days.forEach((day, i) => { if (!String(day.name || '').trim()) day.name = 'Día ' + (i + 1); });
+  for (const day of days) {
+    const ex = exList(day);
+    if (!ex.length) { alert('Cada día necesita al menos un ejercicio — revisa "' + day.name + '".'); return; }
+    for (const e of ex) {
+      if (!String(e.n || '').trim()) { alert('Todos los ejercicios necesitan un nombre.'); return; }
+      if (!e.reps || !String(e.reps).trim()) { alert('Falta el rango de repeticiones en "' + (e.n || 'un ejercicio') + '".'); return; }
     }
   }
   const profile = getProfile();
+  /* The only path that erases logged sets, and only the ones explicitly
+     confirmed in "Retirados". */
+  draftPurge.forEach(p => {
+    if (p.exId) purgeExLog(profile, draftBlock.id, p.dayId, p.exId);
+    else purgeDayLog(profile, draftBlock.id, p.dayId);
+  });
   profile.blocks[draftBlock.id] = draftBlock;
+  draftBlock = null; draftPurge = [];
   save(); render();
   $('planSheet').classList.remove('up');
-  mark('Plan actualizado');
+  mark('Plan actualizado — el registro se mantiene');
 };
 
-$('peClose').onclick = () => { $('planSheet').classList.remove('up'); draftBlock = null; };
-$('planSheet').addEventListener('click', e => { if (e.target.id === 'planSheet') { $('planSheet').classList.remove('up'); draftBlock = null; } });
+function closePlanEditor() {
+  $('planSheet').classList.remove('up');
+  draftBlock = null;
+  draftPurge = [];
+}
+
+$('peClose').onclick = closePlanEditor;
+$('planSheet').addEventListener('click', e => { if (e.target.id === 'planSheet') closePlanEditor(); });
 
 $('peDeleteBlock').onclick = () => {
   const profile = getProfile();
@@ -625,16 +895,16 @@ $('peDeleteBlock').onclick = () => {
   delete profile.log[draftBlock.id];
   profile.activeBlock = profile.blockOrder[0];
   profile.week = 1; profile.day = 0;
+  closePlanEditor();
   save(); render();
-  $('planSheet').classList.remove('up');
   mark('Bloque eliminado');
 };
 
 /* ---------- progress chart ---------- */
-function collectHistory(profile, blockId, dayIdx, exId) {
+function collectHistory(profile, blockId, dayId, exId) {
   const points = [];
   for (let w = 1; w <= 8; w++) {
-    const s = profile.log[blockId] && profile.log[blockId][slot(w, dayIdx)];
+    const s = profile.log[blockId] && profile.log[blockId][slot(w, dayId)];
     const rows = s && s[exId];
     if (!rows) continue;
     const done = rows.filter(r => r.done && r.w !== '' && r.w != null && !isNaN(parseFloat(r.w)));
@@ -679,9 +949,9 @@ function buildChartSVG(points) {
   return svg;
 }
 
-function openChart(ex, dayIdx) {
+function openChart(ex, dayId) {
   const profile = getProfile(), block = getBlock();
-  const points = collectHistory(profile, block.id, dayIdx, ex.id);
+  const points = collectHistory(profile, block.id, dayId, ex.id);
   $('chartTitle').textContent = ex.n;
   $('chartSub').textContent = block.name + ' — mejor peso registrado por semana (× repeticiones de esa serie).';
   const host = $('chartHost');
@@ -759,6 +1029,7 @@ function restoreFromText(text) {
   if (!confirm('¿Reemplazar TODO tu registro (los dos perfiles) con esta copia? Se sobrescribirá lo que tengas ahora.')) return;
   state = data;
   if (!state.activeProfile) state.activeProfile = 'hombre';
+  migrate();
   save(); render();
   $('sheet').classList.remove('up');
   mark('Registro restaurado');
