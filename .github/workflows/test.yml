@@ -1,0 +1,36 @@
+name: Smoke tests
+
+# The app has no build step and no dependencies, so this is the only thing
+# standing between a one-line edit and a broken log on somebody's phone.
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Playwright + Chromium
+        run: npm install --no-save playwright@1.56.1 && npx playwright install --with-deps chromium
+
+      - name: Serve the site
+        run: |
+          python3 -m http.server 8765 --bind 127.0.0.1 &
+          # the service worker only registers over http, so wait for a real response
+          for i in $(seq 1 20); do
+            curl -sf http://127.0.0.1:8765/index.html >/dev/null && break
+            sleep 0.5
+          done
+
+      - name: Run smoke tests
+        run: node test/smoke.js

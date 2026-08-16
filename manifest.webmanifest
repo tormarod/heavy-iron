@@ -1,0 +1,18 @@
+{
+  "name": "Heavy Iron — Registro de entrenamiento",
+  "short_name": "Heavy Iron",
+  "description": "Registro de entrenamiento para dos perfiles: bloques de 8 semanas, temporizador de descanso y progreso por ejercicio.",
+  "lang": "es",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#E4E2DA",
+  "theme_color": "#17191C",
+  "categories": ["health", "fitness", "lifestyle"],
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

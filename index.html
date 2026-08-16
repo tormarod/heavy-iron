@@ -2,9 +2,25 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<!-- The app is a static page that only ever talks to two hosts: Google Fonts
+     for the typefaces and raw.githubusercontent.com for published blocks.
+     Saying so here means an injected string can't turn into a script tag or
+     phone your training log anywhere. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://raw.githubusercontent.com; manifest-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#E4E2DA" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15161A" media="(prefers-color-scheme: dark)">
+<meta name="description" content="Registro de entrenamiento para dos perfiles: bloques de 8 semanas, temporizador de descanso y progreso por ejercicio. Funciona sin conexión.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Heavy Iron">
 <title>Heavy Iron — Registro de entrenamiento</title>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" referrerpolicy="no-referrer">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -13,9 +29,12 @@
     <div class="wrap">
       <div class="profiles" id="profiles"></div>
       <div class="blockbar" id="blockbar"></div>
-      <div class="title" id="title"></div>
-      <div class="weeks" id="weeks"></div>
-      <div class="days" id="days"></div>
+      <div class="title-row">
+        <div class="title" id="title"></div>
+        <button class="icon-btn" id="themeBtn" type="button" aria-label="Cambiar tema"></button>
+      </div>
+      <div class="weeks" id="weeks" role="tablist" aria-label="Semanas del bloque"></div>
+      <div class="days" id="days" role="tablist" aria-label="Días de entrenamiento"></div>
     </div>
   </div>
   <div class="wrap">
@@ -32,23 +51,25 @@
         <button class="sm" id="backup">Copia de seguridad</button>
         <button class="sm warn" id="wipe">Borrar todos los datos</button>
       </div>
-      <div class="status" id="status"></div>
+      <div class="status" id="status" role="status" aria-live="polite"></div>
     </div>
   </div>
 
   <!-- backup / restore -->
   <div class="sheet" id="sheet">
-    <div class="sheet-box">
-      <div class="sheet-t">Copia de seguridad</div>
+    <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="sheetT">
+      <div class="sheet-t" id="sheetT">Copia de seguridad</div>
       <p class="sheet-d">Descarga un archivo con todo tu registro (los dos perfiles) y guárdalo donde quieras. Para restaurar, carga ese mismo archivo aquí.</p>
       <div class="sheet-btns">
         <button class="sm key" id="bDownload">Descargar copia (.json)</button>
         <button class="sm" id="bUploadBtn">Cargar copia (archivo)</button>
+        <button class="sm" id="bCsv">Exportar series (.csv)</button>
         <input type="file" id="bUpload" accept="application/json,.json" style="display:none">
       </div>
+      <p class="sheet-d">El CSV es para mirar los números fuera de la app (hoja de cálculo): una fila por serie registrada. No se puede volver a importar — para eso está el .json.</p>
       <div class="sheet-hr"></div>
       <p class="sheet-d">O, si prefieres copiar el texto a mano (por ejemplo para pegarlo en una nota o un correo):</p>
-      <textarea id="blob" spellcheck="false"></textarea>
+      <textarea id="blob" spellcheck="false" aria-label="Copia de seguridad en texto"></textarea>
       <div class="sheet-btns">
         <button class="sm" id="bCopy">Copiar texto</button>
         <button class="sm" id="bRestore">Restaurar desde el texto</button>
@@ -59,11 +80,11 @@
 
   <!-- plan editor -->
   <div class="sheet" id="planSheet">
-    <div class="sheet-box">
-      <div class="sheet-t">Editar plan</div>
+    <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="planSheetT">
+      <div class="sheet-t" id="planSheetT">Editar plan</div>
       <p class="sheet-d">Cambia nombres, series, repeticiones o descansos, añade o quita ejercicios y días, y reordénalos. Los cambios afectan solo al bloque actual y nunca borran lo que ya has registrado: quitar una serie la esconde (vuelve al subirla otra vez) y quitar un ejercicio o un día lo retira guardando su registro, para que puedas restaurarlo.</p>
-      <label class="pe-field-lbl">Nombre del bloque</label>
-      <input type="text" id="peBlockName" style="width:100%;padding:8px;font-family:'Archivo';font-size:13px;font-weight:700;border:1px solid var(--line);border-radius:2px;background:var(--paper);color:var(--ink);margin-bottom:14px;">
+      <label class="pe-field-lbl" for="peBlockName">Nombre del bloque</label>
+      <input type="text" id="peBlockName" class="pe-block-name">
       <div id="peDays"></div>
       <div class="sheet-btns">
         <button class="sm key" id="peSave">Guardar cambios</button>
@@ -75,8 +96,8 @@
 
   <!-- block manager -->
   <div class="sheet" id="blocksSheet">
-    <div class="sheet-box">
-      <div class="sheet-t">Gestionar bloques</div>
+    <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="blocksSheetT">
+      <div class="sheet-t" id="blocksSheetT">Gestionar bloques</div>
       <p class="sheet-d">Borra los bloques que ya no quieres. Los que no son el actual se van sin tocar nada de lo tuyo: el bloque en el que entrenas conserva su registro, su semana y su día. Borrar el actual sí borra su registro y te deja en el bloque más reciente que quede.</p>
       <div id="blockList"></div>
       <div class="sheet-btns">
@@ -88,8 +109,8 @@
 
   <!-- import block from JSON -->
   <div class="sheet" id="importSheet">
-    <div class="sheet-box">
-      <div class="sheet-t">Importar bloque desde JSON</div>
+    <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="importSheetT">
+      <div class="sheet-t" id="importSheetT">Importar bloque desde JSON</div>
       <p class="sheet-d">Elige un bloque publicado en el repositorio, o pega el JSON a mano (por ejemplo, generado por tu agente de entrenamiento). Se añade como bloque nuevo al perfil actual — no sobrescribe nada.</p>
 
       <div class="sheet-d" style="margin:0 0 6px;font-weight:600;color:var(--ink);">Bloques disponibles en GitHub</div>
@@ -98,7 +119,7 @@
       <div class="sheet-hr"></div>
 
       <div class="sheet-d" style="margin:0 0 6px;font-weight:600;color:var(--ink);">O pega el JSON a mano</div>
-      <textarea id="importBlob" spellcheck="false" placeholder='{"name":"Bloque 2","days":[...],"phase":{...}}'></textarea>
+      <textarea id="importBlob" spellcheck="false" aria-label="JSON del bloque" placeholder='{"name":"Bloque 2","days":[...],"phase":{...}}'></textarea>
       <div id="importError" class="status err" style="text-align:left;padding-top:6px;"></div>
       <div class="sheet-btns">
         <button class="sm key" id="importFromText">Importar desde el texto</button>
@@ -109,7 +130,7 @@
 
   <!-- exercise progress chart -->
   <div class="sheet" id="chartSheet">
-    <div class="sheet-box">
+    <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="chartTitle">
       <div class="sheet-t" id="chartTitle">Progreso</div>
       <p class="sheet-d" id="chartSub"></p>
       <div class="chart-wrap" id="chartHost"></div>
@@ -122,13 +143,24 @@
   <div class="timer" id="timer">
     <div class="timer-fill" id="tfill"></div>
     <div class="timer-in">
-      <div>
+      <div class="timer-main">
         <div class="timer-lbl" id="tlbl">Descanso</div>
         <div class="timer-val" id="tval">0:00</div>
       </div>
       <div class="timer-msg" id="tmsg"></div>
-      <button class="timer-btn" id="tskip">Saltar</button>
+      <div class="timer-acts">
+        <button class="timer-btn" id="tminus" type="button" aria-label="Quitar 30 segundos de descanso">−30</button>
+        <button class="timer-btn" id="tplus" type="button" aria-label="Añadir 30 segundos de descanso">+30</button>
+        <button class="timer-btn" id="tsound" type="button" aria-pressed="false" aria-label="Aviso sonoro al acabar el descanso">Son.</button>
+        <button class="timer-btn" id="tskip" type="button">Saltar</button>
+      </div>
     </div>
+  </div>
+
+  <div class="toast" id="toast" hidden>
+    <span id="toastMsg"></span>
+    <button class="sm" id="toastAct" type="button"></button>
+    <button class="sm" id="toastDismiss" type="button" aria-label="Descartar aviso">✕</button>
   </div>
 </div>
 

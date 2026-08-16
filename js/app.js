@@ -7,11 +7,30 @@ let wakeLock = null;
 
 const $ = id => document.getElementById(id);
 
+/* Anything that ends up inside an innerHTML string goes through this first.
+   Exercise names, rep ranges and the numbers you logged all reach the app
+   from places it does not control — a pasted block, a JSON file fetched
+   from the repo, a restored backup — and a rep range that reads
+   `10<img src=x onerror=…>` has to render as those characters, not run. */
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+/* Weights are typed on a Spanish phone keyboard, where the decimal key is a
+   comma. parseFloat('22,5') is 22 — five kilos of drift on a leg press — so
+   every read of a logged weight goes through here instead. */
+const num = v => {
+  const n = parseFloat(String(v == null ? '' : v).replace(',', '.'));
+  return isFinite(n) ? n : NaN;
+};
+
+const clampInt = (v, lo, hi, dflt) => {
+  const n = Math.round(Number(v));
+  return isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt;
+};
+
 /* Log rows are filed under a day's *id*, not its position, so days can be
    added, retired or reordered without the weeks logged under them moving
-   with the shuffle. Legacy data was keyed by index ('w3-d1'), so migrate()
-   below hands the old days the ids 'd0', 'd1', … — the keys come out
-   identical and nothing has to be rewritten. */
+   with the shuffle. */
 const slot = (w, dayId) => 'w' + w + '-' + dayId;
 
 let uidN = 0;
@@ -25,58 +44,262 @@ const dayList = block => block.days.filter(d => !d.off);
 const exList = day => day.ex.filter(e => !e.off);
 
 /* ---------- storage ---------- */
+function readRaw() {
+  try { return localStorage.getItem(STORAGE_KEY); }
+  catch (e) { return null; }  /* private mode / storage blocked — run in memory */
+}
+
 function load() {
+  const raw = readRaw();
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
     state = raw ? JSON.parse(raw) : defaultState();
   } catch (e) {
     state = defaultState();
   }
-  if (!state.profiles) state = defaultState();
+  if (!state || typeof state !== 'object' || Array.isArray(state) || !state.profiles) state = defaultState();
   migrate();
   ready = true;
-  mark('Cargado');
+  applyTheme();
   render();
+  /* Write straight back: on a first run that persists the starting plan, and
+     on a later one it persists whatever migrate() had to repair, so the same
+     repair does not have to be redone on every open. */
+  save();
+  mark('Cargado');
 }
 
+/* Runs on every load, and on every restore. Two jobs: give old data the
+   shape the current app expects, and put back anything that is missing or
+   contradictory. The second one matters more than it sounds — a block id in
+   `blockOrder` that no longer exists, or a block with no `phase`, used to be
+   a blank white screen with no way back to your history. Repairing on the
+   way in means the app opens even when the data is half broken. */
 function migrate() {
-  Object.keys(state.profiles).forEach(pk => {
+  const fallback = defaultState();
+  if (!state.profiles || typeof state.profiles !== 'object') state.profiles = fallback.profiles;
+
+  Object.keys(fallback.profiles).forEach(pk => {
+    if (!state.profiles[pk] || typeof state.profiles[pk] !== 'object') state.profiles[pk] = fallback.profiles[pk];
     const profile = state.profiles[pk];
-    Object.keys(profile.blocks || {}).forEach(bk => {
+    const seed = fallback.profiles[pk];
+
+    if (!profile.label) profile.label = seed.label;
+    if (!profile.theme) profile.theme = seed.theme;
+    if (!profile.log || typeof profile.log !== 'object') profile.log = {};
+    if (!profile.blocks || typeof profile.blocks !== 'object' || !Object.keys(profile.blocks).length) {
+      profile.blocks = seed.blocks;
+      profile.blockOrder = seed.blockOrder.slice();
+    }
+
+    /* The picker is driven off blockOrder, so it has to list every block
+       that exists, exactly once, and nothing that doesn't. */
+    const order = (Array.isArray(profile.blockOrder) ? profile.blockOrder : [])
+      .filter((id, i, a) => profile.blocks[id] && a.indexOf(id) === i);
+    Object.keys(profile.blocks).forEach(id => { if (order.indexOf(id) < 0) order.push(id); });
+    profile.blockOrder = order;
+    if (!profile.blocks[profile.activeBlock]) profile.activeBlock = order[order.length - 1];
+
+    profile.week = clampInt(profile.week, 1, 8, 1);
+    profile.day = clampInt(profile.day, 0, 99, 0);
+
+    Object.keys(profile.blocks).forEach(bk => {
       const block = profile.blocks[bk];
-      if (!Array.isArray(block.days)) return;
-      const used = new Set();
+      if (!block.id) block.id = bk;
+      if (!block.name) block.name = 'Bloque';
+      if (!block.phase || typeof block.phase !== 'object') block.phase = JSON.parse(JSON.stringify(GENERIC_IMPORT_PHASE));
+      if (!Array.isArray(block.days)) block.days = [];
+      block.days = block.days.filter(d => d && typeof d === 'object');
+      if (!block.days.length) block.days = [{ id: 'd0', name: 'Día 1', ex: [newExercise()] }];
+
+      /* Log rows are filed under a day's *id*, so every day needs one and no
+         two days may share it. Legacy data was keyed by index ('w3-d1'), so
+         the old days get the ids 'd0', 'd1', … — the keys come out identical
+         and nothing has to be rewritten. */
+      const usedDays = new Set();
       block.days.forEach((day, i) => {
         let id = day.id;
-        if (!id || used.has(id)) {
+        if (!id || usedDays.has(id)) {
           id = 'd' + i;
-          while (used.has(id)) id = uid('d');
+          while (usedDays.has(id)) id = uid('d');
         }
         day.id = id;
-        used.add(id);
+        usedDays.add(id);
+        if (!day.name) day.name = 'Día ' + (i + 1);
+        if (!Array.isArray(day.ex)) day.ex = [];
+        day.ex = day.ex.filter(e => e && typeof e === 'object');
+        if (!day.ex.length) day.ex = [newExercise()];
+        const usedEx = new Set();
+        day.ex.forEach((ex, j) => {
+          let id2 = ex.id;
+          if (!id2 || usedEx.has(id2)) { id2 = slugify(ex.n) || ('ex-' + i + '-' + j); while (usedEx.has(id2)) id2 = uid('ex'); }
+          ex.id = id2;
+          usedEx.add(id2);
+          ex.sets = clampInt(ex.sets, 1, 12, 3);
+          ex.rest = clampInt(ex.rest, 0, 900, 90);
+          if (ex.reps == null || ex.reps === '') ex.reps = '10–15';
+        });
       });
     });
   });
+
+  if (!state.profiles[state.activeProfile]) state.activeProfile = 'hombre';
+  if (!state.prefs || typeof state.prefs !== 'object') state.prefs = {};
+  if (['auto', 'light', 'dark'].indexOf(state.prefs.theme) < 0) state.prefs.theme = 'auto';
+  state.prefs.sound = !!state.prefs.sound;
 }
 
+/* Writes are debounced so typing a weight doesn't serialise the whole log on
+   every keystroke — but a debounce you never flush is a debounce that loses
+   the last set of the session when the phone goes in your pocket. Every path
+   out of the page flushes it: see the pagehide/visibilitychange handlers. */
 let saveT = null;
+let frozen = false;
+
+function writeState() {
+  if (frozen) return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    mark('Guardado ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+  } catch (e) {
+    mark('No se ha podido guardar — puede que no quede espacio en el navegador', true);
+  }
+}
+
 function save() {
   clearTimeout(saveT);
-  saveT = setTimeout(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      mark('Guardado ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-    } catch (e) {
-      mark('No se ha podido guardar en este dispositivo', true);
-    }
-  }, 400);
+  saveT = setTimeout(() => { saveT = null; writeState(); }, 400);
 }
+
+function flushSave() {
+  if (!saveT) return;
+  clearTimeout(saveT);
+  saveT = null;
+  writeState();
+}
+
+window.addEventListener('pagehide', flushSave);
+window.addEventListener('beforeunload', flushSave);
+
+/* Two tabs (or the installed app and a browser tab) share one localStorage.
+   The event only fires in the *other* tab, so anything arriving here is a
+   write we did not make: adopt it when we have nothing pending, and say so
+   when we do rather than silently overwriting it on our next flush. */
+window.addEventListener('storage', e => {
+  if (e.key !== STORAGE_KEY || frozen || !ready) return;
+  if (saveT) {
+    toast('Otra pestaña ha guardado cambios. Aquí tienes cambios sin guardar: al guardarlos se quedarán los tuyos.', 'Recargar', () => location.reload());
+    return;
+  }
+  let next;
+  try { next = JSON.parse(e.newValue); } catch (err) { return; }
+  if (!next || !next.profiles) return;
+  state = next;
+  migrate();
+  applyTheme();
+  render();
+  mark('Actualizado desde otra pestaña');
+});
 
 function mark(msg, err) {
   const s = $('status');
   if (!s) return;
   s.textContent = msg;
   s.className = 'status' + (err ? ' err' : '');
+}
+
+/* ---------- toast ----------
+   For the few notices that need an answer rather than an acknowledgement:
+   a new version is waiting, another tab has changed the log. */
+function toast(msg, actionLabel, fn) {
+  $('toastMsg').textContent = msg;
+  const act = $('toastAct');
+  if (actionLabel) {
+    act.hidden = false;
+    act.textContent = actionLabel;
+    act.onclick = () => { hideToast(); fn(); };
+  } else {
+    act.hidden = true;
+  }
+  $('toast').hidden = false;
+}
+function hideToast() { $('toast').hidden = true; }
+$('toastDismiss').onclick = hideToast;
+
+/* ---------- theme ----------
+   Three states on purpose: most people want the phone's setting to win, but
+   a gym at 7am and a gym at 10pm are different rooms and the override has to
+   stick. Stored with the rest of the state, so it rides along in backups. */
+const THEME_ORDER = ['auto', 'light', 'dark'];
+const THEME_LABEL = { auto: 'automático', light: 'claro', dark: 'oscuro' };
+const THEME_ICON = { auto: '◐', light: '☀', dark: '☾' };
+
+function applyTheme() {
+  const t = (state.prefs && state.prefs.theme) || 'auto';
+  if (t === 'auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', t);
+  const b = $('themeBtn');
+  b.textContent = THEME_ICON[t];
+  b.title = 'Tema ' + THEME_LABEL[t];
+  b.setAttribute('aria-label', 'Tema ' + THEME_LABEL[t] + ' — cambiar');
+}
+
+$('themeBtn').onclick = () => {
+  const p = state.prefs;
+  p.theme = THEME_ORDER[(THEME_ORDER.indexOf(p.theme) + 1) % THEME_ORDER.length];
+  applyTheme();
+  save();
+  mark('Tema ' + THEME_LABEL[p.theme]);
+};
+
+/* ---------- recovery ----------
+   The app draws straight from whatever is in localStorage, so data it cannot
+   read used to mean a white screen and no way back. Instead: stop writing
+   (so the broken copy is not overwritten with something worse), and offer to
+   hand the raw bytes over as a file before anything is thrown away. */
+function showRecovery(err, raw) {
+  frozen = true;
+  ready = false;
+  clearTimeout(saveT); saveT = null;
+  stopRest();
+
+  const box = document.createElement('div');
+  box.className = 'recovery';
+  box.innerHTML =
+    '<h1>No se ha podido abrir tu registro</h1>' +
+    '<p>Los datos guardados en este navegador no tienen la forma que la app espera, ' +
+    'así que no se ha dibujado nada — y, para no empeorarlo, se ha dejado de guardar.</p>' +
+    '<p><b>Descarga los datos antes de nada.</b> Ese archivo es tu registro tal cual está: ' +
+    'aunque la app no sepa leerlo, no se pierde y se puede recuperar a mano.</p>' +
+    '<pre></pre>' +
+    '<div class="foot-btns">' +
+      '<button class="sm key" id="recDownload" type="button">Descargar los datos tal cual</button>' +
+      '<button class="sm" id="recReload" type="button">Reintentar</button>' +
+      '<button class="sm warn" id="recReset" type="button">Empezar de cero</button>' +
+    '</div>';
+  box.querySelector('pre').textContent = String((err && err.message) || err || 'Error desconocido');
+  document.body.replaceChildren(box);
+
+  box.querySelector('#recDownload').onclick = () =>
+    downloadFile('heavy-iron-datos-sin-abrir-' + new Date().toISOString().slice(0, 10) + '.json',
+                 raw == null ? '' : raw, 'application/json');
+  box.querySelector('#recReload').onclick = () => location.reload();
+  box.querySelector('#recReset').onclick = () => {
+    if (!confirm('¿Borrar los datos guardados y empezar de cero? Descarga primero el archivo si no lo has hecho — esto no se puede deshacer.')) return;
+    try { localStorage.removeItem(STORAGE_KEY); } catch (e) { /* nothing else to try */ }
+    location.reload();
+  };
+}
+
+function downloadFile(name, text, mime) {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 /* ---------- state accessors ---------- */
@@ -176,11 +399,13 @@ function lastTime(profile, blockId, dayId, exId, beforeWeek) {
    time instead of whatever it happened to freeze at. The Wake Lock
    request below tries to stop the screen from locking in the first
    place while a rest period is running, on browsers that support it. */
+let tLabel = '';
+
 function startRest(sec, label) {
   if (!sec) return;
   clearInterval(tId);
   tEndAt = Date.now() + sec * 1000;
-  tTotal = sec; tOverNotified = false;
+  tTotal = sec; tOverNotified = false; tLabel = label;
   $('timer').classList.add('up');
   $('timer').classList.remove('over');
   $('tlbl').textContent = 'Descanso · ' + label;
@@ -188,6 +413,7 @@ function startRest(sec, label) {
   tick();
   tId = setInterval(tick, 1000);
   requestWakeLock();
+  primeAudio();  /* we are inside the tap that ticked the set — the one moment the browser lets us unlock sound */
 }
 
 function tick() {
@@ -204,6 +430,7 @@ function tick() {
       $('tmsg').textContent = 'Se acabó el descanso. Siguiente serie.';
       f.style.width = '100%';
       if (navigator.vibrate) navigator.vibrate([200, 80, 200]);
+      beep();
     }
     const over = Math.abs(left);
     v.textContent = '+' + Math.floor(over / 60) + ':' + String(over % 60).padStart(2, '0');
@@ -218,6 +445,75 @@ function stopRest() {
 }
 $('tskip').onclick = stopRest;
 
+/* The prescribed rest is a starting point, not a rule: the machine is still
+   busy, or the set was easier than it looked. Nudging moves the finish line
+   without restarting the countdown. */
+function nudgeRest(delta) {
+  if (!tId) return;
+  const left = Math.max(0, Math.round((tEndAt - Date.now()) / 1000));
+  const next = Math.max(5, left + delta);
+  tEndAt = Date.now() + next * 1000;
+  tTotal = Math.max(tTotal, next);
+  if (tOverNotified) {
+    tOverNotified = false;
+    $('timer').classList.remove('over');
+    $('tlbl').textContent = 'Descanso · ' + tLabel;
+    $('tmsg').textContent = 'Prueba de la frase: si puedes hablar sin quedarte sin aire, ya estás listo.';
+  }
+  tick();
+}
+$('tminus').onclick = () => nudgeRest(-30);
+$('tplus').onclick = () => nudgeRest(30);
+
+/* ---------- rest alarm ----------
+   Vibration is silent to anyone whose phone is on a bench two metres away,
+   and headphones drown the buzz. A short synthesised double beep needs no
+   audio file — which matters for a site that has to work offline. */
+let audioCtx = null;
+
+function primeAudio() {
+  if (!state.prefs.sound) return;
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    audioCtx = audioCtx || new Ctx();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch (e) { /* no audio on this device — the vibration still fires */ }
+}
+
+function beep() {
+  if (!state.prefs.sound || !audioCtx) return;
+  try {
+    const now = audioCtx.currentTime;
+    [0, 0.3].forEach(off => {
+      const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.0001, now + off);
+      gain.gain.exponentialRampToValueAtTime(0.3, now + off + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + off + 0.24);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now + off);
+      osc.stop(now + off + 0.26);
+    });
+  } catch (e) { /* ignore — never let the alarm break the countdown */ }
+}
+
+function renderSoundBtn() {
+  const b = $('tsound');
+  const on = !!state.prefs.sound;
+  b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  b.title = on ? 'Aviso sonoro activado' : 'Aviso sonoro desactivado';
+}
+
+$('tsound').onclick = () => {
+  state.prefs.sound = !state.prefs.sound;
+  renderSoundBtn();
+  save();
+  if (state.prefs.sound) { primeAudio(); beep(); }
+};
+
 async function requestWakeLock() {
   try {
     if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
@@ -229,10 +525,46 @@ function releaseWakeLock() {
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && tId) {
+  if (document.visibilityState === 'hidden') {
+    /* The phone going into a pocket is the most likely moment for the tab to
+       be discarded, and it is exactly when the last set was just typed. */
+    flushSave();
+    return;
+  }
+  if (tId) {
     tick();
     requestWakeLock();
   }
+});
+
+/* ---------- sheets ----------
+   Escape closes the top one, and focus goes into the dialog when it opens
+   and back to whatever opened it when it closes, so the whole app is usable
+   without a mouse. */
+const SHEET_IDS = ['sheet', 'planSheet', 'blocksSheet', 'importSheet', 'chartSheet'];
+let sheetReturn = null;
+
+function openSheet(id) {
+  sheetReturn = document.activeElement;
+  const el = $(id);
+  el.classList.add('up');
+  const box = el.querySelector('.sheet-box');
+  box.setAttribute('tabindex', '-1');
+  box.focus();
+}
+
+function closeSheet(id) {
+  $(id).classList.remove('up');
+  if (sheetReturn && sheetReturn.focus) sheetReturn.focus();
+  sheetReturn = null;
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  const open = SHEET_IDS.filter(id => $(id).classList.contains('up'));
+  if (!open.length) return;
+  const top = open[open.length - 1];
+  if (top === 'planSheet') closePlanEditor(); else closeSheet(top);
 });
 
 /* ---------- profile / block bars ---------- */
@@ -242,8 +574,10 @@ function renderProfiles() {
   Object.keys(state.profiles).forEach(key => {
     const p = state.profiles[key];
     const b = document.createElement('button');
+    b.type = 'button';
     b.className = 'profile-btn' + (key === state.activeProfile ? ' on' : '');
     b.textContent = p.label;
+    b.setAttribute('aria-pressed', key === state.activeProfile ? 'true' : 'false');
     b.onclick = () => { state.activeProfile = key; stopRest(); render(); };
     host.appendChild(b);
   });
@@ -328,7 +662,7 @@ function deleteBlocks(profile, ids) {
 }
 
 function openBlockManager() {
-  $('blocksSheet').classList.add('up');
+  openSheet('blocksSheet');
   renderBlockManager();
 }
 
@@ -388,8 +722,8 @@ $('blkKeepCurrent').onclick = () => {
   mark(n + (n === 1 ? ' bloque eliminado' : ' bloques eliminados') + ' — el bloque actual intacto');
 };
 
-$('blkClose').onclick = () => $('blocksSheet').classList.remove('up');
-$('blocksSheet').addEventListener('click', e => { if (e.target.id === 'blocksSheet') $('blocksSheet').classList.remove('up'); });
+$('blkClose').onclick = () => closeSheet('blocksSheet');
+$('blocksSheet').addEventListener('click', e => { if (e.target.id === 'blocksSheet') closeSheet('blocksSheet'); });
 
 function newBlock() {
   const profile = getProfile();
@@ -436,53 +770,71 @@ function slugify(s) {
     .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-+|-+$)/g, '');
 }
 
+/* Imported blocks come from outside the app — a file in the repo, a paste
+   from a chat, an agent's output — so nothing in them is taken on trust.
+   Every string is trimmed to a length that still fits on the card, every
+   number is clamped to something a human could train, and the block as a
+   whole has a ceiling: a "block" with 40 000 exercises is not a training
+   plan, it is a way to hang the phone. Anything the app then draws is
+   escaped on the way out (see `esc`), so this is a second line, not the
+   only one. */
+const IMPORT_LIMITS = { days: 14, ex: 40, name: 80, exName: 120, alt: 200, cue: 400, reps: 40, pair: 1000, phaseR: 40, phaseT: 400 };
+
+function txt(v, max) {
+  return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
 function normalizeImportedBlock(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('El JSON no es un objeto válido.');
-  const name = (raw.name && String(raw.name).trim()) || 'Bloque importado';
+  const name = txt(raw.name, IMPORT_LIMITS.name) || 'Bloque importado';
   if (!Array.isArray(raw.days) || !raw.days.length) throw new Error('Falta "days" (al menos un día de entrenamiento).');
+  if (raw.days.length > IMPORT_LIMITS.days) throw new Error('Demasiados días (' + raw.days.length + '): el máximo es ' + IMPORT_LIMITS.days + '.');
 
   const usedIds = new Set();
   const usedDayIds = new Set();
   const days = raw.days.map((day, di) => {
     if (!day || typeof day !== 'object') throw new Error('El día ' + (di + 1) + ' no es válido.');
-    const dayName = (day.name && String(day.name).trim()) || ('Día ' + (di + 1));
+    const dayName = txt(day.name, IMPORT_LIMITS.name) || ('Día ' + (di + 1));
     if (!Array.isArray(day.ex) || !day.ex.length) throw new Error('El día "' + dayName + '" necesita al menos un ejercicio.');
+    if (day.ex.length > IMPORT_LIMITS.ex) throw new Error('El día "' + dayName + '" tiene ' + day.ex.length + ' ejercicios: el máximo es ' + IMPORT_LIMITS.ex + '.');
     const ex = day.ex.map((e, ei) => {
       if (!e || typeof e !== 'object') throw new Error('Un ejercicio del día "' + dayName + '" no es válido.');
-      const n = e.n && String(e.n).trim();
+      const n = txt(e.n, IMPORT_LIMITS.exName);
       if (!n) throw new Error('Falta el nombre de un ejercicio en "' + dayName + '".');
-      const reps = e.reps != null && String(e.reps).trim();
+      const reps = txt(e.reps, IMPORT_LIMITS.reps);
       if (!reps) throw new Error('Falta el rango de repeticiones en "' + n + '".');
-      const baseId = e.id ? String(e.id).trim() : (slugify(n) || ('ex-' + di + '-' + ei));
+      const baseId = txt(e.id, 60) || (slugify(n) || ('ex-' + di + '-' + ei));
       let uniqueId = baseId, suffix = 2;
       while (usedIds.has(uniqueId)) uniqueId = baseId + '-' + (suffix++);
       usedIds.add(uniqueId);
       const out = {
         id: uniqueId, n, reps,
-        sets: Number.isFinite(+e.sets) && +e.sets > 0 ? Math.round(+e.sets) : 3,
-        rest: Number.isFinite(+e.rest) && +e.rest >= 0 ? Math.round(+e.rest) : 90,
+        sets: clampInt(e.sets, 1, 12, 3),
+        rest: clampInt(e.rest, 0, 900, 90),
       };
-      if (e.alt) out.alt = String(e.alt);
-      if (e.cue) out.cue = String(e.cue);
-      if (e.add != null && Number.isFinite(+e.add) && +e.add >= 1) out.add = Math.round(+e.add);
+      if (e.alt) out.alt = txt(e.alt, IMPORT_LIMITS.alt);
+      if (e.cue) out.cue = txt(e.cue, IMPORT_LIMITS.cue);
+      if (e.add != null && Number.isFinite(+e.add) && +e.add >= 1) out.add = clampInt(e.add, 1, 8, 1);
       if (e.share) out.share = 1;
       if (e.ss) out.ss = 1;
       return out;
     });
-    let dayId = day.id ? String(day.id).trim() : ('d' + di);
+    let dayId = txt(day.id, 60);
     while (!dayId || usedDayIds.has(dayId)) dayId = uid('d');
     usedDayIds.add(dayId);
     const out = { id: dayId, name: dayName, ex };
-    if (day.pair) out.pair = String(day.pair);
+    if (day.pair) out.pair = txt(day.pair, IMPORT_LIMITS.pair);
     return out;
   });
 
-  let phase = GENERIC_IMPORT_PHASE;
+  let phase = JSON.parse(JSON.stringify(GENERIC_IMPORT_PHASE));
   if (raw.phase && typeof raw.phase === 'object') {
     phase = {};
     for (let w = 1; w <= 8; w++) {
       const p = raw.phase[w] || raw.phase[String(w)];
-      phase[w] = (p && p.r && p.t) ? { r: String(p.r), t: String(p.t) } : GENERIC_IMPORT_PHASE[w];
+      phase[w] = (p && p.r && p.t)
+        ? { r: txt(p.r, IMPORT_LIMITS.phaseR), t: txt(p.t, IMPORT_LIMITS.phaseT) }
+        : GENERIC_IMPORT_PHASE[w];
     }
   }
 
@@ -504,7 +856,7 @@ function applyImportedBlock(raw, sourceLabel) {
   profile.activeBlock = id;
   profile.week = 1; profile.day = 0;
   save(); render();
-  $('importSheet').classList.remove('up');
+  closeSheet('importSheet');
   mark('Bloque "' + normalized.name + '" importado' + (sourceLabel ? ' (' + sourceLabel + ')' : '') + ' en ' + profile.label);
 }
 
@@ -517,8 +869,13 @@ async function loadRepoBlockList() {
     const list = await res.json();
     if (!Array.isArray(list) || !list.length) { host.textContent = 'No hay bloques publicados todavía en blocks/.'; return; }
     host.innerHTML = '';
-    list.forEach(item => {
-      const label = (item && (item.label || item.file)) || 'bloque';
+    list.slice(0, 60).forEach(item => {
+      if (!item || typeof item !== 'object' || !item.file) return;
+      /* The file name is pasted into a URL, so it may only ever name a file
+         sitting in blocks/ — no directory hops, no absolute URLs. */
+      const file = String(item.file);
+      if (!/^[A-Za-z0-9._-]+\.json$/.test(file) || file.indexOf('..') >= 0) return;
+      const label = txt(item.label, 120) || file;
       const row = document.createElement('div');
       row.className = 'import-item';
       row.innerHTML = '<span></span><button type="button" class="sm">Importar</button>';
@@ -526,7 +883,7 @@ async function loadRepoBlockList() {
       row.querySelector('button').onclick = async () => {
         $('importError').textContent = '';
         try {
-          const r = await fetch(GITHUB_BLOCKS_BASE + '/' + item.file, { cache: 'no-store' });
+          const r = await fetch(GITHUB_BLOCKS_BASE + '/' + encodeURIComponent(file), { cache: 'no-store' });
           if (!r.ok) throw new Error('HTTP ' + r.status);
           applyImportedBlock(await r.json(), label);
         } catch (e) {
@@ -543,7 +900,7 @@ async function loadRepoBlockList() {
 function openImportSheet() {
   $('importBlob').value = '';
   $('importError').textContent = '';
-  $('importSheet').classList.add('up');
+  openSheet('importSheet');
   loadRepoBlockList();
 }
 
@@ -553,8 +910,8 @@ $('importFromText').onclick = () => {
   try { raw = JSON.parse($('importBlob').value); } catch (e) { $('importError').textContent = 'Eso no es JSON válido.'; return; }
   applyImportedBlock(raw, 'texto pegado');
 };
-$('importClose').onclick = () => $('importSheet').classList.remove('up');
-$('importSheet').addEventListener('click', e => { if (e.target.id === 'importSheet') $('importSheet').classList.remove('up'); });
+$('importClose').onclick = () => closeSheet('importSheet');
+$('importSheet').addEventListener('click', e => { if (e.target.id === 'importSheet') closeSheet('importSheet'); });
 
 /* ---------- nav ---------- */
 function renderNav() {
@@ -567,8 +924,12 @@ function renderNav() {
   $('weeks').innerHTML = '';
   for (let w = 1; w <= 8; w++) {
     const b = document.createElement('button');
+    b.type = 'button';
     b.className = 'wk' + (w === profile.week ? ' on' : '') + (w === 8 ? ' deload' : '');
     b.textContent = w === 8 ? 'DL' : w;
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-selected', w === profile.week ? 'true' : 'false');
+    b.setAttribute('aria-label', w === 8 ? 'Semana 8, descarga' : 'Semana ' + w);
     const has = days.some(d => {
       const s = profile.log[block.id] && profile.log[block.id][slot(w, d.id)];
       return s && Object.values(s).some(a => a.some(x => x.done));
@@ -581,17 +942,73 @@ function renderNav() {
   $('days').innerHTML = '';
   days.forEach((d, i) => {
     const b = document.createElement('button');
+    b.type = 'button';
     b.className = 'day' + (i === profile.day ? ' on' : '');
     b.innerHTML = '<span class="day-n">Día ' + (i + 1) + '</span><span class="day-t"></span>';
     b.querySelector('.day-t').textContent = d.name;
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-selected', i === profile.day ? 'true' : 'false');
+    b.setAttribute('aria-label', 'Día ' + (i + 1) + ': ' + d.name);
     b.onclick = () => { profile.day = i; stopRest(); render(); };
     $('days').appendChild(b);
   });
 }
 
-/* ---------- main render ---------- */
+/* ---------- main render ----------
+   Everything the app draws goes through here, so this is also the one place
+   that has to survive bad data: if drawing throws, the recovery screen takes
+   over instead of leaving a blank page and an unreachable log. */
 function render() {
   if (!ready) return;
+  try {
+    drawApp();
+  } catch (e) {
+    showRecovery(e, readRaw());
+  }
+}
+
+/* The best weight ever completed on each exercise, across every block of the
+   profile — the bar a set has to clear to count as a personal record. The
+   session being drawn is excluded, or its own sets would beat themselves. */
+function bestByExercise(profile, skipBlockId, skipSlot) {
+  const best = {};
+  Object.keys(profile.log).forEach(bId => {
+    const blk = profile.log[bId];
+    if (!blk) return;
+    Object.keys(blk).forEach(k => {
+      if (bId === skipBlockId && k === skipSlot) return;
+      const s = blk[k];
+      if (!s) return;
+      Object.keys(s).forEach(exId => {
+        const rows = s[exId];
+        if (!Array.isArray(rows)) return;
+        rows.forEach(r => {
+          if (!r || !r.done) return;
+          const w = num(r.w);
+          if (isNaN(w)) return;
+          if (!(exId in best) || w > best[exId]) best[exId] = w;
+        });
+      });
+    });
+  });
+  return best;
+}
+
+/* What you put on the bar for this set last time round, used as the greyed
+   placeholder in the empty weight box. Walks back week by week and falls
+   back to the last set of that week when the plan has since grown. */
+function priorWeight(profile, blockId, w, dayId, exId, idx) {
+  for (let k = w - 1; k >= 1; k--) {
+    const s = profile.log[blockId] && profile.log[blockId][slot(k, dayId)];
+    const rows = s && s[exId];
+    if (!Array.isArray(rows) || !rows.length) continue;
+    const r = rows[idx] || rows[rows.length - 1];
+    if (r && r.w !== '' && r.w != null) return String(r.w);
+  }
+  return '';
+}
+
+function drawApp() {
   const profile = getProfile();
   const block = getBlock();
 
@@ -604,6 +1021,7 @@ function render() {
   renderProfiles();
   renderBlockBar();
   renderNav();
+  renderSoundBtn();
 
   const ph = block.phase[profile.week] || { r: '', t: '' };
   const dl = profile.week === 8;
@@ -623,7 +1041,8 @@ function render() {
 
   const list = $('list');
   list.innerHTML = '';
-  let total = 0, doneN = 0;
+  let total = 0, doneN = 0, tonnage = 0, prs = 0, lastTs = 0;
+  const best = bestByExercise(profile, block.id, slot(profile.week, day.id));
 
   exList(day).forEach((ex, i) => {
     const n = setsFor(ex, profile.week);
@@ -632,13 +1051,17 @@ function render() {
     const allDone = rows.every(r => r.done);
     total += n; doneN += rows.filter(r => r.done).length;
 
+    const isPr = r => r.done && !isNaN(num(r.w)) && (!(ex.id in best) || num(r.w) > best[ex.id]);
+    const cardPr = rows.some(isPr);
+    if (cardPr) prs++;
+
     const card = document.createElement('div');
     card.className = 'ex' + (allDone ? ' complete' : '') + (ex.share ? ' shared' : '');
 
     const prev = lastTime(profile, block.id, day.id, ex.id, profile.week);
     const prevTxt = prev
       ? '<div class="last"><span class="tag">Sem. ' + prev.week + '</span><span><b>' +
-        prev.sets.map(s => s.w + '×' + (s.r || '?')).join('</b> · <b>') + '</b></span></div>'
+        prev.sets.map(s => esc(s.w) + '×' + esc(s.r || '?')).join('</b> · <b>') + '</b></span></div>'
       : '';
 
     card.innerHTML =
@@ -649,7 +1072,7 @@ function render() {
           (ex.alt ? '<div class="ex-alt"></div>' : '') +
           (ex.cue ? '<div class="ex-cue"></div>' : '') +
         '</div>' +
-        '<div><div class="ex-target">' + n + ' × ' + ex.reps + '</div>' +
+        '<div><div class="ex-target">' + n + ' × ' + esc(ex.reps) + '</div>' +
         '<div class="ex-rest">' + (ex.rest ? 'desc. ' + (ex.rest >= 60 ? (ex.rest / 60).toFixed(ex.rest % 60 ? 1 : 0).replace('.0', '') + ' min' : ex.rest + 's') : 'superserie →') + '</div>' +
         '<button class="ex-chart-btn" type="button">Progreso ↗</button></div>' +
       '</div>' + prevTxt +
@@ -667,6 +1090,7 @@ function render() {
     if (ex.share) { const s = document.createElement('span'); s.className = 'badge together'; s.textContent = 'JUNTOS'; nameEl.appendChild(s); }
     else { const s = document.createElement('span'); s.className = 'badge solo'; s.textContent = 'SOLO'; nameEl.appendChild(s); }
     if (ex.ss) { const s = document.createElement('span'); s.className = 'ss'; s.textContent = 'SS'; nameEl.appendChild(s); }
+    if (cardPr) { const s = document.createElement('span'); s.className = 'badge pr'; s.textContent = 'RÉCORD'; nameEl.appendChild(s); }
     if (ex.alt) card.querySelector('.ex-alt').textContent = ex.alt;
     if (ex.cue) card.querySelector('.ex-cue').textContent = ex.cue;
 
@@ -674,24 +1098,49 @@ function render() {
 
     const box = card.querySelector('.sets');
     rows.forEach((r, si) => {
+      if (r.done) {
+        const w = num(r.w), reps = num(r.r);
+        if (!isNaN(w) && !isNaN(reps)) tonnage += w * reps;
+        if (r.ts > lastTs) lastTs = r.ts;
+      }
+
       const row = document.createElement('div');
-      row.className = 'set-row' + (r.done ? ' done' : '');
+      row.className = 'set-row' + (r.done ? ' done' : '') + (isPr(r) ? ' pr' : '');
+      /* text + inputmode rather than type=number: a Spanish keyboard sends a
+         comma, and type=number throws the whole value away when it sees one,
+         so "22,5" silently became an empty box. */
       row.innerHTML =
         '<div class="set-n">' + (si + 1) + '</div>' +
-        '<div class="fld"><input type="number" inputmode="decimal" step="0.5" placeholder="—"><u>kg</u></div>' +
-        '<div class="fld"><input type="number" inputmode="numeric" placeholder="—"><u>rep</u></div>' +
-        '<div class="tick' + (r.done ? ' on' : '') + '">✓</div>';
+        '<div class="fld"><input type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next"><u>kg</u></div>' +
+        '<div class="fld"><input type="text" inputmode="numeric" autocomplete="off" enterkeyhint="next"><u>rep</u></div>' +
+        '<button type="button" class="tick' + (r.done ? ' on' : '') + '" aria-pressed="' + (r.done ? 'true' : 'false') + '">✓</button>';
 
       const [wIn, rIn] = row.querySelectorAll('input');
+      const hint = priorWeight(profile, block.id, profile.week, day.id, ex.id, si);
       wIn.value = r.w; rIn.value = r.r;
-      wIn.oninput = e => { r.w = e.target.value; save(); };
-      rIn.oninput = e => { r.r = e.target.value; save(); };
+      wIn.placeholder = hint || '—';
+      rIn.placeholder = '—';
+      wIn.setAttribute('aria-label', 'Peso, serie ' + (si + 1) + ' de ' + ex.n);
+      rIn.setAttribute('aria-label', 'Repeticiones, serie ' + (si + 1) + ' de ' + ex.n);
+      wIn.oninput = e => { r.w = e.target.value.replace(/[^0-9.,]/g, ''); if (r.w !== e.target.value) e.target.value = r.w; save(); };
+      rIn.oninput = e => { r.r = e.target.value.replace(/[^0-9]/g, ''); if (r.r !== e.target.value) e.target.value = r.r; save(); };
 
-      row.querySelector('.tick').onclick = () => {
+      const tick = row.querySelector('.tick');
+      tick.setAttribute('aria-label', (r.done ? 'Desmarcar' : 'Marcar') + ' serie ' + (si + 1) + ' de ' + ex.n);
+      tick.onclick = () => {
+        let adopted = '';
+        if (!r.done) {
+          /* Ticking a set whose weight box is still empty takes the greyed
+             number showing in it — last week's weight for this same set. It
+             is the common case, but it is also a guess, so it says so. */
+          if ((r.w === '' || r.w == null) && hint) { r.w = hint; adopted = hint; }
+          r.ts = Date.now();
+        }
         r.done = !r.done;
         if (r.done && ex.rest) startRest(ex.rest, ex.n + ' · serie ' + (si + 1));
         if (r.done && !ex.rest) stopRest();
         save(); render();
+        if (adopted) mark('Serie ' + (si + 1) + ' anotada con ' + adopted + ' kg (lo de la semana anterior) — cámbialo si no fue eso');
       };
       box.appendChild(row);
     });
@@ -700,9 +1149,15 @@ function render() {
   });
 
   $('barfill').style.width = total ? (doneN / total * 100) + '%' : '0%';
-  $('note').textContent = doneN === total
+
+  const extra = [];
+  if (tonnage > 0) extra.push('Volumen: ' + Math.round(tonnage).toLocaleString('es-ES') + ' kg movidos');
+  if (prs) extra.push(prs === 1 ? '1 récord personal' : prs + ' récords personales');
+  if (lastTs) extra.push('último registro ' + new Date(lastTs).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }));
+  const head = doneN === total
     ? 'Sesión completa — ' + total + ' series registradas. Siguiente: ' + days[(profile.day + 1) % days.length].name + (profile.day === days.length - 1 ? ', semana ' + (profile.week + 1) : '') + '.'
     : doneN + ' de ' + total + ' series hechas. Llega al tope del rango en todas las series y sube el peso el próximo día.';
+  $('note').textContent = head + (extra.length ? ' · ' + extra.join(' · ') + '.' : '');
 }
 
 /* ---------- day/data actions ---------- */
@@ -756,7 +1211,7 @@ $('editPlan').onclick = () => {
   draftPurge = [];
   $('peBlockName').value = draftBlock.name;
   renderPlanEditor();
-  $('planSheet').classList.add('up');
+  openSheet('planSheet');
 };
 
 function newExercise() {
@@ -999,12 +1454,12 @@ $('peSave').onclick = () => {
   profile.blocks[draftBlock.id] = draftBlock;
   draftBlock = null; draftPurge = [];
   save(); render();
-  $('planSheet').classList.remove('up');
+  closeSheet('planSheet');
   mark('Plan actualizado — el registro se mantiene');
 };
 
 function closePlanEditor() {
-  $('planSheet').classList.remove('up');
+  closeSheet('planSheet');
   draftBlock = null;
   draftPurge = [];
 }
@@ -1033,11 +1488,11 @@ function collectHistory(profile, blockId, dayId, exId) {
     const s = profile.log[blockId] && profile.log[blockId][slot(w, dayId)];
     const rows = s && s[exId];
     if (!rows) continue;
-    const done = rows.filter(r => r.done && r.w !== '' && r.w != null && !isNaN(parseFloat(r.w)));
+    const done = rows.filter(r => r.done && r.w !== '' && r.w != null && !isNaN(num(r.w)));
     if (!done.length) continue;
     let best = done[0];
-    done.forEach(r => { if (parseFloat(r.w) > parseFloat(best.w)) best = r; });
-    points.push({ week: w, weight: parseFloat(best.w), reps: best.r });
+    done.forEach(r => { if (num(r.w) > num(best.w)) best = r; });
+    points.push({ week: w, weight: num(best.w), reps: best.r });
   }
   return points;
 }
@@ -1086,37 +1541,28 @@ function openChart(ex, dayId) {
   } else {
     let html = buildChartSVG(points);
     html += '<table class="chart-table"><thead><tr><th>Semana</th><th>Peso</th><th>Reps</th></tr></thead><tbody>';
-    points.forEach(p => { html += '<tr><td>Semana ' + p.week + '</td><td>' + p.weight + ' kg</td><td>' + (p.reps || '—') + '</td></tr>'; });
+    points.forEach(p => { html += '<tr><td>Semana ' + p.week + '</td><td>' + p.weight + ' kg</td><td>' + esc(p.reps || '—') + '</td></tr>'; });
     html += '</tbody></table>';
     host.innerHTML = html;
   }
-  $('chartSheet').classList.add('up');
+  openSheet('chartSheet');
 }
 
-$('chartClose').onclick = () => $('chartSheet').classList.remove('up');
-$('chartSheet').addEventListener('click', e => { if (e.target.id === 'chartSheet') $('chartSheet').classList.remove('up'); });
+$('chartClose').onclick = () => closeSheet('chartSheet');
+$('chartSheet').addEventListener('click', e => { if (e.target.id === 'chartSheet') closeSheet('chartSheet'); });
 
 /* ---------- backup / restore ---------- */
 $('backup').onclick = () => {
   $('blob').value = JSON.stringify({ app: STORAGE_KEY, v: 1, saved: new Date().toISOString(), data: state });
-  $('sheet').classList.add('up');
+  openSheet('sheet');
 };
-$('bClose').onclick = () => $('sheet').classList.remove('up');
-$('sheet').addEventListener('click', e => { if (e.target.id === 'sheet') $('sheet').classList.remove('up'); });
+$('bClose').onclick = () => closeSheet('sheet');
+$('sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeSheet('sheet'); });
 
 $('bDownload').onclick = () => {
   const payload = JSON.stringify({ app: STORAGE_KEY, v: 1, saved: new Date().toISOString(), data: state }, null, 2);
-  const blob = new Blob([payload], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  const stamp = new Date().toISOString().slice(0, 10);
-  a.href = url;
-  a.download = 'heavy-iron-backup-' + stamp + '.json';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  mark('Copia descargada');
+  downloadFile('heavy-iron-backup-' + new Date().toISOString().slice(0, 10) + '.json', payload, 'application/json');
+  mark('Copia descargada — ' + setsLabel(countBackupSets(state)));
 };
 
 $('bUploadBtn').onclick = () => $('bUpload').click();
@@ -1143,22 +1589,147 @@ $('bCopy').onclick = async () => {
 
 $('bRestore').onclick = () => restoreFromText($('blob').value);
 
+/* A restore replaces everything, so a file that is *almost* a backup is the
+   most dangerous input the app takes: accepting it wipes real history and
+   leaves something the app may not be able to draw. Checked before anything
+   is touched, and the reason is reported rather than a generic "no vale". */
+function describeBackupProblem(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return 'no contiene un objeto de datos';
+  if (!data.profiles || typeof data.profiles !== 'object') return 'no tiene perfiles';
+  for (const pk of ['hombre', 'mujer']) {
+    const p = data.profiles[pk];
+    if (!p || typeof p !== 'object') return 'le falta el perfil "' + pk + '"';
+    if (!p.blocks || typeof p.blocks !== 'object' || !Object.keys(p.blocks).length) return 'el perfil "' + pk + '" no tiene bloques';
+    if (p.log && typeof p.log !== 'object') return 'el registro del perfil "' + pk + '" está corrupto';
+    for (const bk of Object.keys(p.blocks)) {
+      const b = p.blocks[bk];
+      if (!b || typeof b !== 'object') return 'el bloque "' + bk + '" de "' + pk + '" está corrupto';
+      if (!Array.isArray(b.days)) return 'el bloque "' + (b.name || bk) + '" de "' + pk + '" no tiene días';
+    }
+  }
+  return null;
+}
+
+function countBackupSets(data) {
+  let n = 0;
+  Object.keys(data.profiles).forEach(pk => {
+    const log = data.profiles[pk].log;
+    if (!log || typeof log !== 'object') return;
+    Object.keys(log).forEach(bId => {
+      const blk = log[bId];
+      if (!blk || typeof blk !== 'object') return;
+      Object.keys(blk).forEach(k => {
+        const s = blk[k];
+        if (!s || typeof s !== 'object') return;
+        Object.keys(s).forEach(exId => { if (Array.isArray(s[exId])) n += s[exId].filter(rowUsed).length; });
+      });
+    });
+  });
+  return n;
+}
+
 function restoreFromText(text) {
   let parsed;
   try {
-    parsed = JSON.parse(text.trim());
+    parsed = JSON.parse(String(text).trim());
   } catch (e) { mark('Ese texto no es una copia válida', true); return; }
   const data = parsed && parsed.data ? parsed.data : parsed;
-  const ok = data && typeof data === 'object' && data.profiles &&
-    data.profiles.hombre && data.profiles.mujer;
-  if (!ok) { mark('Ese archivo/texto no es una copia válida de Heavy Iron', true); return; }
-  if (!confirm('¿Reemplazar TODO tu registro (los dos perfiles) con esta copia? Se sobrescribirá lo que tengas ahora.')) return;
+
+  const problem = describeBackupProblem(data);
+  if (problem) { mark('Esa copia no se puede usar: ' + problem, true); return; }
+
+  const mine = countBackupSets(state);
+  const theirs = countBackupSets(data);
+  const when = parsed && parsed.saved ? new Date(parsed.saved) : null;
+  const stamp = when && !isNaN(when.getTime()) ? when.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) : null;
+
+  const msg = '¿Reemplazar TODO tu registro con esta copia?\n\n' +
+    'Copia' + (stamp ? ' del ' + stamp : '') + ': ' + setsLabel(theirs) + '.\n' +
+    'Ahora mismo tienes: ' + setsLabel(mine) + '.\n\n' +
+    (theirs < mine ? 'La copia tiene MENOS registro que lo que hay ahora — comprueba que es la que quieres.\n\n' : '') +
+    'No se puede deshacer.';
+  if (!confirm(msg)) return;
+
   state = data;
   if (!state.activeProfile) state.activeProfile = 'hombre';
   migrate();
+  applyTheme();
   save(); render();
-  $('sheet').classList.remove('up');
-  mark('Registro restaurado');
+  closeSheet('sheet');
+  mark('Registro restaurado — ' + setsLabel(theirs));
 }
 
+/* ---------- offline ----------
+   A gym basement with no signal is the normal case, not the edge case, so
+   the app installs itself and serves from cache. Updates are never applied
+   under you mid-session: a new version waits until you say so, and the
+   pending write is flushed before the reload that picks it up. */
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator) || location.protocol.indexOf('http') !== 0) return;
+
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    reg.addEventListener('updatefound', () => {
+      const sw = reg.installing;
+      if (!sw) return;
+      sw.addEventListener('statechange', () => {
+        if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+          toast('Hay una versión nueva de la app.', 'Actualizar', () => sw.postMessage('skipWaiting'));
+        }
+      });
+    });
+  }).catch(() => { /* offline on first load, or opened from file:// — the app still runs */ });
+
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloading) return;
+    reloading = true;
+    flushSave();
+    location.reload();
+  });
+}
+
+/* ---------- CSV export ----------
+   One row per logged set, for looking at the numbers somewhere the app
+   cannot: a spreadsheet, a chart, a coach's inbox. Deliberately one-way —
+   the .json is what restores, and mixing the two up loses data. */
+function csvCell(v) {
+  const s = String(v == null ? '' : v);
+  return /[",;\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function buildCsv() {
+  const rows = [['perfil', 'bloque', 'semana', 'dia', 'ejercicio', 'serie', 'kg', 'reps', 'hecha', 'fecha']];
+  Object.keys(state.profiles).forEach(pk => {
+    const profile = state.profiles[pk];
+    profile.blockOrder.forEach(bId => {
+      const block = profile.blocks[bId];
+      block.days.forEach(day => {
+        day.ex.forEach(ex => {
+          for (let w = 1; w <= 8; w++) {
+            const s = profile.log[bId] && profile.log[bId][slot(w, day.id)];
+            const arr = s && s[ex.id];
+            if (!Array.isArray(arr)) continue;
+            arr.forEach((r, i) => {
+              if (!rowUsed(r)) return;
+              rows.push([profile.label, block.name, w, day.name, ex.n, i + 1, r.w, r.r,
+                         r.done ? 'si' : 'no', r.ts ? new Date(r.ts).toISOString().slice(0, 10) : '']);
+            });
+          }
+        });
+      });
+    });
+  });
+  /* The BOM is what makes Excel open a UTF-8 CSV without mangling accents. */
+  return '﻿' + rows.map(r => r.map(csvCell).join(',')).join('\r\n');
+}
+
+$('bCsv').onclick = () => {
+  const csv = buildCsv();
+  const lines = csv.split('\r\n').length - 1;
+  if (!lines) { mark('No hay ninguna serie registrada todavía', true); return; }
+  downloadFile('heavy-iron-series-' + new Date().toISOString().slice(0, 10) + '.csv', csv, 'text/csv;charset=utf-8');
+  mark(lines === 1 ? '1 serie exportada' : lines + ' series exportadas');
+};
+
 load();
+registerServiceWorker();
