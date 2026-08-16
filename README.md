@@ -23,9 +23,13 @@ browser. It installs to a phone's home screen and works with no signal.
   rest time, and shared/superserie flags for the active block, add or
   remove exercises and days, and reorder them — all without losing what
   you have already logged. See [Editing a block mid-way](#editing-a-block-mid-way).
-- **8-week week/day navigation**, rest timer, "copy previous week's
-  weights", and per-exercise progress charts (best weight logged per
-  week).
+- **Blocks of any length**, 1 to 16 weeks, with the deload week you choose
+  (or none at all) — see [Block length](#block-length-and-the-deload-week).
+- **Week/day navigation**, rest timer, "copy previous week's weights", and
+  per-exercise progress charts — for the current block, or across every
+  block you have ever run.
+- **Undo** on the three things that destroy data: clearing a day, wiping a
+  profile, deleting a block.
 - **Works offline, installs like an app** — see [Offline](#offline-and-installing).
 - **Session feedback while you train**: last week's weight waiting in the
   box, a **RÉCORD** badge when a set beats everything you have ever logged
@@ -37,6 +41,9 @@ browser. It installs to a phone's home screen and works with no signal.
   data, or copy/paste it as text. Restoring replaces everything. There is
   also a one-way **CSV export** for looking at the numbers in a
   spreadsheet.
+- **Move one person between phones**: export a single profile and load it
+  on the other device — it replaces that person and leaves the other
+  alone. See [Two phones](#two-phones-one-profile-each).
 - **Import a block from JSON**: paste a block definition (e.g. one an
   AI training agent generated for you), or pick one from `blocks/` in
   this repo — see [Importing blocks](#importing-blocks-from-json) below.
@@ -72,6 +79,56 @@ Changing it later relabels everything and rewrites nothing.
 **About solo mode.** The second profile is hidden, not deleted. Its plan
 and history stay in storage and in your backups, so turning two-person
 mode back on returns everything exactly as it was.
+
+## Block length and the deload week
+
+A block is 1 to 16 weeks long, set in **Editar plan** alongside its name.
+Pick which week is the deload — any of them, or **Sin descarga** if the
+block doesn't have one. In the deload week every exercise does half its
+sets, rounded up, minimum two; that used to be hardcoded to week 8.
+
+Blocks saved before this are exactly what the app used to assume — eight
+weeks, deload on week 8 — so nothing you already have moves.
+
+Two things worth knowing when you change the length:
+
+- **Shortening never deletes.** Sets logged in weeks the block no longer
+  has are kept and hidden, and the session says how many; make the block
+  long enough again and they come straight back. It's the same rule as
+  dropping a set from an exercise.
+- **Week goals follow.** Weeks the block grows into get a goal generated
+  for them, and moving the deload moves its text with it. Anything you
+  wrote yourself in a week's goal is left alone.
+
+## Two phones, one profile each
+
+There is still no sync — but there is now a way to carry one person across.
+In **Copia de seguridad**, **Exportar &lt;name&gt;** writes a file with just
+that person in it, and **Cargar un perfil** on the other phone loads it.
+
+It replaces **only** the profile it came from. The other person's plan,
+history, week and day are untouched, and the confirmation shows both set
+counts before anything is overwritten:
+
+```
+Entra "Ana" del 14 ago 2026: 184 series registradas.
+Se reemplaza Ana, que tiene ahora 12 series registradas.
+
+Bruno no se toca. No se puede deshacer.
+```
+
+A profile file is not a backup and won't load as one — **Cargar copia**
+rejects it, and says so. Use the full `.json` for backups and this for
+moving one person.
+
+## Undo
+
+Clearing a day, wiping a profile and deleting a block each take a
+snapshot first, and offer **Deshacer** in a bar at the bottom of the
+screen. One level deep: the next destructive action replaces it, and it
+doesn't survive a reload. It covers the misfire that actually happens —
+the wrong day, the wrong profile — not a change of heart tomorrow. For
+that, keep backups.
 
 ## Data & privacy
 
@@ -216,14 +273,18 @@ Two ways to get JSON in:
 
 1. **Paste it in** — open **Importar JSON** and paste into the text box.
    Good for a one-off block someone (or an AI agent) hands you in a chat.
-2. **Publish it to `blocks/` in this repo** — commit a file there plus
+2. **Publish it to `blocks/` in the repo** — commit a file there plus
    an entry in `blocks/index.json`, and it shows up as a one-click
-   "Importar" option for anyone using the app, fetched read-only from
-   `raw.githubusercontent.com` (no token, no write access from the app
-   itself). This is the intended path for a training agent with commit
-   access to this repo: it commits a new block file, and the block is
-   available in the app the next time the sheet is opened — no copying
-   and pasting.
+   "Importar" option, fetched read-only from `raw.githubusercontent.com`
+   (no token, no write access from the app itself). This is the intended
+   path for a training agent with commit access: it commits a new block
+   file, and the block is available in the app the next time the sheet is
+   opened — no copying and pasting.
+
+   The app fetches from **whichever repo is serving it**, worked out from
+   the URL, so a fork lists its own blocks rather than this one's. Served
+   from anywhere that isn't GitHub Pages (a local server, a custom
+   domain), it falls back to this repo.
 
 `blocks/index.json` is a flat list:
 
@@ -384,6 +445,10 @@ Field notes:
 - `ex.add`: optional — from this week number onward, one extra set is
   added automatically (mirrors the built-in blocks' progressive-overload
   pattern).
+- `weeks` (block): optional, 1–16, defaults to `8`.
+- `deload` (block): optional — the week number whose sets are halved. Use
+  `0` for a block with no deload. Defaults to `8` on an 8-week block and
+  to none on any other length.
 - `ex.share` / `ex.ss`: optional flags — `1` marks the exercise as a
   shared/couple's station ("JUNTOS") or part of a superset ("SS").
 - `ex.alt`, `ex.cue`: optional free text.
@@ -408,6 +473,7 @@ or smuggle markup onto the screen:
 | `day.pair` | 1000 characters |
 | `ex.sets` | clamped to 1–12 · `ex.rest` to 0–900s · `ex.add` to 1–8 |
 | `phase[w].r` / `.t` | 40 / 400 characters |
+| `weeks` | clamped to 1–16 · `deload` must fall inside it, or it's dropped |
 
 `blocks/index.json` entries are checked too: `file` must be a plain
 `*.json` name with no path in it, so an entry in that list can only ever
@@ -466,16 +532,16 @@ fixing it quietly.
 
 Worth knowing before you plan around them:
 
-- **A block is always 8 weeks**, with week 8 as the deload (its sets are
-  halved automatically). A 4- or 12-week block is not expressible yet.
-- **Restoring replaces both profiles.** There is no way to import just one
-  person's history into a phone that already has the other's, so the two
-  logs cannot be merged — each phone stays its own record.
-- **Progress charts are per block.** The **RÉCORD** badge looks across
-  every block of a profile, but the chart resets each block, which is
-  where a long-term trend would be most interesting.
-- **No sync.** By design — there is no server — but it means a lost phone
-  with no backup is a lost history.
+- **Spanish only.** Every string lives inline in `app.js`, so translating
+  is a real project rather than a patch. This is the biggest wall for
+  anyone who finds the app and doesn't read Spanish.
+- **No sync.** By design — there is no server. A profile can be carried
+  between phones by hand (see [Two phones](#two-phones-one-profile-each)),
+  but a lost phone with no backup is still a lost history, and nothing
+  reminds you to take one.
+- **Undo is one level deep** and doesn't survive a reload.
+- **Two profiles, no more.** Solo mode hides one; there's no way to add a
+  third.
 
 ## Hosting on GitHub Pages
 
