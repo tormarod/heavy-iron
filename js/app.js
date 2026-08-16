@@ -108,14 +108,20 @@ function migrate() {
     profile.blockOrder = order;
     if (!profile.blocks[profile.activeBlock]) profile.activeBlock = order[order.length - 1];
 
-    profile.week = clampInt(profile.week, 1, 8, 1);
+    profile.week = clampInt(profile.week, 1, MAX_WEEKS, 1);
     profile.day = clampInt(profile.day, 0, 99, 0);
 
     Object.keys(profile.blocks).forEach(bk => {
       const block = profile.blocks[bk];
       if (!block.id) block.id = bk;
       if (!block.name) block.name = 'Bloque';
-      if (!block.phase || typeof block.phase !== 'object') block.phase = JSON.parse(JSON.stringify(GENERIC_IMPORT_PHASE));
+      /* Blocks saved before length was configurable are exactly what the app
+         used to assume: eight weeks, the eighth halved. */
+      block.weeks = clampInt(block.weeks, 1, MAX_WEEKS, 8);
+      if (block.deload == null) block.deload = block.weeks === 8 ? 8 : 0;
+      block.deload = clampInt(block.deload, 0, MAX_WEEKS, 0);
+      if (block.deload > block.weeks) block.deload = 0;
+      if (!block.phase || typeof block.phase !== 'object') block.phase = genericPhase(block.weeks, block.deload);
       if (!Array.isArray(block.days)) block.days = [];
       block.days = block.days.filter(d => d && typeof d === 'object');
       if (!block.days.length) block.days = [{ id: 'd0', name: 'Día 1', ex: [newExercise()] }];
@@ -165,6 +171,18 @@ function migrate() {
 }
 
 const profileKeys = () => Object.keys(state.profiles);
+
+/* A block used to be exactly eight weeks with the eighth halved as a deload,
+   and that was written into every loop, the week bar and the chart's x-axis.
+   Now the block says how long it is and which week (if any) is the deload;
+   blocks saved before this default to 8 and 8, so nothing already logged
+   moves. */
+const MAX_WEEKS = 16;
+const blockWeeks = block => clampInt(block && block.weeks, 1, MAX_WEEKS, 8);
+const deloadWeek = block => {
+  const w = clampInt(block && block.deload, 0, MAX_WEEKS, 0);
+  return w >= 1 && w <= blockWeeks(block) ? w : 0;  /* 0 = no deload week */
+};
 
 /* In solo mode the second profile stays in storage untouched — hidden, not
    deleted — so switching back to two people is instant and a backup taken
@@ -249,6 +267,109 @@ function toast(msg, actionLabel, fn) {
 }
 function hideToast() { $('toast').hidden = true; }
 $('toastDismiss').onclick = hideToast;
+
+/* ---------- undo ----------
+   Every destructive action asks first, but "yes" used to be the end of it.
+   One snapshot of the whole state costs a stringify of something already
+   small, and covers the misfire that actually happens: the wrong day, the
+   wrong profile, the wrong block. Offered through the toast, and dropped as
+   soon as the next one replaces it. */
+let undoSnapshot = null;
+
+function snapshotForUndo(what) {
+  try {
+    undoSnapshot = JSON.stringify(state);
+  } catch (e) {
+    undoSnapshot = null;
+    return;
+  }
+  toast(what, 'Deshacer', undoLast);
+}
+
+function undoLast() {
+  if (!undoSnapshot) return;
+  let restored;
+  try { restored = JSON.parse(undoSnapshot); } catch (e) { return; }
+  undoSnapshot = null;
+  state = restored;
+  migrate();
+  applyTheme();
+  save();
+  render();
+  mark('Deshecho');
+}
+
+/* ---------- dialogs ----------
+   The app used to lean on window.confirm/alert/prompt. They block the whole
+   page, cannot be styled, ignore the dark theme, and — the reason this
+   mattered enough to change — an installed PWA is exactly the context
+   browsers are most willing to suppress `prompt` in, which would have made
+   "+ Nuevo bloque" do nothing at all with no error.
+
+   These return a promise so the call sites read the same way they did:
+   `if (!await ask(...)) return;`. Only one can be open at a time, which is
+   already true of the confirm() they replace. */
+let askResolve = null;
+
+function closeAsk(value) {
+  const done = askResolve;
+  askResolve = null;
+  $('askSheet').classList.remove('up');
+  if (sheetReturn && sheetReturn.focus) sheetReturn.focus();
+  sheetReturn = null;
+  if (done) done(value);
+}
+
+function openAsk(opts) {
+  /* A second dialog while one is open would strand the first promise. */
+  if (askResolve) closeAsk(opts.textInput ? null : false);
+
+  $('askT').textContent = opts.title || '';
+  $('askBody').textContent = opts.body || '';
+  $('askBody').style.display = opts.body ? '' : 'none';
+  $('askOk').textContent = opts.okLabel || 'Aceptar';
+  $('askOk').className = 'sm ' + (opts.danger ? 'warn' : 'key');
+  $('askCancel').style.display = opts.okOnly ? 'none' : '';
+  $('askCancel').textContent = opts.cancelLabel || 'Cancelar';
+
+  const input = $('askInput');
+  input.style.display = opts.textInput ? '' : 'none';
+  if (opts.textInput) {
+    input.value = opts.value || '';
+    input.placeholder = opts.placeholder || '';
+    input.setAttribute('aria-label', opts.title || 'Valor');
+  }
+
+  sheetReturn = document.activeElement;
+  $('askSheet').classList.add('up');
+  const focusTarget = opts.textInput ? input : $('askOk');
+  focusTarget.focus();
+  if (opts.textInput) input.select();
+
+  return new Promise(resolve => { askResolve = resolve; });
+}
+
+/* Yes/no. Resolves true only if the confirming button was pressed. */
+const ask = opts => openAsk(opts).then(v => v === true);
+
+/* A message with nothing to decide — the old alert(). */
+const tell = (title, body) => openAsk({ title, body, okLabel: 'Entendido', okOnly: true }).then(() => undefined);
+
+/* One line of text, or null if cancelled — the old prompt(). */
+const askText = opts => openAsk(Object.assign({ textInput: true, okLabel: 'Crear' }, opts))
+  .then(v => (typeof v === 'string' ? v : null));
+
+$('askOk').onclick = () => {
+  const input = $('askInput');
+  closeAsk(input.style.display === 'none' ? true : input.value);
+};
+$('askCancel').onclick = () => closeAsk($('askInput').style.display === 'none' ? false : null);
+$('askSheet').addEventListener('click', e => {
+  if (e.target.id === 'askSheet') closeAsk($('askInput').style.display === 'none' ? false : null);
+});
+$('askInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); closeAsk($('askInput').value); }
+});
 
 /* ---------- theme ----------
    Three states on purpose: most people want the phone's setting to win, but
@@ -429,8 +550,10 @@ function emptyBlock() {
     id,
     name: 'Mi bloque',
     createdAt: new Date().toISOString(),
+    weeks: 8,
+    deload: 8,
     days: [{ id: 'd0', name: 'Día 1', ex: [newExercise()] }],
-    phase: JSON.parse(JSON.stringify(GENERIC_IMPORT_PHASE)),
+    phase: genericPhase(8, 8),
   };
 }
 
@@ -467,6 +590,8 @@ function showRecovery(err, raw) {
                  raw == null ? '' : raw, 'application/json');
   box.querySelector('#recReload').onclick = () => location.reload();
   box.querySelector('#recReset').onclick = () => {
+    /* The only native confirm left, and deliberately: this screen has already
+       replaced document.body, so the dialog sheet is not in the page any more. */
     if (!confirm('¿Borrar los datos guardados y empezar de cero? Descarga primero el archivo si no lo has hecho — esto no se puede deshacer.')) return;
     try { localStorage.removeItem(STORAGE_KEY); } catch (e) { /* nothing else to try */ }
     location.reload();
@@ -489,10 +614,10 @@ function downloadFile(name, text, mime) {
 function getProfile() { return state.profiles[state.activeProfile]; }
 function getBlock() { const p = getProfile(); return p.blocks[p.activeBlock]; }
 
-function setsFor(ex, w) {
+function setsFor(ex, w, block) {
   let n = ex.sets;
   if (ex.add && w >= ex.add) n += 1;
-  if (w === 8) n = Math.max(2, Math.ceil(ex.sets / 2));
+  if (block && w === deloadWeek(block)) n = Math.max(2, Math.ceil(ex.sets / 2));
   return n;
 }
 
@@ -524,9 +649,10 @@ function parkedRows(profile, blockId, w, dayId, exId, n) {
   return a && a.length > n ? a.slice(n).filter(rowUsed).length : 0;
 }
 
-function loggedSets(profile, blockId, dayId, exId) {
+function loggedSets(profile, blockId, dayId, exId, weeks) {
   let n = 0;
-  for (let w = 1; w <= 8; w++) {
+  const last = weeks || MAX_WEEKS;
+  for (let w = 1; w <= last; w++) {
     const s = profile.log[blockId] && profile.log[blockId][slot(w, dayId)];
     if (s && s[exId]) n += s[exId].filter(rowUsed).length;
   }
@@ -537,16 +663,35 @@ function loggedSetsDay(profile, blockId, day) {
   return day.ex.reduce((t, ex) => t + loggedSets(profile, blockId, day.id, ex.id), 0);
 }
 
+/* Rows filed under weeks past the end of a shortened block: kept, but out of
+   reach until the block is made long enough to show them again. */
+function weeksBeyondEnd(profile, block) {
+  const blk = profile.log[block.id];
+  if (!blk) return 0;
+  const weeks = blockWeeks(block);
+  let n = 0;
+  Object.keys(blk).forEach(k => {
+    const m = /^w(\d+)-/.exec(k);
+    if (!m || +m[1] <= weeks) return;
+    const s = blk[k];
+    Object.keys(s || {}).forEach(exId => { if (Array.isArray(s[exId])) n += s[exId].filter(rowUsed).length; });
+  });
+  return n;
+}
+
+/* These walk to MAX_WEEKS rather than the block's length on purpose: a block
+   shortened from 12 weeks to 6 still has rows filed under weeks 7-12, and
+   "borrar registro" has to mean all of it. */
 function purgeExLog(profile, blockId, dayId, exId) {
   const blk = profile.log[blockId];
   if (!blk) return;
-  for (let w = 1; w <= 8; w++) { const s = blk[slot(w, dayId)]; if (s) delete s[exId]; }
+  for (let w = 1; w <= MAX_WEEKS; w++) { const s = blk[slot(w, dayId)]; if (s) delete s[exId]; }
 }
 
 function purgeDayLog(profile, blockId, dayId) {
   const blk = profile.log[blockId];
   if (!blk) return;
-  for (let w = 1; w <= 8; w++) delete blk[slot(w, dayId)];
+  for (let w = 1; w <= MAX_WEEKS; w++) delete blk[slot(w, dayId)];
 }
 
 /* Everything logged anywhere in a block — the number that decides whether
@@ -744,6 +889,7 @@ function closeSheet(id) {
 
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
+  if (askResolve) { closeAsk($('askInput').style.display === 'none' ? false : null); return; }
   const open = SHEET_IDS.filter(id => $(id).classList.contains('up'));
   if (!open.length) return;
   const top = open[open.length - 1];
@@ -838,6 +984,8 @@ function deleteBlocks(profile, ids) {
   const keep = profile.blockOrder.filter(id => !drop.has(id));
   if (!keep.length) return 0;
 
+  snapshotForUndo(drop.size === 1 ? 'Bloque eliminado.' : drop.size + ' bloques eliminados.');
+
   drop.forEach(id => { delete profile.blocks[id]; delete profile.log[id]; });
   profile.blockOrder = keep;
   if (drop.has(profile.activeBlock)) {
@@ -878,13 +1026,17 @@ function renderBlockManager() {
 
     const del = row.querySelector('.blk-del');
     del.disabled = only;
-    del.onclick = () => {
-      const what = '¿Eliminar "' + block.name + '"' + (date ? ' (' + date + ')' : '') + '?\n\n';
+    del.onclick = async () => {
       const cost = sets ? 'Se borran sus ' + setsLabel(sets) + '. ' : 'No tiene nada registrado. ';
       const rest = active
         ? 'Es el bloque en el que estás entrenando: al borrarlo pasas al bloque más reciente que quede.'
         : 'El bloque actual, "' + profile.blocks[profile.activeBlock].name + '", se queda exactamente como está.';
-      if (!confirm(what + cost + rest + '\n\nNo se puede deshacer.')) return;
+      const okd = await ask({
+        title: '¿Eliminar "' + block.name + '"' + (date ? ' (' + date + ')' : '') + '?',
+        body: cost + rest + ' No se puede deshacer.',
+        okLabel: 'Eliminar', danger: true,
+      });
+      if (!okd) return;
       deleteBlocks(profile, [id]);
       renderBlockManager();
       mark('Bloque eliminado');
@@ -894,17 +1046,20 @@ function renderBlockManager() {
   });
 }
 
-$('blkKeepCurrent').onclick = () => {
+$('blkKeepCurrent').onclick = async () => {
   const profile = getProfile();
   const others = profile.blockOrder.filter(id => id !== profile.activeBlock);
-  if (!others.length) { alert('"' + getBlock().name + '" ya es el único bloque de ' + profile.label + '.'); return; }
+  if (!others.length) { await tell('Nada que eliminar', '"' + getBlock().name + '" ya es el único bloque de ' + profile.label + '.'); return; }
   const sets = others.reduce((t, id) => t + blockLoggedSets(profile, id), 0);
   const names = others.map(id => '· ' + blockPickerLabel(profile, id)).join('\n');
-  const msg =
-    '¿Eliminar los otros ' + others.length + ' bloques de ' + profile.label + '?\n\n' + names + '\n\n' +
-    (sets ? 'Se borran ' + setsLabel(sets) + ' en total. ' : 'No tienen nada registrado. ') +
-    '"' + getBlock().name + '" y todo su registro se quedan como están.\n\nNo se puede deshacer.';
-  if (!confirm(msg)) return;
+  const okd = await ask({
+    title: '¿Eliminar los otros ' + others.length + ' bloques de ' + profile.label + '?',
+    body: names + '\n\n' +
+      (sets ? 'Se borran ' + setsLabel(sets) + ' en total. ' : 'No tienen nada registrado. ') +
+      '"' + getBlock().name + '" y todo su registro se quedan como están. No se puede deshacer.',
+    okLabel: 'Eliminar', danger: true,
+  });
+  if (!okd) return;
   const n = deleteBlocks(profile, others);
   renderBlockManager();
   mark(n + (n === 1 ? ' bloque eliminado' : ' bloques eliminados') + ' — el bloque actual intacto');
@@ -913,12 +1068,17 @@ $('blkKeepCurrent').onclick = () => {
 $('blkClose').onclick = () => closeSheet('blocksSheet');
 $('blocksSheet').addEventListener('click', e => { if (e.target.id === 'blocksSheet') closeSheet('blocksSheet'); });
 
-function newBlock() {
+async function newBlock() {
   const profile = getProfile();
   const current = getBlock();
   const n = profile.blockOrder.length + 1;
-  const name = prompt('Nombre del nuevo bloque:', 'Bloque ' + n);
-  if (!name) return;
+  const name = await askText({
+    title: 'Nuevo bloque',
+    body: 'Se crea copiando el plan de "' + current.name + '". Su registro se queda donde está.',
+    value: 'Bloque ' + n,
+    placeholder: 'Nombre del bloque',
+  });
+  if (!name || !name.trim()) return;
   const id = 'block-' + Date.now();
   const clone = JSON.parse(JSON.stringify(current));
   clone.id = id;
@@ -940,18 +1100,50 @@ function newBlock() {
    JSON — either pasted in, or committed to blocks/ in this repo and
    picked from the list, fetched read-only via raw.githubusercontent.com
    (no token, no write access). See README for the expected JSON shape. */
-const GITHUB_BLOCKS_BASE = 'https://raw.githubusercontent.com/tormarod/heavy-iron/main/blocks';
+const DEFAULT_BLOCKS_BASE = 'https://raw.githubusercontent.com/tormarod/heavy-iron/main/blocks';
 
-const GENERIC_IMPORT_PHASE = {
-  1: { r: '2–3 RIR', t: 'Ajustando pesos. Deja repeticiones en la recámara.' },
-  2: { r: '2–3 RIR', t: 'Ajustando pesos. Deja repeticiones en la recámara.' },
-  3: { r: '1–2 RIR', t: 'Series de trabajo. La última repetición se frena.' },
-  4: { r: '1–2 RIR', t: 'Series de trabajo. La última repetición se frena.' },
-  5: { r: '1–2 RIR', t: 'Series de trabajo. La última repetición se frena.' },
-  6: { r: '0–1 RIR', t: 'Series de trabajo. La última repetición se frena.' },
-  7: { r: '0–1 RIR', t: 'La semana más dura. Última serie de cada máquina al fallo.' },
-  8: { r: 'Descarga', t: 'Mitad de series, ~60% del peso. Nada duro. De eso se trata.' },
-};
+/* Published blocks are fetched from whichever repo is serving the app, so a
+   fork lists its own blocks rather than this one's. On GitHub Pages both the
+   owner and the repo are sitting in the URL; anywhere else (a local server,
+   a custom domain) there is nothing to read and the original stands. */
+function blocksBase() {
+  const m = /^([A-Za-z0-9-]+)\.github\.io$/.exec(location.hostname);
+  if (!m) return DEFAULT_BLOCKS_BASE;
+  const seg = location.pathname.split('/').filter(Boolean)[0];
+  const repo = seg || (m[1] + '.github.io');   /* a user site has no path segment */
+  return 'https://raw.githubusercontent.com/' + m[1] + '/' + repo + '/main/blocks';
+}
+
+const DELOAD_PHASE = { r: 'Descarga', t: 'Mitad de series, ~60% del peso. Nada duro. De eso se trata.' };
+
+/* The week-goal table a block gets when it does not bring its own. The RIR
+   ramp is spread across however many working weeks there are, so a 4-week
+   block gets the same shape as a 12-week one rather than running out of
+   scale or repeating itself. */
+const GENERIC_RAMP = [
+  { at: 0.00, r: '2–3 RIR', t: 'Ajustando pesos. Deja repeticiones en la recámara.' },
+  { at: 0.30, r: '1–2 RIR', t: 'Series de trabajo. La última repetición se frena.' },
+  { at: 0.70, r: '0–1 RIR', t: 'Series de trabajo. La última repetición se frena.' },
+  { at: 0.95, r: '0–1 RIR', t: 'La semana más dura. Última serie de cada máquina al fallo.' },
+];
+
+function genericPhase(weeks, deload) {
+  const n = clampInt(weeks, 1, MAX_WEEKS, 8);
+  const dl = clampInt(deload, 0, MAX_WEEKS, 0);
+  const working = [];
+  for (let w = 1; w <= n; w++) if (w !== dl) working.push(w);
+
+  const phase = {};
+  for (let w = 1; w <= n; w++) {
+    if (w === dl) { phase[w] = { r: DELOAD_PHASE.r, t: DELOAD_PHASE.t }; continue; }
+    const i = working.indexOf(w);
+    const p = working.length > 1 ? i / (working.length - 1) : 0;
+    let step = GENERIC_RAMP[0];
+    GENERIC_RAMP.forEach(x => { if (p >= x.at) step = x; });
+    phase[w] = { r: step.r, t: step.t };
+  }
+  return phase;
+}
 
 function slugify(s) {
   return (s || '').toString().normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -975,6 +1167,11 @@ function txt(v, max) {
 function normalizeImportedBlock(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('El JSON no es un objeto válido.');
   const name = txt(raw.name, IMPORT_LIMITS.name) || 'Bloque importado';
+  /* Both optional: a block that says nothing is the eight-week, deload-on-8
+     shape every block had before length was configurable. */
+  const weeks = clampInt(raw.weeks, 1, MAX_WEEKS, 8);
+  let deload = raw.deload == null ? (weeks === 8 ? 8 : 0) : clampInt(raw.deload, 0, MAX_WEEKS, 0);
+  if (deload > weeks) deload = 0;
   if (!Array.isArray(raw.days) || !raw.days.length) throw new Error('Falta "days" (al menos un día de entrenamiento).');
   if (raw.days.length > IMPORT_LIMITS.days) throw new Error('Demasiados días (' + raw.days.length + '): el máximo es ' + IMPORT_LIMITS.days + '.');
 
@@ -1002,7 +1199,7 @@ function normalizeImportedBlock(raw) {
       };
       if (e.alt) out.alt = txt(e.alt, IMPORT_LIMITS.alt);
       if (e.cue) out.cue = txt(e.cue, IMPORT_LIMITS.cue);
-      if (e.add != null && Number.isFinite(+e.add) && +e.add >= 1) out.add = clampInt(e.add, 1, 8, 1);
+      if (e.add != null && Number.isFinite(+e.add) && +e.add >= 1) out.add = clampInt(e.add, 1, weeks, 1);
       if (e.share) out.share = 1;
       if (e.ss) out.ss = 1;
       return out;
@@ -1015,18 +1212,19 @@ function normalizeImportedBlock(raw) {
     return out;
   });
 
-  let phase = JSON.parse(JSON.stringify(GENERIC_IMPORT_PHASE));
+  let phase = genericPhase(weeks, deload);
   if (raw.phase && typeof raw.phase === 'object') {
+    const generic = phase;
     phase = {};
-    for (let w = 1; w <= 8; w++) {
+    for (let w = 1; w <= weeks; w++) {
       const p = raw.phase[w] || raw.phase[String(w)];
       phase[w] = (p && p.r && p.t)
         ? { r: txt(p.r, IMPORT_LIMITS.phaseR), t: txt(p.t, IMPORT_LIMITS.phaseT) }
-        : GENERIC_IMPORT_PHASE[w];
+        : generic[w];
     }
   }
 
-  return { name, days, phase };
+  return { name, weeks, deload, days, phase };
 }
 
 function applyImportedBlock(raw, sourceLabel) {
@@ -1039,7 +1237,11 @@ function applyImportedBlock(raw, sourceLabel) {
   }
   const profile = getProfile();
   const id = 'block-' + Date.now();
-  profile.blocks[id] = { id, name: normalized.name, createdAt: new Date().toISOString(), days: normalized.days, phase: normalized.phase };
+  profile.blocks[id] = {
+    id, name: normalized.name, createdAt: new Date().toISOString(),
+    weeks: normalized.weeks, deload: normalized.deload,
+    days: normalized.days, phase: normalized.phase,
+  };
   profile.blockOrder.push(id);
   profile.activeBlock = id;
   profile.week = 1; profile.day = 0;
@@ -1052,7 +1254,7 @@ async function loadRepoBlockList() {
   const host = $('importRepoList');
   host.textContent = 'Cargando…';
   try {
-    const res = await fetch(GITHUB_BLOCKS_BASE + '/index.json', { cache: 'no-store' });
+    const res = await fetch(blocksBase() + '/index.json', { cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const list = await res.json();
     if (!Array.isArray(list) || !list.length) { host.textContent = 'No hay bloques publicados todavía en blocks/.'; return; }
@@ -1071,7 +1273,7 @@ async function loadRepoBlockList() {
       row.querySelector('button').onclick = async () => {
         $('importError').textContent = '';
         try {
-          const r = await fetch(GITHUB_BLOCKS_BASE + '/' + encodeURIComponent(file), { cache: 'no-store' });
+          const r = await fetch(blocksBase() + '/' + encodeURIComponent(file), { cache: 'no-store' });
           if (!r.ok) throw new Error('HTTP ' + r.status);
           applyImportedBlock(await r.json(), label);
         } catch (e) {
@@ -1110,14 +1312,15 @@ function renderNav() {
   $('title').textContent = 'Registro de entrenamiento · ' + block.name + ' · ' + profile.label;
 
   $('weeks').innerHTML = '';
-  for (let w = 1; w <= 8; w++) {
+  const weeks = blockWeeks(block), dl = deloadWeek(block);
+  for (let w = 1; w <= weeks; w++) {
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'wk' + (w === profile.week ? ' on' : '') + (w === 8 ? ' deload' : '');
-    b.textContent = w === 8 ? 'DL' : w;
+    b.className = 'wk' + (w === profile.week ? ' on' : '') + (w === dl ? ' deload' : '');
+    b.textContent = w === dl ? 'DL' : w;
     b.setAttribute('role', 'tab');
     b.setAttribute('aria-selected', w === profile.week ? 'true' : 'false');
-    b.setAttribute('aria-label', w === 8 ? 'Semana 8, descarga' : 'Semana ' + w);
+    b.setAttribute('aria-label', 'Semana ' + w + (w === dl ? ', descarga' : ''));
     const has = days.some(d => {
       const s = profile.log[block.id] && profile.log[block.id][slot(w, d.id)];
       return s && Object.values(s).some(a => a.some(x => x.done));
@@ -1205,6 +1408,9 @@ function drawApp() {
   if (!dayList(block).length && block.days.length) delete block.days[0].off;
   const days = dayList(block);
   if (!(profile.day >= 0) || profile.day > days.length - 1) profile.day = 0;
+  /* Shortening a block can leave you standing on a week it no longer has. */
+  if (!(profile.week >= 1)) profile.week = 1;
+  if (profile.week > blockWeeks(block)) profile.week = blockWeeks(block);
 
   renderProfiles();
   renderBlockBar();
@@ -1212,7 +1418,7 @@ function drawApp() {
   renderSoundBtn();
 
   const ph = block.phase[profile.week] || { r: '', t: '' };
-  const dl = profile.week === 8;
+  const dl = profile.week === deloadWeek(block);
   $('banner').innerHTML = '';
   const bannerDiv = document.createElement('div');
   bannerDiv.className = 'banner' + (dl ? ' deload' : '');
@@ -1234,7 +1440,7 @@ function drawApp() {
   const best = bestByExercise(profile, block.id, slot(profile.week, day.id));
 
   exList(day).forEach((ex, i) => {
-    const n = setsFor(ex, profile.week);
+    const n = setsFor(ex, profile.week, block);
     const rows = entry(profile, block.id, profile.week, day.id, ex.id, n);
     const parked = parkedRows(profile, block.id, profile.week, day.id, ex.id, n);
     const allDone = rows.every(r => r.done);
@@ -1343,6 +1549,14 @@ function drawApp() {
 
   $('barfill').style.width = total ? (doneN / total * 100) + '%' : '0%';
 
+  const stranded = weeksBeyondEnd(profile, block);
+  $('beyond').textContent = stranded
+    ? (stranded === 1
+        ? 'Hay 1 serie registrada en semanas por encima de las ' + blockWeeks(block) + ' que tiene ahora el bloque. Se guarda: alarga el bloque en "Editar plan" para volver a verla.'
+        : 'Hay ' + stranded + ' series registradas en semanas por encima de las ' + blockWeeks(block) + ' que tiene ahora el bloque. Se guardan: alarga el bloque en "Editar plan" para volver a verlas.')
+    : '';
+  $('beyond').style.display = stranded ? 'block' : 'none';
+
   const extra = [];
   if (tonnage > 0) extra.push('Volumen: ' + Math.round(tonnage).toLocaleString('es-ES') + ' ' + units() + ' movidos');
   if (prs) extra.push(prs === 1 ? '1 récord personal' : prs + ' récords personales');
@@ -1365,24 +1579,36 @@ $('copyPrev').onclick = () => {
   if (profile.week === 1 || !src) { mark('No hay nada registrado en la semana ' + (profile.week - 1) + ' para este día'); return; }
   exList(day).forEach(ex => {
     const from = src[ex.id]; if (!from) return;
-    const to = entry(profile, block.id, profile.week, day.id, ex.id, setsFor(ex, profile.week));
+    const to = entry(profile, block.id, profile.week, day.id, ex.id, setsFor(ex, profile.week, block));
     to.forEach((r, i) => { if (!r.done) r.w = (from[i] || from[from.length - 1] || {}).w || ''; });
   });
   save(); render();
   mark('Pesos copiados de la semana ' + (profile.week - 1) + ' — supéralos');
 };
 
-$('clearDay').onclick = () => {
+$('clearDay').onclick = async () => {
   const profile = getProfile(), block = getBlock(), day = currentDay();
-  if (!confirm('¿Borrar todas las series de ' + day.name + ', semana ' + profile.week + '?')) return;
+  const okd = await ask({
+    title: '¿Borrar este día?',
+    body: 'Se borran todas las series de ' + day.name + ', semana ' + profile.week + '.',
+    okLabel: 'Borrar', danger: true,
+  });
+  if (!okd) return;
+  snapshotForUndo('Borrado ' + day.name + ', semana ' + profile.week + '.');
   if (profile.log[block.id]) delete profile.log[block.id][slot(profile.week, day.id)];
   save(); render();
   mark('Día borrado');
 };
 
-$('wipe').onclick = () => {
+$('wipe').onclick = async () => {
   const profile = getProfile();
-  if (!confirm('¿Borrar TODO el registro de ' + profile.label + ' (todos los bloques y semanas)? El plan de ejercicios no se borra. No se puede deshacer.')) return;
+  const okd = await ask({
+    title: '¿Borrar todo el registro de ' + profile.label + '?',
+    body: 'Todos los bloques y todas las semanas. El plan de ejercicios no se borra.',
+    okLabel: 'Borrar todo', danger: true,
+  });
+  if (!okd) return;
+  snapshotForUndo('Borrado todo el registro de ' + profile.label + '.');
   profile.log = {};
   save(); render();
   mark('Registro de ' + profile.label + ' borrado');
@@ -1403,8 +1629,42 @@ $('editPlan').onclick = () => {
   draftBlock = JSON.parse(JSON.stringify(getBlock()));
   draftPurge = [];
   $('peBlockName').value = draftBlock.name;
+  $('peWeeks').value = blockWeeks(draftBlock);
+  renderDeloadOptions();
   renderPlanEditor();
   openSheet('planSheet');
+};
+
+/* The deload list only offers weeks the block actually has, so shortening a
+   block cannot leave the deload pointing off the end of it. */
+function renderDeloadOptions() {
+  const weeks = clampInt($('peWeeks').value, 1, MAX_WEEKS, blockWeeks(draftBlock));
+  const sel = $('peDeload');
+  const current = deloadWeek(draftBlock);
+  sel.innerHTML = '';
+  const none = document.createElement('option');
+  none.value = '0';
+  none.textContent = 'Sin descarga';
+  sel.appendChild(none);
+  for (let w = 1; w <= weeks; w++) {
+    const o = document.createElement('option');
+    o.value = String(w);
+    o.textContent = 'Semana ' + w;
+    sel.appendChild(o);
+  }
+  sel.value = String(current >= 1 && current <= weeks ? current : 0);
+}
+
+$('peWeeks').oninput = () => {
+  draftBlock.weeks = clampInt($('peWeeks').value, 1, MAX_WEEKS, 8);
+  if (deloadWeek(draftBlock) > draftBlock.weeks) draftBlock.deload = 0;
+  renderDeloadOptions();
+  draftBlock.deload = clampInt($('peDeload').value, 0, MAX_WEEKS, 0);
+  renderPlanEditor();
+};
+$('peDeload').onchange = () => {
+  draftBlock.deload = clampInt($('peDeload').value, 0, MAX_WEEKS, 0);
+  renderPlanEditor();
 };
 
 function newExercise() {
@@ -1477,12 +1737,22 @@ function buildDayBox(profile, day, pos, liveCount) {
   del.disabled = liveCount === 1;
   up.onclick = () => { moveLive(draftBlock.days, day, -1); renderPlanEditor(); };
   down.onclick = () => { moveLive(draftBlock.days, day, 1); renderPlanEditor(); };
-  del.onclick = () => {
+  del.onclick = async () => {
     if (logged) {
-      if (!confirm('"' + day.name + '" tiene ' + setsLabel(logged) + ' en este bloque.\n\nSe retira del plan y deja de aparecer en la sesión, pero su registro se conserva y puedes devolverlo desde "Retirados", al final de esta pantalla.')) return;
+      const okd = await ask({
+        title: 'Retirar "' + day.name + '"',
+        body: 'Tiene ' + setsLabel(logged) + ' en este bloque. Se retira del plan y deja de aparecer en la sesión, pero su registro se conserva y puedes devolverlo desde "Retirados", al final de esta pantalla.',
+        okLabel: 'Retirar',
+      });
+      if (!okd) return;
       day.off = 1;
     } else {
-      if (!confirm('¿Quitar "' + day.name + '" del bloque? No tiene nada registrado.')) return;
+      const okd = await ask({
+        title: '¿Quitar "' + day.name + '" del bloque?',
+        body: 'No tiene nada registrado.',
+        okLabel: 'Quitar', danger: true,
+      });
+      if (!okd) return;
       draftBlock.days.splice(draftBlock.days.indexOf(day), 1);
     }
     renderPlanEditor();
@@ -1533,12 +1803,16 @@ function renderRetired(host, profile) {
       if (isDay) delete it.day.off; else delete it.ex.off;
       renderPlanEditor();
     };
-    row.querySelector('.a-del').onclick = () => {
+    row.querySelector('.a-del').onclick = async () => {
       const what = isDay ? ('el día "' + it.day.name + '"') : ('"' + (it.ex.n || 'este ejercicio') + '"');
-      const msg = logged
-        ? '¿Borrar ' + what + ' y sus ' + setsLabel(logged) + ' definitivamente? No se puede deshacer.'
-        : '¿Borrar ' + what + ' del bloque? No tiene nada registrado.';
-      if (!confirm(msg)) return;
+      const okd = await ask({
+        title: logged ? '¿Borrar el registro para siempre?' : '¿Borrar del bloque?',
+        body: logged
+          ? 'Se borra ' + what + ' y sus ' + setsLabel(logged) + '. No se puede deshacer.'
+          : 'Se borra ' + what + '. No tiene nada registrado.',
+        okLabel: 'Borrar', danger: true,
+      });
+      if (!okd) return;
       if (isDay) {
         draftBlock.days.splice(draftBlock.days.indexOf(it.day), 1);
         draftPurge.push({ dayId: it.day.id });
@@ -1611,9 +1885,14 @@ function buildExRow(profile, day, ex, pos, liveCount) {
   del.disabled = liveCount === 1;
   up.onclick = () => { moveLive(day.ex, ex, -1); renderPlanEditor(); };
   down.onclick = () => { moveLive(day.ex, ex, 1); renderPlanEditor(); };
-  del.onclick = () => {
+  del.onclick = async () => {
     if (logged) {
-      if (!confirm('"' + (ex.n || 'Este ejercicio') + '" tiene ' + setsLabel(logged) + ' en este bloque.\n\nSe retira del plan y deja de aparecer en la sesión, pero su registro se conserva y puedes devolverlo desde "Retirados", al final de esta pantalla.')) return;
+      const okd = await ask({
+        title: 'Retirar "' + (ex.n || 'este ejercicio') + '"',
+        body: 'Tiene ' + setsLabel(logged) + ' en este bloque. Se retira del plan y deja de aparecer en la sesión, pero su registro se conserva y puedes devolverlo desde "Retirados", al final de esta pantalla.',
+        okLabel: 'Retirar',
+      });
+      if (!okd) return;
       ex.off = 1;
     } else {
       day.ex.splice(day.ex.indexOf(ex), 1);
@@ -1624,17 +1903,32 @@ function buildExRow(profile, day, ex, pos, liveCount) {
   return row;
 }
 
-$('peSave').onclick = () => {
+$('peSave').onclick = async () => {
   draftBlock.name = $('peBlockName').value.trim() || draftBlock.name;
+  draftBlock.weeks = clampInt($('peWeeks').value, 1, MAX_WEEKS, blockWeeks(draftBlock));
+  draftBlock.deload = clampInt($('peDeload').value, 0, MAX_WEEKS, 0);
+  if (draftBlock.deload > draftBlock.weeks) draftBlock.deload = 0;
+  /* Weeks the block has grown into need a goal to show in the banner, and
+     the deload week may have moved; anything you wrote yourself is kept. */
+  const phase = draftBlock.phase && typeof draftBlock.phase === 'object' ? draftBlock.phase : {};
+  const generic = genericPhase(draftBlock.weeks, draftBlock.deload);
+  const nextPhase = {};
+  for (let w = 1; w <= draftBlock.weeks; w++) {
+    const mine = phase[w] || phase[String(w)];
+    const isDeload = w === draftBlock.deload;
+    const wasDeload = mine && mine.r === DELOAD_PHASE.r;
+    nextPhase[w] = (mine && mine.r && mine.t && isDeload === wasDeload) ? mine : generic[w];
+  }
+  draftBlock.phase = nextPhase;
   const days = dayList(draftBlock);
-  if (!days.length) { alert('El bloque necesita al menos un día.'); return; }
+  if (!days.length) { await tell('Falta algo', 'El bloque necesita al menos un día.'); return; }
   days.forEach((day, i) => { if (!String(day.name || '').trim()) day.name = 'Día ' + (i + 1); });
   for (const day of days) {
     const ex = exList(day);
-    if (!ex.length) { alert('Cada día necesita al menos un ejercicio — revisa "' + day.name + '".'); return; }
+    if (!ex.length) { await tell('Falta algo', 'Cada día necesita al menos un ejercicio — revisa "' + day.name + '".'); return; }
     for (const e of ex) {
-      if (!String(e.n || '').trim()) { alert('Todos los ejercicios necesitan un nombre.'); return; }
-      if (!e.reps || !String(e.reps).trim()) { alert('Falta el rango de repeticiones en "' + (e.n || 'un ejercicio') + '".'); return; }
+      if (!String(e.n || '').trim()) { await tell('Falta algo', 'Todos los ejercicios necesitan un nombre.'); return; }
+      if (!e.reps || !String(e.reps).trim()) { await tell('Falta algo', 'Falta el rango de repeticiones en "' + (e.n || 'un ejercicio') + '".'); return; }
     }
   }
   const profile = getProfile();
@@ -1660,24 +1954,27 @@ function closePlanEditor() {
 $('peClose').onclick = closePlanEditor;
 $('planSheet').addEventListener('click', e => { if (e.target.id === 'planSheet') closePlanEditor(); });
 
-$('peDeleteBlock').onclick = () => {
+$('peDeleteBlock').onclick = async () => {
   const profile = getProfile();
-  if (profile.blockOrder.length <= 1) { alert('No puedes eliminar el único bloque de ' + profile.label + '.'); return; }
+  if (profile.blockOrder.length <= 1) { await tell('No se puede', 'No puedes eliminar el único bloque de ' + profile.label + '.'); return; }
   const id = draftBlock.id;
   const sets = blockLoggedSets(profile, id);
-  const msg = '¿Eliminar "' + draftBlock.name + '"?\n\n' +
-    (sets ? 'Se borran sus ' + setsLabel(sets) + '. ' : 'No tiene nada registrado. ') +
-    'Es el bloque en el que estás entrenando: al borrarlo pasas al bloque más reciente que quede.\n\nNo se puede deshacer.';
-  if (!confirm(msg)) return;
+  const okd = await ask({
+    title: '¿Eliminar "' + draftBlock.name + '"?',
+    body: (sets ? 'Se borran sus ' + setsLabel(sets) + '. ' : 'No tiene nada registrado. ') +
+      'Es el bloque en el que estás entrenando: al borrarlo pasas al bloque más reciente que quede. No se puede deshacer.',
+    okLabel: 'Eliminar', danger: true,
+  });
+  if (!okd) return;
   closePlanEditor();
   deleteBlocks(profile, [id]);
   mark('Bloque eliminado');
 };
 
 /* ---------- progress chart ---------- */
-function collectHistory(profile, blockId, dayId, exId) {
+function collectHistory(profile, blockId, dayId, exId, weeks) {
   const points = [];
-  for (let w = 1; w <= 8; w++) {
+  for (let w = 1; w <= (weeks || MAX_WEEKS); w++) {
     const s = profile.log[blockId] && profile.log[blockId][slot(w, dayId)];
     const rows = s && s[exId];
     if (!rows) continue;
@@ -1690,55 +1987,128 @@ function collectHistory(profile, blockId, dayId, exId) {
   return points;
 }
 
-function buildChartSVG(points) {
+/* The same exercise across every block the profile has ever run, oldest
+   first. Blocks key their logs separately, so this walks each block's slots
+   looking for the exercise id rather than a day — the same exercise can sit
+   on a different day in a later block and it is still the same lift. */
+function collectHistoryAll(profile, exId) {
+  const out = [];
+  profile.blockOrder.forEach(bId => {
+    const block = profile.blocks[bId];
+    const blk = profile.log[bId];
+    if (!block || !blk) return;
+    for (let w = 1; w <= blockWeeks(block); w++) {
+      Object.keys(blk).forEach(k => {
+        const m = /^w(\d+)-(.+)$/.exec(k);
+        if (!m || +m[1] !== w) return;
+        const rows = blk[k][exId];
+        if (!Array.isArray(rows)) return;
+        const done = rows.filter(r => r && r.done && r.w !== '' && r.w != null && !isNaN(num(r.w)));
+        if (!done.length) return;
+        let best = done[0];
+        done.forEach(r => { if (num(r.w) > num(best.w)) best = r; });
+        out.push({ label: block.name + ' · S' + w, weight: num(best.w), reps: best.r });
+      });
+    }
+  });
+  return out;
+}
+
+/* `series` is [{ i, weight, reps }] with i a 1-based position, and `ticks`
+   is the label for each position — weeks when looking at one block, one per
+   logged session when looking across all of them. */
+function buildChartSVG(series, ticks) {
   const W = 600, H = 220, padL = 40, padR = 16, padT = 16, padB = 28;
-  const weights = points.map(p => p.weight);
+  const n = Math.max(1, ticks.length);
+  const weights = series.map(p => p.weight);
   let min = Math.min(...weights), max = Math.max(...weights);
   if (min === max) { min -= 1; max += 1; }
   const pad = (max - min) * 0.12;
   min -= pad; max += pad;
 
-  const x = w => padL + ((w - 1) / 7) * (W - padL - padR);
+  const x = i => padL + (n > 1 ? (i - 1) / (n - 1) : 0.5) * (W - padL - padR);
   const y = v => H - padB - ((v - min) / (max - min)) * (H - padT - padB);
 
-  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block;">';
+  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block;" role="img">';
 
-  // gridlines + x labels for weeks 1-8
-  for (let w = 1; w <= 8; w++) {
-    svg += '<line x1="' + x(w) + '" y1="' + padT + '" x2="' + x(w) + '" y2="' + (H - padB) + '" stroke="var(--line)" stroke-width="1"/>';
-    svg += '<text x="' + x(w) + '" y="' + (H - 8) + '" font-size="10" text-anchor="middle" fill="var(--soft)" font-family="IBM Plex Mono, monospace">S' + w + '</text>';
-  }
-  // y labels
+  /* Sixteen weeks — or a season's worth of sessions across every block —
+     would turn the axis into a picket fence, so labels thin out as the
+     series grows. The gridlines stay: they are what shows the gaps. */
+  const every = Math.ceil(n / 8);
+  ticks.forEach((label, idx) => {
+    const i = idx + 1;
+    svg += '<line x1="' + x(i) + '" y1="' + padT + '" x2="' + x(i) + '" y2="' + (H - padB) + '" stroke="var(--line)" stroke-width="1"/>';
+    if (idx % every === 0 || i === n) {
+      svg += '<text x="' + x(i) + '" y="' + (H - 8) + '" font-size="10" text-anchor="middle" fill="var(--soft)" font-family="IBM Plex Mono, monospace">' + esc(label) + '</text>';
+    }
+  });
+
   svg += '<text x="4" y="' + (y(max - pad) + 4) + '" font-size="10" fill="var(--soft)" font-family="IBM Plex Mono, monospace">' + Math.round(max - pad) + '</text>';
   svg += '<text x="4" y="' + (y(min + pad) + 4) + '" font-size="10" fill="var(--soft)" font-family="IBM Plex Mono, monospace">' + Math.round(min + pad) + '</text>';
 
-  if (points.length) {
-    const path = points.map((p, i) => (i === 0 ? 'M' : 'L') + x(p.week) + ' ' + y(p.weight)).join(' ');
+  if (series.length) {
+    const path = series.map((p, i) => (i === 0 ? 'M' : 'L') + x(p.i) + ' ' + y(p.weight)).join(' ');
     svg += '<path d="' + path + '" fill="none" stroke="var(--signal)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>';
-    points.forEach(p => {
-      svg += '<circle cx="' + x(p.week) + '" cy="' + y(p.weight) + '" r="4" fill="var(--signal)"/>';
+    series.forEach(p => {
+      svg += '<circle cx="' + x(p.i) + '" cy="' + y(p.weight) + '" r="4" fill="var(--signal)"/>';
     });
   }
   svg += '</svg>';
   return svg;
 }
 
+let chartFor = null;          /* { ex, dayId } — kept so the toggle can redraw */
+let chartScope = 'block';     /* 'block' | 'all' */
+
 function openChart(ex, dayId) {
+  chartFor = { ex, dayId };
+  drawChart();
+  openSheet('chartSheet');
+}
+
+function drawChart() {
+  if (!chartFor) return;
+  const { ex, dayId } = chartFor;
   const profile = getProfile(), block = getBlock();
-  const points = collectHistory(profile, block.id, dayId, ex.id);
-  $('chartTitle').textContent = ex.n;
-  $('chartSub').textContent = block.name + ' — mejor peso registrado por semana, en ' + units() + ' (× repeticiones de esa serie).';
   const host = $('chartHost');
-  if (!points.length) {
-    host.innerHTML = '<p style="font-size:12px;color:var(--soft);padding:20px 4px;">Aún no hay series completadas con peso para este ejercicio en este bloque.</p>';
-  } else {
-    let html = buildChartSVG(points);
-    html += '<table class="chart-table"><thead><tr><th>Semana</th><th>Peso</th><th>Reps</th></tr></thead><tbody>';
-    points.forEach(p => { html += '<tr><td>Semana ' + p.week + '</td><td>' + p.weight + ' ' + esc(units()) + '</td><td>' + esc(p.reps || '—') + '</td></tr>'; });
+
+  $('chartTitle').textContent = ex.n;
+  $('chartScope').querySelectorAll('.seg-btn').forEach(b => {
+    b.setAttribute('aria-pressed', b.dataset.scope === chartScope ? 'true' : 'false');
+    b.onclick = () => { chartScope = b.dataset.scope; drawChart(); };
+  });
+
+  if (chartScope === 'all') {
+    const points = collectHistoryAll(profile, ex.id);
+    $('chartSub').textContent = 'Todos los bloques de ' + profile.label +
+      ' — mejor peso de cada sesión registrada, en ' + units() + ' (× repeticiones de esa serie).';
+    if (!points.length) {
+      host.innerHTML = '<p class="chart-empty">Aún no hay series completadas con peso para este ejercicio en ningún bloque.</p>';
+      return;
+    }
+    const series = points.map((p, i) => ({ i: i + 1, weight: p.weight, reps: p.reps }));
+    let html = buildChartSVG(series, points.map(p => p.label));
+    html += '<table class="chart-table"><thead><tr><th>Sesión</th><th>Peso</th><th>Reps</th></tr></thead><tbody>';
+    points.forEach(p => { html += '<tr><td>' + esc(p.label) + '</td><td>' + p.weight + ' ' + esc(units()) + '</td><td>' + esc(p.reps || '—') + '</td></tr>'; });
     html += '</tbody></table>';
     host.innerHTML = html;
+    return;
   }
-  openSheet('chartSheet');
+
+  const weeks = blockWeeks(block);
+  const points = collectHistory(profile, block.id, dayId, ex.id, weeks);
+  $('chartSub').textContent = block.name + ' — mejor peso registrado por semana, en ' + units() + ' (× repeticiones de esa serie).';
+  if (!points.length) {
+    host.innerHTML = '<p class="chart-empty">Aún no hay series completadas con peso para este ejercicio en este bloque.</p>';
+    return;
+  }
+  const ticks = [];
+  for (let w = 1; w <= weeks; w++) ticks.push('S' + w);
+  let html = buildChartSVG(points.map(p => ({ i: p.week, weight: p.weight, reps: p.reps })), ticks);
+  html += '<table class="chart-table"><thead><tr><th>Semana</th><th>Peso</th><th>Reps</th></tr></thead><tbody>';
+  points.forEach(p => { html += '<tr><td>Semana ' + p.week + '</td><td>' + p.weight + ' ' + esc(units()) + '</td><td>' + esc(p.reps || '—') + '</td></tr>'; });
+  html += '</tbody></table>';
+  host.innerHTML = html;
 }
 
 $('chartClose').onclick = () => closeSheet('chartSheet');
@@ -1747,6 +2117,7 @@ $('chartSheet').addEventListener('click', e => { if (e.target.id === 'chartSheet
 /* ---------- backup / restore ---------- */
 $('backup').onclick = () => {
   $('blob').value = JSON.stringify({ app: STORAGE_KEY, v: 1, saved: new Date().toISOString(), data: state });
+  renderProfileExports();
   openSheet('sheet');
 };
 $('bClose').onclick = () => closeSheet('sheet');
@@ -1795,18 +2166,41 @@ function describeBackupProblem(data) {
   const keys = Object.keys(data.profiles);
   if (!keys.length) return 'no tiene ningún perfil';
   for (const pk of keys) {
-    const p = data.profiles[pk];
-    const who = (p && p.label) || pk;
-    if (!p || typeof p !== 'object') return 'el perfil "' + pk + '" está corrupto';
-    if (!p.blocks || typeof p.blocks !== 'object' || !Object.keys(p.blocks).length) return 'el perfil "' + who + '" no tiene bloques';
-    if (p.log && typeof p.log !== 'object') return 'el registro del perfil "' + who + '" está corrupto';
-    for (const bk of Object.keys(p.blocks)) {
-      const b = p.blocks[bk];
-      if (!b || typeof b !== 'object') return 'el bloque "' + bk + '" de "' + who + '" está corrupto';
-      if (!Array.isArray(b.days)) return 'el bloque "' + (b.name || bk) + '" de "' + who + '" no tiene días';
-    }
+    const problem = describeProfileProblem(data.profiles[pk], pk);
+    if (problem) return problem;
   }
   return null;
+}
+
+/* One profile's worth of the same checks, so a single-profile file gets the
+   same scrutiny as a full backup before it replaces anything. */
+function describeProfileProblem(p, pk) {
+  const who = (p && p.label) || pk || 'sin nombre';
+  if (!p || typeof p !== 'object' || Array.isArray(p)) return 'el perfil "' + who + '" está corrupto';
+  if (!p.blocks || typeof p.blocks !== 'object' || !Object.keys(p.blocks).length) return 'el perfil "' + who + '" no tiene bloques';
+  if (p.log && typeof p.log !== 'object') return 'el registro del perfil "' + who + '" está corrupto';
+  for (const bk of Object.keys(p.blocks)) {
+    const b = p.blocks[bk];
+    if (!b || typeof b !== 'object') return 'el bloque "' + bk + '" de "' + who + '" está corrupto';
+    if (!Array.isArray(b.days)) return 'el bloque "' + (b.name || bk) + '" de "' + who + '" no tiene días';
+  }
+  return null;
+}
+
+function countProfileSets(p) {
+  let n = 0;
+  const log = p && p.log;
+  if (!log || typeof log !== 'object') return 0;
+  Object.keys(log).forEach(bId => {
+    const blk = log[bId];
+    if (!blk || typeof blk !== 'object') return;
+    Object.keys(blk).forEach(k => {
+      const sl = blk[k];
+      if (!sl || typeof sl !== 'object') return;
+      Object.keys(sl).forEach(exId => { if (Array.isArray(sl[exId])) n += sl[exId].filter(rowUsed).length; });
+    });
+  });
+  return n;
 }
 
 function countBackupSets(data) {
@@ -1827,7 +2221,7 @@ function countBackupSets(data) {
   return n;
 }
 
-function restoreFromText(text) {
+async function restoreFromText(text) {
   let parsed;
   try {
     parsed = JSON.parse(String(text).trim());
@@ -1842,12 +2236,15 @@ function restoreFromText(text) {
   const when = parsed && parsed.saved ? new Date(parsed.saved) : null;
   const stamp = when && !isNaN(when.getTime()) ? when.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) : null;
 
-  const msg = '¿Reemplazar TODO tu registro con esta copia?\n\n' +
-    'Copia' + (stamp ? ' del ' + stamp : '') + ': ' + setsLabel(theirs) + '.\n' +
-    'Ahora mismo tienes: ' + setsLabel(mine) + '.\n\n' +
-    (theirs < mine ? 'La copia tiene MENOS registro que lo que hay ahora — comprueba que es la que quieres.\n\n' : '') +
-    'No se puede deshacer.';
-  if (!confirm(msg)) return;
+  const okd = await ask({
+    title: '¿Reemplazar todo tu registro con esta copia?',
+    body: 'Copia' + (stamp ? ' del ' + stamp : '') + ': ' + setsLabel(theirs) + '.\n' +
+      'Ahora mismo tienes: ' + setsLabel(mine) + '.\n\n' +
+      (theirs < mine ? 'La copia tiene MENOS registro que lo que hay ahora — comprueba que es la que quieres. ' : '') +
+      'No se puede deshacer.',
+    okLabel: 'Reemplazar', danger: true,
+  });
+  if (!okd) return;
 
   state = data;
   if (!state.activeProfile) state.activeProfile = 'hombre';
@@ -1887,6 +2284,94 @@ function registerServiceWorker() {
   });
 }
 
+/* ---------- moving one person between phones ----------
+   The two of you train together but each phone keeps its own log, and a full
+   restore replaces everything — so there was no way to put her history on his
+   device without destroying his. A profile file carries exactly one person,
+   and loading it overwrites exactly that one. */
+function profileExportPayload(key) {
+  return JSON.stringify({
+    app: STORAGE_KEY, kind: 'profile', v: 1,
+    saved: new Date().toISOString(),
+    key,
+    profile: state.profiles[key],
+  }, null, 2);
+}
+
+function renderProfileExports() {
+  const host = $('profileExports');
+  host.innerHTML = '';
+  profileKeys().forEach(key => {
+    const profile = state.profiles[key];
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'sm';
+    b.textContent = 'Exportar ' + profile.label;
+    b.onclick = () => {
+      const stamp = new Date().toISOString().slice(0, 10);
+      downloadFile('heavy-iron-' + (slugify(profile.label) || key) + '-' + stamp + '.json',
+                   profileExportPayload(key), 'application/json');
+      mark(profile.label + ' exportado — ' + setsLabel(countProfileSets(profile)));
+    };
+    host.appendChild(b);
+  });
+}
+
+async function loadProfileFromText(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(String(text).trim());
+  } catch (e) { mark('Ese archivo no es un perfil válido', true); return; }
+
+  if (!parsed || parsed.kind !== 'profile' || !parsed.profile) {
+    mark('Eso no es un perfil suelto. Si es una copia completa, usa "Cargar copia".', true);
+    return;
+  }
+
+  const incoming = parsed.profile;
+  const problem = describeProfileProblem(incoming, parsed.key);
+  if (problem) { mark('Ese perfil no se puede usar: ' + problem, true); return; }
+
+  /* Land it on the slot it came from. The keys are internal and never
+     renamed, so this matches whoever exported it; a file from somewhere
+     stranger falls back to the profile you are looking at. */
+  const target = (parsed.key && state.profiles[parsed.key]) ? parsed.key : state.activeProfile;
+  const local = state.profiles[target];
+  const theirs = countProfileSets(incoming);
+  const mine = countProfileSets(local);
+  const when = parsed.saved ? new Date(parsed.saved) : null;
+  const stamp = when && !isNaN(when.getTime()) ? when.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) : null;
+  const others = profileKeys().filter(k => k !== target).map(k => state.profiles[k].label);
+
+  const okd = await ask({
+    title: '¿Sustituir el perfil de ' + local.label + '?',
+    body: 'Entra "' + (incoming.label || target) + '"' + (stamp ? ' del ' + stamp : '') + ': ' + setsLabel(theirs) + '.\n' +
+      'Se reemplaza ' + local.label + ', que tiene ahora ' + setsLabel(mine) + '.\n\n' +
+      (others.length ? others.join(' y ') + ' no se toca' + (others.length > 1 ? 'n' : '') + '. ' : '') +
+      'No se puede deshacer.',
+    okLabel: 'Sustituir', danger: true,
+  });
+  if (!okd) return;
+
+  snapshotForUndo('Perfil de ' + local.label + ' sustituido.');
+  state.profiles[target] = incoming;
+  migrate();
+  applyTheme();
+  save(); render();
+  closeSheet('sheet');
+  mark(state.profiles[target].label + ' cargado — ' + setsLabel(theirs));
+}
+
+$('pUploadBtn').onclick = () => $('pUpload').click();
+$('pUpload').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => loadProfileFromText(reader.result);
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
 /* ---------- CSV export ----------
    One row per logged set, for looking at the numbers somewhere the app
    cannot: a spreadsheet, a chart, a coach's inbox. Deliberately one-way —
@@ -1904,7 +2389,7 @@ function buildCsv() {
       const block = profile.blocks[bId];
       block.days.forEach(day => {
         day.ex.forEach(ex => {
-          for (let w = 1; w <= 8; w++) {
+          for (let w = 1; w <= blockWeeks(block); w++) {
             const s = profile.log[bId] && profile.log[bId][slot(w, day.id)];
             const arr = s && s[ex.id];
             if (!Array.isArray(arr)) continue;

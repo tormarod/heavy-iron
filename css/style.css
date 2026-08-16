@@ -386,12 +386,15 @@ body {
    changed the log). Sits above the rest timer so it is never hidden by it. */
 .toast {
   position: fixed; left: 50%; transform: translateX(-50%); bottom: 14px; z-index: 70;
-  display: flex; align-items: center; gap: 9px; max-width: min(600px, calc(100% - 24px));
+  /* width, not max-width: shrink-to-fit squeezed the message into a three-line
+     column beside the buttons */
+  display: flex; align-items: center; gap: 9px; width: min(520px, calc(100% - 24px));
   background: var(--card); border: 1px solid var(--ink); border-radius: 3px;
   padding: 9px 11px; font-size: 12px; line-height: 1.4;
   box-shadow: 0 6px 22px rgba(0,0,0,.22);
 }
 .toast[hidden] { display: none; }
+.toast > span { flex: 1; min-width: 0; }
 .toast .sm { flex: 0 0 auto; }
 .timer.up ~ .toast { bottom: 86px; }
 
@@ -427,8 +430,16 @@ body {
 .pe-block-name {
   width: 100%; padding: 8px; font-family: 'Archivo', sans-serif; font-size: 13px; font-weight: 700;
   border: 1px solid var(--line); border-radius: 2px; background: var(--paper); color: var(--ink);
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
+.pe-block-meta { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+.pe-block-meta input, .pe-block-meta select {
+  padding: 7px 8px; border: 1px solid var(--line); border-radius: 2px;
+  background: var(--paper); color: var(--ink);
+  font-family: 'IBM Plex Mono', monospace; font-size: 12.5px;
+}
+.pe-block-meta input { width: 88px; }
+.pe-block-meta select { min-width: 148px; font-family: 'Archivo', sans-serif; font-weight: 600; }
 .pe-day-head input {
   width: 100%; font-size: 14px; font-weight: 700; padding: 6px 8px; margin-bottom: 6px;
   border: 1px solid var(--line); border-radius: 2px; background: var(--card); color: var(--ink); font-family: 'Archivo';
@@ -559,3 +570,19 @@ body {
 .swatch[aria-pressed="true"] { border-color: var(--ink); border-width: 2px; }
 .swatch.azul { background: #1B3FD0; }
 .swatch.verde { background: #1D6B4C; }
+
+/* ---- confirmations and prompts ----
+   Deliberately narrower than the other sheets: a question you answer, not a
+   screen you work in. The body keeps its line breaks so a set count and its
+   consequence can sit on separate lines. */
+/* A question asked *from* another sheet — deleting a block from the plan
+   editor, replacing a profile from the backup sheet — so it has to sit above
+   every other sheet and above the toast. Sharing z-index with .sheet put it
+   behind whichever sheet came later in the document and made it unclickable. */
+#askSheet { z-index: 90; }
+.ask-box { max-width: 420px; }
+.ask-box .sheet-d { white-space: pre-line; margin-bottom: 4px; }
+.ask-box .pe-block-name { margin-top: 12px; margin-bottom: 0; font-weight: 600; }
+
+.chart-empty { font-size: 12px; color: var(--soft); padding: 20px 4px; }
+#chartScope { margin-bottom: 10px; }

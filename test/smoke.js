@@ -24,6 +24,15 @@ const dismissSetup = async page => {
   }
 };
 
+/* confirm()/alert()/prompt() are gone: answering a question is a click on
+   the in-app dialog now. */
+const answerDialog = async (page, accept, text) => {
+  await page.waitForSelector('#askSheet.up', { timeout: 4000 });
+  if (text != null) await page.fill('#askInput', text);
+  await page.click(accept ? '#askOk' : '#askCancel');
+  await page.waitForTimeout(250);
+};
+
 const ok = (name, cond, extra) => {
   if (cond) { pass++; console.log('  PASS  ' + name); }
   else { fail++; console.log('  FAIL  ' + name + (extra ? '  → ' + extra : '')); }
@@ -122,6 +131,81 @@ const ok = (name, cond, extra) => {
     ok('PR row is marked', await page.locator('.ex').first().locator('.set-row.pr').count() === 1);
     ok('PR counted in the note', (await page.textContent('#note')).includes('récord'));
     await page.click('#tskip');
+
+    console.log('\n== in-app dialogs ==');
+    ok('no native dialog fired during the run', alertText === null, String(alertText));
+    await page.click('#clearDay');
+    ok('a confirmation sheet opens', await page.locator('#askSheet.up').count() === 1);
+    ok('it says what will go', (await page.textContent('#askBody')).includes('semana'));
+    await answerDialog(page, false);
+    ok('cancelling leaves the log alone', await page.locator('.set-row.done').count() > 0);
+
+    console.log('\n== undo ==');
+    const doneBefore = await page.locator('.set-row.done').count();
+    await page.click('#clearDay');
+    await answerDialog(page, true);
+    ok('confirming clears the day', await page.locator('.set-row.done').count() === 0, 'was ' + doneBefore);
+    ok('the toast offers Deshacer', (await page.textContent('#toastAct')) === 'Deshacer');
+    await page.click('#toastAct');
+    await page.waitForTimeout(400);
+    ok('undo puts the sets back', await page.locator('.set-row.done').count() === doneBefore);
+
+    console.log('\n== block length + deload ==');
+    ok('a fresh block shows 8 weeks', await page.locator('.wk').count() === 8);
+    ok('week 8 is the deload', (await page.locator('.wk').nth(7).textContent()) === 'DL');
+    await page.click('#editPlan');
+    await page.fill('#peWeeks', '5');
+    await page.waitForTimeout(200);
+    ok('the deload list is trimmed to the new length', await page.locator('#peDeload option').count() === 6);
+    await page.selectOption('#peDeload', '3');
+    await page.click('#peSave');
+    await page.waitForTimeout(400);
+    ok('the week bar follows the block', await page.locator('.wk').count() === 5);
+    ok('week 3 is now the deload', (await page.locator('.wk').nth(2).textContent()) === 'DL');
+    await page.locator('.wk').nth(2).click();
+    await page.waitForTimeout(250);
+    const full = await page.evaluate(() => setsFor(getBlock().days[0].ex[0], 1, getBlock()));
+    const cut = await page.evaluate(() => setsFor(getBlock().days[0].ex[0], 3, getBlock()));
+    ok('the deload week halves the sets', cut < full, cut + ' vs ' + full);
+    ok('a week with no deload is untouched', await page.evaluate(() => setsFor(getBlock().days[0].ex[0], 2, getBlock())) === full);
+    ok('nothing is stranded while the log still fits', !(await page.locator('#beyond').isVisible()));
+
+    // one week: now the week-2 sets are past the end
+    await page.click('#editPlan');
+    await page.fill('#peWeeks', '1');
+    await page.waitForTimeout(150);
+    await page.click('#peSave');
+    await page.waitForTimeout(400);
+    ok('shortening past the log keeps it and says so', await page.locator('#beyond').isVisible());
+    ok('...and counts what is out of reach', (await page.textContent('#beyond')).includes('serie'));
+    ok('the current week is pulled back into range', await page.evaluate(() => getProfile().week) === 1);
+
+    // back to 8 so the rest of the run sees a normal block
+    await page.click('#editPlan');
+    await page.fill('#peWeeks', '8');
+    await page.waitForTimeout(150);
+    await page.selectOption('#peDeload', '8');
+    await page.click('#peSave');
+    await page.waitForTimeout(400);
+    ok('lengthening brings the stranded weeks back', !(await page.locator('#beyond').isVisible()));
+
+    console.log('\n== a new block is named in-app ==');
+    await page.click('#blockbar >> text=+ Nuevo bloque');
+    ok('the name prompt is an in-app sheet', await page.locator('#askInput').isVisible());
+    await answerDialog(page, true, 'Bloque de prueba');
+    ok('the block is created with that name', (await page.textContent('#title')).includes('Bloque de prueba'));
+
+    console.log('\n== progress across every block ==');
+    await page.locator('.ex').first().locator('.ex-chart-btn').click();
+    ok('the chart opens on this block', await page.locator('#chartSheet.up').count() === 1);
+    await page.click('#chartScope >> text=Todos los bloques');
+    await page.waitForTimeout(250);
+    ok('all-blocks mode names the profile', (await page.textContent('#chartSub')).includes('Todos los bloques'));
+    ok('it finds history from the earlier block', await page.locator('.chart-table tbody tr').count() > 0);
+    ok('rows are labelled by block and week',
+       await page.locator('.chart-table tbody tr').count() > 0 &&
+       (await page.locator('.chart-table tbody tr').first().textContent()).includes('·'));
+    await page.click('#chartClose');
 
     console.log('\n== theme ==');
     ok('starts on auto (no attribute)', await page.evaluate(() => document.documentElement.getAttribute('data-theme')) === null);
@@ -244,6 +328,39 @@ const ok = (name, cond, extra) => {
     await page.waitForTimeout(300);
     ok('two-person mode comes back intact', await page.locator('#profiles').isVisible()
        && await page.locator('.badge.together, .badge.solo').count() > 0);
+
+    console.log('\n== moving one profile between phones ==');
+    await page.click('#backup');
+    ok('there is an export button per person', await page.locator('#profileExports button').count() === 2);
+    ok('a dialog raised from inside a sheet is on top of it', await page.evaluate(() => {
+      const ask = getComputedStyle(document.getElementById('askSheet')).zIndex;
+      const sheet = getComputedStyle(document.getElementById('sheet')).zIndex;
+      return Number(ask) > Number(sheet);
+    }));
+    const profileFile = await page.evaluate(() => profileExportPayload(state.activeProfile));
+    const parsedProfile = JSON.parse(profileFile);
+    ok('the file carries exactly one profile', parsedProfile.kind === 'profile' && !!parsedProfile.profile && !parsedProfile.data);
+    // a profile file must not be mistaken for a full backup
+    await page.fill('#blob', profileFile);
+    await page.click('#bRestore');
+    ok('loading it as a full backup is refused', (await page.textContent('#status')).includes('no tiene perfiles'));
+
+    // now load it properly, into the other person's slot
+    const swapped = JSON.stringify(Object.assign({}, parsedProfile, {
+      key: 'mujer',
+      profile: Object.assign({}, parsedProfile.profile, { label: 'Ana (del otro móvil)' }),
+    }));
+    const otherBefore = await page.evaluate(() => JSON.stringify(state.profiles.hombre));
+    // fire and forget: the returned promise only settles once the dialog is
+    // answered, and awaiting it here would deadlock against that click
+    await page.evaluate(t => { loadProfileFromText(t); }, swapped);
+    await answerDialog(page, true);
+    ok('it replaces the profile it names', await page.evaluate(() => state.profiles.mujer.label) === 'Ana (del otro móvil)');
+    ok('the other profile is untouched', await page.evaluate(() => JSON.stringify(state.profiles.hombre)) === otherBefore);
+
+    console.log('\n== published blocks follow the fork ==');
+    const base = await page.evaluate(() => blocksBase());
+    ok('a local server falls back to the original repo', base.includes('tormarod/heavy-iron'), base);
 
     console.log('\n== service worker ==');
     const swOk = await page.evaluate(async () => {

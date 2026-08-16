@@ -43,6 +43,7 @@
     <div class="bar"><i id="barfill" style="width:0%"></i></div>
     <div id="list"><div class="skel">Cargando tu registro…</div></div>
     <div class="foot">
+      <p class="ex-parked" id="beyond" style="display:none"></p>
       <p class="note" id="note"></p>
       <div class="foot-btns">
         <button class="sm" id="copyPrev">Copiar pesos de la semana anterior</button>
@@ -53,6 +54,19 @@
         <button class="sm warn" id="wipe">Borrar todos los datos</button>
       </div>
       <div class="status" id="status" role="status" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <!-- confirmations, warnings and the one text prompt -->
+  <div class="sheet" id="askSheet">
+    <div class="sheet-box ask-box" role="dialog" aria-modal="true" aria-labelledby="askT">
+      <div class="sheet-t" id="askT"></div>
+      <p class="sheet-d" id="askBody"></p>
+      <input type="text" id="askInput" class="pe-block-name" style="display:none" maxlength="60">
+      <div class="sheet-btns">
+        <button class="sm key" id="askOk" type="button">Aceptar</button>
+        <button class="sm" id="askCancel" type="button">Cancelar</button>
+      </div>
     </div>
   </div>
 
@@ -113,6 +127,15 @@
       </div>
       <p class="sheet-d">El CSV es para mirar los números fuera de la app (hoja de cálculo): una fila por serie registrada. No se puede volver a importar — para eso está el .json.</p>
       <div class="sheet-hr"></div>
+      <div class="sheet-d" style="font-weight:600;color:var(--ink);margin-bottom:6px;">Pasar un perfil a otro móvil</div>
+      <p class="sheet-d">Cada móvil guarda su propio registro. Exporta el perfil de una persona y cárgalo en el otro móvil: sustituye solo a esa persona y deja el otro perfil exactamente como está.</p>
+      <div class="sheet-btns" id="profileExports"></div>
+      <div class="sheet-btns">
+        <button class="sm" id="pUploadBtn">Cargar un perfil (archivo)</button>
+        <input type="file" id="pUpload" accept="application/json,.json" style="display:none">
+      </div>
+
+      <div class="sheet-hr"></div>
       <p class="sheet-d">O, si prefieres copiar el texto a mano (por ejemplo para pegarlo en una nota o un correo):</p>
       <textarea id="blob" spellcheck="false" aria-label="Copia de seguridad en texto"></textarea>
       <div class="sheet-btns">
@@ -130,6 +153,17 @@
       <p class="sheet-d">Cambia nombres, series, repeticiones o descansos, añade o quita ejercicios y días, y reordénalos. Los cambios afectan solo al bloque actual y nunca borran lo que ya has registrado: quitar una serie la esconde (vuelve al subirla otra vez) y quitar un ejercicio o un día lo retira guardando su registro, para que puedas restaurarlo.</p>
       <label class="pe-field-lbl" for="peBlockName">Nombre del bloque</label>
       <input type="text" id="peBlockName" class="pe-block-name">
+      <div class="pe-block-meta">
+        <div>
+          <label class="pe-field-lbl" for="peWeeks">Semanas</label>
+          <input type="number" id="peWeeks" min="1" max="16" step="1">
+        </div>
+        <div>
+          <label class="pe-field-lbl" for="peDeload">Semana de descarga</label>
+          <select id="peDeload"></select>
+        </div>
+      </div>
+      <p class="setup-hint">En la semana de descarga cada ejercicio hace la mitad de sus series (mínimo 2). Elige "Sin descarga" si este bloque no lleva.</p>
       <div id="peDays"></div>
       <div class="sheet-btns">
         <button class="sm key" id="peSave">Guardar cambios</button>
@@ -177,6 +211,10 @@
   <div class="sheet" id="chartSheet">
     <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="chartTitle">
       <div class="sheet-t" id="chartTitle">Progreso</div>
+      <div class="seg" id="chartScope" role="group" aria-label="Alcance del progreso">
+        <button type="button" class="seg-btn" data-scope="block">Este bloque</button>
+        <button type="button" class="seg-btn" data-scope="all">Todos los bloques</button>
+      </div>
       <p class="sheet-d" id="chartSub"></p>
       <div class="chart-wrap" id="chartHost"></div>
       <div class="sheet-btns">
