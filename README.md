@@ -495,6 +495,14 @@ While developing, the cached service worker will keep serving the old
 files. Either tick **Update on reload** in the browser's Application →
 Service Workers panel, or bump `CACHE_VERSION` in `sw.js`.
 
+**Bump `CACHE_VERSION` in `sw.js` whenever you change `index.html`,
+`css/` or `js/`.** The browser only looks for a worker update when the
+worker file's own bytes change, and the shell is served cache-first — so
+shipping a new `app.js` beside an untouched `sw.js` leaves returning
+users on the old script indefinitely, with the new markup wired to
+nothing. This has happened once already, so CI now fails the pull request
+when the shell changes and `CACHE_VERSION` doesn't.
+
 ## Tests
 
 There is no build step and no framework, so the tests drive the real app

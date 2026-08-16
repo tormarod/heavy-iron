@@ -34,3 +34,42 @@ jobs:
 
       - name: Run smoke tests
         run: node test/smoke.js
+
+  # Shipping a new app.js while sw.js stays byte-identical means returning
+  # users keep the old cached script forever: the browser only looks for a
+  # worker update when the worker file itself changes. That shipped once
+  # already (the Ajustes button wired to nothing), so it is checked here
+  # rather than remembered.
+  cache-version:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require a CACHE_VERSION bump when the app shell changes
+        run: |
+          base="origin/${{ github.base_ref }}"
+          changed=$(git diff --name-only "$base"...HEAD)
+          echo "Changed files:"; echo "$changed"
+
+          if ! echo "$changed" | grep -qE '^(index\.html|css/|js/)'; then
+            echo "No app-shell changes — nothing to check."
+            exit 0
+          fi
+
+          old=$(git show "$base":sw.js | grep -m1 'CACHE_VERSION =')
+          new=$(grep -m1 'CACHE_VERSION =' sw.js)
+          echo "base: $old"
+          echo "head: $new"
+
+          if [ "$old" = "$new" ]; then
+            echo
+            echo "::error file=sw.js::The app shell changed but CACHE_VERSION did not."
+            echo "Returning users would keep the cached copy of the old app.js."
+            echo "Bump CACHE_VERSION in sw.js."
+            exit 1
+          fi
+          echo "CACHE_VERSION was bumped."
