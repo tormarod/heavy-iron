@@ -6,8 +6,14 @@ browser. It installs to a phone's home screen and works with no signal.
 
 ## Features
 
-- **Two profiles** (Hombre / Mujer), each with their own plan, weeks, and
-  history.
+- **Setup on first run**: name the people training, pick kg or lb, choose a
+  colour each, and start either from the built-in example plan or from a
+  blank block. Reachable afterwards under **Ajustes** — see
+  [Making it yours](#making-it-yours).
+- **One person or two.** In solo mode the profile switcher, the JUNTOS/SOLO
+  badges and the pair notes all disappear; the second profile is hidden
+  rather than deleted, so you can switch back with nothing lost.
+- **Two profiles**, each with their own plan, weeks, and history.
 - **Blocks**: each profile can have several training blocks (e.g. "Bloque
   1", "Bloque 2"). Use **Nuevo bloque** to start the next one from a copy
   of the current plan, and **Gestionar** to delete the ones you no longer
@@ -34,6 +40,38 @@ browser. It installs to a phone's home screen and works with no signal.
 - **Import a block from JSON**: paste a block definition (e.g. one an
   AI training agent generated for you), or pick one from `blocks/` in
   this repo — see [Importing blocks](#importing-blocks-from-json) below.
+
+## Making it yours
+
+The app ships with one couple's training plan in it, and for a long time
+that was structural rather than cosmetic: the two profiles were keyed
+`hombre` and `mujer`, and deleting one brought it back — with a stranger's
+plan attached — on the next open. That's gone. The keys are internal now,
+and everything you see is yours to set.
+
+On a device with nothing saved, the first thing you get is a short setup:
+
+| Question | What it does |
+|---|---|
+| **¿Quién entrena?** | Two people, or just you. Switches solo mode on or off; changeable any time. |
+| **Nombres** | What each profile is called everywhere in the app, including backups and the CSV. |
+| **Color** | The accent for each profile — blue or green — so you can tell whose session is on screen at a glance. |
+| **Unidad de peso** | `kg` or `lb`. |
+| **Plan de partida** | The built-in 8-week example plan, or a blank block with one day and one empty exercise. |
+
+Skipping it keeps the defaults and never asks again. Everything except the
+starting plan stays editable under **Ajustes** in the footer — the starting
+plan isn't offered later because by then swapping it would throw away real
+history, which is what blocks are for instead.
+
+**About units.** `kg`/`lb` is a *label*, not a conversion. The app never
+touches the number you typed — you write down what's on the machine, and
+this is what it gets called on screen, in the chart and in the CSV header.
+Changing it later relabels everything and rewrites nothing.
+
+**About solo mode.** The second profile is hidden, not deleted. Its plan
+and history stay in storage and in your backups, so turning two-person
+mode back on returns everything exactly as it was.
 
 ## Data & privacy
 
