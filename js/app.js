@@ -574,8 +574,10 @@ function renderProfiles() {
   Object.keys(state.profiles).forEach(key => {
     const p = state.profiles[key];
     const b = document.createElement('button');
+    b.type = 'button';
     b.className = 'profile-btn' + (key === state.activeProfile ? ' on' : '');
     b.textContent = p.label;
+    b.setAttribute('aria-pressed', key === state.activeProfile ? 'true' : 'false');
     b.onclick = () => { state.activeProfile = key; stopRest(); render(); };
     host.appendChild(b);
   });
@@ -922,8 +924,12 @@ function renderNav() {
   $('weeks').innerHTML = '';
   for (let w = 1; w <= 8; w++) {
     const b = document.createElement('button');
+    b.type = 'button';
     b.className = 'wk' + (w === profile.week ? ' on' : '') + (w === 8 ? ' deload' : '');
     b.textContent = w === 8 ? 'DL' : w;
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-selected', w === profile.week ? 'true' : 'false');
+    b.setAttribute('aria-label', w === 8 ? 'Semana 8, descarga' : 'Semana ' + w);
     const has = days.some(d => {
       const s = profile.log[block.id] && profile.log[block.id][slot(w, d.id)];
       return s && Object.values(s).some(a => a.some(x => x.done));
@@ -936,9 +942,13 @@ function renderNav() {
   $('days').innerHTML = '';
   days.forEach((d, i) => {
     const b = document.createElement('button');
+    b.type = 'button';
     b.className = 'day' + (i === profile.day ? ' on' : '');
     b.innerHTML = '<span class="day-n">Día ' + (i + 1) + '</span><span class="day-t"></span>';
     b.querySelector('.day-t').textContent = d.name;
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-selected', i === profile.day ? 'true' : 'false');
+    b.setAttribute('aria-label', 'Día ' + (i + 1) + ': ' + d.name);
     b.onclick = () => { profile.day = i; stopRest(); render(); };
     $('days').appendChild(b);
   });

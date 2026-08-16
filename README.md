@@ -391,6 +391,26 @@ While developing, the cached service worker will keep serving the old
 files. Either tick **Update on reload** in the browser's Application →
 Service Workers panel, or bump `CACHE_VERSION` in `sw.js`.
 
+## Tests
+
+There is no build step and no framework, so the tests drive the real app
+in a real browser and assert the things a person would notice: that it
+boots, that a set can be logged and survives a reload, that a hostile
+block renders as text instead of running, that broken data lands on the
+recovery screen instead of a blank page, and that the rest timer's
+controls fit on a 375px phone.
+
+```
+npx playwright install chromium     # once
+python3 -m http.server 8765 &
+node test/smoke.js
+```
+
+They also run on every push and pull request
+(`.github/workflows/test.yml`). When a bug turns out to have been
+invisible from the outside, add a case to `test/smoke.js` rather than
+fixing it quietly.
+
 ## Project layout
 
 | File | What it is |
@@ -402,6 +422,22 @@ Service Workers panel, or bump `CACHE_VERSION` in `sw.js`.
 | `sw.js` | offline caching; bump `CACHE_VERSION` when releasing |
 | `manifest.webmanifest`, `icon.svg` | what makes it installable |
 | `blocks/` | blocks published for one-click import |
+| `test/smoke.js` | browser-driven smoke tests |
+
+## Known limits
+
+Worth knowing before you plan around them:
+
+- **A block is always 8 weeks**, with week 8 as the deload (its sets are
+  halved automatically). A 4- or 12-week block is not expressible yet.
+- **Restoring replaces both profiles.** There is no way to import just one
+  person's history into a phone that already has the other's, so the two
+  logs cannot be merged — each phone stays its own record.
+- **Progress charts are per block.** The **RÉCORD** badge looks across
+  every block of a profile, but the chart resets each block, which is
+  where a long-term trend would be most interesting.
+- **No sync.** By design — there is no server — but it means a lost phone
+  with no backup is a lost history.
 
 ## Hosting on GitHub Pages
 
