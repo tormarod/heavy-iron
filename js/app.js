@@ -143,6 +143,20 @@ function purgeDayLog(profile, blockId, dayId) {
   for (let w = 1; w <= 8; w++) delete blk[slot(w, dayId)];
 }
 
+/* Everything logged anywhere in a block — the number that decides whether
+   a block is disposable, so it is the number every "¿eliminar?" shows. */
+function blockLoggedSets(profile, blockId) {
+  const blk = profile.log[blockId];
+  if (!blk) return 0;
+  let n = 0;
+  Object.keys(blk).forEach(k => {
+    const s = blk[k];
+    if (!s) return;
+    Object.keys(s).forEach(exId => { if (Array.isArray(s[exId])) n += s[exId].filter(rowUsed).length; });
+  });
+  return n;
+}
+
 function lastTime(profile, blockId, dayId, exId, beforeWeek) {
   for (let w = beforeWeek - 1; w >= 1; w--) {
     const s = profile.log[blockId] && profile.log[blockId][slot(w, dayId)];
@@ -236,6 +250,25 @@ function renderProfiles() {
   $('app').className = 'profile-' + getProfile().theme;
 }
 
+function blockDate(block) {
+  if (!block.createdAt) return '';
+  const d = new Date(block.createdAt);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: '2-digit' });
+}
+
+/* Importing the same file twice (or copying a block without renaming it)
+   leaves several blocks called exactly the same, and a picker full of
+   identical rows is how you delete the wrong one. Same-named blocks get
+   their position and creation date appended; a unique name is left alone. */
+function blockPickerLabel(profile, id) {
+  const name = profile.blocks[id].name || 'Bloque';
+  const twins = profile.blockOrder.filter(x => (profile.blocks[x].name || 'Bloque') === name);
+  if (twins.length < 2) return name;
+  const d = blockDate(profile.blocks[id]);
+  return name + ' (' + (twins.indexOf(id) + 1) + ')' + (d ? ' · ' + d : '');
+}
+
 function renderBlockBar() {
   const profile = getProfile();
   const host = $('blockbar');
@@ -245,7 +278,7 @@ function renderBlockBar() {
   profile.blockOrder.forEach(id => {
     const opt = document.createElement('option');
     opt.value = id;
-    opt.textContent = profile.blocks[id].name;
+    opt.textContent = blockPickerLabel(profile, id);
     if (id === profile.activeBlock) opt.selected = true;
     select.appendChild(opt);
   });
@@ -263,7 +296,100 @@ function renderBlockBar() {
   importBtn.textContent = 'Importar JSON';
   importBtn.onclick = openImportSheet;
   host.appendChild(importBtn);
+
+  const manageBtn = document.createElement('button');
+  manageBtn.className = 'sm';
+  manageBtn.textContent = 'Gestionar';
+  manageBtn.onclick = openBlockManager;
+  host.appendChild(manageBtn);
 }
+
+/* ---------- deleting blocks ----------
+   The one rule: deleting somebody else's block must not move you. Only
+   when the block you are actually training disappears do week/day reset
+   and the app land somewhere else — on the newest block left, which is
+   the one you are most likely training next. A profile is never left
+   without a block. */
+function deleteBlocks(profile, ids) {
+  const drop = new Set(ids.filter(id => profile.blocks[id]));
+  if (!drop.size) return 0;
+  const keep = profile.blockOrder.filter(id => !drop.has(id));
+  if (!keep.length) return 0;
+
+  drop.forEach(id => { delete profile.blocks[id]; delete profile.log[id]; });
+  profile.blockOrder = keep;
+  if (drop.has(profile.activeBlock)) {
+    profile.activeBlock = keep[keep.length - 1];
+    profile.week = 1; profile.day = 0;
+    stopRest();
+  }
+  save(); render();
+  return drop.size;
+}
+
+function openBlockManager() {
+  $('blocksSheet').classList.add('up');
+  renderBlockManager();
+}
+
+function renderBlockManager() {
+  const profile = getProfile();
+  const host = $('blockList');
+  host.innerHTML = '';
+  const only = profile.blockOrder.length <= 1;
+
+  profile.blockOrder.forEach(id => {
+    const block = profile.blocks[id];
+    const active = id === profile.activeBlock;
+    const sets = blockLoggedSets(profile, id);
+    const date = blockDate(block);
+
+    const row = document.createElement('div');
+    row.className = 'blk-row' + (active ? ' on' : '');
+    row.innerHTML =
+      '<span class="blk-l"><b></b><i></i></span>' +
+      '<span class="pe-tools"><button type="button" class="pe-icon-btn danger blk-del">Eliminar</button></span>';
+    row.querySelector('b').textContent = block.name + (active ? ' · actual' : '');
+    row.querySelector('i').textContent =
+      [date, dayList(block).length + (dayList(block).length === 1 ? ' día' : ' días'),
+       sets ? setsLabel(sets) : 'sin registro'].filter(Boolean).join(' · ');
+
+    const del = row.querySelector('.blk-del');
+    del.disabled = only;
+    del.onclick = () => {
+      const what = '¿Eliminar "' + block.name + '"' + (date ? ' (' + date + ')' : '') + '?\n\n';
+      const cost = sets ? 'Se borran sus ' + setsLabel(sets) + '. ' : 'No tiene nada registrado. ';
+      const rest = active
+        ? 'Es el bloque en el que estás entrenando: al borrarlo pasas al bloque más reciente que quede.'
+        : 'El bloque actual, "' + profile.blocks[profile.activeBlock].name + '", se queda exactamente como está.';
+      if (!confirm(what + cost + rest + '\n\nNo se puede deshacer.')) return;
+      deleteBlocks(profile, [id]);
+      renderBlockManager();
+      mark('Bloque eliminado');
+    };
+
+    host.appendChild(row);
+  });
+}
+
+$('blkKeepCurrent').onclick = () => {
+  const profile = getProfile();
+  const others = profile.blockOrder.filter(id => id !== profile.activeBlock);
+  if (!others.length) { alert('"' + getBlock().name + '" ya es el único bloque de ' + profile.label + '.'); return; }
+  const sets = others.reduce((t, id) => t + blockLoggedSets(profile, id), 0);
+  const names = others.map(id => '· ' + blockPickerLabel(profile, id)).join('\n');
+  const msg =
+    '¿Eliminar los otros ' + others.length + ' bloques de ' + profile.label + '?\n\n' + names + '\n\n' +
+    (sets ? 'Se borran ' + setsLabel(sets) + ' en total. ' : 'No tienen nada registrado. ') +
+    '"' + getBlock().name + '" y todo su registro se quedan como están.\n\nNo se puede deshacer.';
+  if (!confirm(msg)) return;
+  const n = deleteBlocks(profile, others);
+  renderBlockManager();
+  mark(n + (n === 1 ? ' bloque eliminado' : ' bloques eliminados') + ' — el bloque actual intacto');
+};
+
+$('blkClose').onclick = () => $('blocksSheet').classList.remove('up');
+$('blocksSheet').addEventListener('click', e => { if (e.target.id === 'blocksSheet') $('blocksSheet').classList.remove('up'); });
 
 function newBlock() {
   const profile = getProfile();
@@ -889,14 +1015,14 @@ $('planSheet').addEventListener('click', e => { if (e.target.id === 'planSheet')
 $('peDeleteBlock').onclick = () => {
   const profile = getProfile();
   if (profile.blockOrder.length <= 1) { alert('No puedes eliminar el único bloque de ' + profile.label + '.'); return; }
-  if (!confirm('¿Eliminar "' + draftBlock.name + '" y todo su registro? No se puede deshacer.')) return;
-  profile.blockOrder = profile.blockOrder.filter(id => id !== draftBlock.id);
-  delete profile.blocks[draftBlock.id];
-  delete profile.log[draftBlock.id];
-  profile.activeBlock = profile.blockOrder[0];
-  profile.week = 1; profile.day = 0;
+  const id = draftBlock.id;
+  const sets = blockLoggedSets(profile, id);
+  const msg = '¿Eliminar "' + draftBlock.name + '"?\n\n' +
+    (sets ? 'Se borran sus ' + setsLabel(sets) + '. ' : 'No tiene nada registrado. ') +
+    'Es el bloque en el que estás entrenando: al borrarlo pasas al bloque más reciente que quede.\n\nNo se puede deshacer.';
+  if (!confirm(msg)) return;
   closePlanEditor();
-  save(); render();
+  deleteBlocks(profile, [id]);
   mark('Bloque eliminado');
 };
 
