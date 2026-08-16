@@ -331,6 +331,19 @@ body {
 .chart-table th { color: var(--soft); font-weight: 600; text-align: right; }
 .chart-table td:first-child, .chart-table th:first-child { text-align: left; }
 
+/* ---- block manager ---- */
+.blk-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 0; border-bottom: 1px solid var(--line);
+}
+.blk-row:last-child { border-bottom: none; }
+.blk-row.on { border-left: 3px solid var(--signal); padding-left: 8px; }
+.blk-l { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.blk-l b { font-size: 12.5px; font-weight: 600; }
+.blk-l i {
+  font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-style: normal; color: var(--soft);
+}
+
 /* ---- import block list ---- */
 .import-item {
   display: flex; justify-content: space-between; align-items: center; gap: 10px;

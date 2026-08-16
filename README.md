@@ -10,7 +10,9 @@ browser.
   history.
 - **Blocks**: each profile can have several training blocks (e.g. "Bloque
   1", "Bloque 2"). Use **Nuevo bloque** to start the next one from a copy
-  of the current plan.
+  of the current plan, and **Gestionar** to delete the ones you no longer
+  want without disturbing the block you are training — see
+  [Deleting blocks](#deleting-blocks-you-no-longer-want).
 - **Plan editor**: edit exercise names, alternatives, cues, sets, reps,
   rest time, and shared/superserie flags for the active block, add or
   remove exercises and days, and reorder them — all without losing what
@@ -62,6 +64,31 @@ into a new block and leaves this one's history where it is.
 Two things still work the way they always did: **Borrar este día**
 clears one week's log for the day you are on, and **Borrar todos los
 datos** clears a profile's whole log while leaving the plans in place.
+
+## Deleting blocks you no longer want
+
+**Gestionar** (in the block bar) lists every block of the current
+profile with its creation date, how many days it has and how many sets
+are logged in it, and deletes the ones you don't want — the trial runs,
+the imports you did twice, the block you abandoned in week 2.
+
+The rule is that deleting a block you are *not* training does not move
+you: the active block keeps its log, its week and its day, and the
+session behind the sheet does not change. **Dejar solo el bloque
+actual** does that in one go — it deletes every other block of the
+profile and leaves the one you are on untouched. Every delete asks
+first, and says how many logged sets go with it.
+
+Deleting the block you *are* training is still allowed (it is what
+**Eliminar este bloque** in the plan editor does): its log goes with it,
+and the app moves you to the newest block left, at week 1 day 1. A
+profile always keeps at least one block, so the last one cannot be
+deleted.
+
+When several blocks share a name — which is what happens when you import
+the same file twice — the picker adds their position and creation date
+(`Bloque 1 (3) · 12 ago 26`) so you can tell which is which before
+deleting one.
 
 ## Importing blocks from JSON
 
