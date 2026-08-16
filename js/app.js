@@ -51,12 +51,14 @@ function readRaw() {
 
 function load() {
   const raw = readRaw();
+  const firstRun = raw == null;
   try {
     state = raw ? JSON.parse(raw) : defaultState();
   } catch (e) {
     state = defaultState();
   }
   if (!state || typeof state !== 'object' || Array.isArray(state) || !state.profiles) state = defaultState();
+  if (firstRun) state.setupDone = false;
   migrate();
   ready = true;
   applyTheme();
@@ -66,6 +68,7 @@ function load() {
      repair does not have to be redone on every open. */
   save();
   mark('Cargado');
+  if (!state.setupDone) openSetup(true);
 }
 
 /* Runs on every load, and on every restore. Two jobs: give old data the
@@ -76,12 +79,18 @@ function load() {
    way in means the app opens even when the data is half broken. */
 function migrate() {
   const fallback = defaultState();
-  if (!state.profiles || typeof state.profiles !== 'object') state.profiles = fallback.profiles;
+  if (!state.profiles || typeof state.profiles !== 'object' || !Object.keys(state.profiles).length) {
+    state.profiles = fallback.profiles;
+  }
 
-  Object.keys(fallback.profiles).forEach(pk => {
-    if (!state.profiles[pk] || typeof state.profiles[pk] !== 'object') state.profiles[pk] = fallback.profiles[pk];
+  /* Repair the profiles that are here, rather than the two the seed happens
+     to define. Iterating the seed used to resurrect a deleted profile —
+     complete with a stranger's training plan — every time the app opened. */
+  Object.keys(state.profiles).forEach((pk, i) => {
+    if (!state.profiles[pk] || typeof state.profiles[pk] !== 'object') delete state.profiles[pk];
     const profile = state.profiles[pk];
-    const seed = fallback.profiles[pk];
+    if (!profile) return;
+    const seed = fallback.profiles[pk] || fallback.profiles[Object.keys(fallback.profiles)[i]] || fallback.profiles.hombre;
 
     if (!profile.label) profile.label = seed.label;
     if (!profile.theme) profile.theme = seed.theme;
@@ -142,11 +151,27 @@ function migrate() {
     });
   });
 
-  if (!state.profiles[state.activeProfile]) state.activeProfile = 'hombre';
+  /* Whatever happened above, the app cannot draw with no profile at all. */
+  if (!Object.keys(state.profiles).length) state.profiles = fallback.profiles;
+  if (!state.profiles[state.activeProfile]) state.activeProfile = profileKeys()[0];
   if (!state.prefs || typeof state.prefs !== 'object') state.prefs = {};
   if (['auto', 'light', 'dark'].indexOf(state.prefs.theme) < 0) state.prefs.theme = 'auto';
   state.prefs.sound = !!state.prefs.sound;
+  /* A label, never a conversion: you write down the number on the machine,
+     and this is what the app calls it. */
+  if (['kg', 'lb'].indexOf(state.prefs.units) < 0) state.prefs.units = 'kg';
+  if (['pair', 'solo'].indexOf(state.mode) < 0) state.mode = 'pair';
+  if (typeof state.setupDone !== 'boolean') state.setupDone = true;
 }
+
+const profileKeys = () => Object.keys(state.profiles);
+
+/* In solo mode the second profile stays in storage untouched — hidden, not
+   deleted — so switching back to two people is instant and a backup taken
+   either way restores either way. */
+const soloMode = () => state.mode === 'solo';
+const visibleProfileKeys = () => (soloMode() ? [state.activeProfile] : profileKeys());
+const units = () => state.prefs.units;
 
 /* Writes are debounced so typing a weight doesn't serialise the whole log on
    every keystroke — but a debounce you never flush is a debounce that loses
@@ -250,6 +275,164 @@ $('themeBtn').onclick = () => {
   save();
   mark('Tema ' + THEME_LABEL[p.theme]);
 };
+
+/* ---------- first-run setup / settings ----------
+   The app used to open on somebody else's training plan, under somebody
+   else's names, measured in somebody else's units, with no way to change
+   any of it short of the plan editor. This is the thirty seconds that makes
+   it yours. It is offered once, on a device with no saved data, and lives
+   under "Ajustes" forever after — where the starting-plan question is
+   hidden, because by then that is what blocks are for. */
+const ACCENTS = ['azul', 'verde'];
+const ACCENT_LABEL = { azul: 'Azul', verde: 'Verde' };
+/* What the two shipped profiles' accents were called before accents had
+   names of their own. */
+const LEGACY_ACCENT = { hombre: 'azul', mujer: 'verde' };
+
+let setupDraft = null;
+let setupFirstRun = false;
+
+function accentOf(profile) {
+  return LEGACY_ACCENT[profile.theme] || (ACCENTS.indexOf(profile.theme) >= 0 ? profile.theme : 'azul');
+}
+
+function openSetup(firstRun) {
+  setupFirstRun = !!firstRun;
+  setupDraft = {
+    mode: state.mode,
+    units: state.prefs.units,
+    plan: 'example',
+    /* On a first run the name boxes start empty, so the placeholder invites
+       you to type rather than making you clear somebody else's name out
+       first. Left empty, the shipped label stands. */
+    people: profileKeys().map(key => ({
+      key,
+      label: firstRun ? '' : state.profiles[key].label,
+      accent: accentOf(state.profiles[key]),
+    })),
+  };
+
+  $('setupT').textContent = firstRun ? 'Bienvenido a Heavy Iron' : 'Ajustes';
+  $('setupD').textContent = firstRun
+    ? 'Treinta segundos y el registro es tuyo. Todo esto se puede cambiar después en "Ajustes".'
+    : 'Cambia los nombres, el color de cada perfil y la unidad de peso. No toca nada de lo que ya tienes registrado.';
+  $('setupSave').textContent = firstRun ? 'Empezar' : 'Guardar';
+  $('setupClose').textContent = firstRun ? 'Saltar' : 'Cerrar sin guardar';
+  $('setupPlanField').style.display = firstRun ? '' : 'none';
+
+  renderSetup();
+  openSheet('setupSheet');
+}
+
+function renderSetup() {
+  const solo = setupDraft.mode === 'solo';
+
+  $('setupMode').querySelectorAll('.seg-btn').forEach(b => {
+    b.setAttribute('aria-pressed', b.dataset.mode === setupDraft.mode ? 'true' : 'false');
+    b.onclick = () => { setupDraft.mode = b.dataset.mode; renderSetup(); };
+  });
+  $('setupUnits').querySelectorAll('.seg-btn').forEach(b => {
+    b.setAttribute('aria-pressed', b.dataset.units === setupDraft.units ? 'true' : 'false');
+    b.onclick = () => { setupDraft.units = b.dataset.units; renderSetup(); };
+  });
+  $('setupPlan').querySelectorAll('.seg-btn').forEach(b => {
+    b.setAttribute('aria-pressed', b.dataset.plan === setupDraft.plan ? 'true' : 'false');
+    b.onclick = () => { setupDraft.plan = b.dataset.plan; renderSetup(); };
+  });
+  $('setupPlanHint').textContent = setupDraft.plan === 'empty'
+    ? 'Un bloque con un día y un ejercicio vacío, para montar el tuyo desde cero en "Editar plan".'
+    : solo
+      ? 'Un bloque de 8 semanas ya montado. Está pensado para dos personas, así que trae notas de sesión compartida que no verás en modo individual. Sirve para probar la app; edítalo o bórralo cuando quieras.'
+      : 'Un bloque de 8 semanas ya montado, pensado para dos personas que comparten máquinas. Sirve para ver cómo funciona la app; edítalo o bórralo cuando quieras.';
+
+  /* In solo mode only the first name is asked for — the second profile is
+     still there, just not yours to worry about. */
+  $('setupNamesLbl').textContent = solo ? 'Tu nombre' : 'Nombres';
+  const host = $('setupNames');
+  host.innerHTML = '';
+  setupDraft.people.slice(0, solo ? 1 : setupDraft.people.length).forEach((person, i) => {
+    const row = document.createElement('div');
+    row.className = 'setup-name';
+    row.innerHTML = '<input type="text" maxlength="24" autocomplete="off"><span class="swatches"></span>';
+    const input = row.querySelector('input');
+    input.value = person.label;
+    input.placeholder = solo ? 'Tu nombre' : (i === 0 ? 'Primera persona' : 'Segunda persona');
+    input.setAttribute('aria-label', solo ? 'Tu nombre' : 'Nombre de la persona ' + (i + 1));
+    input.oninput = e => { person.label = e.target.value; };
+
+    const sw = row.querySelector('.swatches');
+    ACCENTS.forEach(accent => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'swatch ' + accent;
+      b.setAttribute('aria-pressed', person.accent === accent ? 'true' : 'false');
+      b.setAttribute('aria-label', 'Color ' + ACCENT_LABEL[accent] + ' para este perfil');
+      b.title = ACCENT_LABEL[accent];
+      b.onclick = () => { person.accent = accent; renderSetup(); };
+      sw.appendChild(b);
+    });
+    host.appendChild(row);
+  });
+}
+
+$('setupSave').onclick = () => {
+  setupDraft.people.forEach((person, i) => {
+    const profile = state.profiles[person.key];
+    if (!profile) return;
+    profile.label = String(person.label || '').trim().slice(0, 24) || profile.label || ('Perfil ' + (i + 1));
+    profile.theme = person.accent;
+  });
+  state.mode = setupDraft.mode;
+  state.prefs.units = setupDraft.units;
+  if (state.mode === 'solo') state.activeProfile = setupDraft.people[0].key;
+
+  /* Only offered on a device with nothing logged: swapping the starting plan
+     out later would throw real history away, so the question is not asked. */
+  if (setupFirstRun && setupDraft.plan === 'empty') {
+    profileKeys().forEach(key => {
+      const profile = state.profiles[key];
+      const block = emptyBlock();
+      profile.blocks = { [block.id]: block };
+      profile.blockOrder = [block.id];
+      profile.activeBlock = block.id;
+      profile.log = {};
+      profile.week = 1;
+      profile.day = 0;
+    });
+  }
+
+  state.setupDone = true;
+  const wasFirstRun = setupFirstRun;
+  setupDraft = null;
+  save();
+  applyTheme();
+  render();
+  closeSheet('setupSheet');
+  mark(wasFirstRun ? 'Listo — cámbialo cuando quieras en "Editar plan"' : 'Ajustes guardados');
+};
+
+function closeSetup() {
+  /* Skipping is a real answer: keep the defaults and never ask again. */
+  if (setupFirstRun) { state.setupDone = true; save(); }
+  setupDraft = null;
+  closeSheet('setupSheet');
+}
+$('setupClose').onclick = closeSetup;
+$('setupSheet').addEventListener('click', e => { if (e.target.id === 'setupSheet') closeSetup(); });
+$('settings').onclick = () => openSetup(false);
+
+/* A block with one day and one blank exercise — somewhere to build from,
+   instead of deleting twenty-two exercises you have never done. */
+function emptyBlock() {
+  const id = 'block-' + Date.now();
+  return {
+    id,
+    name: 'Mi bloque',
+    createdAt: new Date().toISOString(),
+    days: [{ id: 'd0', name: 'Día 1', ex: [newExercise()] }],
+    phase: JSON.parse(JSON.stringify(GENERIC_IMPORT_PHASE)),
+  };
+}
 
 /* ---------- recovery ----------
    The app draws straight from whatever is in localStorage, so data it cannot
@@ -541,7 +724,7 @@ document.addEventListener('visibilitychange', () => {
    Escape closes the top one, and focus goes into the dialog when it opens
    and back to whatever opened it when it closes, so the whole app is usable
    without a mouse. */
-const SHEET_IDS = ['sheet', 'planSheet', 'blocksSheet', 'importSheet', 'chartSheet'];
+const SHEET_IDS = ['setupSheet', 'sheet', 'planSheet', 'blocksSheet', 'importSheet', 'chartSheet'];
 let sheetReturn = null;
 
 function openSheet(id) {
@@ -564,14 +747,19 @@ document.addEventListener('keydown', e => {
   const open = SHEET_IDS.filter(id => $(id).classList.contains('up'));
   if (!open.length) return;
   const top = open[open.length - 1];
-  if (top === 'planSheet') closePlanEditor(); else closeSheet(top);
+  if (top === 'planSheet') closePlanEditor();
+  else if (top === 'setupSheet') closeSetup();
+  else closeSheet(top);
 });
 
 /* ---------- profile / block bars ---------- */
 function renderProfiles() {
   const host = $('profiles');
   host.innerHTML = '';
-  Object.keys(state.profiles).forEach(key => {
+  /* Solo mode hides the switcher rather than removing the other profile:
+     the data stays put, so turning two-person mode back on is instant. */
+  host.style.display = soloMode() ? 'none' : 'flex';
+  visibleProfileKeys().forEach(key => {
     const p = state.profiles[key];
     const b = document.createElement('button');
     b.type = 'button';
@@ -581,7 +769,7 @@ function renderProfiles() {
     b.onclick = () => { state.activeProfile = key; stopRest(); render(); };
     host.appendChild(b);
   });
-  $('app').className = 'profile-' + getProfile().theme;
+  $('app').className = 'profile-' + getProfile().theme + (soloMode() ? ' solo' : '');
 }
 
 function blockDate(block) {
@@ -1036,8 +1224,9 @@ function drawApp() {
   $('banner').appendChild(bannerDiv);
 
   const day = days[profile.day];
-  $('pair').textContent = day.pair || '';
-  $('pair').style.display = day.pair ? 'flex' : 'none';
+  const pairNote = soloMode() ? '' : (day.pair || '');
+  $('pair').textContent = pairNote;
+  $('pair').style.display = pairNote ? 'flex' : 'none';
 
   const list = $('list');
   list.innerHTML = '';
@@ -1056,7 +1245,7 @@ function drawApp() {
     if (cardPr) prs++;
 
     const card = document.createElement('div');
-    card.className = 'ex' + (allDone ? ' complete' : '') + (ex.share ? ' shared' : '');
+    card.className = 'ex' + (allDone ? ' complete' : '') + (ex.share && !soloMode() ? ' shared' : '');
 
     const prev = lastTime(profile, block.id, day.id, ex.id, profile.week);
     const prevTxt = prev
@@ -1087,8 +1276,12 @@ function drawApp() {
 
     const nameEl = card.querySelector('.ex-name');
     nameEl.appendChild(document.createTextNode(ex.n));
-    if (ex.share) { const s = document.createElement('span'); s.className = 'badge together'; s.textContent = 'JUNTOS'; nameEl.appendChild(s); }
-    else { const s = document.createElement('span'); s.className = 'badge solo'; s.textContent = 'SOLO'; nameEl.appendChild(s); }
+    if (!soloMode()) {
+      const s = document.createElement('span');
+      s.className = 'badge ' + (ex.share ? 'together' : 'solo');
+      s.textContent = ex.share ? 'JUNTOS' : 'SOLO';
+      nameEl.appendChild(s);
+    }
     if (ex.ss) { const s = document.createElement('span'); s.className = 'ss'; s.textContent = 'SS'; nameEl.appendChild(s); }
     if (cardPr) { const s = document.createElement('span'); s.className = 'badge pr'; s.textContent = 'RÉCORD'; nameEl.appendChild(s); }
     if (ex.alt) card.querySelector('.ex-alt').textContent = ex.alt;
@@ -1111,7 +1304,7 @@ function drawApp() {
          so "22,5" silently became an empty box. */
       row.innerHTML =
         '<div class="set-n">' + (si + 1) + '</div>' +
-        '<div class="fld"><input type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next"><u>kg</u></div>' +
+        '<div class="fld"><input type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next"><u>' + esc(units()) + '</u></div>' +
         '<div class="fld"><input type="text" inputmode="numeric" autocomplete="off" enterkeyhint="next"><u>rep</u></div>' +
         '<button type="button" class="tick' + (r.done ? ' on' : '') + '" aria-pressed="' + (r.done ? 'true' : 'false') + '">✓</button>';
 
@@ -1140,7 +1333,7 @@ function drawApp() {
         if (r.done && ex.rest) startRest(ex.rest, ex.n + ' · serie ' + (si + 1));
         if (r.done && !ex.rest) stopRest();
         save(); render();
-        if (adopted) mark('Serie ' + (si + 1) + ' anotada con ' + adopted + ' kg (lo de la semana anterior) — cámbialo si no fue eso');
+        if (adopted) mark('Serie ' + (si + 1) + ' anotada con ' + adopted + ' ' + units() + ' (lo de la semana anterior) — cámbialo si no fue eso');
       };
       box.appendChild(row);
     });
@@ -1151,7 +1344,7 @@ function drawApp() {
   $('barfill').style.width = total ? (doneN / total * 100) + '%' : '0%';
 
   const extra = [];
-  if (tonnage > 0) extra.push('Volumen: ' + Math.round(tonnage).toLocaleString('es-ES') + ' kg movidos');
+  if (tonnage > 0) extra.push('Volumen: ' + Math.round(tonnage).toLocaleString('es-ES') + ' ' + units() + ' movidos');
   if (prs) extra.push(prs === 1 ? '1 récord personal' : prs + ' récords personales');
   if (lastTs) extra.push('último registro ' + new Date(lastTs).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }));
   const head = doneN === total
@@ -1386,7 +1579,7 @@ function buildExRow(profile, day, ex, pos, liveCount) {
       '<div><span class="pe-field-lbl">+1 serie desde sem.</span><input type="number" min="1" max="8" class="f-add"></div>' +
     '</div>' +
     '<div class="pe-row">' +
-      '<label class="pe-check"><input type="checkbox" class="f-share"> Compartido (JUNTOS)</label>' +
+      '<label class="pe-check pe-check-share"><input type="checkbox" class="f-share"> Compartido (JUNTOS)</label>' +
       '<label class="pe-check"><input type="checkbox" class="f-ss"> Superserie (SS)</label>' +
     '</div>';
 
@@ -1534,14 +1727,14 @@ function openChart(ex, dayId) {
   const profile = getProfile(), block = getBlock();
   const points = collectHistory(profile, block.id, dayId, ex.id);
   $('chartTitle').textContent = ex.n;
-  $('chartSub').textContent = block.name + ' — mejor peso registrado por semana (× repeticiones de esa serie).';
+  $('chartSub').textContent = block.name + ' — mejor peso registrado por semana, en ' + units() + ' (× repeticiones de esa serie).';
   const host = $('chartHost');
   if (!points.length) {
     host.innerHTML = '<p style="font-size:12px;color:var(--soft);padding:20px 4px;">Aún no hay series completadas con peso para este ejercicio en este bloque.</p>';
   } else {
     let html = buildChartSVG(points);
     html += '<table class="chart-table"><thead><tr><th>Semana</th><th>Peso</th><th>Reps</th></tr></thead><tbody>';
-    points.forEach(p => { html += '<tr><td>Semana ' + p.week + '</td><td>' + p.weight + ' kg</td><td>' + esc(p.reps || '—') + '</td></tr>'; });
+    points.forEach(p => { html += '<tr><td>Semana ' + p.week + '</td><td>' + p.weight + ' ' + esc(units()) + '</td><td>' + esc(p.reps || '—') + '</td></tr>'; });
     html += '</tbody></table>';
     host.innerHTML = html;
   }
@@ -1595,16 +1788,22 @@ $('bRestore').onclick = () => restoreFromText($('blob').value);
    is touched, and the reason is reported rather than a generic "no vale". */
 function describeBackupProblem(data) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return 'no contiene un objeto de datos';
-  if (!data.profiles || typeof data.profiles !== 'object') return 'no tiene perfiles';
-  for (const pk of ['hombre', 'mujer']) {
+  if (!data.profiles || typeof data.profiles !== 'object' || Array.isArray(data.profiles)) return 'no tiene perfiles';
+  /* Whatever the profiles are called — the two this app shipped with, or the
+     names you gave them — a backup has to carry at least one, and every one
+     it does carry has to be readable. */
+  const keys = Object.keys(data.profiles);
+  if (!keys.length) return 'no tiene ningún perfil';
+  for (const pk of keys) {
     const p = data.profiles[pk];
-    if (!p || typeof p !== 'object') return 'le falta el perfil "' + pk + '"';
-    if (!p.blocks || typeof p.blocks !== 'object' || !Object.keys(p.blocks).length) return 'el perfil "' + pk + '" no tiene bloques';
-    if (p.log && typeof p.log !== 'object') return 'el registro del perfil "' + pk + '" está corrupto';
+    const who = (p && p.label) || pk;
+    if (!p || typeof p !== 'object') return 'el perfil "' + pk + '" está corrupto';
+    if (!p.blocks || typeof p.blocks !== 'object' || !Object.keys(p.blocks).length) return 'el perfil "' + who + '" no tiene bloques';
+    if (p.log && typeof p.log !== 'object') return 'el registro del perfil "' + who + '" está corrupto';
     for (const bk of Object.keys(p.blocks)) {
       const b = p.blocks[bk];
-      if (!b || typeof b !== 'object') return 'el bloque "' + bk + '" de "' + pk + '" está corrupto';
-      if (!Array.isArray(b.days)) return 'el bloque "' + (b.name || bk) + '" de "' + pk + '" no tiene días';
+      if (!b || typeof b !== 'object') return 'el bloque "' + bk + '" de "' + who + '" está corrupto';
+      if (!Array.isArray(b.days)) return 'el bloque "' + (b.name || bk) + '" de "' + who + '" no tiene días';
     }
   }
   return null;
@@ -1698,7 +1897,7 @@ function csvCell(v) {
 }
 
 function buildCsv() {
-  const rows = [['perfil', 'bloque', 'semana', 'dia', 'ejercicio', 'serie', 'kg', 'reps', 'hecha', 'fecha']];
+  const rows = [['perfil', 'bloque', 'semana', 'dia', 'ejercicio', 'serie', units(), 'reps', 'hecha', 'fecha']];
   Object.keys(state.profiles).forEach(pk => {
     const profile = state.profiles[pk];
     profile.blockOrder.forEach(bId => {

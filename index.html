@@ -49,9 +49,54 @@
         <button class="sm" id="editPlan">Editar plan</button>
         <button class="sm" id="clearDay">Borrar este día</button>
         <button class="sm" id="backup">Copia de seguridad</button>
+        <button class="sm" id="settings">Ajustes</button>
         <button class="sm warn" id="wipe">Borrar todos los datos</button>
       </div>
       <div class="status" id="status" role="status" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <!-- first-run setup / settings -->
+  <div class="sheet" id="setupSheet">
+    <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="setupT">
+      <div class="sheet-t" id="setupT">Configura tu registro</div>
+      <p class="sheet-d" id="setupD"></p>
+
+      <div class="setup-field">
+        <span class="pe-field-lbl">¿Quién entrena?</span>
+        <div class="seg" id="setupMode" role="group" aria-label="Quién entrena">
+          <button type="button" class="seg-btn" data-mode="pair">Dos personas</button>
+          <button type="button" class="seg-btn" data-mode="solo">Solo yo</button>
+        </div>
+      </div>
+
+      <div class="setup-field">
+        <span class="pe-field-lbl" id="setupNamesLbl">Nombres</span>
+        <div class="setup-names" id="setupNames"></div>
+      </div>
+
+      <div class="setup-field">
+        <span class="pe-field-lbl">Unidad de peso</span>
+        <div class="seg" id="setupUnits" role="group" aria-label="Unidad de peso">
+          <button type="button" class="seg-btn" data-units="kg">kg</button>
+          <button type="button" class="seg-btn" data-units="lb">lb</button>
+        </div>
+        <p class="setup-hint">Es solo la etiqueta que verás junto a cada peso: no convierte nada. Anota el número que pone en la máquina.</p>
+      </div>
+
+      <div class="setup-field" id="setupPlanField">
+        <span class="pe-field-lbl">Plan de partida</span>
+        <div class="seg" id="setupPlan" role="group" aria-label="Plan de partida">
+          <button type="button" class="seg-btn" data-plan="example">Plan de ejemplo</button>
+          <button type="button" class="seg-btn" data-plan="empty">Empezar en blanco</button>
+        </div>
+        <p class="setup-hint" id="setupPlanHint"></p>
+      </div>
+
+      <div class="sheet-btns">
+        <button class="sm key" id="setupSave">Empezar</button>
+        <button class="sm" id="setupClose">Cancelar</button>
+      </div>
     </div>
   </div>
 

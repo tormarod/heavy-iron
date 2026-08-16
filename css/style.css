@@ -103,18 +103,29 @@ body {
 }
 
 #app { min-height: 100vh; padding-bottom: 100px; }
-#app.profile-hombre { --signal: #1B3FD0; --signal-soft: #E4E8FA; }
-#app.profile-mujer { --signal: #1D6B4C; --signal-soft: #DFEDE6; }
+/* Each profile carries an accent. `hombre`/`mujer` are the names the app
+   shipped with and are kept as aliases so existing saved profiles do not
+   change colour; new ones pick `azul` or `verde` by name. */
+#app.profile-hombre, #app.profile-azul { --signal: #1B3FD0; --signal-soft: #E4E8FA; }
+#app.profile-mujer,  #app.profile-verde { --signal: #1D6B4C; --signal-soft: #DFEDE6; }
+:root[data-theme="dark"] #app[class*="profile-"] { --on-signal: #12141B; }
 :root[data-theme="dark"] #app.profile-hombre,
-:root[data-theme="dark"] #app.profile-mujer { --on-signal: #12141B; }
-:root[data-theme="dark"] #app.profile-hombre { --signal: #7C97F7; --signal-soft: #212842; }
-:root[data-theme="dark"] #app.profile-mujer { --signal: #5FC496; --signal-soft: #173226; }
+:root[data-theme="dark"] #app.profile-azul { --signal: #7C97F7; --signal-soft: #212842; }
+:root[data-theme="dark"] #app.profile-mujer,
+:root[data-theme="dark"] #app.profile-verde { --signal: #5FC496; --signal-soft: #173226; }
 @media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) #app[class*="profile-"] { --on-signal: #12141B; }
   :root:not([data-theme="light"]) #app.profile-hombre,
-  :root:not([data-theme="light"]) #app.profile-mujer { --on-signal: #12141B; }
-  :root:not([data-theme="light"]) #app.profile-hombre { --signal: #7C97F7; --signal-soft: #212842; }
-  :root:not([data-theme="light"]) #app.profile-mujer { --signal: #5FC496; --signal-soft: #173226; }
+  :root:not([data-theme="light"]) #app.profile-azul { --signal: #7C97F7; --signal-soft: #212842; }
+  :root:not([data-theme="light"]) #app.profile-mujer,
+  :root:not([data-theme="light"]) #app.profile-verde { --signal: #5FC496; --signal-soft: #173226; }
 }
+
+/* Solo mode: the shared-station vocabulary is meaningless on your own. */
+#app.solo .badge.together,
+#app.solo .badge.solo,
+#app.solo .pe-day-pair,
+#app.solo .pe-check-share { display: none; }
 
 /* Keyboard users get a visible ring everywhere; pointer users never see it. */
 :focus-visible {
@@ -391,6 +402,10 @@ body {
   align-items: center; justify-content: center; overflow-y: auto;
 }
 .sheet.up { display: flex; }
+/* The dialog takes focus when it opens so the keyboard lands inside it, but
+   a ring drawn around the whole panel reads as an error state — the controls
+   within it keep their own. */
+.sheet-box:focus, .sheet-box:focus-visible { outline: none; }
 .sheet-box {
   background: var(--card); border: 1px solid var(--line); border-radius: 3px;
   width: 100%; max-width: 600px; max-height: 88vh; overflow: auto; padding: 18px;
@@ -510,3 +525,37 @@ body {
   font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--danger);
   white-space: pre-wrap; word-break: break-word; margin-bottom: 14px;
 }
+
+/* ---- first-run setup / settings ---- */
+.setup-field { margin-bottom: 18px; }
+.setup-hint { font-size: 11.5px; color: var(--soft); line-height: 1.45; margin-top: 6px; }
+
+/* segmented choice — the app has no radio buttons anywhere else, and a pair
+   of buttons that stay pressed reads faster on a phone than a select */
+.seg { display: flex; gap: 6px; flex-wrap: wrap; }
+.seg-btn {
+  flex: 1; min-width: 110px; padding: 9px 10px;
+  border: 1px solid var(--line); background: transparent; color: var(--soft);
+  font-family: 'Archivo', sans-serif; font-size: 12.5px; font-weight: 600;
+  border-radius: 2px; cursor: pointer; transition: all .12s;
+}
+.seg-btn:hover { border-color: var(--ink); color: var(--ink); }
+.seg-btn[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--card); }
+
+.setup-names { display: flex; flex-direction: column; gap: 10px; }
+.setup-name { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.setup-name input {
+  flex: 1; min-width: 150px; padding: 9px 10px;
+  border: 1px solid var(--line); border-radius: 2px;
+  background: var(--paper); color: var(--ink);
+  font-family: 'Archivo', sans-serif; font-size: 13px; font-weight: 600;
+}
+.setup-name input:focus { outline: none; border-color: var(--signal); }
+.swatches { display: flex; gap: 5px; flex: 0 0 auto; }
+.swatch {
+  width: 26px; height: 26px; border-radius: 2px; cursor: pointer; padding: 0;
+  border: 1px solid var(--line); position: relative;
+}
+.swatch[aria-pressed="true"] { border-color: var(--ink); border-width: 2px; }
+.swatch.azul { background: #1B3FD0; }
+.swatch.verde { background: #1D6B4C; }

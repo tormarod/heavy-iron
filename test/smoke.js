@@ -15,6 +15,15 @@ const { chromium } = require('playwright');
 
 const BASE = process.env.BASE || 'http://127.0.0.1:8765';
 let pass = 0, fail = 0;
+/* A device with no saved data now opens on the first-run setup sheet.
+   Tests that are not about setup skip it, exactly as a user could. */
+const dismissSetup = async page => {
+  if (await page.locator('#setupSheet.up').count()) {
+    await page.click('#setupClose');
+    await page.waitForTimeout(150);
+  }
+};
+
 const ok = (name, cond, extra) => {
   if (cond) { pass++; console.log('  PASS  ' + name); }
   else { fail++; console.log('  FAIL  ' + name + (extra ? '  → ' + extra : '')); }
@@ -42,6 +51,23 @@ const ok = (name, cond, extra) => {
     page.on('dialog', async d => { alertText = d.message(); await d.accept(); });
 
     await page.goto(BASE, { waitUntil: 'networkidle' });
+
+    console.log('\n== first-run setup ==');
+    ok('a fresh device opens on the welcome sheet', await page.locator('#setupSheet.up').count() === 1);
+    ok('it offers a starting plan on first run', await page.locator('#setupPlanField').isVisible());
+    await page.fill('#setupNames input >> nth=0', 'Ana');
+    await page.fill('#setupNames input >> nth=1', 'Bruno');
+    await page.click('#setupUnits >> text=lb');
+    await page.click('#setupSave');
+    await page.waitForTimeout(400);
+    ok('the names are used everywhere', (await page.textContent('#title')).includes('Ana'), await page.textContent('#title'));
+    ok('the second profile is renamed too', (await page.textContent('.profiles')).includes('Bruno'));
+    ok('the unit label follows the setting', (await page.locator('.fld u').first().textContent()) === 'lb');
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(300);
+    ok('setup does not come back on reload', await page.locator('#setupSheet.up').count() === 0);
+    ok('names survive the reload', (await page.textContent('#title')).includes('Ana'));
+
     console.log('\n== boot ==');
     ok('no page/console errors', errors.length === 0, errors.join(' | '));
     ok('title rendered', (await page.textContent('#title')).includes('Bloque 1'));
@@ -186,8 +212,38 @@ const ok = (name, cond, extra) => {
 
     console.log('\n== profile switch ==');
     await page.click('.profile-btn >> nth=1');
-    ok('switched to mujer', (await page.textContent('#title')).includes('Mujer'));
-    ok('mujer theme class applied', await page.locator('#app.profile-mujer').count() === 1);
+    ok('switched to the second profile', (await page.textContent('#title')).includes('Bruno'), await page.textContent('#title'));
+    /* Saving settings normalises the shipped theme names ('mujer') to the
+       accent names ('verde'); the CSS keeps both, so a profile that never
+       goes through settings does not change colour. */
+    ok('its accent class is applied', await page.locator('#app.profile-verde').count() === 1);
+
+    console.log('\n== solo mode ==');
+    await page.click('.profile-btn >> nth=0');   // back to the first profile
+    await page.click('#settings');
+    ok('settings hides the starting-plan question', !(await page.locator('#setupPlanField').isVisible()));
+    await page.click('#setupMode >> text=Solo yo');
+    ok('solo mode asks for one name only', await page.locator('#setupNames input').count() === 1);
+    await page.click('#setupSave');
+    await page.waitForTimeout(400);
+    ok('the profile switcher is hidden', !(await page.locator('#profiles').isVisible()));
+    ok('no JUNTOS/SOLO badges on any exercise', await page.locator('.badge.together, .badge.solo').count() === 0);
+    ok('the pair note is hidden', !(await page.locator('#pair').isVisible()));
+    ok('the shared-station stripe is gone', await page.locator('.ex.shared').count() === 0);
+    await page.click('#editPlan');
+    ok('plan editor hides the shared-station checkbox', !(await page.locator('.pe-check-share').first().isVisible()));
+    ok('plan editor hides the pair note field', !(await page.locator('.pe-day-pair').first().isVisible()));
+    await page.click('#peClose');
+    ok('the other profile is hidden, not deleted',
+       await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('heavy-iron-v1')).profiles).length) === 2);
+
+    // and back again, with nothing lost
+    await page.click('#settings');
+    await page.click('#setupMode >> text=Dos personas');
+    await page.click('#setupSave');
+    await page.waitForTimeout(300);
+    ok('two-person mode comes back intact', await page.locator('#profiles').isVisible()
+       && await page.locator('.badge.together, .badge.solo').count() > 0);
 
     console.log('\n== service worker ==');
     const swOk = await page.evaluate(async () => {
@@ -208,6 +264,7 @@ const ok = (name, cond, extra) => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     await page.goto(BASE, { waitUntil: 'networkidle' });
+    await dismissSetup(page);
     await page.evaluate(() => navigator.serviceWorker.ready);
     await page.waitForTimeout(500);
     await ctx.setOffline(true);
@@ -224,6 +281,7 @@ const ok = (name, cond, extra) => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     await page.goto(BASE, { waitUntil: 'networkidle' });
+    await dismissSetup(page);
     await page.waitForTimeout(700);
     ok('a fresh install persists its starting plan', await page.evaluate(() => !!localStorage.getItem('heavy-iron-v1')));
 
@@ -265,6 +323,7 @@ const ok = (name, cond, extra) => {
     const page = await ctx.newPage();
     page.on('dialog', d => d.accept());
     await page.goto(BASE, { waitUntil: 'networkidle' });
+    await dismissSetup(page);
     await page.waitForTimeout(600);
 
     // break rendering itself, then force a redraw
@@ -291,6 +350,7 @@ const ok = (name, cond, extra) => {
       const ctx = await browser.newContext({ viewport: { width, height: 820 } });
       const page = await ctx.newPage();
       await page.goto(BASE, { waitUntil: 'networkidle' });
+      await dismissSetup(page);
       await page.locator('.ex').first().locator('.set-row').first().locator('input').first().fill('60');
       await page.locator('.ex').first().locator('.set-row').first().locator('.tick').click();
       await page.waitForTimeout(300);
