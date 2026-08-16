@@ -2,7 +2,7 @@
 
 A simple gym training log for two people, hosted as a static site. No
 backend, no build step — everything is saved to `localStorage` in your
-browser.
+browser. It installs to a phone's home screen and works with no signal.
 
 ## Features
 
@@ -20,8 +20,17 @@ browser.
 - **8-week week/day navigation**, rest timer, "copy previous week's
   weights", and per-exercise progress charts (best weight logged per
   week).
+- **Works offline, installs like an app** — see [Offline](#offline-and-installing).
+- **Session feedback while you train**: last week's weight waiting in the
+  box, a **RÉCORD** badge when a set beats everything you have ever logged
+  on that exercise, and the session's total volume in the footer — see
+  [During the session](#during-the-session).
+- **Light and dark**, following the phone unless you override it with the
+  ◐ button in the header.
 - **Backup / restore**: download a `.json` file with both profiles'
-  data, or copy/paste it as text. Restoring replaces everything.
+  data, or copy/paste it as text. Restoring replaces everything. There is
+  also a one-way **CSV export** for looking at the numbers in a
+  spreadsheet.
 - **Import a block from JSON**: paste a block definition (e.g. one an
   AI training agent generated for you), or pick one from `blocks/` in
   this repo — see [Importing blocks](#importing-blocks-from-json) below.
@@ -33,6 +42,73 @@ using — there is no server and no sync between devices. Each person's
 phone/browser keeps its own log. Use the backup feature regularly if you
 care about not losing your history (e.g. clearing browser data, switching
 phones).
+
+The page is locked down with a Content-Security-Policy that only allows it
+to talk to two hosts: Google Fonts for the typefaces, and
+`raw.githubusercontent.com` to list and fetch the blocks published in this
+repo (read-only, no token). Nothing else can be loaded and nothing can be
+sent anywhere, so your log physically cannot leave the device except
+through the backup buttons you press yourself.
+
+Blocks you import are treated as untrusted input, because they come from
+outside the app: every field is length-capped, every number clamped to a
+range a human could train, and everything drawn on screen is escaped, so a
+block containing markup shows up as those characters instead of running.
+
+### When the data goes wrong
+
+The app repairs what it can on the way in — a block id that no longer
+exists, a missing week-goal table, a day with no exercises — rather than
+failing to draw. If the saved data is broken past repairing, you get a
+recovery screen instead of a blank page: it **stops writing** so the
+damaged copy is not overwritten, and offers to download the raw bytes as a
+file before you reset anything.
+
+Two smaller safeguards worth knowing about:
+
+- **Nothing is lost to a pocket.** Writes are batched while you type, and
+  flushed the moment the tab is hidden or closed, so the last set of the
+  session is saved even if the phone locks straight after it.
+- **Two tabs don't fight.** If the log changes in another tab, this one
+  picks it up; if you had unsaved edits here, it says so instead of
+  silently overwriting them.
+
+## Offline and installing
+
+The app registers a service worker that caches the page, styles, script
+and fonts, so after the first visit it opens with no connection at all —
+which is the normal state of a gym basement. Blocks published in `blocks/`
+are fetched from the network first and fall back to the cached copy, so
+the list is fresh when you have signal and still works when you don't.
+
+On a phone, **Add to home screen** (Safari) or **Install app** (Chrome)
+gives it its own icon and no browser chrome. Updates never swap the code
+out from under a session: when a new version has been cached, a small
+**Actualizar** prompt appears and nothing changes until you tap it.
+
+## During the session
+
+- **The weight box already knows what you did last time.** The greyed
+  number in it is what you lifted on that same set the last week you
+  logged it. Tick a set without typing anything and it takes that number,
+  telling you so in the status line — change it if the weight was
+  different.
+- **Decimals with a comma work.** `22,5` is stored and charted as 22.5;
+  previously the browser threw the whole value away when it saw a comma.
+- **RÉCORD** appears on an exercise when a completed set beats the best
+  weight you have ever logged for it, across every block of that profile.
+  The set's tick turns amber.
+- **The footer totals the session**: sets done, kilos moved (weight ×
+  reps over every completed set), records, and the date you last logged
+  something on this day.
+- **The rest timer** can be nudged with **−30**/**+30** when the machine
+  is still busy, and **Son.** turns on a double beep at zero for when the
+  phone is face-down or you are wearing headphones. The countdown runs off
+  a wall-clock end time, so it stays correct through a locked screen.
+
+Everything above is keyboard reachable, the set ticks are real buttons
+with pressed state, dialogs close with `Escape`, and pinch-zoom is no
+longer blocked.
 
 ## Editing a block mid-way
 
@@ -280,6 +356,25 @@ Field notes:
 Whatever doesn't validate (missing exercise name/reps, no days, etc.)
 is rejected with an inline error and nothing is imported.
 
+Because imported blocks are untrusted input, the importer also enforces
+limits rather than taking the JSON at its word. Anything over them is
+rejected or trimmed, so a malformed (or hostile) file cannot hang the app
+or smuggle markup onto the screen:
+
+| Field | Limit |
+|---|---|
+| `days` | at most 14 |
+| `day.ex` | at most 40 per day |
+| `name`, `day.name` | 80 characters |
+| `ex.n` | 120 · `ex.reps` 40 · `ex.alt` 200 · `ex.cue` 400 |
+| `day.pair` | 1000 characters |
+| `ex.sets` | clamped to 1–12 · `ex.rest` to 0–900s · `ex.add` to 1–8 |
+| `phase[w].r` / `.t` | 40 / 400 characters |
+
+`blocks/index.json` entries are checked too: `file` must be a plain
+`*.json` name with no path in it, so an entry in that list can only ever
+point at a file inside `blocks/`.
+
 ## Running locally
 
 No build step needed — it's plain HTML/CSS/JS.
@@ -288,7 +383,25 @@ No build step needed — it's plain HTML/CSS/JS.
 python3 -m http.server 8000
 ```
 
-Then open `http://localhost:8000`.
+Then open `http://localhost:8000`. Serve it over http rather than opening
+`index.html` from disk: service workers (and therefore offline mode) are
+not registered on `file://`, though everything else still works there.
+
+While developing, the cached service worker will keep serving the old
+files. Either tick **Update on reload** in the browser's Application →
+Service Workers panel, or bump `CACHE_VERSION` in `sw.js`.
+
+## Project layout
+
+| File | What it is |
+|---|---|
+| `index.html` | the whole markup: header, session list, and the five dialogs |
+| `css/style.css` | one stylesheet; all colours are tokens declared at the top, twice (light and dark) |
+| `js/data.js` | the default plans, used only on a device's first run |
+| `js/app.js` | everything else: state, rendering, plan editor, import, backup |
+| `sw.js` | offline caching; bump `CACHE_VERSION` when releasing |
+| `manifest.webmanifest`, `icon.svg` | what makes it installable |
+| `blocks/` | blocks published for one-click import |
 
 ## Hosting on GitHub Pages
 

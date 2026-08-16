@@ -1,8 +1,15 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Every colour the app draws with is a token defined here, in light mode,
+   and re-stated in the dark block below. Nothing hardcodes a hex outside
+   these two blocks — that is the whole reason the dark theme is a dozen
+   lines instead of a rewrite. `--on-*` tokens are the ink laid *on top* of
+   a filled surface (a signal-blue tick, the near-black timer bar), which is
+   the one thing that cannot simply be inverted. */
 :root {
   --paper: #E4E2DA;
   --card: #FBFAF7;
+  --sunk: #F2F0EA;
   --ink: #17191C;
   --soft: #71747A;
   --line: #CBC8BE;
@@ -10,13 +17,86 @@
   --amber-soft: #FBEFD8;
   --share: #7A4FBF;
   --share-soft: #EDE5FA;
+  --share-ink: #4A2E7A;
   --danger: #B02B1E;
   --signal: #1B3FD0;
   --signal-soft: #E4E8FA;
+  --on-signal: #FFFFFF;
+  --on-share: #FFFFFF;
+  --on-ink-dim: rgba(255,255,255,.6);
+  --on-ink-faint: rgba(255,255,255,.5);
+  --on-ink-line: rgba(255,255,255,.3);
+  --flare: #FFC24D;
+  --shade: rgba(20,22,25,.55);
+  --timer-bg: #17191C;
+  --timer-ink: #FBFAF7;
+  --timer-dim: rgba(255,255,255,.6);
+  --timer-line: rgba(255,255,255,.3);
+}
+
+/* Auto by system preference, unless the user has explicitly picked light. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #15161A;
+    --card: #1D1F24;
+    --sunk: #24262C;
+    --ink: #E8E6E0;
+    --soft: #9A9CA3;
+    --line: #33363D;
+    --amber: #E0A33C;
+    --amber-soft: #33270F;
+    --share: #B79BEA;
+    --share-soft: #292236;
+    --share-ink: #D6C6F4;
+    --danger: #F0736A;
+    --signal: #7C97F7;
+    --signal-soft: #212842;
+    --on-signal: #12141B;
+    --on-share: #1B1428;
+    --on-ink-dim: rgba(0,0,0,.6);
+    --on-ink-faint: rgba(0,0,0,.5);
+    --on-ink-line: rgba(0,0,0,.28);
+    --flare: #FFC24D;
+    --shade: rgba(0,0,0,.66);
+    --timer-bg: #2A2D35;
+    --timer-ink: #E8E6E0;
+    --timer-dim: rgba(255,255,255,.55);
+    --timer-line: rgba(255,255,255,.25);
+  }
+}
+
+/* …and the same values again when the user forces dark, so the toggle wins
+   over the system in both directions. */
+:root[data-theme="dark"] {
+  --paper: #15161A;
+  --card: #1D1F24;
+  --sunk: #24262C;
+  --ink: #E8E6E0;
+  --soft: #9A9CA3;
+  --line: #33363D;
+  --amber: #E0A33C;
+  --amber-soft: #33270F;
+  --share: #B79BEA;
+  --share-soft: #292236;
+  --share-ink: #D6C6F4;
+  --danger: #F0736A;
+  --signal: #7C97F7;
+  --signal-soft: #212842;
+  --on-signal: #12141B;
+  --on-share: #1B1428;
+  --on-ink-dim: rgba(0,0,0,.6);
+  --on-ink-faint: rgba(0,0,0,.5);
+  --on-ink-line: rgba(0,0,0,.28);
+  --flare: #FFC24D;
+  --shade: rgba(0,0,0,.66);
+  --timer-bg: #2A2D35;
+  --timer-ink: #E8E6E0;
+  --timer-dim: rgba(255,255,255,.55);
+  --timer-line: rgba(255,255,255,.25);
 }
 
 body {
-  font-family: 'Archivo', -apple-system, sans-serif;
+  font-family: 'Archivo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   background: var(--paper);
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
@@ -25,6 +105,22 @@ body {
 #app { min-height: 100vh; padding-bottom: 100px; }
 #app.profile-hombre { --signal: #1B3FD0; --signal-soft: #E4E8FA; }
 #app.profile-mujer { --signal: #1D6B4C; --signal-soft: #DFEDE6; }
+:root[data-theme="dark"] #app.profile-hombre,
+:root[data-theme="dark"] #app.profile-mujer { --on-signal: #12141B; }
+:root[data-theme="dark"] #app.profile-hombre { --signal: #7C97F7; --signal-soft: #212842; }
+:root[data-theme="dark"] #app.profile-mujer { --signal: #5FC496; --signal-soft: #173226; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) #app.profile-hombre,
+  :root:not([data-theme="light"]) #app.profile-mujer { --on-signal: #12141B; }
+  :root:not([data-theme="light"]) #app.profile-hombre { --signal: #7C97F7; --signal-soft: #212842; }
+  :root:not([data-theme="light"]) #app.profile-mujer { --signal: #5FC496; --signal-soft: #173226; }
+}
+
+/* Keyboard users get a visible ring everywhere; pointer users never see it. */
+:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
 
 .wrap { max-width: 640px; margin: 0 auto; padding: 0 14px; }
 
@@ -58,6 +154,15 @@ body {
   font-size: 11px; font-weight: 800; letter-spacing: 0.18em;
   text-transform: uppercase; color: var(--soft); margin: 10px 0;
 }
+.title-row { display: flex; align-items: center; gap: 8px; }
+.title-row .title { flex: 1; min-width: 0; }
+.icon-btn {
+  flex: 0 0 auto; width: 30px; height: 26px; border: 1px solid var(--line);
+  background: transparent; color: var(--soft); border-radius: 2px; cursor: pointer;
+  font-size: 15px; line-height: 1; display: flex; align-items: center; justify-content: center;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace; padding-bottom: 1px;
+}
+.icon-btn:hover { border-color: var(--ink); color: var(--ink); }
 
 .weeks { display: flex; gap: 5px; overflow-x: auto; padding-bottom: 10px; scrollbar-width: none; }
 .weeks::-webkit-scrollbar { display: none; }
@@ -88,7 +193,7 @@ body {
 .day:hover { border-color: var(--ink); }
 .day.on { background: var(--ink); border-color: var(--ink); }
 .day-n { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--soft); display: block; }
-.day.on .day-n { color: rgba(255,255,255,.5); }
+.day.on .day-n { color: var(--on-ink-faint); }
 .day-t { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
 .day.on .day-t { color: var(--card); }
 
@@ -108,7 +213,7 @@ body {
   display: flex; gap: 9px; align-items: center; margin-bottom: 14px;
   padding: 9px 12px; background: var(--share-soft);
   border-left: 3px solid var(--share); border-radius: 2px;
-  font-size: 11.5px; color: #4A2E7A; line-height: 1.4;
+  font-size: 11.5px; color: var(--share-ink); line-height: 1.4;
 }
 
 /* ---- progress ---- */
@@ -153,12 +258,12 @@ body {
   display: inline-block; font-size: 8.5px; font-weight: 800; letter-spacing: 0.1em;
   padding: 2px 5px; border-radius: 2px; margin-left: 6px; vertical-align: 2px;
 }
-.badge.together { background: var(--share); color: #fff; }
+.badge.together { background: var(--share); color: var(--on-share); }
 .badge.solo { background: transparent; color: var(--soft); border: 1px solid var(--line); }
 
 .last {
   font-family: 'IBM Plex Mono', monospace; font-size: 11px;
-  padding: 6px 13px; background: #F2F0EA;
+  padding: 6px 13px; background: var(--sunk);
   border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
   color: var(--soft); display: flex; gap: 7px; align-items: baseline;
 }
@@ -193,36 +298,60 @@ body {
   position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
   font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--soft); text-decoration: none;
 }
-.set-row.done .fld input { background: #F2F0EA; }
+.set-row.done .fld input { background: var(--sunk); }
 
 .tick {
   height: 40px; border: 1px solid var(--line); background: var(--card);
   border-radius: 2px; cursor: pointer; font-size: 16px; color: var(--line);
   display: flex; align-items: center; justify-content: center; transition: all .12s;
 }
+.tick { width: 100%; font-family: 'Archivo', sans-serif; padding: 0; }
 .tick:hover { border-color: var(--signal); color: var(--signal); }
-.tick.on { background: var(--signal); border-color: var(--signal); color: #fff; }
+.tick.on { background: var(--signal); border-color: var(--signal); color: var(--on-signal); }
+
+/* A set that beat every previous week on this exercise. The tick goes amber
+   instead of signal so you can see it happen without reading anything. */
+.set-row.pr .tick.on { background: var(--amber); border-color: var(--amber); color: var(--on-share); }
+.set-row.pr .set-n { color: var(--amber); font-weight: 600; }
+.badge.pr { background: var(--amber); color: var(--on-share); }
 
 /* ---- rest timer ---- */
 .timer {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
-  background: var(--ink); color: var(--card);
+  background: var(--timer-bg); color: var(--timer-ink);
   transform: translateY(105%); transition: transform .25s cubic-bezier(.2,.8,.3,1);
 }
 .timer.up { transform: translateY(0); }
 .timer-fill { height: 3px; background: var(--signal); transition: width 1s linear; }
 .timer.over .timer-fill { background: var(--amber); }
 .timer-in { display: flex; align-items: center; gap: 14px; padding: 12px 16px; max-width: 640px; margin: 0 auto; }
-.timer-lbl { font-size: 9.5px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; color: rgba(255,255,255,.5); }
+.timer-main { flex: 1 1 auto; min-width: 0; }
+.timer-acts { display: flex; gap: 6px; margin-left: auto; flex: 0 0 auto; }
+.timer-lbl {
+  font-size: 9.5px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--timer-dim);
+  /* the label carries the exercise name, which is long enough to push the
+     controls off a phone screen if it is allowed to set the width */
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .timer-val { font-family: 'IBM Plex Mono', monospace; font-size: 30px; font-weight: 500; line-height: 1; margin-top: 3px; }
-.timer.over .timer-val { color: #FFC24D; }
-.timer-msg { flex: 1; font-size: 11.5px; color: rgba(255,255,255,.6); line-height: 1.35; }
+.timer.over .timer-val { color: var(--flare); }
+.timer-msg { flex: 1; min-width: 0; font-size: 11.5px; color: var(--timer-dim); line-height: 1.35; }
 .timer-btn {
-  background: transparent; border: 1px solid rgba(255,255,255,.3); color: var(--card);
+  background: transparent; border: 1px solid var(--timer-line); color: var(--timer-ink);
   border-radius: 2px; padding: 8px 13px; font-family: 'Archivo'; font-size: 11px;
   font-weight: 600; cursor: pointer; letter-spacing: 0.04em;
 }
-.timer-btn:hover { border-color: var(--card); }
+.timer-btn:hover { border-color: var(--timer-ink); }
+.timer-btn[aria-pressed="true"] { background: var(--timer-ink); color: var(--timer-bg); border-color: var(--timer-ink); }
+/* On a phone the four controls and the coaching line do not both fit; the
+   controls are the part you reach for mid-set. */
+@media (max-width: 620px) {
+  .timer-msg { display: none; }
+  .timer-in { gap: 10px; padding: 10px 14px; }
+  .timer-val { font-size: 26px; }
+  .timer-btn { padding: 8px 9px; font-size: 10.5px; }
+}
 
 /* ---- footer ---- */
 .foot { margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--line); }
@@ -242,10 +371,23 @@ body {
 
 .skel { padding: 40px 0; text-align: center; color: var(--soft); font-size: 13px; }
 
+/* One-line notices that need an answer (a new version is ready, another tab
+   changed the log). Sits above the rest timer so it is never hidden by it. */
+.toast {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 14px; z-index: 70;
+  display: flex; align-items: center; gap: 9px; max-width: min(600px, calc(100% - 24px));
+  background: var(--card); border: 1px solid var(--ink); border-radius: 3px;
+  padding: 9px 11px; font-size: 12px; line-height: 1.4;
+  box-shadow: 0 6px 22px rgba(0,0,0,.22);
+}
+.toast[hidden] { display: none; }
+.toast .sm { flex: 0 0 auto; }
+.timer.up ~ .toast { bottom: 86px; }
+
 /* ---- sheets (modals) ---- */
 .sheet {
   position: fixed; inset: 0; z-index: 60; display: none;
-  background: rgba(20,22,25,.55); padding: 16px;
+  background: var(--shade); padding: 16px;
   align-items: center; justify-content: center; overflow-y: auto;
 }
 .sheet.up { display: flex; }
@@ -267,6 +409,11 @@ body {
 
 /* ---- plan editor ---- */
 .pe-day { border: 1px solid var(--line); border-radius: 3px; padding: 11px; margin-bottom: 12px; background: var(--paper); }
+.pe-block-name {
+  width: 100%; padding: 8px; font-family: 'Archivo', sans-serif; font-size: 13px; font-weight: 700;
+  border: 1px solid var(--line); border-radius: 2px; background: var(--paper); color: var(--ink);
+  margin-bottom: 14px;
+}
 .pe-day-head input {
   width: 100%; font-size: 14px; font-weight: 700; padding: 6px 8px; margin-bottom: 6px;
   border: 1px solid var(--line); border-radius: 2px; background: var(--card); color: var(--ink); font-family: 'Archivo';
@@ -350,3 +497,16 @@ body {
   padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; color: var(--ink);
 }
 .import-item:last-child { border-bottom: none; }
+
+/* ---- recovery ----
+   Shown instead of a blank page when the saved data is broken enough that
+   the app cannot draw it. The first button is the important one: it gets
+   the raw data out of the browser before anything is discarded. */
+.recovery { max-width: 640px; margin: 0 auto; padding: 26px 16px; }
+.recovery h1 { font-size: 17px; font-weight: 700; margin-bottom: 10px; }
+.recovery p { font-size: 12.5px; color: var(--soft); line-height: 1.55; margin-bottom: 12px; }
+.recovery pre {
+  background: var(--sunk); border: 1px solid var(--line); border-radius: 2px; padding: 9px;
+  font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--danger);
+  white-space: pre-wrap; word-break: break-word; margin-bottom: 14px;
+}

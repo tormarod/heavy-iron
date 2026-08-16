@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Heavy Iron">
+  <!-- Maskable: everything that matters sits inside the middle 80%, so a
+       round or squircle mask on a phone home screen never clips the bar. -->
+  <rect width="512" height="512" fill="#17191C"/>
+  <g fill="#E4E2DA">
+    <!-- outer plates -->
+    <rect x="86" y="176" width="34" height="160" rx="8"/>
+    <rect x="392" y="176" width="34" height="160" rx="8"/>
+    <!-- inner plates -->
+    <rect x="130" y="146" width="46" height="220" rx="10"/>
+    <rect x="336" y="146" width="46" height="220" rx="10"/>
+    <!-- bar -->
+    <rect x="176" y="238" width="160" height="36" rx="6"/>
+  </g>
+  <!-- collars, in the accent used for a completed set -->
+  <g fill="#B87400">
+    <rect x="186" y="222" width="16" height="68" rx="5"/>
+    <rect x="310" y="222" width="16" height="68" rx="5"/>
+  </g>
+</svg>
