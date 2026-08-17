@@ -1347,6 +1347,7 @@ function applyImportedBlock(raw, sourceLabel) {
   }
   installImportedBlock(normalized);
   closeSheet('importSheet');
+  flushSave();
   mark('Bloque "' + normalized.name + '" importado' + (sourceLabel ? ' (' + sourceLabel + ')' : '') + ' en ' + getProfile().label);
 }
 
@@ -2643,6 +2644,7 @@ async function restoreFromText(text) {
   applyTheme();
   save(); render();
   closeSheet('sheet');
+  flushSave();
   mark('Registro restaurado — ' + setsLabel(theirs));
 }
 
@@ -2750,7 +2752,38 @@ async function loadProfileFromText(text) {
   applyTheme();
   save(); render();
   closeSheet('sheet');
-  mark(state.profiles[target].label + ' cargado — ' + setsLabel(theirs));
+  /* Flushed before the message, not after: save() is debounced 400 ms and
+     ends in mark('Guardado …'), so anything said here would be wiped off the
+     status line half a second later, unread. Everything below that reports
+     the result of an import does the same. */
+  flushSave();
+  mark(state.profiles[target].label + ' cargado — ' + setsLabel(theirs) + landingNote(state.profiles[target]));
+}
+
+/* A profile carries the week its owner was on, and that is where it opens —
+   which is usually a week they have not trained yet. So the session shows no
+   ticks, and the weight boxes show the greyed placeholder from last week,
+   which looks exactly like a transfer that arrived stripped of its ✓. It is
+   not: the history is a week back. Say so, because the alternative is the
+   person concluding their partner's log did not survive the trip. */
+function landingNote(profile) {
+  const block = profile.blocks[profile.activeBlock];
+  if (!block) return '';
+  const week = clampInt(profile.week, 1, MAX_WEEKS, 1);
+  let inWeek = 0, earlier = 0;
+  dayList(block).forEach(day => {
+    exList(day).forEach(ex => {
+      for (let w = 1; w <= blockWeeks(block); w++) {
+        const s = profile.log[block.id] && profile.log[block.id][slot(w, day.id)];
+        const rows = s && s[ex.id];
+        if (!Array.isArray(rows)) continue;
+        const n = rows.filter(r => r && r.done).length;
+        if (w === week) inWeek += n; else if (w < week) earlier += n;
+      }
+    });
+  });
+  if (inWeek || !earlier) return '';
+  return ' · abre en la semana ' + week + ', que aún está sin marcar — el registro está en las semanas anteriores';
 }
 
 $('pUploadBtn').onclick = () => $('pUpload').click();
@@ -3427,6 +3460,7 @@ async function applyQrPayload(payload) {
 
     closeQr();
     installImportedBlock(normalized, log);
+    flushSave();
     mark('Bloque "' + normalized.name + '" añadido' + (log && sets ? ' con ' + setsWithDoneLabel(sets, doneSets) : '') + ' en ' + profile.label);
     return;
   }

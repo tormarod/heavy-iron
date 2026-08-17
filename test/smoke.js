@@ -559,6 +559,45 @@ const ok = (name, cond, extra) => {
              landed[1].done === false && landed[1].w === '105' &&
              collectHistory(np, id, nd.id, ne.id, blockWeeks(nb), 'weight').length === 1;
     }));
+    /* A profile opens on the week its owner was on, which is usually one they
+       have not trained yet: no ticks, and greyed last-week placeholders in
+       every weight box. That reads exactly like a transfer that lost its ✓,
+       and it is the thing people actually reported. */
+    /* Built by hand rather than by clobbering the live profile: these run in
+       the middle of a long shared session, and wiping a real block's log to
+       make a point here breaks the CSV and plan-editor cases further down. */
+    ok('landing on an untrained week says where the history is', await page.evaluate(() => {
+      const fake = week => ({
+        week, activeBlock: 'b1',
+        blocks: { b1: { id: 'b1', weeks: 8, days: [{ id: 'd0', name: 'D', ex: [{ id: 'e0', n: 'E', reps: '8', sets: 3 }] }] } },
+        log: { b1: { 'w1-d0': { e0: [{ w: '100', r: '8', done: true }] } } },
+      });
+      const onEmptyWeek = landingNote(fake(3));
+      const onLoggedWeek = landingNote(fake(1));
+      return /semana 3/.test(onEmptyWeek) && /anteriores/.test(onEmptyWeek) && onLoggedWeek === '';
+    }));
+    ok('a profile with nothing logged anywhere gets no misleading note', await page.evaluate(() =>
+      landingNote({
+        week: 3, activeBlock: 'b1',
+        blocks: { b1: { id: 'b1', weeks: 8, days: [{ id: 'd0', name: 'D', ex: [{ id: 'e0', n: 'E', reps: '8', sets: 3 }] }] } },
+        log: {},
+      }) === ''));
+    /* save() is debounced 400 ms and ends in mark('Guardado …'), so a result
+       reported straight after it used to be wiped off the status line before
+       anyone could read it — an import that looked like it said nothing. */
+    ok('a result message outlives the save indicator', await page.evaluate(async () => {
+      const status = document.getElementById('status');
+      save();
+      mark('sin flush');
+      await new Promise(r => setTimeout(r, 900));
+      const lostIt = status.textContent !== 'sin flush';
+      save();
+      flushSave();
+      mark('con flush');
+      await new Promise(r => setTimeout(r, 900));
+      const keptIt = status.textContent === 'con flush';
+      return lostIt && keptIt;
+    }));
     ok('the sheet distinguishes sets that are merely written down from ones marked done', await page.evaluate(() => {
       return setsWithDoneLabel(12, 12) === '12 series registradas' &&
              setsWithDoneLabel(12, 9) === '12 series registradas, 9 marcadas como hechas' &&
