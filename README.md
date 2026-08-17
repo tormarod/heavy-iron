@@ -167,6 +167,27 @@ as you see it. Compression usually shrinks a full block log by around 8×;
 if something still needs more than 60 frames, the app says so and points at
 the file transfer rather than animating for a minute.
 
+### Written down vs. marked done
+
+A set counts as *registrada* the moment it holds anything — including a
+weight you typed into the box and then never ticked. Only a set with the ✓
+feeds the progress chart, the **RÉCORD** badge and the volume dashboard.
+
+The transfer carries both kinds exactly as they are, ticks included. It
+does not invent them: a set that crosses without a ✓ arrives without one,
+because the alternative is the app deciding you completed work you never
+marked as completed. So both screens say which is which when they differ:
+
+```
+3 series registradas, 1 marcada como hecha.
+Las 2 sin marcar traen peso y reps pero llegan sin el ✓,
+tal y como estaban en el otro móvil.
+```
+
+If a block arrives with numbers in the boxes and an empty chart, that is
+what happened — the sets were written down on the sending phone but never
+ticked, and its chart was empty too. Tick them and the chart fills in.
+
 Camera unavailable or permission denied? It says so and points back at the
 file buttons above it — the file transfer stays the primary path, and this
 never becomes the only way to do something.

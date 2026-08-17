@@ -3022,13 +3022,45 @@ function blockShareLog(profile, block) {
   return out;
 }
 
-function countShareLog(log) {
+/* Two different numbers, and the difference is the whole point of showing
+   them. A row counts as "registrada" the moment it holds anything at all —
+   including a weight typed into the box and then never ticked. Only a row
+   marked *done* feeds the progress chart, the RÉCORD badge or the volume
+   dashboard. A transfer carries both kinds faithfully, so a block that was
+   full of untouched numbers before it was sent is still full of them after,
+   and the sheet has to say so rather than promising "234 series" and
+   handing over a chart with nothing in it. */
+function countShareLog(log, onlyDone) {
   let n = 0;
   Object.keys(log || {}).forEach(k => {
     const s = log[k];
-    Object.keys(s || {}).forEach(exId => { if (Array.isArray(s[exId])) n += s[exId].filter(rowUsed).length; });
+    Object.keys(s || {}).forEach(exId => {
+      if (!Array.isArray(s[exId])) return;
+      n += s[exId].filter(r => (onlyDone ? !!(r && r.done) : rowUsed(r))).length;
+    });
   });
   return n;
+}
+
+/* The done-only twin of blockLoggedSets, for the same reason. */
+function blockDoneSets(profile, blockId) {
+  const blk = profile.log[blockId];
+  if (!blk) return 0;
+  let n = 0;
+  Object.keys(blk).forEach(k => {
+    const s = blk[k];
+    if (!s) return;
+    Object.keys(s).forEach(exId => { if (Array.isArray(s[exId])) n += s[exId].filter(r => r && r.done).length; });
+  });
+  return n;
+}
+
+/* "12 series registradas" when every one of them is ticked, and the fuller
+   "…, 9 marcadas como hechas" when they are not — silence when there is
+   nothing to warn about. */
+function setsWithDoneLabel(total, done) {
+  if (!total || done === total) return setsLabel(total);
+  return setsLabel(total) + ', ' + done + ' marcada' + (done === 1 ? '' : 's') + ' como hecha' + (done === 1 ? '' : 's');
 }
 
 /* ---- what arrives ----
@@ -3198,6 +3230,7 @@ function drawQr() {
 function drawQrShow() {
   const profile = getProfile(), block = getBlock();
   const logged = blockLoggedSets(profile, block.id);
+  const doneSets = blockDoneSets(profile, block.id);
 
   $('qrKind').querySelectorAll('.seg-btn').forEach(b => {
     b.setAttribute('aria-pressed', b.dataset.kind === qrKind ? 'true' : 'false');
@@ -3207,8 +3240,12 @@ function drawQrShow() {
   const desc = {
     block: 'Solo el plan de "' + block.name + '": ejercicios, series, repeticiones y descansos. ' +
            'Se añade como bloque nuevo en el otro móvil, sin tocar nada de lo que ya tenga.',
-    blocklog: 'El plan de "' + block.name + '" y lo que llevas hecho en él: ' + setsLabel(logged) + '. ' +
-              'También entra como bloque nuevo: no sustituye nada.',
+    blocklog: 'El plan de "' + block.name + '" y lo que llevas hecho en él: ' + setsWithDoneLabel(logged, doneSets) + '. ' +
+              'También entra como bloque nuevo: no sustituye nada.' +
+              (logged > doneSets
+                ? ' Ojo: las ' + (logged - doneSets) + ' sin marcar viajan con su peso y sus reps, pero llegan sin marcar — ' +
+                  'igual que aquí, no cuentan para las gráficas hasta que les des al ✓.'
+                : ''),
     profile: 'Todo el perfil de ' + profile.label + ': todos sus bloques y todo su registro. ' +
              'En el otro móvil sustituye a ese perfil entero — te lo preguntará antes.',
   }[qrKind];
@@ -3369,6 +3406,7 @@ async function applyQrPayload(payload) {
     }
     const log = payload.kind === 'blocklog' ? normalizeImportedLog(payload.log, payload.block, normalized) : null;
     const sets = log ? countShareLog(log) : 0;
+    const doneSets = log ? countShareLog(log, true) : 0;
     const profile = getProfile();
     const from = txt(payload.from, IMPORT_LIMITS.name);
 
@@ -3377,7 +3415,10 @@ async function applyQrPayload(payload) {
       body: 'Llega' + (from ? ' de ' + from : '') + ': ' + normalized.days.length +
         (normalized.days.length === 1 ? ' día' : ' días') + ', ' + normalized.weeks +
         (normalized.weeks === 1 ? ' semana' : ' semanas') +
-        (log ? ' y ' + setsLabel(sets) : ', sin registro') + '.\n\n' +
+        (log ? ' y ' + setsWithDoneLabel(sets, doneSets) : ', sin registro') + '.\n\n' +
+        (log && sets > doneSets
+          ? 'Las ' + (sets - doneSets) + ' sin marcar traen peso y reps pero llegan sin el ✓, tal y como estaban en el otro móvil.\n\n'
+          : '') +
         'Entra como bloque nuevo en ' + profile.label + ' y pasa a ser el bloque activo. ' +
         'No se toca nada de lo que ya tienes.',
       okLabel: 'Añadir',
@@ -3386,7 +3427,7 @@ async function applyQrPayload(payload) {
 
     closeQr();
     installImportedBlock(normalized, log);
-    mark('Bloque "' + normalized.name + '" añadido' + (log && sets ? ' con ' + setsLabel(sets) : '') + ' en ' + profile.label);
+    mark('Bloque "' + normalized.name + '" añadido' + (log && sets ? ' con ' + setsWithDoneLabel(sets, doneSets) : '') + ' en ' + profile.label);
     return;
   }
 
