@@ -48,6 +48,7 @@
       <div class="foot-btns">
         <button class="sm" id="copyPrev">Copiar pesos de la semana anterior</button>
         <button class="sm" id="editPlan">Editar plan</button>
+        <button class="sm" id="calcBtn">Calculadora</button>
         <button class="sm" id="clearDay">Borrar este día</button>
         <button class="sm" id="backup">Copia de seguridad</button>
         <button class="sm" id="settings">Ajustes</button>
@@ -105,6 +106,14 @@
           <button type="button" class="seg-btn" data-plan="empty">Empezar en blanco</button>
         </div>
         <p class="setup-hint" id="setupPlanHint"></p>
+      </div>
+
+      <div class="setup-field" id="setupCalcField">
+        <span class="pe-field-lbl">Calculadora — peso de la barra</span>
+        <div class="fld"><input type="text" inputmode="decimal" autocomplete="off" id="setupBarWeight"><u id="setupBarWeightU"></u></div>
+        <span class="pe-field-lbl">Calculadora — discos disponibles por lado (separados por coma)</span>
+        <input type="text" id="setupPlates" class="pe-block-name" style="margin-bottom:0;">
+        <p class="setup-hint">Se usan al calcular el calentamiento y el reparto de discos. Cambiar la unidad no convierte estos números — revísalos si acabas de cambiarla.</p>
       </div>
 
       <div class="sheet-btns">
@@ -223,6 +232,33 @@
       <div class="chart-wrap" id="chartHost"></div>
       <div class="sheet-btns">
         <button class="sm" id="chartClose">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- warm-up ramp and plate-loading calculator -->
+  <div class="sheet" id="calcSheet">
+    <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="calcTitle">
+      <div class="sheet-t" id="calcTitle">Calculadora</div>
+      <p class="sheet-d">Calcula un calentamiento progresivo hasta tu peso de trabajo y, en barra, los discos que van en cada lado. No está ligada a ningún ejercicio — usa el peso que quieras.</p>
+      <div class="seg" id="calcMode" role="group" aria-label="Tipo de ejercicio">
+        <button type="button" class="seg-btn" data-mode="bar">Barra</button>
+        <button type="button" class="seg-btn" data-mode="machine">Máquina</button>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
+        <div style="flex:1;min-width:140px;">
+          <label class="pe-field-lbl" for="calcTarget">Peso objetivo</label>
+          <div class="fld"><input type="text" inputmode="decimal" autocomplete="off" id="calcTarget"><u id="calcTargetU"></u></div>
+        </div>
+        <div id="calcIncField" style="flex:1;min-width:140px;">
+          <label class="pe-field-lbl" for="calcInc">Incremento de la pila</label>
+          <div class="fld"><input type="text" inputmode="decimal" autocomplete="off" id="calcInc"><u id="calcIncU"></u></div>
+        </div>
+      </div>
+      <p class="setup-hint" id="calcBarHint"></p>
+      <div id="calcOut"></div>
+      <div class="sheet-btns">
+        <button class="sm" id="calcClose">Cerrar</button>
       </div>
     </div>
   </div>
