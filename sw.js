@@ -16,7 +16,7 @@
    are deleted on activate, and the app shows an "Actualizar" prompt rather
    than swapping the code under a session in progress. */
 
-const CACHE_VERSION = 'v7';
+const CACHE_VERSION = 'v8';
 const SHELL_CACHE = 'heavy-iron-shell-' + CACHE_VERSION;
 const RUNTIME_CACHE = 'heavy-iron-runtime-' + CACHE_VERSION;
 
@@ -28,6 +28,11 @@ const SHELL = [
   'js/data.js',
   'manifest.webmanifest',
   'icon.svg',
+  /* Only pulled in when you open "Compartir por QR", but precached here: the
+     whole point of that screen is working in a basement, and a lazy <script>
+     that 404s offline would break the feature exactly where it is needed. */
+  'js/vendor/qrcode.js',
+  'js/vendor/jsQR.js',
 ];
 
 self.addEventListener('install', event => {
