@@ -458,10 +458,6 @@ body {
   width: 64px; padding: 6px 7px; border: 1px solid var(--line); border-radius: 2px;
   font-family: 'IBM Plex Mono', monospace; font-size: 12px; background: var(--paper); color: var(--ink);
 }
-.pe-row select {
-  width: 100%; padding: 6px 7px; border: 1px solid var(--line); border-radius: 2px;
-  font-family: 'Archivo', sans-serif; font-size: 12px; background: var(--paper); color: var(--ink);
-}
 .pe-field-lbl { font-size: 9px; color: var(--soft); text-transform: uppercase; letter-spacing: 0.08em; display: block; margin-bottom: 2px; }
 .pe-check { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--soft); }
 
