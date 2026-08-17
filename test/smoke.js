@@ -106,6 +106,58 @@ const ok = (name, cond, extra) => {
     await page.click('#tskip');
     ok('skip hides timer', await page.locator('#timer.up').count() === 0);
 
+    console.log('\n== muscle-group volume dashboard ==');
+    ok('muscleTag falls back to otro for an untagged exercise', await page.evaluate(() => muscleTag({}) === 'otro'));
+    ok('muscleTag reports the stored tag when valid', await page.evaluate(() => muscleTag({ muscle: 'pecho' }) === 'pecho'));
+    ok('muscleTag ignores a stale/invalid tag', await page.evaluate(() => muscleTag({ muscle: 'nonsense' }) === 'otro'));
+    ok('the default chest press is tagged pecho by migrate()', await page.evaluate(() =>
+      state.profiles.hombre.blocks['block-1'].days[0].ex.find(e => e.id === 'chestpress').muscle) === 'pecho');
+    ok('shoulder press is left untagged on purpose (front delt folded into press volume)', await page.evaluate(() =>
+      state.profiles.hombre.blocks['block-1'].days[0].ex.find(e => e.id === 'shoulderpress').muscle) === undefined);
+    ok('planVolumeByMuscle excludes retired exercises', await page.evaluate(() => {
+      const block = JSON.parse(JSON.stringify(state.profiles.hombre.blocks['block-1']));
+      block.days[0].ex[0].off = 1;
+      return planVolumeByMuscle(block, 1).pecho === 15 - 4;
+    }));
+    ok('buildBarSVG draws a background rect for every row, plus a filled one for nonzero rows', await page.evaluate(() => {
+      const svg = buildBarSVG([{ id: 'pecho', label: 'Pecho', value: 10 }, { id: 'espalda', label: 'Espalda', value: 0 }]);
+      return (svg.match(/<rect/g) || []).length === 3;
+    }));
+
+    await page.click('#volumeBtn');
+    ok('the volume sheet opens', await page.locator('#volumeSheet.up').count() === 1);
+    ok('starts on Plan scope', await page.getAttribute('#volumeScope >> text=Plan', 'aria-pressed') === 'true');
+    const muscleCount = await page.evaluate(() => MUSCLES.length);
+    ok('one row per muscle tag', await page.locator('#volumeHost .chart-table tbody tr').count() === muscleCount);
+    const topPlanRow = await page.locator('#volumeHost .chart-table tbody tr').first().textContent();
+    ok('the busiest muscle this week matches the plan (chest, 15 sets)', topPlanRow.includes('Pecho') && topPlanRow.includes('15'), topPlanRow);
+
+    await page.click('#volumeScope >> text=Registrado');
+    await page.waitForTimeout(200);
+    ok('the sub-label switches to registered sets', (await page.textContent('#volumeSub')).includes('marcadas como hechas'));
+    const topLogRow = await page.locator('#volumeHost .chart-table tbody tr').first().textContent();
+    ok('the one completed set so far counts under Pecho', topLogRow.includes('Pecho') && topLogRow.trim().endsWith('1'), topLogRow);
+    await page.click('#volumeClose');
+    ok('close hides it', await page.locator('#volumeSheet.up').count() === 0);
+
+    console.log('\n== plan editor: muscle tag ==');
+    await page.click('#editPlan');
+    const day0 = page.locator('.pe-day').first();
+    ok('chest press starts tagged Pecho', await day0.locator('.pe-ex').nth(0).locator('.f-muscle').inputValue() === 'pecho');
+    ok('shoulder press starts unclassified', await day0.locator('.pe-ex').nth(2).locator('.f-muscle').inputValue() === 'otro');
+    await day0.locator('.pe-ex').last().locator('.f-muscle').selectOption('core');
+    await page.click('#peSave');
+    await page.waitForTimeout(300);
+    ok('changing the tag and saving persists it', await page.evaluate(() =>
+      state.profiles.hombre.blocks['block-1'].days[0].ex.find(e => e.id === 'facepull').muscle) === 'core');
+
+    await page.click('#editPlan');
+    await page.locator('.pe-day').first().locator('.pe-ex').nth(0).locator('.f-muscle').selectOption('otro');
+    await page.click('#peSave');
+    await page.waitForTimeout(300);
+    ok('picking Otro clears the field rather than storing it', await page.evaluate(() =>
+      !('muscle' in state.profiles.hombre.blocks['block-1'].days[0].ex.find(e => e.id === 'chestpress'))));
+
     console.log('\n== timestamps + persistence across reload ==');
     await page.waitForTimeout(600);
     const ts = await page.evaluate(() => JSON.parse(localStorage.getItem('heavy-iron-v1')).profiles.hombre.log['block-1']['w1-d0'].chestpress[0].ts);
@@ -311,6 +363,25 @@ const ok = (name, cond, extra) => {
       ok('blocks/' + f + ' imports cleanly', err === '', err);
       ok('blocks/' + f + ' became the active block', (await page.textContent('#title')).length > 0);
     }
+    await page.click('#blockbar >> text=Importar JSON');
+
+    console.log('\n== import: optional muscle field ==');
+    await page.fill('#importBlob', JSON.stringify({
+      name: 'Con músculos',
+      days: [{ name: 'D', ex: [
+        { id: 'x1', n: 'Uno', reps: '10', muscle: 'pecho' },
+        { id: 'x2', n: 'Dos', reps: '10', muscle: 'no-existe' },
+        { id: 'x3', n: 'Tres', reps: '10' },
+      ] }],
+    }));
+    await page.click('#importFromText');
+    await page.waitForTimeout(300);
+    ok('a block with muscle tags imports cleanly', (await page.textContent('#importError')) === '');
+    ok('a valid muscle tag is kept', await page.evaluate(() => getBlock().days[0].ex[0].muscle) === 'pecho');
+    ok('an invalid muscle tag is dropped rather than rejecting the import',
+       await page.evaluate(() => !('muscle' in getBlock().days[0].ex[1])));
+    ok('a missing muscle tag is left absent',
+       await page.evaluate(() => !('muscle' in getBlock().days[0].ex[2])));
     await page.click('#blockbar >> text=Importar JSON');
 
     console.log('\n== escape closes sheets ==');

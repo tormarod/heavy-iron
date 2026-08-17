@@ -7,6 +7,7 @@
       "ex": [
         {
           "id": "chestpress",
+          "muscle": "pecho",
           "share": 1,
           "n": "Press de pecho en máquina",
           "alt": "o press de banca con barra",
@@ -18,6 +19,7 @@
         },
         {
           "id": "lat1",
+          "muscle": "hombro-lat",
           "share": 1,
           "n": "Elevaciones laterales en polea",
           "alt": "o con mancuernas",
@@ -38,6 +40,7 @@
         },
         {
           "id": "inclinepress",
+          "muscle": "pecho",
           "share": 1,
           "n": "Press inclinado en máquina",
           "alt": "o press inclinado con mancuernas",
@@ -47,6 +50,7 @@
         },
         {
           "id": "pecdeck",
+          "muscle": "pecho",
           "share": 1,
           "n": "Contractora / aperturas en polea",
           "alt": "o aperturas con mancuernas",
@@ -57,6 +61,7 @@
         },
         {
           "id": "pushdown",
+          "muscle": "triceps",
           "share": 1,
           "n": "Extensiones de tríceps en polea",
           "alt": "o press francés",
@@ -66,6 +71,7 @@
         },
         {
           "id": "facepull",
+          "muscle": "hombro-post",
           "n": "Face pull en polea",
           "alt": "o contractora inversa",
           "sets": 3,
@@ -81,6 +87,7 @@
       "ex": [
         {
           "id": "hacksquat",
+          "muscle": "cuadriceps",
           "share": 1,
           "n": "Sentadilla hack",
           "alt": "o pendular / sentadilla con barra",
@@ -91,6 +98,7 @@
         },
         {
           "id": "legpress",
+          "muscle": "cuadriceps",
           "share": 1,
           "n": "Prensa de piernas",
           "alt": "",
@@ -101,6 +109,7 @@
         },
         {
           "id": "pulldown_w",
+          "muscle": "espalda",
           "share": 1,
           "n": "Jalón al pecho, agarre ancho",
           "alt": "o dominadas",
@@ -112,6 +121,7 @@
         },
         {
           "id": "csrow",
+          "muscle": "espalda",
           "share": 1,
           "n": "Remo en máquina con apoyo pectoral",
           "alt": "o remo con barra",
@@ -121,6 +131,7 @@
         },
         {
           "id": "pulldown_n",
+          "muscle": "espalda",
           "n": "Jalón agarre neutro",
           "alt": "o dominadas asistidas / pullover en polea",
           "sets": 3,
@@ -129,6 +140,7 @@
         },
         {
           "id": "reardelt",
+          "muscle": "hombro-post",
           "share": 1,
           "n": "Contractora inversa (deltoide posterior)",
           "alt": "o pájaros con mancuernas",
@@ -139,6 +151,7 @@
         },
         {
           "id": "cablecurl",
+          "muscle": "biceps",
           "share": 1,
           "n": "Curl en polea",
           "alt": "o curl inclinado con mancuernas",
@@ -149,6 +162,7 @@
         },
         {
           "id": "hammer",
+          "muscle": "biceps",
           "share": 1,
           "n": "Curl martillo con cuerda",
           "alt": "o curl martillo con mancuernas",
@@ -164,6 +178,7 @@
       "ex": [
         {
           "id": "rdl",
+          "muscle": "isquios",
           "share": 1,
           "n": "Peso muerto rumano en multipower",
           "alt": "o hiperextensiones a 45°",
@@ -174,6 +189,7 @@
         },
         {
           "id": "legcurl",
+          "muscle": "isquios",
           "share": 1,
           "n": "Curl femoral sentado",
           "alt": "o curl femoral tumbado",
@@ -183,6 +199,7 @@
         },
         {
           "id": "cablepress",
+          "muscle": "pecho",
           "n": "Press de pecho en polea alta, de pie",
           "alt": "poleas por encima del hombro, empuje en diagonal hacia el suelo",
           "sets": 3,
@@ -192,6 +209,7 @@
         },
         {
           "id": "cablerow",
+          "muscle": "espalda",
           "n": "Remo sentado en polea",
           "alt": "o remo con apoyo pectoral",
           "sets": 3,
@@ -200,6 +218,7 @@
         },
         {
           "id": "inclinecurl",
+          "muscle": "biceps",
           "n": "Curl inclinado en polea",
           "alt": "o curl inclinado con mancuernas",
           "sets": 4,
@@ -210,6 +229,7 @@
         },
         {
           "id": "ohext",
+          "muscle": "triceps",
           "n": "Extensión de tríceps sobre la cabeza",
           "alt": "en polea o con mancuerna",
           "sets": 4,
@@ -219,6 +239,7 @@
         },
         {
           "id": "lat2",
+          "muscle": "hombro-lat",
           "n": "Elevaciones laterales en polea",
           "alt": "o con mancuernas",
           "sets": 4,
