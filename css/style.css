@@ -552,6 +552,9 @@ body {
 }
 .seg-btn:hover { border-color: var(--ink); color: var(--ink); }
 .seg-btn[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--card); }
+.seg + .seg { margin-top: 8px; }
+
+.chart-table tr.unreliable td { color: var(--soft); }
 
 .setup-names { display: flex; flex-direction: column; gap: 10px; }
 .setup-name { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }

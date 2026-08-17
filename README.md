@@ -27,7 +27,9 @@ browser. It installs to a phone's home screen and works with no signal.
   (or none at all) — see [Block length](#block-length-and-the-deload-week).
 - **Week/day navigation**, rest timer, "copy previous week's weights", and
   per-exercise progress charts — for the current block, or across every
-  block you have ever run.
+  block you have ever run, either as raw weight or as an estimated one-rep
+  max (Epley) so a program moving between rep ranges still shows a
+  consistent strength trend.
 - **Undo** on the three things that destroy data: clearing a day, wiping a
   profile, deleting a block.
 - **Works offline, installs like an app** — see [Offline](#offline-and-installing).

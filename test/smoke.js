@@ -205,6 +205,20 @@ const ok = (name, cond, extra) => {
     ok('rows are labelled by block and week',
        await page.locator('.chart-table tbody tr').count() > 0 &&
        (await page.locator('.chart-table tbody tr').first().textContent()).includes('·'));
+
+    console.log('\n== estimated 1RM ==');
+    ok('Epley formula matches by hand', await page.evaluate(() => est1RM(100, 5)) === 100 * (1 + 5 / 30));
+    ok('a set past 12 reps is still picked, but flagged unreliable', await page.evaluate(() => {
+      const rows = [{ done: true, w: '50', r: '20' }];
+      return bestSet(rows, 'e1rm') === rows[0];
+    }));
+    await page.click('#chartMetric >> text=1RM est.');
+    await page.waitForTimeout(250);
+    ok('the sub-label switches to the 1RM estimate', (await page.textContent('#chartSub')).includes('1RM estimado'));
+    ok('the table header switches to 1RM est.', (await page.textContent('#chartHost')).includes('1RM est.'));
+    await page.click('#chartMetric >> text=Peso');
+    await page.waitForTimeout(250);
+    ok('switching back restores the weight label', (await page.textContent('#chartSub')).includes('mejor peso'));
     await page.click('#chartClose');
 
     console.log('\n== theme ==');

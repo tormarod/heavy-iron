@@ -1972,7 +1972,34 @@ $('peDeleteBlock').onclick = async () => {
 };
 
 /* ---------- progress chart ---------- */
-function collectHistory(profile, blockId, dayId, exId, weeks) {
+/* Epley: est1RM(w, r) = w × (1 + r/30). Simpler than Brzycki, it's what most
+   lifting apps already show, and its error band is well understood. It
+   degrades past ~12 reps, which callers are expected to flag rather than
+   plot as if it were a reliable number. */
+const est1RM = (w, r) => w * (1 + r / 30);
+
+/* A set counts toward the 1RM series only if it has a usable rep count —
+   unlike the weight series, which needs nothing but the weight itself. */
+const hasReps = r => r.r !== '' && r.r != null && !isNaN(num(r.r)) && num(r.r) > 0;
+
+/* Which logged set of a group "wins" depends on what's being charted: the
+   heaviest weight for the weight series, but the highest estimated 1RM for
+   the 1RM series — a heavier single at fewer reps can out-rank a lighter
+   set done for many reps, which is the point of showing this at all. */
+function bestSet(done, metric) {
+  if (metric === 'e1rm') {
+    const withReps = done.filter(hasReps);
+    if (!withReps.length) return null;
+    let best = withReps[0];
+    withReps.forEach(r => { if (est1RM(num(r.w), num(r.r)) > est1RM(num(best.w), num(best.r))) best = r; });
+    return best;
+  }
+  let best = done[0];
+  done.forEach(r => { if (num(r.w) > num(best.w)) best = r; });
+  return best;
+}
+
+function collectHistory(profile, blockId, dayId, exId, weeks, metric) {
   const points = [];
   for (let w = 1; w <= (weeks || MAX_WEEKS); w++) {
     const s = profile.log[blockId] && profile.log[blockId][slot(w, dayId)];
@@ -1980,8 +2007,8 @@ function collectHistory(profile, blockId, dayId, exId, weeks) {
     if (!rows) continue;
     const done = rows.filter(r => r.done && r.w !== '' && r.w != null && !isNaN(num(r.w)));
     if (!done.length) continue;
-    let best = done[0];
-    done.forEach(r => { if (num(r.w) > num(best.w)) best = r; });
+    const best = bestSet(done, metric);
+    if (!best) continue;
     points.push({ week: w, weight: num(best.w), reps: best.r });
   }
   return points;
@@ -1991,7 +2018,7 @@ function collectHistory(profile, blockId, dayId, exId, weeks) {
    first. Blocks key their logs separately, so this walks each block's slots
    looking for the exercise id rather than a day — the same exercise can sit
    on a different day in a later block and it is still the same lift. */
-function collectHistoryAll(profile, exId) {
+function collectHistoryAll(profile, exId, metric) {
   const out = [];
   profile.blockOrder.forEach(bId => {
     const block = profile.blocks[bId];
@@ -2005,8 +2032,8 @@ function collectHistoryAll(profile, exId) {
         if (!Array.isArray(rows)) return;
         const done = rows.filter(r => r && r.done && r.w !== '' && r.w != null && !isNaN(num(r.w)));
         if (!done.length) return;
-        let best = done[0];
-        done.forEach(r => { if (num(r.w) > num(best.w)) best = r; });
+        const best = bestSet(done, metric);
+        if (!best) return;
         out.push({ label: block.name + ' · S' + w, weight: num(best.w), reps: best.r });
       });
     }
@@ -2047,10 +2074,19 @@ function buildChartSVG(series, ticks) {
   svg += '<text x="4" y="' + (y(min + pad) + 4) + '" font-size="10" fill="var(--soft)" font-family="IBM Plex Mono, monospace">' + Math.round(min + pad) + '</text>';
 
   if (series.length) {
-    const path = series.map((p, i) => (i === 0 ? 'M' : 'L') + x(p.i) + ' ' + y(p.weight)).join(' ');
-    svg += '<path d="' + path + '" fill="none" stroke="var(--signal)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>';
+    /* Points the caller marks `muted` (an estimate built from too many reps
+       to trust) are dropped from the line entirely rather than plotted as
+       if they were as reliable as the rest — they still get a marker, just
+       a hollow one, so the data isn't hidden either. */
+    const reliable = series.filter(p => !p.muted);
+    if (reliable.length) {
+      const path = reliable.map((p, i) => (i === 0 ? 'M' : 'L') + x(p.i) + ' ' + y(p.weight)).join(' ');
+      svg += '<path d="' + path + '" fill="none" stroke="var(--signal)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>';
+    }
     series.forEach(p => {
-      svg += '<circle cx="' + x(p.i) + '" cy="' + y(p.weight) + '" r="4" fill="var(--signal)"/>';
+      svg += p.muted
+        ? '<circle cx="' + x(p.i) + '" cy="' + y(p.weight) + '" r="4" fill="var(--card)" stroke="var(--soft)" stroke-width="1.5" stroke-dasharray="2,2"/>'
+        : '<circle cx="' + x(p.i) + '" cy="' + y(p.weight) + '" r="4" fill="var(--signal)"/>';
     });
   }
   svg += '</svg>';
@@ -2059,6 +2095,14 @@ function buildChartSVG(series, ticks) {
 
 let chartFor = null;          /* { ex, dayId } — kept so the toggle can redraw */
 let chartScope = 'block';     /* 'block' | 'all' */
+let chartMetric = 'weight';   /* 'weight' | 'e1rm' */
+
+/* A logged set feeds the 1RM series only if it has usable reps; beyond 12
+   reps Epley's estimate is unreliable rather than merely imprecise, so
+   those points are flagged instead of plotted at full confidence. */
+const e1rmValue = p => (p.reps !== '' && p.reps != null && !isNaN(num(p.reps)) && num(p.reps) > 0)
+  ? Math.round(est1RM(p.weight, num(p.reps)) * 10) / 10 : null;
+const isHighRep = p => p.reps !== '' && p.reps != null && !isNaN(num(p.reps)) && num(p.reps) > 12;
 
 function openChart(ex, dayId) {
   chartFor = { ex, dayId };
@@ -2077,36 +2121,61 @@ function drawChart() {
     b.setAttribute('aria-pressed', b.dataset.scope === chartScope ? 'true' : 'false');
     b.onclick = () => { chartScope = b.dataset.scope; drawChart(); };
   });
+  $('chartMetric').querySelectorAll('.seg-btn').forEach(b => {
+    b.setAttribute('aria-pressed', b.dataset.metric === chartMetric ? 'true' : 'false');
+    b.onclick = () => { chartMetric = b.dataset.metric; drawChart(); };
+  });
+
+  const isE1rm = chartMetric === 'e1rm';
+  const valueCol = isE1rm ? '1RM est.' : 'Peso';
+  /* The 1RM series plots est1RM(weight, reps) per point; unreliable
+     (>12-rep) points are kept in the table but dropped from the chart's
+     line and marked so they don't read as trustworthy. */
+  const toSeriesPoint = p => {
+    if (!isE1rm) return { weight: p.weight, muted: false, display: p.weight, reliable: true };
+    const v = e1rmValue(p);
+    return { weight: v == null ? p.weight : v, muted: v == null || isHighRep(p), display: v, reliable: v != null && !isHighRep(p) };
+  };
+  const rowCell = (p, sp) => sp.display == null ? '—' : (sp.reliable ? '' : '≈ ') + sp.display + ' ' + esc(units());
 
   if (chartScope === 'all') {
-    const points = collectHistoryAll(profile, ex.id);
+    const points = collectHistoryAll(profile, ex.id, chartMetric);
     $('chartSub').textContent = 'Todos los bloques de ' + profile.label +
-      ' — mejor peso de cada sesión registrada, en ' + units() + ' (× repeticiones de esa serie).';
+      ' — ' + (isE1rm ? '1RM estimado (Epley) de cada sesión registrada, en ' + units() + '.' :
+        'mejor peso de cada sesión registrada, en ' + units() + ' (× repeticiones de esa serie).');
     if (!points.length) {
       host.innerHTML = '<p class="chart-empty">Aún no hay series completadas con peso para este ejercicio en ningún bloque.</p>';
       return;
     }
-    const series = points.map((p, i) => ({ i: i + 1, weight: p.weight, reps: p.reps }));
+    const series = points.map((p, i) => Object.assign({ i: i + 1, reps: p.reps }, toSeriesPoint(p)));
     let html = buildChartSVG(series, points.map(p => p.label));
-    html += '<table class="chart-table"><thead><tr><th>Sesión</th><th>Peso</th><th>Reps</th></tr></thead><tbody>';
-    points.forEach(p => { html += '<tr><td>' + esc(p.label) + '</td><td>' + p.weight + ' ' + esc(units()) + '</td><td>' + esc(p.reps || '—') + '</td></tr>'; });
+    html += '<table class="chart-table"><thead><tr><th>Sesión</th><th>' + valueCol + '</th><th>Reps</th></tr></thead><tbody>';
+    points.forEach((p, i) => {
+      const sp = series[i];
+      html += '<tr' + (sp.reliable ? '' : ' class="unreliable"') + '><td>' + esc(p.label) + '</td><td>' + rowCell(p, sp) + '</td><td>' + esc(p.reps || '—') + '</td></tr>';
+    });
     html += '</tbody></table>';
     host.innerHTML = html;
     return;
   }
 
   const weeks = blockWeeks(block);
-  const points = collectHistory(profile, block.id, dayId, ex.id, weeks);
-  $('chartSub').textContent = block.name + ' — mejor peso registrado por semana, en ' + units() + ' (× repeticiones de esa serie).';
+  const points = collectHistory(profile, block.id, dayId, ex.id, weeks, chartMetric);
+  $('chartSub').textContent = block.name + ' — ' + (isE1rm ? '1RM estimado (Epley) por semana, en ' + units() + '.' :
+    'mejor peso registrado por semana, en ' + units() + ' (× repeticiones de esa serie).');
   if (!points.length) {
     host.innerHTML = '<p class="chart-empty">Aún no hay series completadas con peso para este ejercicio en este bloque.</p>';
     return;
   }
   const ticks = [];
   for (let w = 1; w <= weeks; w++) ticks.push('S' + w);
-  let html = buildChartSVG(points.map(p => ({ i: p.week, weight: p.weight, reps: p.reps })), ticks);
-  html += '<table class="chart-table"><thead><tr><th>Semana</th><th>Peso</th><th>Reps</th></tr></thead><tbody>';
-  points.forEach(p => { html += '<tr><td>Semana ' + p.week + '</td><td>' + p.weight + ' ' + esc(units()) + '</td><td>' + esc(p.reps || '—') + '</td></tr>'; });
+  const series = points.map(p => Object.assign({ i: p.week, reps: p.reps }, toSeriesPoint(p)));
+  let html = buildChartSVG(series, ticks);
+  html += '<table class="chart-table"><thead><tr><th>Semana</th><th>' + valueCol + '</th><th>Reps</th></tr></thead><tbody>';
+  points.forEach((p, i) => {
+    const sp = series[i];
+    html += '<tr' + (sp.reliable ? '' : ' class="unreliable"') + '><td>Semana ' + p.week + '</td><td>' + rowCell(p, sp) + '</td><td>' + esc(p.reps || '—') + '</td></tr>';
+  });
   html += '</tbody></table>';
   host.innerHTML = html;
 }
