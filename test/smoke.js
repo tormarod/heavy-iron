@@ -247,7 +247,7 @@ const ok = (name, cond, extra) => {
     await page.waitForTimeout(150);
     ok('a full ramp plus the target renders as four rows', await page.locator('#calcOut tbody tr').count() === 4);
     ok('the last row is the exact target, unrounded', (await page.locator('#calcOut tbody tr').last().textContent()).includes('100'));
-    ok('the bar hint names the default bar and plates', (await page.textContent('#calcBarHint')).includes('20 kg'));
+    ok('the bar hint names the default bar and plates for this unit', (await page.textContent('#calcBarHint')).includes('45 lb'));
 
     await page.click('#calcMode >> text=Máquina');
     ok('the stack-increment field appears in Máquina mode', await page.locator('#calcIncField').isVisible());
