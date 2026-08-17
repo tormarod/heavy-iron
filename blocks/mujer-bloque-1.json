@@ -7,6 +7,7 @@
       "ex": [
         {
           "id": "chestpress",
+          "muscle": "pecho",
           "share": 1,
           "n": "Press de pecho en máquina",
           "alt": "o press de banca con barra",
@@ -18,6 +19,7 @@
         },
         {
           "id": "lat1",
+          "muscle": "hombro-lat",
           "share": 1,
           "n": "Elevaciones laterales en polea",
           "alt": "o con mancuernas",
@@ -37,6 +39,7 @@
         },
         {
           "id": "inclinepress",
+          "muscle": "pecho",
           "share": 1,
           "n": "Press inclinado en máquina",
           "alt": "o press inclinado con mancuernas",
@@ -46,6 +49,7 @@
         },
         {
           "id": "pecdeck",
+          "muscle": "pecho",
           "share": 1,
           "n": "Contractora / aperturas en polea",
           "alt": "o aperturas con mancuernas",
@@ -56,6 +60,7 @@
         },
         {
           "id": "pushdown",
+          "muscle": "triceps",
           "share": 1,
           "n": "Extensiones de tríceps en polea",
           "alt": "o press francés",
@@ -66,6 +71,7 @@
         },
         {
           "id": "ohext",
+          "muscle": "triceps",
           "n": "Extensión de tríceps sobre la cabeza",
           "alt": "en polea o con mancuerna",
           "sets": 3,
@@ -82,6 +88,7 @@
       "ex": [
         {
           "id": "hacksquat",
+          "muscle": "cuadriceps",
           "share": 1,
           "n": "Sentadilla hack",
           "alt": "o pendular / sentadilla con barra",
@@ -93,6 +100,7 @@
         },
         {
           "id": "legpress",
+          "muscle": "cuadriceps",
           "share": 1,
           "n": "Prensa de piernas",
           "alt": "o zancadas caminando",
@@ -103,6 +111,7 @@
         },
         {
           "id": "legext",
+          "muscle": "cuadriceps",
           "n": "Extensión de cuádriceps",
           "alt": "o sentadilla búlgara",
           "sets": 3,
@@ -112,6 +121,7 @@
         },
         {
           "id": "pulldown",
+          "muscle": "espalda",
           "share": 1,
           "n": "Jalón al pecho, agarre ancho",
           "alt": "o dominadas asistidas",
@@ -123,6 +133,7 @@
         },
         {
           "id": "csrow",
+          "muscle": "espalda",
           "share": 1,
           "n": "Remo en máquina con apoyo pectoral",
           "alt": "o remo sentado en polea",
@@ -132,6 +143,7 @@
         },
         {
           "id": "reardelt",
+          "muscle": "hombro-post",
           "share": 1,
           "n": "Contractora inversa (deltoide posterior)",
           "alt": "o pájaros con mancuernas",
@@ -142,6 +154,7 @@
         },
         {
           "id": "cablecurl",
+          "muscle": "biceps",
           "share": 1,
           "n": "Curl en polea",
           "alt": "o curl inclinado con mancuernas",
@@ -153,6 +166,7 @@
         },
         {
           "id": "hammer",
+          "muscle": "biceps",
           "share": 1,
           "n": "Curl martillo con cuerda",
           "alt": "o curl martillo con mancuernas",
@@ -168,6 +182,7 @@
       "ex": [
         {
           "id": "hipthrust",
+          "muscle": "gluteo",
           "n": "Hip thrust con barra o máquina",
           "alt": "o hip thrust en multipower",
           "sets": 4,
@@ -178,6 +193,7 @@
         },
         {
           "id": "rdl",
+          "muscle": "isquios",
           "share": 1,
           "n": "Peso muerto rumano en multipower",
           "alt": "o con barra libre",
@@ -189,6 +205,7 @@
         },
         {
           "id": "legcurl",
+          "muscle": "isquios",
           "share": 1,
           "n": "Curl femoral sentado",
           "alt": "o curl femoral tumbado",
@@ -198,6 +215,7 @@
         },
         {
           "id": "kickback",
+          "muscle": "gluteo",
           "n": "Patada de glúteo en polea",
           "alt": "cada pierna",
           "sets": 3,
@@ -207,6 +225,7 @@
         },
         {
           "id": "abduction",
+          "muscle": "gluteo",
           "n": "Abducción de cadera (máquina o polea)",
           "alt": "inclínate ligeramente hacia delante",
           "sets": 3,
@@ -215,6 +234,7 @@
         },
         {
           "id": "calfstand",
+          "muscle": "gemelos",
           "n": "Elevación de gemelos de pie",
           "alt": "o en prensa / multipower",
           "sets": 4,
@@ -225,6 +245,7 @@
         },
         {
           "id": "abs",
+          "muscle": "core",
           "n": "Crunch en polea o rueda abdominal",
           "alt": "o plancha con peso",
           "sets": 3,

@@ -71,6 +71,52 @@ function load() {
   if (!state.setupDone) openSetup(true);
 }
 
+/* Twelve muscle-group tags for the volume dashboard, matching the
+   granularity the README's own volume analysis already uses — lateral and
+   rear delts counted separately, front (anterior) delt work left untagged
+   rather than given a category of its own, since that is how the shipped
+   plans already reason about it in prose. `otro` is never written to
+   storage: an exercise with no muscle set is displayed as `otro` (see
+   muscleTag), the same way `share`/`ss` are only stored when true. */
+const MUSCLES = [
+  { id: 'pecho', label: 'Pecho' },
+  { id: 'espalda', label: 'Espalda' },
+  { id: 'hombro-lat', label: 'Hombro lateral' },
+  { id: 'hombro-post', label: 'Hombro posterior' },
+  { id: 'biceps', label: 'Bíceps' },
+  { id: 'triceps', label: 'Tríceps' },
+  { id: 'cuadriceps', label: 'Cuádriceps' },
+  { id: 'isquios', label: 'Isquios' },
+  { id: 'gluteo', label: 'Glúteo' },
+  { id: 'gemelos', label: 'Gemelos' },
+  { id: 'core', label: 'Core' },
+  { id: 'otro', label: 'Otro / sin clasificar' },
+];
+const MUSCLE_IDS = MUSCLES.map(m => m.id);
+const muscleLabel = id => (MUSCLES.find(m => m.id === id) || MUSCLES[MUSCLES.length - 1]).label;
+
+/* Every exercise id the two built-in plans ship with, mapped to its muscle
+   tag. Shoulder press is deliberately absent: the README's own volume
+   breakdown folds front-delt work into press volume rather than tracking it
+   as its own line, and leaving it out of this table reproduces that exactly
+   — it shows up as `otro` in the dashboard, same as a genuinely untagged
+   custom exercise. Applied once in migrate() to backfill data saved before
+   this field existed; js/data.js and the bundled block JSON files carry
+   the same tags directly, so a fresh install never needs the backfill. */
+const MUSCLE_BY_ID = {
+  chestpress: 'pecho', inclinepress: 'pecho', pecdeck: 'pecho', cablepress: 'pecho',
+  pulldown_w: 'espalda', pulldown_n: 'espalda', pulldown: 'espalda', csrow: 'espalda', cablerow: 'espalda',
+  lat1: 'hombro-lat', lat2: 'hombro-lat',
+  facepull: 'hombro-post', reardelt: 'hombro-post',
+  cablecurl: 'biceps', hammer: 'biceps', inclinecurl: 'biceps',
+  pushdown: 'triceps', ohext: 'triceps',
+  hacksquat: 'cuadriceps', legpress: 'cuadriceps', legext: 'cuadriceps',
+  rdl: 'isquios', legcurl: 'isquios',
+  hipthrust: 'gluteo', kickback: 'gluteo', abduction: 'gluteo',
+  calfstand: 'gemelos',
+  abs: 'core',
+};
+
 /* Runs on every load, and on every restore. Two jobs: give old data the
    shape the current app expects, and put back anything that is missing or
    contradictory. The second one matters more than it sounds — a block id in
@@ -152,6 +198,8 @@ function migrate() {
           ex.sets = clampInt(ex.sets, 1, 12, 3);
           ex.rest = clampInt(ex.rest, 0, 900, 90);
           if (ex.reps == null || ex.reps === '') ex.reps = '10–15';
+          if (!ex.muscle) { if (MUSCLE_BY_ID[ex.id]) ex.muscle = MUSCLE_BY_ID[ex.id]; }
+          else if (MUSCLE_IDS.indexOf(ex.muscle) < 0) delete ex.muscle;
         });
       });
     });
@@ -651,6 +699,12 @@ function downloadFile(name, text, mime) {
 function getProfile() { return state.profiles[state.activeProfile]; }
 function getBlock() { const p = getProfile(); return p.blocks[p.activeBlock]; }
 
+/* An exercise's muscle tag for volume purposes — falls back to 'otro' for
+   anything left blank or carrying a stale/invalid value, so a custom
+   exercise is never silently dropped from the total, only bucketed as
+   unclassified. */
+const muscleTag = ex => (ex.muscle && MUSCLE_IDS.indexOf(ex.muscle) >= 0) ? ex.muscle : 'otro';
+
 function setsFor(ex, w, block) {
   let n = ex.sets;
   if (ex.add && w >= ex.add) n += 1;
@@ -906,7 +960,7 @@ document.addEventListener('visibilitychange', () => {
    Escape closes the top one, and focus goes into the dialog when it opens
    and back to whatever opened it when it closes, so the whole app is usable
    without a mouse. */
-const SHEET_IDS = ['setupSheet', 'sheet', 'planSheet', 'blocksSheet', 'importSheet', 'chartSheet', 'calcSheet'];
+const SHEET_IDS = ['setupSheet', 'sheet', 'planSheet', 'blocksSheet', 'importSheet', 'chartSheet', 'calcSheet', 'volumeSheet'];
 let sheetReturn = null;
 
 function openSheet(id) {
@@ -1239,6 +1293,11 @@ function normalizeImportedBlock(raw) {
       if (e.add != null && Number.isFinite(+e.add) && +e.add >= 1) out.add = clampInt(e.add, 1, weeks, 1);
       if (e.share) out.share = 1;
       if (e.ss) out.ss = 1;
+      /* Anything unrecognised (a typo, a tag from a future version) or
+         missing falls back to unclassified rather than rejecting the whole
+         import — the same "don't fail the import over one soft field" rule
+         everything else in here follows. */
+      if (e.muscle != null && MUSCLE_IDS.indexOf(String(e.muscle)) >= 0) out.muscle = String(e.muscle);
       return out;
     });
     let dayId = txt(day.id, 60);
@@ -1889,6 +1948,9 @@ function buildExRow(profile, day, ex, pos, liveCount) {
       '<div><span class="pe-field-lbl">Descanso (s)</span><input type="number" min="0" step="5" class="f-rest"></div>' +
       '<div><span class="pe-field-lbl">+1 serie desde sem.</span><input type="number" min="1" max="8" class="f-add"></div>' +
     '</div>' +
+    '<div class="pe-row"><div style="flex:1;min-width:140px;"><span class="pe-field-lbl">Músculo</span><select class="f-muscle">' +
+      MUSCLES.map(m => '<option value="' + m.id + '">' + esc(m.label) + '</option>').join('') +
+    '</select></div></div>' +
     '<div class="pe-row">' +
       '<label class="pe-check pe-check-share"><input type="checkbox" class="f-share"> Compartido (JUNTOS)</label>' +
       '<label class="pe-check"><input type="checkbox" class="f-ss"> Superserie (SS)</label>' +
@@ -1908,6 +1970,11 @@ function buildExRow(profile, day, ex, pos, liveCount) {
   row.querySelector('.f-rest').oninput = e => ex.rest = parseInt(e.target.value, 10) || 0;
   row.querySelector('.f-add').value = ex.add || '';
   row.querySelector('.f-add').oninput = e => { const v = parseInt(e.target.value, 10); if (v) ex.add = v; else delete ex.add; };
+  row.querySelector('.f-muscle').value = muscleTag(ex);
+  /* 'otro' is never stored explicitly — same convention as share/ss, so an
+     exercise nobody has tagged yet does not carry a field distinguishing it
+     from one somebody deliberately marked "sin clasificar". */
+  row.querySelector('.f-muscle').onchange = e => { if (e.target.value === 'otro') delete ex.muscle; else ex.muscle = e.target.value; };
   row.querySelector('.f-share').checked = !!ex.share;
   row.querySelector('.f-share').onchange = e => { if (e.target.checked) ex.share = 1; else delete ex.share; };
   row.querySelector('.f-ss').checked = !!ex.ss;
@@ -2319,6 +2386,112 @@ $('calcInc').addEventListener('input', e => { calcDraft.inc = e.target.value; dr
 $('calcBtn').onclick = openCalc;
 $('calcClose').onclick = () => closeSheet('calcSheet');
 $('calcSheet').addEventListener('click', e => { if (e.target.id === 'calcSheet') closeSheet('calcSheet'); });
+
+/* ---------- muscle-group volume dashboard ----------
+   A weekly hard-sets-per-muscle view: the same kind of count the README's
+   own volume analysis reasons about in prose, made visible in the app. */
+
+/* Sets the plan calls for this week, one live exercise at a time, summed by
+   muscle. Goes through the same setsFor() the session view uses, so deload
+   halving and "+1 serie desde semana N" are already respected — this is
+   never out of sync with what a person actually sees on the day. */
+function planVolumeByMuscle(block, week) {
+  const totals = {};
+  MUSCLE_IDS.forEach(m => { totals[m] = 0; });
+  dayList(block).forEach(day => {
+    exList(day).forEach(ex => { totals[muscleTag(ex)] += setsFor(ex, week, block); });
+  });
+  return totals;
+}
+
+/* Sets actually ticked done this week, from the log — the adherence view:
+   plan vs. what happened. Retired exercises are already excluded by
+   dayList/exList, same as everywhere else they're hidden from. */
+function loggedVolumeByMuscle(profile, block, week) {
+  const totals = {};
+  MUSCLE_IDS.forEach(m => { totals[m] = 0; });
+  dayList(block).forEach(day => {
+    exList(day).forEach(ex => {
+      const s = profile.log[block.id] && profile.log[block.id][slot(week, day.id)];
+      const rows = s && s[ex.id];
+      if (!Array.isArray(rows)) return;
+      totals[muscleTag(ex)] += rows.filter(r => r && r.done).length;
+    });
+  });
+  return totals;
+}
+
+/* One row per tag, sorted by set count descending — including the ones at
+   zero, since seeing which muscles this plan does *not* train is as much
+   the point as the ranking. Ties keep the tag list's declared order so the
+   table doesn't reshuffle from one open to the next. */
+function volumeRows(totals) {
+  return MUSCLES.map(m => ({ id: m.id, label: m.label, value: totals[m.id] || 0 }))
+    .sort((a, b) => b.value - a.value || MUSCLE_IDS.indexOf(a.id) - MUSCLE_IDS.indexOf(b.id));
+}
+
+/* Horizontal sibling of buildChartSVG: one bar per row, same monospace
+   labels and accent colour so it reads as the same chart family. */
+function buildBarSVG(rows) {
+  const W = 600, rowH = 26, padT = 6, padB = 6, labelW = 122, valueW = 34;
+  const barMaxW = W - labelW - valueW;
+  const H = rows.length * rowH + padT + padB;
+  const max = Math.max(1, ...rows.map(r => r.value));
+  const barH = 14;
+
+  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block;" role="img">';
+  rows.forEach((r, i) => {
+    const y = padT + i * rowH;
+    const barY = y + (rowH - barH) / 2;
+    const w = r.value > 0 ? Math.max(2, (r.value / max) * barMaxW) : 0;
+    svg += '<text x="0" y="' + (y + rowH / 2 + 4) + '" font-size="11" fill="var(--ink)" font-family="IBM Plex Mono, monospace">' + esc(r.label) + '</text>';
+    svg += '<rect x="' + labelW + '" y="' + barY + '" width="' + barMaxW + '" height="' + barH + '" fill="var(--sunk)" rx="2"/>';
+    if (w > 0) svg += '<rect x="' + labelW + '" y="' + barY + '" width="' + w + '" height="' + barH + '" fill="var(--signal)" rx="2"/>';
+    svg += '<text x="' + (labelW + barMaxW + 6) + '" y="' + (y + rowH / 2 + 4) + '" font-size="11" fill="var(--soft)" font-family="IBM Plex Mono, monospace">' + r.value + '</text>';
+  });
+  svg += '</svg>';
+  return svg;
+}
+
+let volumeScope = 'plan';  /* 'plan' | 'log' */
+
+function openVolume() {
+  drawVolume();
+  openSheet('volumeSheet');
+}
+
+function drawVolume() {
+  const profile = getProfile(), block = getBlock();
+  const week = profile.week;
+  $('volumeScope').querySelectorAll('.seg-btn').forEach(b => {
+    b.setAttribute('aria-pressed', b.dataset.scope === volumeScope ? 'true' : 'false');
+    b.onclick = () => { volumeScope = b.dataset.scope; drawVolume(); };
+  });
+
+  const isLog = volumeScope === 'log';
+  const totals = isLog ? loggedVolumeByMuscle(profile, block, week) : planVolumeByMuscle(block, week);
+  $('volumeSub').textContent = block.name + ' — semana ' + week + ' — ' +
+    (isLog ? 'series marcadas como hechas esta semana, por músculo.'
+           : 'series que pide el plan esta semana, por músculo (ya cuenta la descarga y las series añadidas).');
+
+  const rows = volumeRows(totals);
+  const host = $('volumeHost');
+  if (!rows.some(r => r.value > 0)) {
+    host.innerHTML = '<p class="chart-empty">' +
+      (isLog ? 'Aún no hay ninguna serie marcada como hecha esta semana.' : 'Este bloque no tiene series programadas esta semana.') +
+      '</p>';
+    return;
+  }
+  let html = buildBarSVG(rows);
+  html += '<table class="chart-table"><thead><tr><th>Músculo</th><th>Series</th></tr></thead><tbody>';
+  rows.forEach(r => { html += '<tr><td>' + esc(r.label) + '</td><td>' + r.value + '</td></tr>'; });
+  html += '</tbody></table>';
+  host.innerHTML = html;
+}
+
+$('volumeBtn').onclick = openVolume;
+$('volumeClose').onclick = () => closeSheet('volumeSheet');
+$('volumeSheet').addEventListener('click', e => { if (e.target.id === 'volumeSheet') closeSheet('volumeSheet'); });
 
 /* ---------- backup / restore ---------- */
 $('backup').onclick = () => {

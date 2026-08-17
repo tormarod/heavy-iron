@@ -49,6 +49,7 @@
         <button class="sm" id="copyPrev">Copiar pesos de la semana anterior</button>
         <button class="sm" id="editPlan">Editar plan</button>
         <button class="sm" id="calcBtn">Calculadora</button>
+        <button class="sm" id="volumeBtn">Volumen muscular</button>
         <button class="sm" id="clearDay">Borrar este día</button>
         <button class="sm" id="backup">Copia de seguridad</button>
         <button class="sm" id="settings">Ajustes</button>
@@ -259,6 +260,22 @@
       <div id="calcOut"></div>
       <div class="sheet-btns">
         <button class="sm" id="calcClose">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- weekly hard-sets-per-muscle dashboard -->
+  <div class="sheet" id="volumeSheet">
+    <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="volumeTitle">
+      <div class="sheet-t" id="volumeTitle">Volumen muscular</div>
+      <div class="seg" id="volumeScope" role="group" aria-label="Alcance del volumen">
+        <button type="button" class="seg-btn" data-scope="plan">Plan</button>
+        <button type="button" class="seg-btn" data-scope="log">Registrado</button>
+      </div>
+      <p class="sheet-d" id="volumeSub"></p>
+      <div class="chart-wrap" id="volumeHost"></div>
+      <div class="sheet-btns">
+        <button class="sm" id="volumeClose">Cerrar</button>
       </div>
     </div>
   </div>
