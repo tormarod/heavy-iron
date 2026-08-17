@@ -166,6 +166,18 @@ function migrate() {
   /* A label, never a conversion: you write down the number on the machine,
      and this is what the app calls it. */
   if (['kg', 'lb'].indexOf(state.prefs.units) < 0) state.prefs.units = 'kg';
+  /* Calculator defaults, seeded once from whatever unit is active at the
+     time — like everything else under units(), never rescaled later, so
+     switching kg/lb afterwards does not silently reinterpret a saved bar
+     or plate set. */
+  if (!(num(state.prefs.barWeight) > 0)) state.prefs.barWeight = DEFAULT_BAR_WEIGHT[state.prefs.units];
+  else state.prefs.barWeight = num(state.prefs.barWeight);
+  if (!Array.isArray(state.prefs.plates) || !state.prefs.plates.length) {
+    state.prefs.plates = DEFAULT_PLATES[state.prefs.units].slice();
+  } else {
+    state.prefs.plates = state.prefs.plates.map(num).filter(p => p > 0);
+    if (!state.prefs.plates.length) state.prefs.plates = DEFAULT_PLATES[state.prefs.units].slice();
+  }
   if (['pair', 'solo'].indexOf(state.mode) < 0) state.mode = 'pair';
   if (typeof state.setupDone !== 'boolean') state.setupDone = true;
 }
@@ -423,6 +435,8 @@ function openSetup(firstRun) {
     mode: state.mode,
     units: state.prefs.units,
     plan: 'example',
+    barWeight: state.prefs.barWeight,
+    platesText: state.prefs.plates.join(', '),
     /* On a first run the name boxes start empty, so the placeholder invites
        you to type rather than making you clear somebody else's name out
        first. Left empty, the shipped label stands. */
@@ -440,6 +454,9 @@ function openSetup(firstRun) {
   $('setupSave').textContent = firstRun ? 'Empezar' : 'Guardar';
   $('setupClose').textContent = firstRun ? 'Saltar' : 'Cerrar sin guardar';
   $('setupPlanField').style.display = firstRun ? '' : 'none';
+  $('setupCalcField').style.display = firstRun ? 'none' : '';
+  $('setupBarWeight').value = setupDraft.barWeight;
+  $('setupPlates').value = setupDraft.platesText;
 
   renderSetup();
   openSheet('setupSheet');
@@ -456,6 +473,7 @@ function renderSetup() {
     b.setAttribute('aria-pressed', b.dataset.units === setupDraft.units ? 'true' : 'false');
     b.onclick = () => { setupDraft.units = b.dataset.units; renderSetup(); };
   });
+  $('setupBarWeightU').textContent = setupDraft.units;
   $('setupPlan').querySelectorAll('.seg-btn').forEach(b => {
     b.setAttribute('aria-pressed', b.dataset.plan === setupDraft.plan ? 'true' : 'false');
     b.onclick = () => { setupDraft.plan = b.dataset.plan; renderSetup(); };
@@ -496,6 +514,9 @@ function renderSetup() {
   });
 }
 
+$('setupBarWeight').addEventListener('input', e => { if (setupDraft) setupDraft.barWeight = e.target.value; });
+$('setupPlates').addEventListener('input', e => { if (setupDraft) setupDraft.platesText = e.target.value; });
+
 $('setupSave').onclick = () => {
   setupDraft.people.forEach((person, i) => {
     const profile = state.profiles[person.key];
@@ -505,6 +526,22 @@ $('setupSave').onclick = () => {
   });
   state.mode = setupDraft.mode;
   state.prefs.units = setupDraft.units;
+  /* The calculator fields are hidden on first run (there is nothing to edit
+     yet — migrate() seeded them from the 'kg' fallback before the user ever
+     chose a unit), so a first save has to reseed them from whichever unit
+     was actually picked rather than keep that fallback. Once the fields are
+     visible (Ajustes), typed input wins; blank or unparsable input keeps
+     whatever was already saved, same "don't accept garbage" rule as the
+     rest of the app. */
+  if (setupFirstRun) {
+    state.prefs.barWeight = DEFAULT_BAR_WEIGHT[state.prefs.units];
+    state.prefs.plates = DEFAULT_PLATES[state.prefs.units].slice();
+  } else {
+    const bw = num(setupDraft.barWeight);
+    if (bw > 0) state.prefs.barWeight = bw;
+    const plates = String(setupDraft.platesText || '').split(',').map(num).filter(p => p > 0);
+    if (plates.length) state.prefs.plates = plates;
+  }
   if (state.mode === 'solo') state.activeProfile = setupDraft.people[0].key;
 
   /* Only offered on a device with nothing logged: swapping the starting plan
@@ -869,7 +906,7 @@ document.addEventListener('visibilitychange', () => {
    Escape closes the top one, and focus goes into the dialog when it opens
    and back to whatever opened it when it closes, so the whole app is usable
    without a mouse. */
-const SHEET_IDS = ['setupSheet', 'sheet', 'planSheet', 'blocksSheet', 'importSheet', 'chartSheet'];
+const SHEET_IDS = ['setupSheet', 'sheet', 'planSheet', 'blocksSheet', 'importSheet', 'chartSheet', 'calcSheet'];
 let sheetReturn = null;
 
 function openSheet(id) {
@@ -2182,6 +2219,106 @@ function drawChart() {
 
 $('chartClose').onclick = () => closeSheet('chartSheet');
 $('chartSheet').addEventListener('click', e => { if (e.target.id === 'chartSheet') closeSheet('chartSheet'); });
+
+/* ---------- warm-up ramp & plate calculator ----------
+   A standalone tool, not wired to any particular exercise or set: enter a
+   working weight, get a warm-up ramp and — for barbell work — the plates
+   for each side. Bar weight and the available plate set are settings
+   (state.prefs.barWeight/.plates, defaulted in migrate() and editable from
+   Ajustes) so this sheet only ever reads them. */
+const DEFAULT_BAR_WEIGHT = { kg: 20, lb: 45 };
+const DEFAULT_PLATES = { kg: [1.25, 2.5, 5, 10, 15, 20], lb: [2.5, 5, 10, 25, 35, 45] };
+const DEFAULT_STACK_INC = { kg: 5, lb: 10 };
+
+const roundToStep = (v, step) => step > 0 ? Math.round(v / step) * step : v;
+
+/* 40/60/80% of the target, each rounded to the nearest loadable step and
+   never below `floor` (the empty bar, on barra mode) — the actual target
+   weight is a separate, unrounded fourth row, since a plate breakdown for
+   *that* has to fit the number you asked for, not a rounded stand-in. */
+function warmupRamp(target, step, floor) {
+  return [0.4, 0.6, 0.8].map(p => Math.max(floor || 0, roundToStep(target * p, step)));
+}
+
+/* Greedy fit, largest plate first. The available set can land short of an
+   exact fit (e.g. a gap smaller than the smallest plate) — the remainder is
+   reported rather than hidden, so a breakdown that doesn't add up is never
+   shown as if it did. */
+function fitPlates(perSide, plateSet) {
+  const sorted = (plateSet || []).filter(p => p > 0).sort((a, b) => b - a);
+  let remaining = Math.max(0, perSide);
+  const used = [];
+  sorted.forEach(p => {
+    while (remaining - p > -1e-6) { used.push(p); remaining -= p; }
+  });
+  remaining = Math.round(remaining * 100) / 100;
+  return { plates: used, remainder: remaining > 0.01 ? remaining : 0 };
+}
+
+let calcDraft = { mode: 'bar', target: '', inc: '' };
+
+function openCalc() {
+  if (!(num(calcDraft.inc) > 0)) calcDraft.inc = String(DEFAULT_STACK_INC[units()]);
+  drawCalc();
+  openSheet('calcSheet');
+}
+
+function drawCalc() {
+  const u = units();
+  $('calcTargetU').textContent = u;
+  $('calcIncU').textContent = u;
+  $('calcMode').querySelectorAll('.seg-btn').forEach(b => {
+    b.setAttribute('aria-pressed', b.dataset.mode === calcDraft.mode ? 'true' : 'false');
+    b.onclick = () => { calcDraft.mode = b.dataset.mode; drawCalc(); };
+  });
+  const isBar = calcDraft.mode === 'bar';
+  $('calcIncField').style.display = isBar ? 'none' : '';
+  if ($('calcTarget').value !== calcDraft.target) $('calcTarget').value = calcDraft.target;
+  if ($('calcInc').value !== calcDraft.inc) $('calcInc').value = calcDraft.inc;
+
+  const barWeight = state.prefs.barWeight;
+  const plates = state.prefs.plates;
+  $('calcBarHint').style.display = isBar ? '' : 'none';
+  $('calcBarHint').textContent = isBar
+    ? 'Barra de ' + barWeight + ' ' + u + ', discos de ' + plates.join('/') + ' ' + u + ' — cámbialo en Ajustes.'
+    : '';
+
+  const target = num(calcDraft.target);
+  const out = $('calcOut');
+  if (!(target > 0)) { out.innerHTML = ''; return; }
+
+  if (isBar && target < barWeight) {
+    out.innerHTML = '<p class="chart-empty">El peso objetivo es menor que la barra (' + barWeight + ' ' + esc(u) + ').</p>';
+    return;
+  }
+
+  const labels = ['40%', '60%', '80%', 'Objetivo'];
+  let rows;
+  if (isBar) {
+    const smallest = plates.length ? Math.min(...plates) : DEFAULT_PLATES[u][0];
+    const step = smallest * 2;
+    const weights = warmupRamp(target, step, barWeight).concat([target]);
+    rows = weights.map((w, i) => {
+      const perSide = (w - barWeight) / 2;
+      const fit = fitPlates(perSide, plates);
+      const plateTxt = fit.plates.length ? fit.plates.join(' + ') : '(vacía)';
+      const remTxt = fit.remainder ? ' · falta ' + fit.remainder + ' ' + u : '';
+      return '<tr><td>' + labels[i] + '</td><td>' + (Math.round(w * 100) / 100) + ' ' + esc(u) + '</td><td>' + esc(plateTxt + remTxt) + '</td></tr>';
+    });
+    out.innerHTML = '<table class="chart-table"><thead><tr><th>Paso</th><th>Peso total</th><th>Por lado</th></tr></thead><tbody>' + rows.join('') + '</tbody></table>';
+  } else {
+    const inc = num(calcDraft.inc) > 0 ? num(calcDraft.inc) : DEFAULT_STACK_INC[u];
+    const weights = warmupRamp(target, inc, 0).concat([target]);
+    rows = weights.map((w, i) => '<tr><td>' + labels[i] + '</td><td>' + (Math.round(w * 100) / 100) + ' ' + esc(u) + '</td></tr>');
+    out.innerHTML = '<table class="chart-table"><thead><tr><th>Paso</th><th>Peso</th></tr></thead><tbody>' + rows.join('') + '</tbody></table>';
+  }
+}
+
+$('calcTarget').addEventListener('input', e => { calcDraft.target = e.target.value; drawCalc(); });
+$('calcInc').addEventListener('input', e => { calcDraft.inc = e.target.value; drawCalc(); });
+$('calcBtn').onclick = openCalc;
+$('calcClose').onclick = () => closeSheet('calcSheet');
+$('calcSheet').addEventListener('click', e => { if (e.target.id === 'calcSheet') closeSheet('calcSheet'); });
 
 /* ---------- backup / restore ---------- */
 $('backup').onclick = () => {

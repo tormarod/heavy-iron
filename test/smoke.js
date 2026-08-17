@@ -221,6 +221,40 @@ const ok = (name, cond, extra) => {
     ok('switching back restores the weight label', (await page.textContent('#chartSub')).includes('mejor peso'));
     await page.click('#chartClose');
 
+    console.log('\n== warm-up ramp & plate calculator ==');
+    ok('fitPlates matches an exact target with no remainder', await page.evaluate(() => {
+      const r = fitPlates(41.25, [1.25, 2.5, 5, 10, 15, 20]);
+      return r.remainder === 0 && r.plates.reduce((a, b) => a + b, 0) === 41.25;
+    }));
+    ok('fitPlates reports what it could not reach', await page.evaluate(() => {
+      const r = fitPlates(21, [5, 10, 20]);
+      return r.remainder === 1 && r.plates.reduce((a, b) => a + b, 0) === 20;
+    }));
+    ok('warmupRamp never drops below the floor', await page.evaluate(() =>
+      JSON.stringify(warmupRamp(50, 2.5, 20)) === JSON.stringify([20, 30, 40])));
+
+    await page.click('#calcBtn');
+    ok('the calculator opens', await page.locator('#calcSheet.up').count() === 1);
+    ok('starts in Barra mode', await page.getAttribute('#calcMode >> text=Barra', 'aria-pressed') === 'true');
+    ok('the stack-increment field is hidden in Barra mode', !(await page.locator('#calcIncField').isVisible()));
+
+    await page.fill('#calcTarget', '10');
+    await page.waitForTimeout(150);
+    ok('below the bar weight, it says so instead of showing negative plates',
+       (await page.textContent('#calcOut')).includes('menor que la barra'));
+
+    await page.fill('#calcTarget', '100');
+    await page.waitForTimeout(150);
+    ok('a full ramp plus the target renders as four rows', await page.locator('#calcOut tbody tr').count() === 4);
+    ok('the last row is the exact target, unrounded', (await page.locator('#calcOut tbody tr').last().textContent()).includes('100'));
+    ok('the bar hint names the default bar and plates for this unit', (await page.textContent('#calcBarHint')).includes('45 lb'));
+
+    await page.click('#calcMode >> text=Máquina');
+    ok('the stack-increment field appears in Máquina mode', await page.locator('#calcIncField').isVisible());
+    await page.waitForTimeout(150);
+    ok('machine mode has no per-side plate column', !(await page.locator('#calcOut th', { hasText: 'Por lado' }).count()));
+    await page.click('#calcClose');
+
     console.log('\n== theme ==');
     ok('starts on auto (no attribute)', await page.evaluate(() => document.documentElement.getAttribute('data-theme')) === null);
     await page.click('#themeBtn');
