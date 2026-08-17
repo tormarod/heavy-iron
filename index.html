@@ -149,6 +149,13 @@
       </div>
 
       <div class="sheet-hr"></div>
+      <div class="sheet-d" style="font-weight:600;color:var(--ink);margin-bottom:6px;">Pasarlo con la cámara</div>
+      <p class="sheet-d">Sin archivos y sin conexión: un móvil enseña el código y el otro lo lee. Puedes pasar solo el plan del bloque, el bloque con todo lo que llevas registrado en él, o el perfil entero.</p>
+      <div class="sheet-btns">
+        <button class="sm" id="qrBtn">Compartir por QR</button>
+      </div>
+
+      <div class="sheet-hr"></div>
       <p class="sheet-d">O, si prefieres copiar el texto a mano (por ejemplo para pegarlo en una nota o un correo):</p>
       <textarea id="blob" spellcheck="false" aria-label="Copia de seguridad en texto"></textarea>
       <div class="sheet-btns">
@@ -279,6 +286,42 @@
       <div class="chart-wrap" id="volumeHost"></div>
       <div class="sheet-btns">
         <button class="sm" id="volumeClose">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- screen-to-camera transfer: plan, plan + progress, or a whole profile -->
+  <div class="sheet" id="qrSheet">
+    <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="qrTitle">
+      <div class="sheet-t" id="qrTitle">Compartir por QR</div>
+      <div class="seg" id="qrMode" role="group" aria-label="Mostrar o escanear">
+        <button type="button" class="seg-btn" data-mode="show">Mostrar código</button>
+        <button type="button" class="seg-btn" data-mode="scan">Escanear código</button>
+      </div>
+
+      <div id="qrShowPane">
+        <div class="seg" id="qrKind" role="group" aria-label="Qué compartir">
+          <button type="button" class="seg-btn" data-kind="block">Plan</button>
+          <button type="button" class="seg-btn" data-kind="blocklog">Plan + registro</button>
+          <button type="button" class="seg-btn" data-kind="profile">Perfil</button>
+        </div>
+        <p class="sheet-d" id="qrShowDesc"></p>
+        <div class="qr-stage" id="qrHost"></div>
+        <p class="qr-count" id="qrCount"></p>
+        <div class="sheet-btns">
+          <button class="sm" id="qrPause" style="display:none">Pausa</button>
+        </div>
+      </div>
+
+      <div id="qrScanPane" style="display:none">
+        <p class="sheet-d">Apunta a la pantalla del otro móvil. Si el código va cambiando, mantén el encuadre: los fotogramas se recogen en cualquier orden y se repiten en bucle.</p>
+        <div class="qr-stage"><video id="qrVideo" class="qr-video" muted playsinline></video></div>
+        <p class="qr-count" id="qrScanProgress"></p>
+        <p class="sheet-d" id="qrScanStatus"></p>
+      </div>
+
+      <div class="sheet-btns">
+        <button class="sm" id="qrClose">Cerrar</button>
       </div>
     </div>
   </div>

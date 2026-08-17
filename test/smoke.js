@@ -415,6 +415,222 @@ const ok = (name, cond, extra) => {
     await page.click('#bRestore');
     ok('non-backup rejected', (await page.textContent('#status')).includes('no tiene perfiles'));
 
+    /* The camera itself is manual-test territory — there is no way to point a
+       headless browser at another phone's screen. Everything up to the camera
+       is not: the split/checksum/reassembly protocol and the import that
+       follows it are ordinary functions, and they are what actually loses
+       somebody's log if they are wrong. So the payload is fed in directly,
+       exactly as a scanner would hand it over. */
+    console.log('\n== QR transfer: protocol ==');
+    await page.evaluate(() => qrEncoderReady());
+    ok('a payload survives split and reassembly', await page.evaluate(async () => {
+      const packed = await qrPackFrames({ kind: 'block', hello: 'ünïcødé ✓', n: 42 });
+      const rx = qrReceiver();
+      packed.frames.forEach(f => rx.accept(f));
+      const got = await rx.payload();
+      return got.hello === 'ünïcødé ✓' && got.n === 42;
+    }));
+    ok('frames are accepted out of order and repeated', await page.evaluate(async () => {
+      /* Random text so deflate cannot shrink it to a single frame — the
+         out-of-order case only means anything with several. */
+      const noise = Array.from({ length: 4000 }, () => Math.random().toString(36)[2]).join('');
+      const packed = await qrPackFrames({ kind: 'block', noise });
+      if (packed.total < 3) return false;
+      const rx = qrReceiver();
+      packed.frames.slice().reverse().forEach(f => { rx.accept(f); rx.accept(f); });
+      return rx.complete && (await rx.payload()).noise === noise;
+    }));
+    ok('a missing frame is reported, not guessed at', await page.evaluate(async () => {
+      const noise = Array.from({ length: 4000 }, () => Math.random().toString(36)[2]).join('');
+      const packed = await qrPackFrames({ kind: 'block', noise });
+      const rx = qrReceiver();
+      packed.frames.slice(1).forEach(f => rx.accept(f));
+      if (rx.complete) return false;
+      try { await rx.payload(); return false; } catch (e) { return /Faltan fotogramas/.test(e.message); }
+    }));
+    ok('a corrupted frame fails the checksum', await page.evaluate(async () => {
+      const packed = await qrPackFrames({ kind: 'block', noise: 'x'.repeat(200) });
+      const rx = qrReceiver();
+      packed.frames.forEach(f => rx.accept(f));
+      rx.parts.set(0, rx.parts.get(0).slice(0, -2) + 'AA');
+      try { await rx.payload(); return false; } catch (e) { return /no encajan/.test(e.message); }
+    }));
+    ok('a QR that is not ours is ignored', await page.evaluate(() =>
+      qrReceiver().accept('WIFI:S:gimnasio;T:WPA;P:secreto;;') === 'foreign' &&
+      qrReceiver().accept('https://example.com') === 'foreign' &&
+      qrReceiver().accept('HI1|abc|nope|2|zz|d|xx') === 'foreign'));
+    ok('starting a second share restarts the reader instead of welding halves', await page.evaluate(async () => {
+      const a = await qrPackFrames({ kind: 'block', which: 'first' });
+      const b = await qrPackFrames({ kind: 'block', which: 'second' });
+      const rx = qrReceiver();
+      rx.accept(a.frames[0]);
+      if (rx.accept(b.frames[0]) !== 'restart') return false;
+      return (await rx.payload()).which === 'second';
+    }));
+    ok('a frame is small enough to scan and the QR is built dark-on-light', await page.evaluate(async () => {
+      const packed = await qrPackFrames({ kind: 'block', noise: 'y'.repeat(6000) });
+      const svg = buildQrSVG(packed.frames[0]);
+      const box = /viewBox="0 0 (\d+)/.exec(svg);
+      /* version 40 is 177 modules + 8 of quiet zone; anything approaching
+         that is unreadable off a phone screen. */
+      return packed.frames[0].length <= QR_CHUNK + 40 && +box[1] <= 120 &&
+             svg.includes('fill="#fff"') && svg.includes('fill="#000"');
+    }));
+
+    console.log('\n== QR transfer: sharing progress, not just the plan ==');
+    ok('the plan-only payload carries no log', await page.evaluate(async () => {
+      const payload = await buildQrPayload('block', getProfile(), getBlock());
+      return payload.kind === 'block' && !payload.log && Array.isArray(payload.block.days);
+    }));
+    ok('the plan+log payload carries the sets actually logged', await page.evaluate(async () => {
+      const payload = await buildQrPayload('blocklog', getProfile(), getBlock());
+      return payload.kind === 'blocklog' &&
+             countShareLog(payload.log) === blockLoggedSets(getProfile(), getBlock().id);
+    }));
+    ok('empty padding rows are not shipped', await page.evaluate(async () => {
+      const p = getProfile(), b = getBlock();
+      const day = dayList(b)[0], ex = exList(day)[0];
+      /* Opening a day pads every exercise out to its set count; those blank
+         rows are most of a fresh block and none of its information. */
+      entry(p, b.id, 8, day.id, ex.id, 4);
+      const log = blockShareLog(p, b);
+      return !log[slot(8, day.id)];
+    }));
+    ok('retired exercises are left out of the shared plan', await page.evaluate(() => {
+      const b = getBlock(), day = dayList(b)[0], ex = exList(day)[0];
+      ex.off = 1;
+      const shared = blockSharePlan(b).days.find(d => d.id === day.id);
+      ex.off = 0;
+      return shared.ex.every(e => e.id !== ex.id);
+    }));
+    ok('a whole profile can be sent, shaped like the file export', await page.evaluate(async () => {
+      const payload = await buildQrPayload('profile', getProfile(), getBlock());
+      return payload.kind === 'profile' && !!payload.profile && !describeProfileProblem(payload.profile, payload.key);
+    }));
+
+    console.log('\n== QR transfer: what arrives ==');
+    ok('a scanned plan+log rebuilds the log exactly, on a new block', await page.evaluate(async () => {
+      const p = getProfile(), b = getBlock();
+      const wasSets = blockLoggedSets(p, b.id), wasBlocks = p.blockOrder.length;
+      const packed = await qrPackFrames(await buildQrPayload('blocklog', p, b));
+      const rx = qrReceiver();
+      packed.frames.forEach(f => rx.accept(f));
+      const got = await rx.payload();
+      const normalized = normalizeImportedBlock(got.block);
+      const id = installImportedBlock(normalized, normalizeImportedLog(got.log, got.block, normalized));
+      const np = getProfile();
+      return blockLoggedSets(np, id) === wasSets &&
+             np.blockOrder.length === wasBlocks + 1 &&
+             np.activeBlock === id &&
+             /* and the block it came from is still sitting there untouched */
+             !!np.blocks[b.id] && blockLoggedSets(np, b.id) === wasSets;
+    }));
+    ok('a hostile log is bounded rather than trusted', await page.evaluate(() => {
+      const normalized = normalizeImportedBlock({ name: 'x', days: [{ id: 'd0', name: 'D', ex: [{ id: 'e0', n: 'E', reps: '8' }] }] });
+      const log = normalizeImportedLog({
+        'w1-d0': { e0: new Array(500).fill({ w: 'z'.repeat(4000), r: 'q'.repeat(4000), done: 1 }) },
+        'w99-d0': { e0: [{ w: '1', r: '1', done: true }] },   // week past the ceiling
+        'w1-nope': { e0: [{ w: '1', r: '1', done: true }] },  // unknown day
+        'garbage': { e0: [{ w: '1', r: '1', done: true }] },  // unparseable key
+      }, { days: [{ id: 'd0', ex: [{ id: 'e0' }] }] }, normalized);
+      const rows = log['w1-d0'].e0;
+      return Object.keys(log).length === 1 && rows.length <= 24 &&
+             rows[0].w.length <= 12 && rows[0].done === true;
+    }));
+    ok('a log whose ids the importer had to rename still lands on the right sets', await page.evaluate(() => {
+      /* Two exercises sharing an id: the importer keeps the first and renames
+         the second, so a log keyed by the sender's ids has to follow it. */
+      const raw = { name: 'dup', days: [{ id: 'd0', name: 'D', ex: [{ id: 'same', n: 'A', reps: '8' }, { id: 'same', n: 'B', reps: '8' }] }] };
+      const normalized = normalizeImportedBlock(raw);
+      if (normalized.days[0].ex[1].id === normalized.days[0].ex[0].id) return false;
+      const log = normalizeImportedLog({ 'w1-d0': { same: [{ w: '60', r: '8', done: true }] } }, raw, normalized);
+      return !!log['w1-d0'][normalized.days[0].ex[0].id];
+    }));
+    ok('a payload that is not ours is refused', await page.evaluate(async () => {
+      await applyQrPayload({ kind: 'something-else' });
+      return (document.getElementById('status').textContent || '').includes('no de Heavy Iron');
+    }));
+
+    /* The closest thing to the real trip that exists without two phones: the
+       frames are drawn exactly as the app draws them, rasterised, and read
+       back through the actual decoder. Everything between the two libraries
+       is covered here — only pointing a lens at a screen is not. */
+    ok('every drawn frame decodes back through jsQR into the same payload', await page.evaluate(async () => {
+      await qrDecoderReady();
+      const payload = await buildQrPayload('blocklog', getProfile(), getBlock());
+      const packed = await qrPackFrames(payload);
+      const rx = qrReceiver();
+      for (const frame of packed.frames) {
+        /* xmlns is not needed for the inline SVG the app injects, but it is
+           for one loaded as an image, which is the only way to rasterise it. */
+        const svg = buildQrSVG(frame).replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
+        const size = +/viewBox="0 0 (\d+)/.exec(svg)[1];
+        const img = new Image();
+        await new Promise((res, rej) => {
+          img.onload = res;
+          img.onerror = () => rej(new Error('no se pudo rasterizar el QR'));
+          img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+        });
+        const c = document.createElement('canvas');
+        c.width = c.height = size * 4;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        const d = ctx.getImageData(0, 0, c.width, c.height);
+        const got = jsQR(d.data, d.width, d.height, { inversionAttempts: 'dontInvert' });
+        if (!got) return false;
+        rx.accept(got.data);
+      }
+      return rx.complete && JSON.stringify(await rx.payload()) === JSON.stringify(payload);
+    }));
+
+    console.log('\n== QR transfer: the sheet ==');
+    /* The backup sheet is still open from the section above — the QR sheet is
+       reached from inside it, and has to sit on top without closing it. */
+    await page.click('#qrBtn');
+    await page.waitForTimeout(1500);
+    ok('the QR sheet opens with a code drawn', await page.locator('#qrSheet.up').count() === 1 &&
+       await page.locator('#qrHost svg').count() === 1);
+    ok('it says which frame you are looking at', /Fotograma \d+\/\d+|Un solo código/.test(await page.textContent('#qrCount')),
+       await page.textContent('#qrCount'));
+    ok('the plan+log option names the sets it will send', (await page.textContent('#qrShowDesc')).includes('series registradas'),
+       await page.textContent('#qrShowDesc'));
+    await page.click('#qrKind .seg-btn[data-kind="block"]');
+    await page.waitForTimeout(900);
+    ok('switching to plan-only redraws', (await page.textContent('#qrShowDesc')).includes('Solo el plan'));
+    ok('escape closes the QR sheet and leaves the backup sheet up', await (async () => {
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(200);
+      return await page.locator('#qrSheet.up').count() === 0 && await page.locator('#sheet.up').count() === 1;
+    })());
+    ok('closing the sheet stops the frame timer', await page.evaluate(() => qrTimer === null && qrFrames.length === 0));
+
+    /* Closing before the payload has finished building used to let the build
+       finish anyway and start an interval on a sheet nobody could see. Both
+       calls are synchronous, so the close is guaranteed to land while the
+       build is still suspended on its first await — no timing luck involved. */
+    ok('closing mid-build leaves no timer running behind it', await page.evaluate(async () => {
+      openQr();
+      closeQr();
+      await new Promise(r => setTimeout(r, 1200));
+      return qrTimer === null && qrFrames.length === 0 && !document.querySelector('#qrSheet.up');
+    }));
+
+    /* Headless Chromium has no camera, which is the same dead end as a denied
+       permission on a real phone — and the one case where this feature has to
+       point at the file transfer instead of just failing. */
+    await page.click('#qrBtn');
+    await page.waitForTimeout(300);
+    await page.click('#qrMode .seg-btn[data-mode="scan"]');
+    await page.waitForTimeout(2500);
+    ok('no camera falls back to the file transfer instead of a dead end',
+       /cámara/.test(await page.textContent('#qrScanStatus')) &&
+       /archivo/.test(await page.textContent('#qrScanStatus')), await page.textContent('#qrScanStatus'));
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+    ok('nothing is left streaming or polling after the sheet closes',
+       await page.evaluate(() => qrStream === null && qrScanTimer === null && qrTimer === null));
+
     console.log('\n== CSV ==');
     const csv = await page.evaluate(() => buildCsv());
     ok('CSV has a header row', csv.split('\r\n')[0].includes('perfil,bloque,semana'));

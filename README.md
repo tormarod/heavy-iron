@@ -46,6 +46,10 @@ browser. It installs to a phone's home screen and works with no signal.
 - **Move one person between phones**: export a single profile and load it
   on the other device — it replaces that person and leaves the other
   alone. See [Two phones](#two-phones-one-profile-each).
+- **Or pass it on camera**: show a QR on one phone, scan it on the other —
+  a block's plan, a block *with everything you have logged in it*, or a
+  whole profile. No files, no network, no server. See
+  [QR](#passing-data-with-the-camera-qr).
 - **Import a block from JSON**: paste a block definition (e.g. one an
   AI training agent generated for you), or pick one from `blocks/` in
   this repo — see [Importing blocks](#importing-blocks-from-json) below.
@@ -123,6 +127,50 @@ A profile file is not a backup and won't load as one — **Cargar copia**
 rejects it, and says so. Use the full `.json` for backups and this for
 moving one person.
 
+## Passing data with the camera (QR)
+
+Files are awkward in a gym: no signal to mail one, and AirDrop between an
+iPhone and an Android is not a thing. **Copia de seguridad → Compartir por
+QR** does it with the two cameras you already have — one phone draws the
+data, the other reads it off the screen. Nothing is uploaded and nothing is
+fetched; the data goes device → photons → device.
+
+Three things can be sent, and the difference matters:
+
+| | What travels | What it does on the other phone |
+|---|---|---|
+| **Plan** | the block's exercises, sets, reps, rest and cues | adds a new block |
+| **Plan + registro** | the same, **plus every set logged against it** | adds a new block, with that history attached |
+| **Perfil** | one person entire: all their blocks, all their history | **replaces** that profile, after asking |
+
+The first two only ever *add* a block, so scanning one can't cost you
+anything you already had. The third replaces a whole profile and goes
+through the same confirmation (and the same set counts) as loading a
+profile from a file.
+
+A single QR a phone can actually read holds a few hundred bytes, and a
+block with months of sets is tens of kilobytes — so the payload is
+compressed, cut into numbered frames, and cycled on screen:
+
+```
+Fotograma 4/9 — mantén el otro móvil apuntando hasta que los recoja todos.
+```
+
+The reader collects frames by number, so they can arrive in any order and
+repeat as often as they like — you just hold the phone there until it says
+`Recibido 9/9`. Every frame carries a checksum of the whole payload and a
+random id for the transfer, so a half-read share can't be stitched onto a
+different one, and a lost frame is reported rather than guessed at.
+
+Retired exercises and days are left out of what's shared: you send the plan
+as you see it. Compression usually shrinks a full block log by around 8×;
+if something still needs more than 60 frames, the app says so and points at
+the file transfer rather than animating for a minute.
+
+Camera unavailable or permission denied? It says so and points back at the
+file buttons above it — the file transfer stays the primary path, and this
+never becomes the only way to do something.
+
 ## Undo
 
 Clearing a day, wiping a profile and deleting a block each take a
@@ -146,6 +194,13 @@ to talk to two hosts: Google Fonts for the typefaces, and
 repo (read-only, no token). Nothing else can be loaded and nothing can be
 sent anywhere, so your log physically cannot leave the device except
 through the backup buttons you press yourself.
+
+The QR transfer doesn't change that. Both QR libraries are vendored in
+`js/vendor/` and load under the existing `script-src 'self'`, and reading a
+camera is not a network request — so the CSP above is untouched, and a
+transfer still only happens between two phones pointed at each other.
+Granting camera permission lets the page *read* frames; it never gets a way
+to send one anywhere.
 
 Blocks you import are treated as untrusted input, because they come from
 outside the app: every field is length-capped, every number clamped to a
@@ -529,10 +584,11 @@ fixing it quietly.
 
 | File | What it is |
 |---|---|
-| `index.html` | the whole markup: header, session list, and the five dialogs |
+| `index.html` | the whole markup: header, session list, and the dialogs |
 | `css/style.css` | one stylesheet; all colours are tokens declared at the top, twice (light and dark) |
 | `js/data.js` | the default plans, used only on a device's first run |
-| `js/app.js` | everything else: state, rendering, plan editor, import, backup |
+| `js/app.js` | everything else: state, rendering, plan editor, import, backup, QR transfer |
+| `js/vendor/` | the two QR libraries, verbatim from npm — see the README in there |
 | `sw.js` | offline caching; bump `CACHE_VERSION` when releasing |
 | `manifest.webmanifest`, `icon.svg` | what makes it installable |
 | `blocks/` | blocks published for one-click import |
@@ -545,10 +601,15 @@ Worth knowing before you plan around them:
 - **Spanish only.** Every string lives inline in `app.js`, so translating
   is a real project rather than a patch. This is the biggest wall for
   anyone who finds the app and doesn't read Spanish.
-- **No sync.** By design — there is no server. A profile can be carried
-  between phones by hand (see [Two phones](#two-phones-one-profile-each)),
-  but a lost phone with no backup is still a lost history, and nothing
+- **No sync.** By design — there is no server. Data can be carried between
+  phones by hand, as a file (see [Two phones](#two-phones-one-profile-each))
+  or on camera (see [QR](#passing-data-with-the-camera-qr)), but both are
+  something you do deliberately, not something that keeps two phones in
+  step. A lost phone with no backup is still a lost history, and nothing
   reminds you to take one.
+- **The QR transfer is one-way and manual.** It copies what is on the
+  sending phone at that moment; it does not merge, and scanning the same
+  block twice gives you two blocks.
 - **Undo is one level deep** and doesn't survive a reload.
 - **Two profiles, no more.** Solo mode hides one; there's no way to add a
   third.
