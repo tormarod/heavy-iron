@@ -526,12 +526,22 @@ $('setupSave').onclick = () => {
   });
   state.mode = setupDraft.mode;
   state.prefs.units = setupDraft.units;
-  /* Blank or unparsable input keeps whatever was already saved rather than
-     wiping it — same "don't accept garbage" rule as the rest of the app. */
-  const bw = num(setupDraft.barWeight);
-  if (bw > 0) state.prefs.barWeight = bw;
-  const plates = String(setupDraft.platesText || '').split(',').map(num).filter(p => p > 0);
-  if (plates.length) state.prefs.plates = plates;
+  /* The calculator fields are hidden on first run (there is nothing to edit
+     yet — migrate() seeded them from the 'kg' fallback before the user ever
+     chose a unit), so a first save has to reseed them from whichever unit
+     was actually picked rather than keep that fallback. Once the fields are
+     visible (Ajustes), typed input wins; blank or unparsable input keeps
+     whatever was already saved, same "don't accept garbage" rule as the
+     rest of the app. */
+  if (setupFirstRun) {
+    state.prefs.barWeight = DEFAULT_BAR_WEIGHT[state.prefs.units];
+    state.prefs.plates = DEFAULT_PLATES[state.prefs.units].slice();
+  } else {
+    const bw = num(setupDraft.barWeight);
+    if (bw > 0) state.prefs.barWeight = bw;
+    const plates = String(setupDraft.platesText || '').split(',').map(num).filter(p => p > 0);
+    if (plates.length) state.prefs.plates = plates;
+  }
   if (state.mode === 'solo') state.activeProfile = setupDraft.people[0].key;
 
   /* Only offered on a device with nothing logged: swapping the starting plan
