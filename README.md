@@ -364,6 +364,15 @@ Two ways to get JSON in:
    from anywhere that isn't GitHub Pages (a local server, a custom
    domain), it falls back to this repo.
 
+If the person you're sending this to doesn't use the app themselves — a
+training partner, a coach — **Importar JSON** also has **Descargar
+plantilla JSON**, which downloads `blocks/ejemplo-plantilla.json` as a
+file, and **Copiar prompt para tu IA**, which copies a self-contained
+prompt describing the block JSON shape (field names, limits, a worked
+example) to the clipboard. They paste that into their own AI chat along
+with their goals, and paste the JSON it returns into **Importar JSON**'s
+text box.
+
 `blocks/index.json` is a flat list:
 
 ```json
@@ -484,6 +493,7 @@ history intact.
           "n": "Press de banca con barra",
           "alt": "o press de pecho en máquina",
           "cue": "Optional coaching cue.",
+          "muscle": "Pecho",
           "sets": 4,
           "reps": "6–10",
           "rest": 150,
@@ -530,6 +540,9 @@ Field notes:
 - `ex.share` / `ex.ss`: optional flags — `1` marks the exercise as a
   shared/couple's station ("JUNTOS") or part of a superset ("SS").
 - `ex.alt`, `ex.cue`: optional free text.
+- `ex.muscle`: optional free text — which muscle the exercise counts
+  towards in the weekly volume dashboard (e.g. `"Pecho"`, `"Espalda"`).
+  Freeform, not a fixed list; left unclassified if omitted.
 - `phase`: optional — per-week (`1`–`8`) goal text shown in the banner.
   Any week left out falls back to a generic RIR-based default, so this
   can be partial or omitted entirely.
@@ -547,7 +560,7 @@ or smuggle markup onto the screen:
 | `days` | at most 14 |
 | `day.ex` | at most 40 per day |
 | `name`, `day.name` | 80 characters |
-| `ex.n` | 120 · `ex.reps` 40 · `ex.alt` 200 · `ex.cue` 400 |
+| `ex.n` | 120 · `ex.reps` 40 · `ex.alt` 200 · `ex.cue` 400 · `ex.muscle` 40 |
 | `day.pair` | 1000 characters |
 | `ex.sets` | clamped to 1–12 · `ex.rest` to 0–900s · `ex.add` to 1–8 |
 | `phase[w].r` / `.t` | 40 / 400 characters |

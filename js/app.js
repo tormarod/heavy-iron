@@ -684,6 +684,21 @@ function downloadFile(name, text, mime) {
   URL.revokeObjectURL(url);
 }
 
+/* Clipboard copy for text that has no on-screen textarea to select from
+   (unlike the backup blob, which the user can already see and select). */
+async function copyText(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(text); return; }
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  const ok = document.execCommand('copy');
+  document.body.removeChild(ta);
+  if (!ok) throw new Error('copy failed');
+}
+
 /* ---------- state accessors ---------- */
 function getProfile() { return state.profiles[state.activeProfile]; }
 function getBlock() { const p = getProfile(); return p.blocks[p.activeBlock]; }
@@ -1403,6 +1418,87 @@ $('importFromText').onclick = () => {
 };
 $('importClose').onclick = () => closeSheet('importSheet');
 $('importSheet').addEventListener('click', e => { if (e.target.id === 'importSheet') closeSheet('importSheet'); });
+
+/* Builds a self-contained prompt for a third party's AI agent, describing
+   the block JSON shape from the same limits the importer itself enforces
+   (IMPORT_LIMITS, MUSCLE_LIMIT, MAX_WEEKS) so it can't quietly drift out of
+   sync with what normalizeImportedBlock actually accepts. The worked
+   example is fetched from blocks/ejemplo-plantilla.json — the same file the
+   download button offers — rather than duplicated inline, for the same
+   reason. Works with no network too: the example is just left out. */
+async function buildAiPrompt() {
+  const L = IMPORT_LIMITS;
+  const lines = [
+    'Genera un bloque de entrenamiento como JSON para la app "Heavy Iron". Responde solo con el JSON, sin texto ni comentarios alrededor.',
+    '',
+    'Formato exacto:',
+    '{',
+    '  "name": string opcional (máx ' + L.name + ' car., por defecto "Bloque importado"),',
+    '  "weeks": número opcional 1-' + MAX_WEEKS + ' (por defecto 8),',
+    '  "deload": número opcional — semana de descarga (0 = sin descarga; por defecto 8 si weeks=8, si no, ninguna),',
+    '  "days": [ // obligatorio, 1-' + L.days + ' días',
+    '    {',
+    '      "name": string opcional (máx ' + L.name + ' car., por defecto "Día N"),',
+    '      "pair": string opcional (máx ' + L.pair + ' car.) — nota para una sesión conjunta de pareja ese día,',
+    '      "ex": [ // obligatorio, 1-' + L.ex + ' ejercicios',
+    '        {',
+    '          "n": string OBLIGATORIO — nombre del ejercicio (máx ' + L.exName + ' car.),',
+    '          "reps": string OBLIGATORIO — rango de reps, p.ej. "8-12" (máx ' + L.reps + ' car.),',
+    '          "sets": número opcional 1-12 (por defecto 3),',
+    '          "rest": número opcional — segundos de descanso 0-900 (por defecto 90; usa 0 si el ejercicio va encadenado en superserie),',
+    '          "add": número opcional 1-weeks — desde esa semana se añade una serie extra (progresión),',
+    '          "alt": string opcional — alternativa (máx ' + L.alt + ' car.),',
+    '          "cue": string opcional — indicación técnica (máx ' + L.cue + ' car.),',
+    '          "muscle": string opcional — músculo principal, libre, p.ej. Pecho/Espalda/Hombro/Bíceps/Tríceps/Cuádriceps/Isquios/Glúteo/Gemelos/Core (máx ' + MUSCLE_LIMIT + ' car.),',
+    '          "share": 1 opcional — marca el ejercicio como estación compartida en pareja ("JUNTOS"),',
+    '          "ss": 1 opcional — marca el ejercicio como parte de una superserie ("SS")',
+    '        }',
+    '      ]',
+    '    }',
+    '  ],',
+    '  "phase": { // opcional — objetivo de cada semana, clave = número de semana',
+    '    "1": { "r": string corto, p.ej. RIR objetivo (máx ' + L.phaseR + ' car.), "t": texto del objetivo de esa semana (máx ' + L.phaseT + ' car.) }',
+    '  }',
+    '}',
+  ];
+
+  let example = '';
+  try {
+    const r = await fetch(blocksBase() + '/ejemplo-plantilla.json', { cache: 'no-store' });
+    if (r.ok) example = JSON.stringify(JSON.parse(await r.text()));
+  } catch (e) { /* offline: the prompt still works without the embedded example */ }
+  if (example) lines.push('', 'Ejemplo de referencia (formato válido, contenido de muestra):', example);
+
+  lines.push(
+    '',
+    'Ahora genera un bloque para mí según mis objetivos. Mi contexto: [tu nivel, cuántos días a la semana, material del gimnasio disponible, qué músculos priorizar, si entrenas solo o en pareja, y cuántas semanas quieres el bloque].',
+    '',
+    'Responde solo con el JSON.',
+  );
+  return lines.join('\n');
+}
+
+$('importDownloadTemplate').onclick = async () => {
+  $('importError').textContent = '';
+  try {
+    const r = await fetch(blocksBase() + '/ejemplo-plantilla.json', { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    downloadFile('heavy-iron-bloque-ejemplo.json', await r.text(), 'application/json');
+    mark('Plantilla descargada');
+  } catch (e) {
+    $('importError').textContent = 'No se pudo descargar la plantilla ahora mismo: ' + e.message;
+  }
+};
+
+$('importCopyPrompt').onclick = async () => {
+  $('importError').textContent = '';
+  try {
+    await copyText(await buildAiPrompt());
+    mark('Prompt copiado — pégaselo a tu IA junto con tus objetivos');
+  } catch (e) {
+    $('importError').textContent = 'No se pudo copiar el prompt: ' + e.message;
+  }
+};
 
 /* ---------- nav ---------- */
 function renderNav() {

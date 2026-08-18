@@ -217,6 +217,15 @@
 
       <div class="sheet-hr"></div>
 
+      <div class="sheet-d" style="margin:0 0 6px;font-weight:600;color:var(--ink);">¿Quieres que una IA te lo genere?</div>
+      <p class="sheet-d">Descarga la plantilla de ejemplo, o copia un prompt con el formato y pégaselo a tu IA junto con tus objetivos — te devolverá un JSON listo para pegar abajo.</p>
+      <div class="sheet-btns">
+        <button class="sm" id="importDownloadTemplate">Descargar plantilla JSON</button>
+        <button class="sm" id="importCopyPrompt">Copiar prompt para tu IA</button>
+      </div>
+
+      <div class="sheet-hr"></div>
+
       <div class="sheet-d" style="margin:0 0 6px;font-weight:600;color:var(--ink);">O pega el JSON a mano</div>
       <textarea id="importBlob" spellcheck="false" aria-label="JSON del bloque" placeholder='{"name":"Bloque 2","days":[...],"phase":{...}}'></textarea>
       <div id="importError" class="status err" style="text-align:left;padding-top:6px;"></div>
