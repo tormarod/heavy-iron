@@ -299,6 +299,16 @@ function mark(msg, err) {
   s.className = 'status' + (err ? ' err' : '');
 }
 
+/* Inline feedback inside a sheet: the footer #status mark() writes to sits
+   behind the full-screen sheet overlay, so a result reported through it is
+   invisible until the sheet closes. Used for actions (like the block-JSON
+   download/copy buttons) that are meant to be usable without closing
+   whatever sheet they're in. */
+function setNote(el, text, err) {
+  el.textContent = text;
+  el.classList.toggle('err', !!err);
+}
+
 /* ---------- toast ----------
    For the few notices that need an answer rather than an acknowledgement:
    a new version is waiting, another tab has changed the log. */
@@ -494,6 +504,8 @@ function openSetup(firstRun) {
   $('setupCalcField').style.display = firstRun ? 'none' : '';
   $('setupBarWeight').value = setupDraft.barWeight;
   $('setupPlates').value = setupDraft.platesText;
+  $('setupImportBlob').value = '';
+  setNote($('setupImportStatus'), '', false);
 
   renderSetup();
   openSheet('setupSheet');
@@ -517,9 +529,12 @@ function renderSetup() {
   });
   $('setupPlanHint').textContent = setupDraft.plan === 'empty'
     ? 'Un bloque con un día y un ejercicio vacío, para montar el tuyo desde cero en "Editar plan".'
-    : solo
-      ? 'Un bloque de 8 semanas ya montado. Está pensado para dos personas, así que trae notas de sesión compartida que no verás en modo individual. Sirve para probar la app; edítalo o bórralo cuando quieras.'
-      : 'Un bloque de 8 semanas ya montado, pensado para dos personas que comparten máquinas. Sirve para ver cómo funciona la app; edítalo o bórralo cuando quieras.';
+    : setupDraft.plan === 'import'
+      ? 'Pega el bloque que te haya devuelto tu IA (o cualquier otro JSON válido) aquí abajo.'
+      : solo
+        ? 'Un bloque de 8 semanas ya montado. Está pensado para dos personas, así que trae notas de sesión compartida que no verás en modo individual. Sirve para probar la app; edítalo o bórralo cuando quieras.'
+        : 'Un bloque de 8 semanas ya montado, pensado para dos personas que comparten máquinas. Sirve para ver cómo funciona la app; edítalo o bórralo cuando quieras.';
+  $('setupImportField').style.display = setupDraft.plan === 'import' ? '' : 'none';
 
   /* In solo mode only the first name is asked for — the second profile is
      still there, just not yours to worry about. */
@@ -555,6 +570,18 @@ $('setupBarWeight').addEventListener('input', e => { if (setupDraft) setupDraft.
 $('setupPlates').addEventListener('input', e => { if (setupDraft) setupDraft.platesText = e.target.value; });
 
 $('setupSave').onclick = () => {
+  /* Validated before anything else is touched: an invalid paste has to
+     leave the sheet exactly as it was, with nothing half-applied, so the
+     person can fix it and try again. */
+  let importedNormalized = null;
+  if (setupFirstRun && setupDraft.plan === 'import') {
+    let raw;
+    try { raw = JSON.parse($('setupImportBlob').value); }
+    catch (e) { setNote($('setupImportStatus'), 'Eso no es JSON válido.', true); return; }
+    try { importedNormalized = normalizeImportedBlock(raw); }
+    catch (e) { setNote($('setupImportStatus'), e.message, true); return; }
+  }
+
   setupDraft.people.forEach((person, i) => {
     const profile = state.profiles[person.key];
     if (!profile) return;
@@ -587,6 +614,19 @@ $('setupSave').onclick = () => {
     profileKeys().forEach(key => {
       const profile = state.profiles[key];
       const block = emptyBlock();
+      profile.blocks = { [block.id]: block };
+      profile.blockOrder = [block.id];
+      profile.activeBlock = block.id;
+      profile.log = {};
+      profile.week = 1;
+      profile.day = 0;
+    });
+  } else if (setupFirstRun && setupDraft.plan === 'import') {
+    /* Same block, seeded fresh per profile — the imported JSON becomes the
+       starting plan for both people in pair mode, same as 'empty' does. */
+    profileKeys().forEach(key => {
+      const profile = state.profiles[key];
+      const block = blockFromNormalized(importedNormalized);
       profile.blocks = { [block.id]: block };
       profile.blockOrder = [block.id];
       profile.activeBlock = block.id;
@@ -1330,6 +1370,19 @@ function normalizeImportedBlock(raw) {
   return { name, weeks, deload, days, phase };
 }
 
+/* A fresh block object from an already-validated import. Shared by every
+   place a normalized block gets filed away — adding it to a profile that
+   already has blocks, and installing it as the very first one during setup
+   — so they can't drift on what fields a block actually needs. */
+function blockFromNormalized(normalized) {
+  return {
+    id: 'block-' + Date.now(),
+    name: normalized.name, createdAt: new Date().toISOString(),
+    weeks: normalized.weeks, deload: normalized.deload,
+    days: normalized.days, phase: normalized.phase,
+  };
+}
+
 /* Filing an already-validated block into the current profile. Split out from
    the sheet below it because a block can now also arrive from a camera (see
    the QR section), and both routes have to land it identically: as a *new*
@@ -1338,18 +1391,14 @@ function normalizeImportedBlock(raw) {
    the plan hands it in here, keyed by this block's own ids. */
 function installImportedBlock(normalized, log) {
   const profile = getProfile();
-  const id = 'block-' + Date.now();
-  profile.blocks[id] = {
-    id, name: normalized.name, createdAt: new Date().toISOString(),
-    weeks: normalized.weeks, deload: normalized.deload,
-    days: normalized.days, phase: normalized.phase,
-  };
-  profile.blockOrder.push(id);
-  profile.activeBlock = id;
+  const block = blockFromNormalized(normalized);
+  profile.blocks[block.id] = block;
+  profile.blockOrder.push(block.id);
+  profile.activeBlock = block.id;
   profile.week = 1; profile.day = 0;
-  if (log) profile.log[id] = log;
+  if (log) profile.log[block.id] = log;
   save(); render();
-  return id;
+  return block.id;
 }
 
 function applyImportedBlock(raw, sourceLabel) {
@@ -1357,7 +1406,7 @@ function applyImportedBlock(raw, sourceLabel) {
   try {
     normalized = normalizeImportedBlock(raw);
   } catch (e) {
-    $('importError').textContent = e.message;
+    setNote($('importError'), e.message, true);
     return;
   }
   installImportedBlock(normalized);
@@ -1387,13 +1436,13 @@ async function loadRepoBlockList() {
       row.innerHTML = '<span></span><button type="button" class="sm">Importar</button>';
       row.querySelector('span').textContent = label;
       row.querySelector('button').onclick = async () => {
-        $('importError').textContent = '';
+        setNote($('importError'), '', false);
         try {
           const r = await fetch(blocksBase() + '/' + encodeURIComponent(file), { cache: 'no-store' });
           if (!r.ok) throw new Error('HTTP ' + r.status);
           applyImportedBlock(await r.json(), label);
         } catch (e) {
-          $('importError').textContent = 'No se pudo cargar "' + label + '": ' + e.message;
+          setNote($('importError'), 'No se pudo cargar "' + label + '": ' + e.message, true);
         }
       };
       host.appendChild(row);
@@ -1405,15 +1454,15 @@ async function loadRepoBlockList() {
 
 function openImportSheet() {
   $('importBlob').value = '';
-  $('importError').textContent = '';
+  setNote($('importError'), '', false);
   openSheet('importSheet');
   loadRepoBlockList();
 }
 
 $('importFromText').onclick = () => {
-  $('importError').textContent = '';
+  setNote($('importError'), '', false);
   let raw;
-  try { raw = JSON.parse($('importBlob').value); } catch (e) { $('importError').textContent = 'Eso no es JSON válido.'; return; }
+  try { raw = JSON.parse($('importBlob').value); } catch (e) { setNote($('importError'), 'Eso no es JSON válido.', true); return; }
   applyImportedBlock(raw, 'texto pegado');
 };
 $('importClose').onclick = () => closeSheet('importSheet');
@@ -1478,27 +1527,35 @@ async function buildAiPrompt() {
   return lines.join('\n');
 }
 
-$('importDownloadTemplate').onclick = async () => {
-  $('importError').textContent = '';
+/* Shared by the import sheet and the setup screen's own copy of these two
+   buttons (see openSetup/renderSetup below) — the work is identical, only
+   which note element gets the result differs. */
+async function downloadBlockTemplate(noteEl) {
+  setNote(noteEl, '', false);
   try {
     const r = await fetch(blocksBase() + '/ejemplo-plantilla.json', { cache: 'no-store' });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     downloadFile('heavy-iron-bloque-ejemplo.json', await r.text(), 'application/json');
-    mark('Plantilla descargada');
+    setNote(noteEl, 'Plantilla descargada', false);
   } catch (e) {
-    $('importError').textContent = 'No se pudo descargar la plantilla ahora mismo: ' + e.message;
+    setNote(noteEl, 'No se pudo descargar la plantilla ahora mismo: ' + e.message, true);
   }
-};
+}
 
-$('importCopyPrompt').onclick = async () => {
-  $('importError').textContent = '';
+async function copyBlockPrompt(noteEl) {
+  setNote(noteEl, '', false);
   try {
     await copyText(await buildAiPrompt());
-    mark('Prompt copiado — pégaselo a tu IA junto con tus objetivos');
+    setNote(noteEl, 'Prompt copiado — pégaselo a tu IA junto con tus objetivos', false);
   } catch (e) {
-    $('importError').textContent = 'No se pudo copiar el prompt: ' + e.message;
+    setNote(noteEl, 'No se pudo copiar el prompt: ' + e.message, true);
   }
-};
+}
+
+$('importDownloadTemplate').onclick = () => downloadBlockTemplate($('importError'));
+$('importCopyPrompt').onclick = () => copyBlockPrompt($('importError'));
+$('setupDownloadTemplate').onclick = () => downloadBlockTemplate($('setupImportStatus'));
+$('setupCopyPrompt').onclick = () => copyBlockPrompt($('setupImportStatus'));
 
 /* ---------- nav ---------- */
 function renderNav() {

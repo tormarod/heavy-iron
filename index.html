@@ -108,8 +108,20 @@
         <div class="seg" id="setupPlan" role="group" aria-label="Plan de partida">
           <button type="button" class="seg-btn" data-plan="example">Plan de ejemplo</button>
           <button type="button" class="seg-btn" data-plan="empty">Empezar en blanco</button>
+          <button type="button" class="seg-btn" data-plan="import">Traer un JSON</button>
         </div>
         <p class="setup-hint" id="setupPlanHint"></p>
+      </div>
+
+      <div class="setup-field" id="setupImportField">
+        <span class="pe-field-lbl">JSON del bloque</span>
+        <p class="setup-hint">Descarga la plantilla o copia el prompt y pégaselo a tu IA junto con tus objetivos, luego pega aquí el JSON que te devuelva.</p>
+        <div class="sheet-btns" style="margin-top:0;">
+          <button type="button" class="sm" id="setupDownloadTemplate">Descargar plantilla JSON</button>
+          <button type="button" class="sm" id="setupCopyPrompt">Copiar prompt para tu IA</button>
+        </div>
+        <textarea id="setupImportBlob" spellcheck="false" aria-label="JSON del bloque" placeholder='{"name":"Bloque 2","days":[...],"phase":{...}}' style="margin-top:8px;"></textarea>
+        <div id="setupImportStatus" class="status" style="text-align:left;padding-top:4px;"></div>
       </div>
 
       <div class="setup-field" id="setupCalcField">
@@ -228,7 +240,7 @@
 
       <div class="sheet-d" style="margin:0 0 6px;font-weight:600;color:var(--ink);">O pega el JSON a mano</div>
       <textarea id="importBlob" spellcheck="false" aria-label="JSON del bloque" placeholder='{"name":"Bloque 2","days":[...],"phase":{...}}'></textarea>
-      <div id="importError" class="status err" style="text-align:left;padding-top:6px;"></div>
+      <div id="importError" class="status" style="text-align:left;padding-top:6px;"></div>
       <div class="sheet-btns">
         <button class="sm key" id="importFromText">Importar desde el texto</button>
         <button class="sm" id="importClose">Cerrar</button>
