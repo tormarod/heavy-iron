@@ -339,6 +339,21 @@ the same file twice — the picker adds their position and creation date
 (`Bloque 1 (3) · 12 ago 26`) so you can tell which is which before
 deleting one.
 
+## Exporting the current plan as a template
+
+**Editar plan** also has **Descargar plan (JSON)**, next to **Guardar
+cambios**. It downloads whatever is currently in the editor — including
+edits you have not saved yet — as a JSON file shaped exactly like the
+`blocks/*.json` templates below: name, weeks, deload, phase and days/
+exercises, with no logged sets and no retired days/exercises. That file is
+exactly what **Importar JSON** accepts, so it is the way to turn a block
+you have reshaped into something you can keep, hand to someone else, or
+commit to `blocks/` as a new template.
+
+Because it reads the live draft, exporting runs the same checks **Guardar
+cambios** does — a day with no exercises, or an exercise missing its name
+or rep range, is refused with the same message rather than shipped broken.
+
 ## Importing blocks from JSON
 
 Instead of building a training block by hand in the plan editor, you can

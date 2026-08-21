@@ -2232,7 +2232,15 @@ function buildExRow(profile, day, ex, pos, liveCount) {
   return row;
 }
 
-$('peSave').onclick = async () => {
+/* Pulls the form fields (name/weeks/deload) into draftBlock, regenerates
+   the phase banner for whatever weeks that leaves it with, and defaults
+   blank day names — the same shape-up that used to live inline in
+   "Guardar cambios". Shared with the export button below: exporting reads
+   draftBlock too, so it needs to see the fields as currently typed, not as
+   they were when the sheet was opened, and shouldn't ship a plan missing a
+   name or a set of reps any more than a save should write one. Returns an
+   error message, or null once draftBlock is ready to use. */
+function syncDraftFromForm() {
   draftBlock.name = $('peBlockName').value.trim() || draftBlock.name;
   draftBlock.weeks = clampInt($('peWeeks').value, 1, MAX_WEEKS, blockWeeks(draftBlock));
   draftBlock.deload = clampInt($('peDeload').value, 0, MAX_WEEKS, 0);
@@ -2250,16 +2258,22 @@ $('peSave').onclick = async () => {
   }
   draftBlock.phase = nextPhase;
   const days = dayList(draftBlock);
-  if (!days.length) { await tell('Falta algo', 'El bloque necesita al menos un día.'); return; }
+  if (!days.length) return 'El bloque necesita al menos un día.';
   days.forEach((day, i) => { if (!String(day.name || '').trim()) day.name = 'Día ' + (i + 1); });
   for (const day of days) {
     const ex = exList(day);
-    if (!ex.length) { await tell('Falta algo', 'Cada día necesita al menos un ejercicio — revisa "' + day.name + '".'); return; }
+    if (!ex.length) return 'Cada día necesita al menos un ejercicio — revisa "' + day.name + '".';
     for (const e of ex) {
-      if (!String(e.n || '').trim()) { await tell('Falta algo', 'Todos los ejercicios necesitan un nombre.'); return; }
-      if (!e.reps || !String(e.reps).trim()) { await tell('Falta algo', 'Falta el rango de repeticiones en "' + (e.n || 'un ejercicio') + '".'); return; }
+      if (!String(e.n || '').trim()) return 'Todos los ejercicios necesitan un nombre.';
+      if (!e.reps || !String(e.reps).trim()) return 'Falta el rango de repeticiones en "' + (e.n || 'un ejercicio') + '".';
     }
   }
+  return null;
+}
+
+$('peSave').onclick = async () => {
+  const problem = syncDraftFromForm();
+  if (problem) { await tell('Falta algo', problem); return; }
   const profile = getProfile();
   /* Catch the real log up on any "enviar a…" moves made while the sheet was
      open, before anything below reads or purges it by session id. */
@@ -2280,6 +2294,24 @@ $('peSave').onclick = async () => {
   save(); render();
   closeSheet('planSheet');
   mark('Plan actualizado — el registro se mantiene');
+};
+
+/* Same shape as the "block" QR payload and the repo's blocks/*.json
+   templates — no ids, no log, retired days/exercises left out — so the
+   file downloaded here can be pasted straight into "Importar JSON" on any
+   device, or committed to blocks/ as a new template. Reads the draft as it
+   stands, unsaved edits included, so you don't have to "Guardar cambios"
+   first just to pull a template out of a block you're reshaping — it goes
+   through the same field-sync and validation "Guardar cambios" does, so
+   what you export is never missing a name or a rep range either. */
+$('peExport').onclick = async () => {
+  const problem = syncDraftFromForm();
+  if (problem) { await tell('Falta algo', problem); return; }
+  renderPlanEditor();
+  const plan = blockSharePlan(draftBlock);
+  const name = 'heavy-iron-plan-' + (slugify(draftBlock.name) || 'bloque') + '-' + new Date().toISOString().slice(0, 10) + '.json';
+  downloadFile(name, JSON.stringify(plan, null, 2), 'application/json');
+  mark('Plan descargado — sin registro, listo para "Importar JSON" en otro sitio');
 };
 
 function closePlanEditor() {
