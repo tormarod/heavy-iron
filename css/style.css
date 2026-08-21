@@ -478,6 +478,12 @@ body {
 .pe-icon-btn.danger { color: var(--danger); }
 .pe-icon-btn.danger:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
 .pe-icon-btn:disabled { opacity: .3; cursor: default; }
+.pe-move-sel {
+  background: transparent; border: 1px solid var(--line); border-radius: 2px;
+  color: var(--soft); font-family: 'Archivo'; font-size: 10.5px; line-height: 1;
+  padding: 5px 4px; cursor: pointer; max-width: 108px;
+}
+.pe-move-sel:hover { border-color: var(--ink); color: var(--ink); }
 
 /* retired days / exercises — out of the plan, log kept */
 .pe-retired { border: 1px dashed var(--line); border-radius: 3px; padding: 11px; margin-top: 14px; }

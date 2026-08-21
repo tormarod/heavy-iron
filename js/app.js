@@ -828,6 +828,23 @@ function purgeDayLog(profile, blockId, dayId) {
   for (let w = 1; w <= MAX_WEEKS; w++) delete blk[slot(w, dayId)];
 }
 
+/* "Send to another session" in the plan editor: the exercise moves between
+   draft days right away, but its logged sets stay filed under the session
+   it was in until the draft is saved — this is what makes that filing
+   catch up, across every week the block could have. */
+function moveExLog(profile, blockId, fromDayId, toDayId, exId) {
+  const blk = profile.log[blockId];
+  if (!blk) return;
+  for (let w = 1; w <= MAX_WEEKS; w++) {
+    const from = blk[slot(w, fromDayId)];
+    if (!from || !from[exId]) continue;
+    const toKey = slot(w, toDayId);
+    if (!blk[toKey]) blk[toKey] = {};
+    blk[toKey][exId] = from[exId];
+    delete from[exId];
+  }
+}
+
 /* Everything logged anywhere in a block — the number that decides whether
    a block is disposable, so it is the number every "¿eliminar?" shows. */
 function blockLoggedSets(profile, blockId) {
@@ -1878,16 +1895,41 @@ $('wipe').onclick = async () => {
    "Retirados". */
 let draftBlock = null;
 let draftPurge = [];
+/* exId -> the session it lived in when the editor was opened. The real log
+   is still filed under that session until "Guardar cambios", so anything
+   that reads "how much history does this exercise have" while the sheet is
+   open has to look there, not at wherever the draft has moved it to. */
+let draftOriginalDay = {};
 
 $('editPlan').onclick = () => {
   draftBlock = JSON.parse(JSON.stringify(getBlock()));
   draftPurge = [];
+  draftOriginalDay = {};
+  draftBlock.days.forEach(day => day.ex.forEach(ex => { draftOriginalDay[ex.id] = day.id; }));
   $('peBlockName').value = draftBlock.name;
   $('peWeeks').value = blockWeeks(draftBlock);
   renderDeloadOptions();
   renderPlanEditor();
   openSheet('planSheet');
 };
+
+/* Logged-set counts for the editor: keyed off the exercise's original
+   session (see draftOriginalDay) so a pending "send to another session"
+   move doesn't make its history look gone before the draft is saved. */
+function draftExLogged(profile, exId, currentDayId) {
+  return loggedSets(profile, draftBlock.id, draftOriginalDay[exId] || currentDayId, exId);
+}
+function draftDayLogged(profile, day) {
+  return day.ex.reduce((t, ex) => t + draftExLogged(profile, ex.id, day.id), 0);
+}
+
+/* Move an exercise to another session, keeping its id (and so its log)
+   intact. The real log entries only move once the draft is saved — see
+   the migration in peSave. */
+function moveExToDay(ex, fromDay, toDay) {
+  fromDay.ex.splice(fromDay.ex.indexOf(ex), 1);
+  toDay.ex.push(ex);
+}
 
 /* The deload list only offers weeks the block actually has, so shortening a
    block cannot leave the deload pointing off the end of it. */
@@ -1977,7 +2019,7 @@ function buildDayBox(profile, day, pos, liveCount) {
       '<textarea class="pe-day-pair" placeholder="Nota de pareja para este día (opcional)"></textarea>' +
     '</div><div class="pe-exlist"></div>';
 
-  const logged = loggedSetsDay(profile, draftBlock.id, day);
+  const logged = draftDayLogged(profile, day);
   if (logged) box.querySelector('.pe-log-tag').textContent = setsLabel(logged);
 
   box.querySelector('.pe-day-name').value = day.name;
@@ -2041,8 +2083,8 @@ function renderRetired(host, profile) {
 
   items.forEach(it => {
     const isDay = !it.ex;
-    const logged = isDay ? loggedSetsDay(profile, draftBlock.id, it.day)
-                         : loggedSets(profile, draftBlock.id, it.day.id, it.ex.id);
+    const logged = isDay ? draftDayLogged(profile, it.day)
+                         : draftExLogged(profile, it.ex.id, it.day.id);
     const row = document.createElement('div');
     row.className = 'pe-arch';
     row.innerHTML =
@@ -2090,6 +2132,7 @@ function buildExRow(profile, day, ex, pos, liveCount) {
       '<span class="pe-bar-n">' + (pos + 1) + '</span>' +
       '<span class="pe-log-tag"></span>' +
       '<span class="pe-tools">' +
+        '<select class="pe-move-sel" title="Enviar a otra sesión"></select>' +
         '<button type="button" class="pe-icon-btn e-up" title="Subir ejercicio">↑</button>' +
         '<button type="button" class="pe-icon-btn e-down" title="Bajar ejercicio">↓</button>' +
         '<button type="button" class="pe-icon-btn danger e-del">Quitar</button>' +
@@ -2138,8 +2181,32 @@ function buildExRow(profile, day, ex, pos, liveCount) {
   row.querySelector('.f-ss').checked = !!ex.ss;
   row.querySelector('.f-ss').onchange = e => { if (e.target.checked) ex.ss = 1; else delete ex.ss; };
 
-  const logged = loggedSets(profile, draftBlock.id, day.id, ex.id);
+  const logged = draftExLogged(profile, ex.id, day.id);
   if (logged) row.querySelector('.pe-log-tag').textContent = setsLabel(logged);
+
+  const moveSel = row.querySelector('.pe-move-sel');
+  const otherDays = dayList(draftBlock).filter(d => d !== day);
+  if (otherDays.length) {
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Enviar a…';
+    moveSel.appendChild(placeholder);
+    otherDays.forEach(d => {
+      const o = document.createElement('option');
+      o.value = d.id;
+      o.textContent = d.name;
+      moveSel.appendChild(o);
+    });
+    moveSel.onchange = () => {
+      const target = otherDays.find(d => d.id === moveSel.value);
+      if (!target) return;
+      moveExToDay(ex, day, target);
+      renderPlanEditor();
+      mark('"' + (ex.n || 'Ejercicio') + '" enviado a ' + target.name + ' — el registro se conserva');
+    };
+  } else {
+    moveSel.style.display = 'none';
+  }
 
   const up = row.querySelector('.e-up'), down = row.querySelector('.e-down'), del = row.querySelector('.e-del');
   up.disabled = pos === 0;
@@ -2194,6 +2261,14 @@ $('peSave').onclick = async () => {
     }
   }
   const profile = getProfile();
+  /* Catch the real log up on any "enviar a…" moves made while the sheet was
+     open, before anything below reads or purges it by session id. */
+  draftBlock.days.forEach(day => {
+    day.ex.forEach(ex => {
+      const from = draftOriginalDay[ex.id];
+      if (from && from !== day.id) moveExLog(profile, draftBlock.id, from, day.id, ex.id);
+    });
+  });
   /* The only path that erases logged sets, and only the ones explicitly
      confirmed in "Retirados". */
   draftPurge.forEach(p => {
@@ -2201,7 +2276,7 @@ $('peSave').onclick = async () => {
     else purgeDayLog(profile, draftBlock.id, p.dayId);
   });
   profile.blocks[draftBlock.id] = draftBlock;
-  draftBlock = null; draftPurge = [];
+  draftBlock = null; draftPurge = []; draftOriginalDay = {};
   save(); render();
   closeSheet('planSheet');
   mark('Plan actualizado — el registro se mantiene');
@@ -2211,6 +2286,7 @@ function closePlanEditor() {
   closeSheet('planSheet');
   draftBlock = null;
   draftPurge = [];
+  draftOriginalDay = {};
 }
 
 $('peClose').onclick = closePlanEditor;
