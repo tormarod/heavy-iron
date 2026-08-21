@@ -2,9 +2,11 @@ name: Smoke tests
 
 # The app has no build step and no dependencies, so this is the only thing
 # standing between a one-line edit and a broken log on somebody's phone.
+#
+# Pull requests only, not push-to-main: a merge lands the exact ref the PR
+# already tested (GitHub runs pull_request against the merge result), so a
+# second run on push would just repeat it.
 on:
-  push:
-    branches: ["main"]
   pull_request:
   workflow_dispatch:
 
