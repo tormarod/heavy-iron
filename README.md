@@ -4,12 +4,48 @@ A simple gym training log for two people, hosted as a static site. No
 backend, no build step — everything is saved to `localStorage` in your
 browser. It installs to a phone's home screen and works with no signal.
 
+## Using it
+
+The app is in Spanish. This is what the screens do.
+
+**First open.** A short setup asks who trains, in kg or lb, and which plan
+to start from — then you are looking at week 1, day 1 of a block. Skipping
+it keeps the defaults. See [Making it yours](#making-it-yours).
+
+**A session, top to bottom.** Pick the week and the day in the two rows
+under the title. The banner states that week's goal and RIR target. Each
+exercise below it shows what it wants — `4 × 6–10`, rest time — over one
+row per set:
+
+| Control | What it does |
+|---|---|
+| the two boxes | the weight and the reps you did. The greyed number is what you lifted on that set the last week you logged it — tick without typing and it takes that. `22,5` works. |
+| **✓** | marks the set done, and starts the rest timer. This is the control that counts: only ticked sets feed the chart, the **RÉCORD** badge and the totals. |
+| **⚙** | machine settings for that exercise — seat height, pin position. Saved to the plan, not to the log. |
+| **RIR último set** — `2+` `1` `0` | how the last set actually felt. Optional; tap the same chip again to clear it. |
+| **Progreso ↗** | that exercise's weight, or estimated 1RM, over time. |
+
+The rest timer runs along the bottom once a set is ticked: **−30**/**+30**
+move the finish line, **Son.** turns the alarm on, **Saltar** ends it.
+
+**The footer buttons**, in order: copy last week's weights into this day,
+edit the plan of the block you are on, [the warm-up
+calculator](#warm-ups-and-plate-maths), [the weekly volume
+view](#weekly-volume-by-muscle-pattern-or-type), clear this day, back up
+your data, settings, and wipe the log.
+
+**Week to week.** Fill the rep range at the prescribed RIR, then next week
+press **Copiar pesos de la semana anterior** on the same day: it brings
+last week's numbers across and adds the increment on the exercises that
+earned it. When the block ends, **+ Nuevo bloque** starts the next one
+from a copy of the plan and leaves this one's history where it is.
+
 ## Features
 
 - **Setup on first run**: name the people training, pick kg or lb, choose a
-  colour each, and start either from the built-in example plan or from a
-  blank block. Reachable afterwards under **Ajustes** — see
-  [Making it yours](#making-it-yours).
+  colour each, and start from the built-in example plan, from a blank
+  block, or from a block JSON you paste in. Reachable afterwards under
+  **Ajustes** — see [Making it yours](#making-it-yours).
 - **One person or two.** In solo mode the profile switcher, the JUNTOS/SOLO
   badges and the pair notes all disappear; the second profile is hidden
   rather than deleted, so you can switch back with nothing lost.
@@ -30,6 +66,13 @@ browser. It installs to a phone's home screen and works with no signal.
   block you have ever run, either as raw weight or as an estimated one-rep
   max (Epley) so a program moving between rep ranges still shows a
   consistent strength trend.
+- **Weekly volume, three ways to slice it**: hard sets per muscle, per
+  movement pattern, or compound vs. isolation — as the plan prescribes
+  them this week, or as you actually ticked them. See
+  [Weekly volume](#weekly-volume-by-muscle-pattern-or-type).
+- **A warm-up and plate calculator**: a ramp up to your working weight and,
+  on a barbell, which plates go on each side. See
+  [Warm-ups](#warm-ups-and-plate-maths).
 - **Undo** on the three things that destroy data: clearing a day, wiping a
   profile, deleting a block.
 - **Works offline, installs like an app** — see [Offline](#offline-and-installing).
@@ -70,12 +113,16 @@ On a device with nothing saved, the first thing you get is a short setup:
 | **Nombres** | What each profile is called everywhere in the app, including backups and the CSV. |
 | **Color** | The accent for each profile — blue or green — so you can tell whose session is on screen at a glance. |
 | **Unidad de peso** | `kg` or `lb`. |
-| **Plan de partida** | The built-in 8-week example plan, or a blank block with one day and one empty exercise. |
+| **Plan de partida** | The built-in 8-week example plan; a blank block with one day and one empty exercise; or **Traer un JSON**, which takes a pasted block (with the same template download and AI prompt buttons as [Importar JSON](#importing-blocks-from-json)) and makes it the starting plan for both profiles. A paste that doesn't validate is refused there and then, leaving the sheet as it was. |
 
 Skipping it keeps the defaults and never asks again. Everything except the
 starting plan stays editable under **Ajustes** in the footer — the starting
 plan isn't offered later because by then swapping it would throw away real
 history, which is what blocks are for instead.
+
+**Ajustes** also holds two fields the first run doesn't ask about, because
+there is nothing to set them against yet: your bar weight and the plates
+you have, used by [the calculator](#warm-ups-and-plate-maths).
 
 **About units.** `kg`/`lb` is a *label*, not a conversion. The app never
 touches the number you typed — you write down what's on the machine, and
@@ -275,9 +322,16 @@ out from under a session: when a new version has been cached, a small
   reps over every completed set), records, and the date you last logged
   something on this day.
 - **The rest timer** can be nudged with **−30**/**+30** when the machine
-  is still busy, and **Son.** turns on a double beep at zero for when the
-  phone is face-down or you are wearing headphones. The countdown runs off
-  a wall-clock end time, so it stays correct through a locked screen.
+  is still busy, and **Son.** turns on the alarm at zero for when the phone
+  is face-down or you are wearing headphones. One beep is easy to miss
+  mid-set, so it is a burst of four rapid sawtooth pulses — flat and
+  klaxon-like rather than a melodic chime, and richer in harmonics than a
+  sine at the same volume, which is what carries over gym noise and a tinny
+  phone speaker — plus a vibration, repeating about once a second until you
+  skip or nudge the timer, or six repeats go by. The countdown runs off a
+  wall-clock end time, so it stays correct through a locked screen, and
+  while it runs it holds a screen wake lock (where the browser has one) so
+  the phone doesn't sleep between sets.
 - **RIR, once per exercise.** Three chips — `2+` / `1` / `0` — after the
   sets, for how the last one actually felt. Optional and empty by default,
   same as `share`/`ss`: skip it and nothing changes. It is the other half
@@ -311,12 +365,68 @@ Everything above is keyboard reachable, the set ticks are real buttons
 with pressed state, dialogs close with `Escape`, and pinch-zoom is no
 longer blocked.
 
+## Warm-ups and plate maths
+
+**Calculadora**, in the footer, builds a warm-up ramp up to a working
+weight: 40%, 60% and 80% of it, then the weight itself. It is tied to no
+exercise and reads nothing from your log — type whatever you are about to
+lift.
+
+Two modes:
+
+- **Barra** also breaks every step down into the plates that go on *one
+  side*, largest first, on top of the bar's own weight. The three warm-up
+  percentages are rounded to something you can actually load (twice your
+  smallest plate) and never drop below the empty bar. The target row is
+  deliberately not rounded: a breakdown for the weight you asked for has to
+  add up to it, not to a convenient stand-in. When your plates can't make a
+  step exactly, the row says what is missing (`… · falta 1.25 kg`) rather
+  than showing a total that doesn't add up.
+- **Máquina** drops the plate column and ramps in steps of the stack's
+  increment, which you type in — 5 kg / 10 lb to start with.
+
+The bar weight and the plate set live in **Ajustes**, starting at 20 kg /
+45 lb and a standard set. Changing the unit does **not** convert them, for
+the same reason it doesn't convert your logged weights, so check them if
+you have just switched.
+
+## Weekly volume, by muscle, pattern or type
+
+**Volumen muscular**, in the footer, counts the current week's hard sets
+and draws one bar per group, biggest first, with the numbers in a table
+underneath. Groups sitting at zero are listed too — seeing which of *this
+block's own* muscles are getting nothing this week is as much the point as
+the ranking.
+
+Two toggles:
+
+| Toggle | |
+|---|---|
+| **Plan** vs. **Registrado** | what this week asks for, against what you have actually ticked done. **Plan** counts sets the way the session does, so the deload halving and the "+1 set from week N" additions are already in the number. |
+| **Músculo** / **Patrón** / **Tipo** | which tag to group by: `ex.muscle`, `ex.pattern`, `ex.type` — see [the JSON shape](#block-json-shape). |
+
+The dimensions are orthogonal on purpose. "What does this hit" and "what
+shape is this movement" are different questions, and a plan can look
+balanced by muscle while being almost entirely isolation work, or thin on
+horizontal pressing — neither of which shows up in a muscle-only
+breakdown.
+
+Untagged exercises are counted under **Sin clasificar** rather than
+dropped. In the **Patrón** view an exercise with no `pattern` falls back to
+its `type` first, so isolation work — which rarely has a pressing or
+pulling plane worth naming — groups under *Aislamiento* instead of burying
+that total among the genuinely untagged.
+
+Both toggles keep the same set of rows, so switching one only ever moves
+the numbers. That is what makes plan-against-done readable as adherence
+rather than as two unrelated charts.
+
 ## Editing a block mid-way
 
 A block you are three weeks into is not frozen. **Editar plan** lets you
 change the plan of the *active* block — add or drop a set, add or remove
-an exercise, add, remove or reorder days — and the sets you have already
-logged survive all of it. Nothing you edit there touches the log until
+an exercise, move one to another day, add, remove or reorder days — and
+the sets you have already logged survive all of it. Nothing you edit there touches the log until
 you press **Guardar cambios**, and closing with **Cerrar sin guardar**
 throws the whole draft away.
 
@@ -326,6 +436,7 @@ What happens to your history in each case:
 |---|---|
 | Rename an exercise or a day, change reps/rest/cues/flags | untouched — the log follows the exercise, not its name |
 | Reorder exercises, reorder days | untouched — they move with the item |
+| **Send an exercise to another day** (**Enviar a…**) | untouched — it keeps its id, and its logged sets are moved over to the new day when you save |
 | **Drop a set** (4 → 3) | the 4th row's numbers stay saved and hidden; the session shows a note saying so, and putting the set back brings them straight back |
 | **Add a set** (3 → 4) | the new row is empty, everything else stays |
 | **Remove an exercise or a day that has logged sets** | it is *retired*: out of the plan and out of the session, log kept, listed under **Retirados** at the bottom of the editor with a **Restaurar** button that puts it back exactly where it was |
@@ -695,7 +806,7 @@ fixing it quietly.
 | `index.html` | the whole markup: header, session list, and the dialogs |
 | `css/style.css` | one stylesheet; all colours are tokens declared at the top, twice (light and dark) |
 | `js/data.js` | the default plans, used only on a device's first run |
-| `js/app.js` | everything else: state, rendering, plan editor, import, backup, QR transfer |
+| `js/app.js` | everything else: state, rendering, plan editor, import, backup, QR transfer, calculator, volume dashboard |
 | `js/vendor/` | the two QR libraries, verbatim from npm — see the README in there |
 | `sw.js` | offline caching; bump `CACHE_VERSION` when releasing |
 | `manifest.webmanifest`, `icon.svg` | what makes it installable |
