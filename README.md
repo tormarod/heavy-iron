@@ -299,7 +299,13 @@ out from under a session: when a new version has been cached, a small
   with an `inc` set gets its copied weight bumped by that amount instead of
   repeated as-is, but only when every set hit the top of the rep range last
   week — same rule the week banners already state in prose, now checked
-  automatically. Falls back to a plain copy otherwise.
+  automatically. It also checks the other half of that rule: the cues say
+  "top of the range *at 2 RIR*", not just top of the range, so a set ground
+  out to failure doesn't count even if the rep number matches. A logged `0`
+  RIR chip says so directly; with no RIR logged, the rep-decay flag stands
+  in for it. Either signal withholds the add and falls back to a plain copy
+  instead, and the status line says so ("… pero no sube — la última serie
+  parece que fue al fallo, no a 2 RIR").
 
 Everything above is keyboard reachable, the set ticks are real buttons
 with pressed state, dialogs close with `Escape`, and pinch-zoom is no
