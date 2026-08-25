@@ -289,6 +289,41 @@ body {
   padding: 7px 13px;
 }
 
+/* ---- machine setup (collapsed) ---- */
+.ex-setup { padding: 0 13px; }
+.ex-setup-btn {
+  background: transparent; border: none; color: var(--soft);
+  font-family: 'IBM Plex Mono', monospace; font-size: 10.5px;
+  padding: 2px 0 6px; cursor: pointer; text-align: left;
+}
+.ex-setup-btn:hover { color: var(--ink); }
+.ex-setup-box { padding-bottom: 8px; }
+.ex-setup-box input {
+  width: 100%; height: 34px; padding: 0 9px;
+  border: 1px solid var(--line); border-radius: 2px; background: var(--sunk);
+  font-size: 13px; color: var(--ink);
+}
+.ex-setup-box input:focus { outline: none; border-color: var(--signal); box-shadow: 0 0 0 2px var(--signal-soft); }
+
+/* ---- rep-decay flag ---- */
+.ex-decay {
+  font-size: 11px; line-height: 1.45; color: var(--danger);
+  padding: 0 13px 8px;
+}
+
+/* ---- RIR chips ---- */
+.ex-rir { display: flex; align-items: center; gap: 8px; padding: 0 13px 10px; }
+.ex-rir-lbl { font-size: 10px; color: var(--soft); font-family: 'IBM Plex Mono', monospace; }
+.rir-chips { display: flex; gap: 5px; }
+.rir-chip {
+  height: 26px; min-width: 30px; padding: 0 8px;
+  border: 1px solid var(--line); border-radius: 2px; background: var(--card);
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600;
+  color: var(--soft); cursor: pointer;
+}
+.rir-chip:hover { border-color: var(--signal); color: var(--signal); }
+.rir-chip.on { background: var(--signal); border-color: var(--signal); color: var(--on-signal); }
+
 .set-row {
   display: grid; grid-template-columns: 26px 1fr 1fr 42px;
   gap: 7px; align-items: center; padding: 5px 0;
