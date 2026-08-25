@@ -767,9 +767,20 @@ function getBlock() { const p = getProfile(); return p.blocks[p.activeBlock]; }
 
 /* An exercise's tag for volume purposes, on a given dimension — falls back
    to UNCLASSIFIED_LABEL for anything left blank, so a custom exercise is
-   never silently dropped from the total, only bucketed as unclassified. */
+   never silently dropped from the total, only bucketed as unclassified.
+
+   patternTag falls further back to `type` before giving up: an isolation
+   move rarely has a horizontal/vertical push-or-pull plane worth naming, so
+   most only ever get `type: "Aislamiento"` and no `pattern` at all. Without
+   this fallback every one of them would pile up as "Sin clasificar" in the
+   Patrón view, burying the isolation total in the same bucket as exercises
+   nobody tagged at all. With it, the Patrón view reads as the six compound
+   patterns plus one Aislamiento bucket — exactly the shape that makes an
+   imbalance like "8 sets of horizontal push, 45 of isolation" visible at a
+   glance, which was the point of adding `pattern`/`type` in the first
+   place. */
 const muscleTag = ex => txt(ex.muscle, MUSCLE_LIMIT) || UNCLASSIFIED_LABEL;
-const patternTag = ex => txt(ex.pattern, PATTERN_LIMIT) || UNCLASSIFIED_LABEL;
+const patternTag = ex => txt(ex.pattern, PATTERN_LIMIT) || txt(ex.type, TYPE_LIMIT) || UNCLASSIFIED_LABEL;
 const typeTag = ex => txt(ex.type, TYPE_LIMIT) || UNCLASSIFIED_LABEL;
 
 /* The volume dashboard's switchable dimensions, in the order their toggle
