@@ -25,9 +25,12 @@
 </head>
 <body>
 <div id="app">
-  <!-- suggestions for the plan editor's freeform "Músculo" field — not a
-       validated list, just autocomplete; populated from js/app.js -->
+  <!-- suggestions for the plan editor's freeform "Músculo"/"Patrón"/"Tipo"
+       fields — not a validated list, just autocomplete; populated from
+       js/app.js -->
   <datalist id="muscleSuggestions"></datalist>
+  <datalist id="patternSuggestions"></datalist>
+  <datalist id="typeSuggestions"></datalist>
   <div class="top">
     <div class="wrap">
       <div class="profiles" id="profiles"></div>
@@ -303,6 +306,11 @@
       <div class="seg" id="volumeScope" role="group" aria-label="Alcance del volumen">
         <button type="button" class="seg-btn" data-scope="plan">Plan</button>
         <button type="button" class="seg-btn" data-scope="log">Registrado</button>
+      </div>
+      <div class="seg" id="volumeDim" role="group" aria-label="Agrupar por">
+        <button type="button" class="seg-btn" data-dim="muscle">Músculo</button>
+        <button type="button" class="seg-btn" data-dim="pattern">Patrón</button>
+        <button type="button" class="seg-btn" data-dim="type">Tipo</button>
       </div>
       <p class="sheet-d" id="volumeSub"></p>
       <div class="chart-wrap" id="volumeHost"></div>
