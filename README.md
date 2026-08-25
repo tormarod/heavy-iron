@@ -140,7 +140,7 @@ Three things can be sent, and the difference matters:
 | | What travels | What it does on the other phone |
 |---|---|---|
 | **Plan** | the block's exercises, sets, reps, rest and cues | adds a new block |
-| **Plan + registro** | the same, **plus every set logged against it** | adds a new block, with that history attached |
+| **Plan + registro** | the same, **plus every set logged against it and every RIR chip tapped** | adds a new block, with that history attached |
 | **Perfil** | one person entire: all their blocks, all their history | **replaces** that profile, after asking |
 
 The first two only ever *add* a block, so scanning one can't cost you
@@ -278,6 +278,28 @@ out from under a session: when a new version has been cached, a small
   is still busy, and **Son.** turns on a double beep at zero for when the
   phone is face-down or you are wearing headphones. The countdown runs off
   a wall-clock end time, so it stays correct through a locked screen.
+- **RIR, once per exercise.** Three chips — `2+` / `1` / `0` — after the
+  sets, for how the last one actually felt. Optional and empty by default,
+  same as `share`/`ss`: skip it and nothing changes. It is the other half
+  of the RIR target `phase` already prescribes per week — that number says
+  what the set was supposed to cost, this one says what it did, and tapping
+  the same chip again clears it. It travels with a "plan + registro" QR
+  share, and shows up as its own column in the CSV export.
+- **A rep-decay warning, for free.** No input needed: if the first set of an
+  exercise has ≥3 more reps typed than the last one, a small line appears
+  under the sets — `⚠ caída de 4 reps: ¿primera serie al fallo?` — because
+  that drop is usually the first set having been pushed closer to failure
+  than the ones after it.
+- **Ajustes**, collapsed. A `⚙` button under each exercise's name opens a
+  one-line field for seat height, pin position — whatever you'd otherwise
+  have crammed into the technique cue. It is a plan field, not a log one:
+  editing it here writes straight to the exercise, same as **Editar plan**
+  would, just from where you actually notice it needs setting.
+- **Copiar pesos de semana anterior does double progression.** An exercise
+  with an `inc` set gets its copied weight bumped by that amount instead of
+  repeated as-is, but only when every set hit the top of the rep range last
+  week — same rule the week banners already state in prose, now checked
+  automatically. Falls back to a plain copy otherwise.
 
 Everything above is keyboard reachable, the set ticks are real buttons
 with pressed state, dialogs close with `Escape`, and pinch-zoom is no
@@ -508,6 +530,7 @@ history intact.
           "n": "Press de banca con barra",
           "alt": "o press de pecho en máquina",
           "cue": "Optional coaching cue.",
+          "setup": "Optional machine setting, e.g. \"asiento 4, respaldo 2\".",
           "muscle": "Pecho",
           "pattern": "Empuje horizontal",
           "type": "Compuesto",
@@ -515,6 +538,7 @@ history intact.
           "reps": "6–10",
           "rest": 150,
           "add": 4,
+          "inc": 2.5,
           "share": 1,
           "ss": 0
         }
@@ -549,7 +573,14 @@ Field notes:
   chained into a superset.
 - `ex.add`: optional — from this week number onward, one extra set is
   added automatically (mirrors the built-in blocks' progressive-overload
-  pattern).
+  pattern). Must be a whole number ≥ 1 — a decimal (`2.3`) rejects the
+  whole import with an error rather than getting silently rounded, because
+  a rounded `add` used to rewrite the program's set count without saying
+  so.
+- `ex.inc`: optional, decimals allowed (e.g. `2.5`) — the weight step
+  **Copiar pesos de semana anterior** adds once every set of this exercise
+  hit the top of `ex.reps` the week before (double progression). Clamped to
+  0.25–50 in whatever unit the profile uses, rounded to the nearest 0.25.
 - `weeks` (block): optional, 1–16, defaults to `8`.
 - `deload` (block): optional — the week number whose sets are halved. Use
   `0` for a block with no deload. Defaults to `8` on an 8-week block and
@@ -557,6 +588,10 @@ Field notes:
 - `ex.share` / `ex.ss`: optional flags — `1` marks the exercise as a
   shared/couple's station ("JUNTOS") or part of a superset ("SS").
 - `ex.alt`, `ex.cue`: optional free text.
+- `ex.setup`: optional free text (max 200 characters) — machine settings
+  (seat height, pin position) rather than a technique reminder, which is
+  what `cue` is for. Shown collapsed in the session, behind a `⚙` button,
+  and editable inline from there.
 - `ex.muscle`: optional free text — which muscle the exercise counts
   towards in the weekly volume dashboard (e.g. `"Pecho"`, `"Espalda"`).
   This is an anatomical grouping: hack squat and leg press both count as
@@ -591,9 +626,11 @@ or smuggle markup onto the screen:
 | `days` | at most 14 |
 | `day.ex` | at most 40 per day |
 | `name`, `day.name` | 80 characters |
-| `ex.n` | 120 · `ex.reps` 40 · `ex.alt` 200 · `ex.cue` 400 · `ex.muscle` 40 · `ex.pattern` 40 · `ex.type` 40 |
+| `ex.n` | 120 · `ex.reps` 40 · `ex.alt` 200 · `ex.cue` 400 · `ex.setup` 200 · `ex.muscle` 40 · `ex.pattern` 40 · `ex.type` 40 |
 | `day.pair` | 1000 characters |
-| `ex.sets` | clamped to 1–12 · `ex.rest` to 0–900s · `ex.add` to 1–8 |
+| `ex.sets` | clamped to 1–12 · `ex.rest` to 0–900s |
+| `ex.add` | a whole number 1–weeks, or the import is rejected — not clamped |
+| `ex.inc` | clamped to 0.25–50, rounded to the nearest 0.25 |
 | `phase[w].r` / `.t` | 40 / 400 characters |
 | `weeks` | clamped to 1–16 · `deload` must fall inside it, or it's dropped |
 
@@ -670,8 +707,9 @@ Worth knowing before you plan around them:
   phones by hand, as a file (see [Two phones](#two-phones-one-profile-each))
   or on camera (see [QR](#passing-data-with-the-camera-qr)), but both are
   something you do deliberately, not something that keeps two phones in
-  step. A lost phone with no backup is still a lost history, and nothing
-  reminds you to take one.
+  step. A lost phone with no backup is still a lost history — the app
+  nudges you after roughly 10 sessions with nothing exported, but it can
+  only remind, not force one.
 - **The QR transfer is one-way and manual.** It copies what is on the
   sending phone at that moment; it does not merge, and scanning the same
   block twice gives you two blocks.

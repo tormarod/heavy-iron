@@ -2,6 +2,9 @@ const STORAGE_KEY = 'heavy-iron-v1';
 
 let state = null;
 let ready = false;
+/* Exercise ids whose "Ajustes" (machine setup) box is expanded right now —
+   in-memory only, so every fresh open of the app starts collapsed again. */
+const expandedSetup = new Set();
 let tId = null, tEndAt = 0, tTotal = 0, tOverNotified = false;
 let wakeLock = null;
 
@@ -27,6 +30,26 @@ const clampInt = (v, lo, hi, dflt) => {
   const n = Math.round(Number(v));
   return isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt;
 };
+
+/* clampInt rounds to a whole number, which is wrong for anything measured in
+   weight — 2.3 is a real plate increment, not a mistake to round away. This
+   rounds to the nearest `step` instead (a "step floor": nothing finer than
+   that grain survives), then clamps, then fixes floating-point noise like
+   20.1 + 2.5 = 22.599999999999998 back to two decimals. `num()` first, so a
+   comma-decimal typed on a Spanish keyboard works here too. */
+const clampNum = (v, lo, hi, dflt, step) => {
+  const n = num(v);
+  if (!isFinite(n)) return dflt;
+  const stepped = step > 0 ? Math.round(n / step) * step : n;
+  const clamped = Math.min(hi, Math.max(lo, stepped));
+  return Math.round(clamped * 100) / 100;
+};
+
+/* `ex.inc` — the weight step double progression adds once every set hit the
+   top of the rep range last week (see copyPrev). Bounded to something a
+   plate stack could actually add: quarter-unit granularity, nothing under
+   a plate change and nothing past a round-trip's worth of iron. */
+const INC_MIN = 0.25, INC_MAX = 50, INC_STEP = 0.25;
 
 /* Log rows are filed under a day's *id*, not its position, so days can be
    added, retired or reordered without the weeks logged under them moving
@@ -97,6 +120,13 @@ const UNCLASSIFIED_LABEL = 'Sin clasificar';
 const MUSCLE_LIMIT = 40;
 const PATTERN_LIMIT = 40;
 const TYPE_LIMIT = 40;
+/* `ex.setup` — seat height, pin position, the stuff you discover at the
+   machine and that barely changes week to week. A real field for it, so it
+   stops getting written into `cue` (which is for technique reminders and
+   shows on every set, not settings you check once and forget). Shown
+   collapsed in the session and editable inline there — see the .ex-setup
+   render in drawApp. */
+const SETUP_LIMIT = 200;
 $('muscleSuggestions').innerHTML = MUSCLE_SUGGESTIONS.map(m => '<option value="' + esc(m) + '"></option>').join('');
 $('patternSuggestions').innerHTML = PATTERN_SUGGESTIONS.map(m => '<option value="' + esc(m) + '"></option>').join('');
 $('typeSuggestions').innerHTML = TYPE_SUGGESTIONS.map(m => '<option value="' + esc(m) + '"></option>').join('');
@@ -150,6 +180,7 @@ function migrate() {
     if (!profile.label) profile.label = seed.label;
     if (!profile.theme) profile.theme = seed.theme;
     if (!profile.log || typeof profile.log !== 'object') profile.log = {};
+    if (!profile.rir || typeof profile.rir !== 'object') profile.rir = {};
     if (!profile.blocks || typeof profile.blocks !== 'object' || !Object.keys(profile.blocks).length) {
       profile.blocks = seed.blocks;
       profile.blockOrder = seed.blockOrder.slice();
@@ -211,6 +242,8 @@ function migrate() {
           else { const m = txt(ex.muscle, MUSCLE_LIMIT); if (m) ex.muscle = m; else delete ex.muscle; }
           if (ex.pattern != null) { const p = txt(ex.pattern, PATTERN_LIMIT); if (p) ex.pattern = p; else delete ex.pattern; }
           if (ex.type != null) { const t = txt(ex.type, TYPE_LIMIT); if (t) ex.type = t; else delete ex.type; }
+          if (ex.inc != null) { const v = clampNum(ex.inc, INC_MIN, INC_MAX, 0, INC_STEP); if (v > 0) ex.inc = v; else delete ex.inc; }
+          if (ex.setup != null) { const s = txt(ex.setup, SETUP_LIMIT); if (s) ex.setup = s; else delete ex.setup; }
         });
       });
     });
@@ -239,6 +272,10 @@ function migrate() {
   }
   if (['pair', 'solo'].indexOf(state.mode) < 0) state.mode = 'pair';
   if (typeof state.setupDone !== 'boolean') state.setupDone = true;
+  /* How many sessions have been completed since the last time data actually
+     left the device (a backup download/copy, a profile export, a QR profile
+     share) — see maybeNagBackup(). Reset to 0 by any of those. */
+  state.prefs.sessionsSinceBackup = clampInt(state.prefs.sessionsSinceBackup, 0, 100000, 0);
 }
 
 const profileKeys = () => Object.keys(state.profiles);
@@ -822,6 +859,54 @@ function entry(profile, blockId, w, dayId, exId, n) {
 }
 
 const rowUsed = r => !!(r && (r.done || (r.w !== '' && r.w != null) || (r.r !== '' && r.r != null)));
+
+/* ---------- rep-decay flag ----------
+   Free, because it needs no input at all: derived from the reps already
+   typed into the first and last set of an exercise. A first set that drops
+   ≥3 reps by the last one was very likely taken closer to failure than the
+   ones after it — the single most common tell in a log that only records
+   {w, r, done}. Returns the drop, or 0 when there isn't one (fewer than two
+   sets with reps typed counts as no signal, not a flat line). */
+function repDecay(rows) {
+  const withReps = (rows || []).filter(r => r && r.r !== '' && r.r != null && !isNaN(num(r.r)));
+  if (withReps.length < 2) return 0;
+  const drop = num(withReps[0].r) - num(withReps[withReps.length - 1].r);
+  return drop >= 3 ? drop : 0;
+}
+
+/* The top of a rep range like "8–12" or "8-12" — the last number in the
+   string, so it also copes with a plain "12" (no range at all). Used by
+   copyPrev to decide whether double progression's condition ("top of range
+   on every set") was actually met last week. */
+function repRangeTop(reps) {
+  const nums = String(reps || '').match(/\d+(?:[.,]\d+)?/g);
+  return nums && nums.length ? num(nums[nums.length - 1]) : null;
+}
+
+/* ---------- RIR (reps in reserve) ----------
+   The app prescribes an RIR target per week in `phase`, but used to record
+   nothing about what actually happened — so there was no way to tell a hard
+   set from a grinder short of guessing at rep decay. This is that record:
+   one chip per exercise per session, not per set (mid-set entry is too much
+   friction), optional and absent by default like `share`/`ss`. Filed
+   separately from `profile.log` — a parallel map with the same
+   blockId → slot → exId shape — rather than folded into a log row, so
+   nothing that reads rows as a plain array of {w,r,done} has to change. */
+const RIR_OPTIONS = ['2+', '1', '0'];
+const RIR_LABEL = { '2+': '2+ RIR', '1': '1 RIR', '0': '0 RIR (al fallo)' };
+
+function getRir(profile, blockId, w, dayId, exId) {
+  const slotRir = profile.rir[blockId] && profile.rir[blockId][slot(w, dayId)];
+  return (slotRir && slotRir[exId]) || '';
+}
+
+function setRir(profile, blockId, w, dayId, exId, val) {
+  if (!profile.rir[blockId]) profile.rir[blockId] = {};
+  const k = slot(w, dayId);
+  if (!profile.rir[blockId][k]) profile.rir[blockId][k] = {};
+  if (val) profile.rir[blockId][k][exId] = val;
+  else delete profile.rir[blockId][k][exId];
+}
 
 /* Rows logged past what the current plan shows — kept, but out of sight. */
 function parkedRows(profile, blockId, w, dayId, exId, n) {
@@ -1431,7 +1516,21 @@ function normalizeImportedBlock(raw) {
       };
       if (e.alt) out.alt = txt(e.alt, IMPORT_LIMITS.alt);
       if (e.cue) out.cue = txt(e.cue, IMPORT_LIMITS.cue);
-      if (e.add != null && Number.isFinite(+e.add) && +e.add >= 1) out.add = clampInt(e.add, 1, weeks, 1);
+      if (e.setup) out.setup = txt(e.setup, SETUP_LIMIT);
+      /* clampInt would silently round a fractional "add" — 2.3 becoming 2 —
+         and a program quietly rewritten under someone's feet is worse than
+         a rejected import they can fix and retry. Rejected loudly instead,
+         same as a missing name or rep range. `inc` is exempt: it is
+         genuinely a decimal (a weight step), so it goes through clampNum,
+         which is built for that, not this guard. */
+      if (e.add != null) {
+        const av = +e.add;
+        if (!Number.isFinite(av) || !Number.isInteger(av) || av < 1) {
+          throw new Error('El incremento de series ("add") de "' + n + '" tiene que ser un número entero de al menos 1 (llegó ' + JSON.stringify(e.add) + ').');
+        }
+        out.add = clampInt(av, 1, weeks, 1);
+      }
+      if (e.inc != null) { const v = clampNum(e.inc, INC_MIN, INC_MAX, 0, INC_STEP); if (v > 0) out.inc = v; }
       if (e.share) out.share = 1;
       if (e.ss) out.ss = 1;
       /* Freeform, same as everywhere else it's set — whoever built this
@@ -1484,9 +1583,10 @@ function blockFromNormalized(normalized) {
    the sheet below it because a block can now also arrive from a camera (see
    the QR section), and both routes have to land it identically: as a *new*
    block, never on top of an existing one, so an import can't cost you a log.
-   `log` is optional and already normalized — a QR that carried progress with
-   the plan hands it in here, keyed by this block's own ids. */
-function installImportedBlock(normalized, log) {
+   `log`/`rir` are optional and already normalized — a QR that carried
+   progress with the plan hands them in here, keyed by this block's own
+   ids. */
+function installImportedBlock(normalized, log, rir) {
   const profile = getProfile();
   const block = blockFromNormalized(normalized);
   profile.blocks[block.id] = block;
@@ -1494,6 +1594,7 @@ function installImportedBlock(normalized, log) {
   profile.activeBlock = block.id;
   profile.week = 1; profile.day = 0;
   if (log) profile.log[block.id] = log;
+  if (rir) profile.rir[block.id] = rir;
   save(); render();
   return block.id;
 }
@@ -1592,9 +1693,11 @@ async function buildAiPrompt() {
     '          "reps": string OBLIGATORIO — rango de reps, p.ej. "8-12" (máx ' + L.reps + ' car.),',
     '          "sets": número opcional 1-12 (por defecto 3),',
     '          "rest": número opcional — segundos de descanso 0-900 (por defecto 90; usa 0 si el ejercicio va encadenado en superserie),',
-    '          "add": número opcional 1-weeks — desde esa semana se añade una serie extra (progresión),',
+    '          "add": número entero opcional 1-weeks — desde esa semana se añade una serie extra (progresión de series; tiene que ser un entero o se rechaza todo el bloque),',
+    '          "inc": número opcional, admite decimales, ' + INC_MIN + '-' + INC_MAX + ' — cuánto peso añadir cuando "copiar semana anterior" detecta que se llegó al tope del rango en todas las series (progresión de carga),',
     '          "alt": string opcional — alternativa (máx ' + L.alt + ' car.),',
-    '          "cue": string opcional — indicación técnica (máx ' + L.cue + ' car.),',
+    '          "cue": string opcional — indicación técnica, para todas las series (máx ' + L.cue + ' car.),',
+    '          "setup": string opcional — ajustes de la máquina (altura de asiento, posición del respaldo…), no técnica (máx ' + SETUP_LIMIT + ' car.),',
     '          "muscle": string opcional — músculo principal, libre, p.ej. Pecho/Espalda/Hombro/Bíceps/Tríceps/Cuádriceps/Isquios/Glúteo/Gemelos/Core (máx ' + MUSCLE_LIMIT + ' car.),',
     '          "pattern": string opcional — patrón de movimiento, libre, p.ej. Empuje horizontal/Empuje vertical/Tirón horizontal/Tirón vertical/Rodilla dominante/Cadera dominante (máx ' + PATTERN_LIMIT + ' car.),',
     '          "type": string opcional — tipo de ejercicio, libre, p.ej. Compuesto/Aislamiento (máx ' + TYPE_LIMIT + ' car.),',
@@ -1791,10 +1894,15 @@ function drawApp() {
   list.innerHTML = '';
   let total = 0, doneN = 0, tonnage = 0, prs = 0, lastTs = 0;
   const best = bestByExercise(profile, block.id, slot(profile.week, day.id));
+  /* Every exercise's row array for this day, by reference — so the tick
+     handler below can tell, after any one toggle, whether the whole day just
+     became fully done (see maybeNagBackup). */
+  const dayRowSets = [];
 
   exList(day).forEach((ex, i) => {
     const n = setsFor(ex, profile.week, block);
     const rows = entry(profile, block.id, profile.week, day.id, ex.id, n);
+    dayRowSets.push(rows);
     const parked = parkedRows(profile, block.id, profile.week, day.id, ex.id, n);
     const allDone = rows.every(r => r.done);
     total += n; doneN += rows.filter(r => r.done).length;
@@ -1812,6 +1920,9 @@ function drawApp() {
         prev.sets.map(s => esc(s.w) + '×' + esc(s.r || '?')).join('</b> · <b>') + '</b></span></div>'
       : '';
 
+    const decay = repDecay(rows);
+    const setupOpen = expandedSetup.has(ex.id);
+
     card.innerHTML =
       '<div class="ex-head">' +
         '<div class="ex-num">' + (i + 1) + '</div>' +
@@ -1824,8 +1935,18 @@ function drawApp() {
         '<div class="ex-rest">' + (ex.rest ? 'desc. ' + (ex.rest >= 60 ? (ex.rest / 60).toFixed(ex.rest % 60 ? 1 : 0).replace('.0', '') + ' min' : ex.rest + 's') : 'superserie →') + '</div>' +
         '<button class="ex-chart-btn" type="button">Progreso ↗</button></div>' +
       '</div>' + prevTxt +
+      '<div class="ex-setup">' +
+        '<button type="button" class="ex-setup-btn"></button>' +
+        (setupOpen ? '<div class="ex-setup-box"><input type="text" class="ex-setup-in" maxlength="' + SETUP_LIMIT + '" autocomplete="off" placeholder="asiento 4, respaldo 2…"></div>' : '') +
+      '</div>' +
       '<div class="sets"></div>' +
+      (decay ? '<div class="ex-decay"></div>' : '') +
+      '<div class="ex-rir"><span class="ex-rir-lbl">RIR último set</span><div class="rir-chips"></div></div>' +
       (parked ? '<div class="ex-parked"></div>' : '');
+
+    if (decay) {
+      card.querySelector('.ex-decay').textContent = '⚠ caída de ' + decay + ' reps: ¿primera serie al fallo?';
+    }
 
     if (parked) {
       card.querySelector('.ex-parked').textContent = parked === 1
@@ -1847,6 +1968,45 @@ function drawApp() {
     if (ex.cue) card.querySelector('.ex-cue').textContent = ex.cue;
 
     card.querySelector('.ex-chart-btn').onclick = () => openChart(ex, day.id);
+
+    /* `ex.setup` — seat height, pin position: a plan field, not a log field,
+       so editing it here writes straight to the live exercise, the same way
+       the plan editor's own text fields do. Collapsed by default (folded
+       behind the ⚙ button) since it rarely changes and isn't what you came
+       to read mid-set; the button's own label previews it so you don't have
+       to open it just to check. */
+    const setupBtn = card.querySelector('.ex-setup-btn');
+    setupBtn.textContent = ex.setup ? '⚙ ' + (ex.setup.length > 28 ? ex.setup.slice(0, 28) + '…' : ex.setup) : '⚙ Ajustes';
+    setupBtn.setAttribute('aria-expanded', setupOpen ? 'true' : 'false');
+    setupBtn.setAttribute('aria-label', 'Ajustes de máquina de ' + ex.n);
+    setupBtn.onclick = () => {
+      if (setupOpen) expandedSetup.delete(ex.id); else expandedSetup.add(ex.id);
+      render();
+    };
+    if (setupOpen) {
+      const setupIn = card.querySelector('.ex-setup-in');
+      setupIn.value = ex.setup || '';
+      setupIn.setAttribute('aria-label', 'Ajustes de máquina de ' + ex.n);
+      setupIn.oninput = e => { const v = e.target.value; if (v) ex.setup = v; else delete ex.setup; save(); };
+      setupIn.focus();
+      setupIn.setSelectionRange(setupIn.value.length, setupIn.value.length);
+    }
+
+    const rirHost = card.querySelector('.rir-chips');
+    const rirVal = getRir(profile, block.id, profile.week, day.id, ex.id);
+    RIR_OPTIONS.forEach(opt => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'rir-chip' + (rirVal === opt ? ' on' : '');
+      b.textContent = opt;
+      b.setAttribute('aria-pressed', rirVal === opt ? 'true' : 'false');
+      b.setAttribute('aria-label', RIR_LABEL[opt] + ' en la última serie de ' + ex.n);
+      b.onclick = () => {
+        setRir(profile, block.id, profile.week, day.id, ex.id, rirVal === opt ? '' : opt);
+        save(); render();
+      };
+      rirHost.appendChild(b);
+    });
 
     const box = card.querySelector('.sets');
     rows.forEach((r, si) => {
@@ -1891,6 +2051,13 @@ function drawApp() {
         r.done = !r.done;
         if (r.done && ex.rest) startRest(ex.rest, ex.n + ' · serie ' + (si + 1));
         if (r.done && !ex.rest) stopRest();
+        /* The tick that finishes the whole day counts as a session — see
+           maybeNagBackup. dayRowSets holds live references, so this reads
+           true only once every row across every exercise is done. */
+        if (r.done && dayRowSets.every(rs => rs.every(rr => rr.done))) {
+          state.prefs.sessionsSinceBackup++;
+          maybeNagBackup();
+        }
         save(); render();
         if (adopted) mark('Serie ' + (si + 1) + ' anotada con ' + adopted + ' ' + units() + ' (lo de la semana anterior) — cámbialo si no fue eso');
       };
@@ -1930,13 +2097,29 @@ $('copyPrev').onclick = () => {
   const profile = getProfile(), block = getBlock(), day = currentDay();
   const src = profile.log[block.id] && profile.log[block.id][slot(profile.week - 1, day.id)];
   if (profile.week === 1 || !src) { mark('No hay nada registrado en la semana ' + (profile.week - 1) + ' para este día'); return; }
+  let leveled = 0;
   exList(day).forEach(ex => {
-    const from = src[ex.id]; if (!from) return;
+    const from = src[ex.id]; if (!from || !from.length) return;
     const to = entry(profile, block.id, profile.week, day.id, ex.id, setsFor(ex, profile.week, block));
-    to.forEach((r, i) => { if (!r.done) r.w = (from[i] || from[from.length - 1] || {}).w || ''; });
+    /* Double progression, automated: `ex.inc` is the step, and the condition
+       is the same one the week banners already state in prose — every set
+       hit the top of the rep range last week. Met, and the copied weight
+       carries the step forward instead of repeating; short of either
+       (no `inc`, or a set that didn't reach the top), it copies the weight
+       as-is, same as it always did. */
+    const top = repRangeTop(ex.reps);
+    const hitTop = !!(ex.inc && top != null && from.every(r => r && r.done && hasReps(r) && num(r.r) >= top));
+    if (hitTop) leveled++;
+    to.forEach((r, i) => {
+      if (r.done) return;
+      const w = (from[i] || from[from.length - 1] || {}).w || '';
+      r.w = (hitTop && w !== '' && !isNaN(num(w))) ? String(Math.round((num(w) + ex.inc) * 100) / 100) : w;
+    });
   });
   save(); render();
-  mark('Pesos copiados de la semana ' + (profile.week - 1) + ' — supéralos');
+  mark('Pesos copiados de la semana ' + (profile.week - 1) +
+    (leveled ? ' — ' + leveled + (leveled === 1 ? ' ejercicio sube' : ' ejercicios suben') + ' de peso (tope de rango la semana pasada)' : '') +
+    ' — supéralos');
 };
 
 $('clearDay').onclick = async () => {
@@ -2225,11 +2408,15 @@ function buildExRow(profile, day, ex, pos, liveCount) {
     '</div>' +
     '<div class="pe-row"><div style="flex:1;min-width:140px;"><span class="pe-field-lbl">Alternativa</span><input type="text" class="f-alt"></div></div>' +
     '<div class="pe-row"><div style="flex:1;min-width:140px;"><span class="pe-field-lbl">Nota / cue</span><input type="text" class="f-cue"></div></div>' +
+    '<div class="pe-row"><div style="flex:1;min-width:140px;"><span class="pe-field-lbl">Ajustes de máquina (asiento, respaldo…)</span><input type="text" class="f-setup" maxlength="' + SETUP_LIMIT + '"></div></div>' +
     '<div class="pe-row">' +
       '<div><span class="pe-field-lbl">Series</span><input type="number" min="1" class="f-sets"></div>' +
       '<div style="flex:1;min-width:70px;"><span class="pe-field-lbl">Reps</span><input type="text" class="f-reps"></div>' +
       '<div><span class="pe-field-lbl">Descanso (s)</span><input type="number" min="0" step="5" class="f-rest"></div>' +
+    '</div>' +
+    '<div class="pe-row">' +
       '<div><span class="pe-field-lbl">+1 serie desde sem.</span><input type="number" min="1" max="8" class="f-add"></div>' +
+      '<div><span class="pe-field-lbl">Incremento de peso (' + esc(units()) + ')</span><input type="number" min="' + INC_MIN + '" max="' + INC_MAX + '" step="' + INC_STEP + '" class="f-inc"></div>' +
     '</div>' +
     '<div class="pe-row"><div style="flex:1;min-width:140px;"><span class="pe-field-lbl">Músculo</span>' +
       '<input type="text" class="f-muscle" list="muscleSuggestions" placeholder="Sin clasificar" maxlength="' + MUSCLE_LIMIT + '"></div></div>' +
@@ -2250,6 +2437,8 @@ function buildExRow(profile, day, ex, pos, liveCount) {
   row.querySelector('.f-alt').oninput = e => ex.alt = e.target.value;
   row.querySelector('.f-cue').value = ex.cue || '';
   row.querySelector('.f-cue').oninput = e => ex.cue = e.target.value;
+  row.querySelector('.f-setup').value = ex.setup || '';
+  row.querySelector('.f-setup').oninput = e => { const v = e.target.value; if (v) ex.setup = v; else delete ex.setup; };
   row.querySelector('.f-sets').value = ex.sets;
   row.querySelector('.f-sets').oninput = e => ex.sets = parseInt(e.target.value, 10) || 1;
   row.querySelector('.f-reps').value = ex.reps;
@@ -2258,6 +2447,15 @@ function buildExRow(profile, day, ex, pos, liveCount) {
   row.querySelector('.f-rest').oninput = e => ex.rest = parseInt(e.target.value, 10) || 0;
   row.querySelector('.f-add').value = ex.add || '';
   row.querySelector('.f-add').oninput = e => { const v = parseInt(e.target.value, 10); if (v) ex.add = v; else delete ex.add; };
+  row.querySelector('.f-inc').value = ex.inc || '';
+  /* Decimals, not just integers — clampNum is what makes that safe: 2.3 kg
+     is a real plate increment, not a typo to round away like clampInt would
+     (see the "add" import guard below for the bug that taught us that). */
+  row.querySelector('.f-inc').oninput = e => {
+    const v = e.target.value;
+    if (v === '') { delete ex.inc; return; }
+    ex.inc = clampNum(v, INC_MIN, INC_MAX, INC_MIN, INC_STEP);
+  };
   row.querySelector('.f-muscle').value = ex.muscle || '';
   /* Freeform text with a suggestion list (see the shared #muscleSuggestions
      datalist), not a fixed set — type any tag, or clear it to fall back to
@@ -2871,6 +3069,26 @@ $('volumeBtn').onclick = openVolume;
 $('volumeClose').onclick = () => closeSheet('volumeSheet');
 $('volumeSheet').addEventListener('click', e => { if (e.target.id === 'volumeSheet') closeSheet('volumeSheet'); });
 
+/* ---------- backup nag ----------
+   "A lost phone with no backup is a lost history" per the README's own
+   Known Limits, and nothing used to remind you. Sessions-since-last-export
+   is computable from data the app already has, so this rides on top of it
+   rather than asking for anything new: a day's sets going from incomplete
+   to complete (see the tick handler in drawApp) is close enough to "a
+   session happened" for a gentle nag, not a precise ledger. */
+function resetBackupNag() {
+  state.prefs.sessionsSinceBackup = 0;
+  save();
+}
+
+function maybeNagBackup() {
+  const n = state.prefs.sessionsSinceBackup;
+  if (n >= 10 && n % 10 === 0) {
+    toast('Llevas ' + n + ' sesiones sin hacer una copia de seguridad. Un móvil perdido sin copia es historial perdido.',
+      'Copia de seguridad', () => $('backup').click());
+  }
+}
+
 /* ---------- backup / restore ---------- */
 $('backup').onclick = () => {
   $('blob').value = JSON.stringify({ app: STORAGE_KEY, v: 1, saved: new Date().toISOString(), data: state });
@@ -2883,6 +3101,7 @@ $('sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeSh
 $('bDownload').onclick = () => {
   const payload = JSON.stringify({ app: STORAGE_KEY, v: 1, saved: new Date().toISOString(), data: state }, null, 2);
   downloadFile('heavy-iron-backup-' + new Date().toISOString().slice(0, 10) + '.json', payload, 'application/json');
+  resetBackupNag();
   mark('Copia descargada — ' + setsLabel(countBackupSets(state)));
 };
 
@@ -2902,6 +3121,7 @@ $('bCopy').onclick = async () => {
   try {
     if (navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(ta.value);
     else if (!document.execCommand('copy')) throw new Error();
+    resetBackupNag();
     mark('Copiado al portapapeles');
   } catch (e) {
     mark('No se pudo copiar — selecciona el texto y cópialo a mano', true);
@@ -3069,6 +3289,7 @@ function renderProfileExports() {
       const stamp = new Date().toISOString().slice(0, 10);
       downloadFile('heavy-iron-' + (slugify(profile.label) || key) + '-' + stamp + '.json',
                    profileExportPayload(key), 'application/json');
+      resetBackupNag();
       mark(profile.label + ' exportado — ' + setsLabel(countProfileSets(profile)));
     };
     host.appendChild(b);
@@ -3420,6 +3641,31 @@ function blockShareLog(profile, block) {
   return out;
 }
 
+/* Every RIR chip logged against one block, in the same {slot: {exId: value}}
+   shape blockShareLog uses for rows — kept separate from it (see the RIR
+   section near getRir/setRir) so a receiver that doesn't know about `rir`
+   yet still parses the rest of the payload fine. */
+function blockShareRir(profile, block) {
+  const src = profile.rir[block.id];
+  if (!src) return {};
+  const liveDays = dayList(block);
+  const out = {};
+  liveDays.forEach(day => {
+    const liveEx = new Set(exList(day).map(e => e.id));
+    for (let w = 1; w <= MAX_WEEKS; w++) {
+      const key = slot(w, day.id);
+      const slotRir = src[key];
+      if (!slotRir) continue;
+      const kept = {};
+      Object.keys(slotRir).forEach(exId => {
+        if (liveEx.has(exId) && RIR_OPTIONS.indexOf(slotRir[exId]) >= 0) kept[exId] = slotRir[exId];
+      });
+      if (Object.keys(kept).length) out[key] = kept;
+    }
+  });
+  return out;
+}
+
 /* Two different numbers, and the difference is the whole point of showing
    them. A row counts as "registrada" the moment it holds anything at all —
    including a weight typed into the box and then never ticked. Only a row
@@ -3467,14 +3713,16 @@ function setsWithDoneLabel(total, done) {
    a log keyed by the *sender's* ids has to be re-keyed to the ids the block
    actually ended up with. `normalizeImportedBlock` maps days and exercises
    one-to-one and in order, so position is a reliable bridge between the two. */
-function normalizeImportedLog(rawLog, rawBlock, normalized) {
-  if (!rawLog || typeof rawLog !== 'object' || Array.isArray(rawLog)) return {};
-  /* First occurrence wins, both here and for days. A sender whose block had
-     the same id on two exercises leaves a log that is genuinely ambiguous —
-     but `normalizeImportedBlock` renames the *later* duplicate and leaves the
-     first one's id alone, so rows filed under that id belong to the first.
-     Letting the duplicate overwrite the mapping would quietly move somebody's
-     sets onto a different exercise. */
+/* Shared by normalizeImportedLog and normalizeImportedRir: both need to
+   re-key a payload from the sender's day/exercise ids to whatever
+   `normalizeImportedBlock` renamed them to. First occurrence wins, both here
+   and for days. A sender whose block had the same id on two exercises leaves
+   a mapping that is genuinely ambiguous — but `normalizeImportedBlock`
+   renames the *later* duplicate and leaves the first one's id alone, so rows
+   filed under that id belong to the first. Letting the duplicate overwrite
+   the mapping would quietly move somebody's sets onto a different
+   exercise. */
+function importIdMaps(rawBlock, normalized) {
   const dayMap = {}, exMap = {};
   const put = (map, from, to) => { if (from != null && !(String(from) in map)) map[String(from)] = to; };
   (rawBlock.days || []).forEach((rd, di) => {
@@ -3490,6 +3738,12 @@ function normalizeImportedLog(rawLog, rawBlock, normalized) {
       put(exMap, ne.id, ne.id);
     });
   });
+  return { dayMap, exMap };
+}
+
+function normalizeImportedLog(rawLog, rawBlock, normalized) {
+  if (!rawLog || typeof rawLog !== 'object' || Array.isArray(rawLog)) return {};
+  const { dayMap, exMap } = importIdMaps(rawBlock, normalized);
 
   const out = {};
   Object.keys(rawLog).slice(0, LOG_LIMITS.slots).forEach(key => {
@@ -3512,6 +3766,31 @@ function normalizeImportedLog(rawLog, rawBlock, normalized) {
         return row;
       });
       if (rows.length) kept[exId] = rows;
+    });
+    if (Object.keys(kept).length) out[slot(w, dayId)] = kept;
+  });
+  return out;
+}
+
+/* The RIR twin of normalizeImportedLog, re-keyed the same way. */
+function normalizeImportedRir(rawRir, rawBlock, normalized) {
+  if (!rawRir || typeof rawRir !== 'object' || Array.isArray(rawRir)) return {};
+  const { dayMap, exMap } = importIdMaps(rawBlock, normalized);
+
+  const out = {};
+  Object.keys(rawRir).slice(0, LOG_LIMITS.slots).forEach(key => {
+    const m = /^w(\d+)-(.+)$/.exec(key);
+    if (!m) return;
+    const w = +m[1];
+    if (!Number.isInteger(w) || w < 1 || w > MAX_WEEKS) return;
+    const dayId = dayMap[m[2]];
+    if (!dayId) return;
+    const slotRir = rawRir[key];
+    if (!slotRir || typeof slotRir !== 'object' || Array.isArray(slotRir)) return;
+    const kept = {};
+    Object.keys(slotRir).forEach(rawExId => {
+      const exId = exMap[rawExId];
+      if (exId && RIR_OPTIONS.indexOf(slotRir[rawExId]) >= 0) kept[exId] = slotRir[rawExId];
     });
     if (Object.keys(kept).length) out[slot(w, dayId)] = kept;
   });
@@ -3691,11 +3970,12 @@ async function buildQrPayload(kind, profile, block) {
   if (kind === 'profile') {
     /* Shaped exactly like the profile file the app already exports, so the
        receiving side can hand it straight to loadProfileFromText. */
+    resetBackupNag();
     return Object.assign(base, { kind: 'profile', key: state.activeProfile, profile: state.profiles[state.activeProfile] });
   }
   const plan = blockSharePlan(block);
   if (kind === 'block') return Object.assign(base, { kind: 'block', from: profile.label, block: plan });
-  return Object.assign(base, { kind: 'blocklog', from: profile.label, block: plan, log: blockShareLog(profile, block) });
+  return Object.assign(base, { kind: 'blocklog', from: profile.label, block: plan, log: blockShareLog(profile, block), rir: blockShareRir(profile, block) });
 }
 
 function renderQrFrame() {
@@ -3803,6 +4083,7 @@ async function applyQrPayload(payload) {
       return;
     }
     const log = payload.kind === 'blocklog' ? normalizeImportedLog(payload.log, payload.block, normalized) : null;
+    const rir = payload.kind === 'blocklog' ? normalizeImportedRir(payload.rir, payload.block, normalized) : null;
     const sets = log ? countShareLog(log) : 0;
     const doneSets = log ? countShareLog(log, true) : 0;
     const profile = getProfile();
@@ -3824,7 +4105,7 @@ async function applyQrPayload(payload) {
     if (!okd) return;
 
     closeQr();
-    installImportedBlock(normalized, log);
+    installImportedBlock(normalized, log, rir);
     flushSave();
     mark('Bloque "' + normalized.name + '" añadido' + (log && sets ? ' con ' + setsWithDoneLabel(sets, doneSets) : '') + ' en ' + profile.label);
     return;
@@ -3848,7 +4129,7 @@ function csvCell(v) {
 }
 
 function buildCsv() {
-  const rows = [['perfil', 'bloque', 'semana', 'dia', 'ejercicio', 'serie', units(), 'reps', 'hecha', 'fecha']];
+  const rows = [['perfil', 'bloque', 'semana', 'dia', 'ejercicio', 'serie', units(), 'reps', 'hecha', 'fecha', 'rir']];
   Object.keys(state.profiles).forEach(pk => {
     const profile = state.profiles[pk];
     profile.blockOrder.forEach(bId => {
@@ -3859,10 +4140,14 @@ function buildCsv() {
             const s = profile.log[bId] && profile.log[bId][slot(w, day.id)];
             const arr = s && s[ex.id];
             if (!Array.isArray(arr)) continue;
+            /* The RIR chip is per exercise per session, not per set, so it
+               repeats on every row of that exercise/week rather than
+               belonging to any one of them. */
+            const rir = getRir(profile, bId, w, day.id, ex.id);
             arr.forEach((r, i) => {
               if (!rowUsed(r)) return;
               rows.push([profile.label, block.name, w, day.name, ex.n, i + 1, r.w, r.r,
-                         r.done ? 'si' : 'no', r.ts ? new Date(r.ts).toISOString().slice(0, 10) : '']);
+                         r.done ? 'si' : 'no', r.ts ? new Date(r.ts).toISOString().slice(0, 10) : '', rir]);
             });
           }
         });

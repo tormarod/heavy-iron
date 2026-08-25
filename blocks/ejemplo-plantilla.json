@@ -9,11 +9,13 @@
           "n": "Press de banca con barra",
           "alt": "o press de pecho en máquina",
           "cue": "Omóplatos retraídos, barra a la altura del pecho",
+          "setup": "Banco plano, sin ajustes",
           "muscle": "Pecho",
           "pattern": "Empuje horizontal",
           "type": "Compuesto",
           "sets": 4,
           "add": 5,
+          "inc": 2.5,
           "reps": "6–10",
           "rest": 150,
           "share": 1
