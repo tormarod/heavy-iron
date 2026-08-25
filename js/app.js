@@ -929,6 +929,7 @@ let tLabel = '';
 function startRest(sec, label) {
   if (!sec) return;
   clearInterval(tId);
+  stopAlarmLoop();
   tEndAt = Date.now() + sec * 1000;
   tTotal = sec; tOverNotified = false; tLabel = label;
   $('timer').classList.add('up');
@@ -954,8 +955,7 @@ function tick() {
       $('tlbl').textContent = 'Vamos';
       $('tmsg').textContent = 'Se acabó el descanso. Siguiente serie.';
       f.style.width = '100%';
-      if (navigator.vibrate) navigator.vibrate([200, 80, 200]);
-      beep();
+      startAlarmLoop();
     }
     const over = Math.abs(left);
     v.textContent = '+' + Math.floor(over / 60) + ':' + String(over % 60).padStart(2, '0');
@@ -965,6 +965,7 @@ function tick() {
 
 function stopRest() {
   clearInterval(tId); tId = null;
+  stopAlarmLoop();
   $('timer').classList.remove('up', 'over');
   releaseWakeLock();
 }
@@ -981,6 +982,7 @@ function nudgeRest(delta) {
   tTotal = Math.max(tTotal, next);
   if (tOverNotified) {
     tOverNotified = false;
+    stopAlarmLoop();
     $('timer').classList.remove('over');
     $('tlbl').textContent = 'Descanso · ' + tLabel;
     $('tmsg').textContent = 'Prueba de la frase: si puedes hablar sin quedarte sin aire, ya estás listo.';
@@ -993,11 +995,34 @@ $('tplus').onclick = () => nudgeRest(30);
 /* ---------- rest alarm ----------
    Vibration is silent to anyone whose phone is on a bench two metres away,
    and headphones drown the buzz. A short synthesised alarm needs no audio
-   file — which matters for a site that has to work offline. Square waves
-   carry more harmonics than a sine at the same gain, so they cut through
-   gym noise and tinny phone speakers better; the two-tone alternating
-   pitch reads as "alarm" rather than "notification". */
+   file — which matters for a site that has to work offline. Sawtooth waves
+   carry more harmonics than a sine or square at the same gain, so they cut
+   through gym noise and tinny phone speakers better; a flat, rapid-fire
+   same-pitch pulse (rather than a melodic two-tone interval) reads as a
+   klaxon instead of a doorbell chime. The whole burst repeats on an
+   interval — one beep is easy to miss mid-set — until the rest is skipped,
+   nudged, or a repeat cap is hit. */
 let audioCtx = null;
+let alarmLoopId = null;
+const ALARM_REPEATS = 6;
+const ALARM_INTERVAL_MS = 1100;
+
+function stopAlarmLoop() {
+  if (alarmLoopId) { clearInterval(alarmLoopId); alarmLoopId = null; }
+}
+
+function startAlarmLoop() {
+  stopAlarmLoop();
+  let count = 0;
+  const fire = () => {
+    if (!state.prefs.sound || count >= ALARM_REPEATS) { stopAlarmLoop(); return; }
+    beep();
+    if (navigator.vibrate) navigator.vibrate([200, 80, 200]);
+    count++;
+  };
+  fire();
+  alarmLoopId = setInterval(fire, ALARM_INTERVAL_MS);
+}
 
 function primeAudio() {
   if (!state.prefs.sound) return;
@@ -1013,19 +1038,19 @@ function beep() {
   if (!state.prefs.sound || !audioCtx) return;
   try {
     const now = audioCtx.currentTime;
-    const pattern = [880, 880, 1108.73, 1108.73];
+    const pattern = [1046.5, 1046.5, 1046.5, 1046.5];
     pattern.forEach((freq, i) => {
-      const off = i * 0.18;
+      const off = i * 0.12;
       const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
-      osc.type = 'square';
+      osc.type = 'sawtooth';
       osc.frequency.value = freq;
       gain.gain.setValueAtTime(0.0001, now + off);
-      gain.gain.exponentialRampToValueAtTime(0.5, now + off + 0.015);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + off + 0.15);
+      gain.gain.exponentialRampToValueAtTime(0.65, now + off + 0.006);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + off + 0.09);
       osc.connect(gain);
       gain.connect(audioCtx.destination);
       osc.start(now + off);
-      osc.stop(now + off + 0.16);
+      osc.stop(now + off + 0.1);
     });
   } catch (e) { /* ignore — never let the alarm break the countdown */ }
 }
@@ -1042,6 +1067,7 @@ $('tsound').onclick = () => {
   renderSoundBtn();
   save();
   if (state.prefs.sound) { primeAudio(); beep(); }
+  else { stopAlarmLoop(); }
 };
 
 async function requestWakeLock() {
