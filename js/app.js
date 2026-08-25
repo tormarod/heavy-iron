@@ -2097,19 +2097,29 @@ $('copyPrev').onclick = () => {
   const profile = getProfile(), block = getBlock(), day = currentDay();
   const src = profile.log[block.id] && profile.log[block.id][slot(profile.week - 1, day.id)];
   if (profile.week === 1 || !src) { mark('No hay nada registrado en la semana ' + (profile.week - 1) + ' para este día'); return; }
-  let leveled = 0;
+  let leveled = 0, heldBack = 0;
   exList(day).forEach(ex => {
     const from = src[ex.id]; if (!from || !from.length) return;
     const to = entry(profile, block.id, profile.week, day.id, ex.id, setsFor(ex, profile.week, block));
     /* Double progression, automated: `ex.inc` is the step, and the condition
-       is the same one the week banners already state in prose — every set
-       hit the top of the rep range last week. Met, and the copied weight
-       carries the step forward instead of repeating; short of either
-       (no `inc`, or a set that didn't reach the top), it copies the weight
-       as-is, same as it always did. */
+       is the same one the week banners already state in prose — but the
+       cues actually say "top of the range AT 2 RIR", not just "top of the
+       range". A set ground out to failure can hit the same rep number
+       without meaning the same thing, so top-of-range alone isn't enough to
+       trust here — it has to agree with what the set actually cost.
+       A logged RIR of 0 (to failure) says so directly. RIR is optional
+       though, so when it wasn't tapped, the rep-decay flag stands in for
+       it: the same "first set probably went too close to failure" signal
+       the session view already shows for free. Either one withholds the
+       add and falls back to a plain copy, same as short of `inc` or the
+       range not being reached at all. */
     const top = repRangeTop(ex.reps);
-    const hitTop = !!(ex.inc && top != null && from.every(r => r && r.done && hasReps(r) && num(r.r) >= top));
+    const reachedTop = top != null && from.every(r => r && r.done && hasReps(r) && num(r.r) >= top);
+    const priorRir = getRir(profile, block.id, profile.week - 1, day.id, ex.id);
+    const suspectFailure = priorRir === '0' || (!priorRir && repDecay(from) > 0);
+    const hitTop = !!(ex.inc && reachedTop && !suspectFailure);
     if (hitTop) leveled++;
+    else if (ex.inc && reachedTop && suspectFailure) heldBack++;
     to.forEach((r, i) => {
       if (r.done) return;
       const w = (from[i] || from[from.length - 1] || {}).w || '';
@@ -2119,6 +2129,7 @@ $('copyPrev').onclick = () => {
   save(); render();
   mark('Pesos copiados de la semana ' + (profile.week - 1) +
     (leveled ? ' — ' + leveled + (leveled === 1 ? ' ejercicio sube' : ' ejercicios suben') + ' de peso (tope de rango la semana pasada)' : '') +
+    (heldBack ? ' — ' + heldBack + (heldBack === 1 ? ' ejercicio llegó al tope pero no sube' : ' ejercicios llegaron al tope pero no suben') + ' (la última serie parece que fue al fallo, no a 2 RIR)' : '') +
     ' — supéralos');
 };
 
