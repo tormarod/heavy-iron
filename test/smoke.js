@@ -127,9 +127,15 @@ const ok = (name, cond, extra) => {
       return JSON.stringify(blockTagsFor('muscle', block)) === JSON.stringify(['X', 'Y', 'Sin clasificar']);
     }));
     ok('blockTagsFor works on the pattern dimension too', await page.evaluate(() => {
-      const block = { days: [{ ex: [{ id: 'a', pattern: 'Empuje horizontal' }, { id: 'b', type: 'Aislamiento' }] }] };
+      const block = { days: [{ ex: [{ id: 'a', pattern: 'Empuje horizontal' }, { id: 'b' }] }] };
       return JSON.stringify(blockTagsFor('pattern', block)) === JSON.stringify(['Empuje horizontal', 'Sin clasificar']);
     }));
+    ok('patternTag falls back to type — an untagged-pattern isolation move buckets as Aislamiento, not unclassified',
+       await page.evaluate(() => patternTag({ type: 'Aislamiento' }) === 'Aislamiento'));
+    ok('a genuinely untagged exercise (no pattern, no type) still buckets as unclassified',
+       await page.evaluate(() => patternTag({}) === 'Sin clasificar'));
+    ok('pattern wins over type when both are set',
+       await page.evaluate(() => patternTag({ pattern: 'Empuje horizontal', type: 'Compuesto' }) === 'Empuje horizontal'));
     ok('buildBarSVG draws a background rect for every row, plus a filled one for nonzero rows', await page.evaluate(() => {
       const svg = buildBarSVG([{ label: 'Pecho', value: 10 }, { label: 'Espalda', value: 0 }]);
       return (svg.match(/<rect/g) || []).length === 3;
