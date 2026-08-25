@@ -946,8 +946,11 @@ $('tplus').onclick = () => nudgeRest(30);
 
 /* ---------- rest alarm ----------
    Vibration is silent to anyone whose phone is on a bench two metres away,
-   and headphones drown the buzz. A short synthesised double beep needs no
-   audio file — which matters for a site that has to work offline. */
+   and headphones drown the buzz. A short synthesised alarm needs no audio
+   file — which matters for a site that has to work offline. Square waves
+   carry more harmonics than a sine at the same gain, so they cut through
+   gym noise and tinny phone speakers better; the two-tone alternating
+   pitch reads as "alarm" rather than "notification". */
 let audioCtx = null;
 
 function primeAudio() {
@@ -964,17 +967,19 @@ function beep() {
   if (!state.prefs.sound || !audioCtx) return;
   try {
     const now = audioCtx.currentTime;
-    [0, 0.3].forEach(off => {
+    const pattern = [880, 880, 1108.73, 1108.73];
+    pattern.forEach((freq, i) => {
+      const off = i * 0.18;
       const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = 880;
+      osc.type = 'square';
+      osc.frequency.value = freq;
       gain.gain.setValueAtTime(0.0001, now + off);
-      gain.gain.exponentialRampToValueAtTime(0.3, now + off + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + off + 0.24);
+      gain.gain.exponentialRampToValueAtTime(0.5, now + off + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + off + 0.15);
       osc.connect(gain);
       gain.connect(audioCtx.destination);
       osc.start(now + off);
-      osc.stop(now + off + 0.26);
+      osc.stop(now + off + 0.16);
     });
   } catch (e) { /* ignore — never let the alarm break the countdown */ }
 }
