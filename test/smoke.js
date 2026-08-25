@@ -120,11 +120,15 @@ const ok = (name, cond, extra) => {
     ok('volumeTotals excludes retired exercises', await page.evaluate(() => {
       const block = JSON.parse(JSON.stringify(state.profiles.hombre.blocks['block-1']));
       block.days[0].ex[0].off = 1;
-      return volumeTotals('plan', state.profiles.hombre, block, 1).Pecho === 15 - 4;
+      return volumeTotals('plan', state.profiles.hombre, block, 1, 'muscle').Pecho === 15 - 4;
     }));
-    ok('blockMuscleTags reflects the freeform tags actually present, in first-seen order', await page.evaluate(() => {
+    ok('blockTagsFor reflects the freeform tags actually present, in first-seen order', await page.evaluate(() => {
       const block = { days: [{ ex: [{ id: 'a', muscle: 'X' }, { id: 'b', muscle: 'Y' }, { id: 'c', muscle: 'X' }, { id: 'd' }] }] };
-      return JSON.stringify(blockMuscleTags(block)) === JSON.stringify(['X', 'Y', 'Sin clasificar']);
+      return JSON.stringify(blockTagsFor('muscle', block)) === JSON.stringify(['X', 'Y', 'Sin clasificar']);
+    }));
+    ok('blockTagsFor works on the pattern dimension too', await page.evaluate(() => {
+      const block = { days: [{ ex: [{ id: 'a', pattern: 'Empuje horizontal' }, { id: 'b', type: 'Aislamiento' }] }] };
+      return JSON.stringify(blockTagsFor('pattern', block)) === JSON.stringify(['Empuje horizontal', 'Sin clasificar']);
     }));
     ok('buildBarSVG draws a background rect for every row, plus a filled one for nonzero rows', await page.evaluate(() => {
       const svg = buildBarSVG([{ label: 'Pecho', value: 10 }, { label: 'Espalda', value: 0 }]);
@@ -134,7 +138,7 @@ const ok = (name, cond, extra) => {
     await page.click('#volumeBtn');
     ok('the volume sheet opens', await page.locator('#volumeSheet.up').count() === 1);
     ok('starts on Plan scope', await page.getAttribute('#volumeScope >> text=Plan', 'aria-pressed') === 'true');
-    const tagCount = await page.evaluate(() => blockMuscleTags(getBlock()).length);
+    const tagCount = await page.evaluate(() => blockTagsFor('muscle', getBlock()).length);
     ok('one row per muscle tag actually used in this block', await page.locator('#volumeHost .chart-table tbody tr').count() === tagCount);
     // chest and shoulders both land on 15 sets — merging hombro-lat/hombro-post
     // into one Hombro tag ties it with Pecho, and the alphabetical tie-break
@@ -150,6 +154,18 @@ const ok = (name, cond, extra) => {
     ok('the sub-label switches to registered sets', (await page.textContent('#volumeSub')).includes('marcadas como hechas'));
     const topLogRow = await page.locator('#volumeHost .chart-table tbody tr').first().textContent();
     ok('the one completed set so far counts under Pecho', topLogRow.includes('Pecho') && topLogRow.trim().endsWith('1'), topLogRow);
+
+    ok('starts on the Músculo dimension', await page.getAttribute('#volumeDim >> text=Músculo', 'aria-pressed') === 'true');
+    await page.click('#volumeDim >> text=Patrón');
+    await page.waitForTimeout(200);
+    ok('switching dimension relabels the table header', (await page.textContent('#volumeHost .chart-table thead')).includes('Patrón'));
+    ok('the sub-label follows the dimension too', (await page.textContent('#volumeSub')).includes('por patrón'));
+    await page.click('#volumeDim >> text=Tipo');
+    await page.waitForTimeout(200);
+    ok('the type dimension header switches too', (await page.textContent('#volumeHost .chart-table thead')).includes('Tipo'));
+    await page.click('#volumeDim >> text=Músculo');
+    await page.waitForTimeout(200);
+
     await page.click('#volumeClose');
     ok('close hides it', await page.locator('#volumeSheet.up').count() === 0);
 
@@ -171,6 +187,32 @@ const ok = (name, cond, extra) => {
     await page.waitForTimeout(300);
     ok('clearing the field removes the tag rather than storing an empty string', await page.evaluate(() =>
       !('muscle' in state.profiles.hombre.blocks['block-1'].days[0].ex.find(e => e.id === 'chestpress'))));
+
+    console.log('\n== plan editor: pattern/type tags, same freeform shape as muscle ==');
+    await page.click('#editPlan');
+    const day0b = page.locator('.pe-day').first();
+    ok('pattern starts blank (unclassified)', await day0b.locator('.pe-ex').nth(0).locator('.f-pattern').inputValue() === '');
+    ok('type starts blank (unclassified)', await day0b.locator('.pe-ex').nth(0).locator('.f-type').inputValue() === '');
+    ok('the pattern field offers suggestions via a datalist, not a fixed set', await day0b.locator('.pe-ex').nth(0).locator('.f-pattern').getAttribute('list') === 'patternSuggestions');
+    ok('the type field offers suggestions via a datalist, not a fixed set', await day0b.locator('.pe-ex').nth(0).locator('.f-type').getAttribute('list') === 'typeSuggestions');
+    await day0b.locator('.pe-ex').nth(0).locator('.f-pattern').fill('Empuje horizontal');
+    await day0b.locator('.pe-ex').nth(0).locator('.f-type').fill('Compuesto');
+    await page.click('#peSave');
+    await page.waitForTimeout(300);
+    ok('typing custom pattern/type tags and saving persists them verbatim', await page.evaluate(() => {
+      const ex = state.profiles.hombre.blocks['block-1'].days[0].ex.find(e => e.id === 'chestpress');
+      return ex.pattern === 'Empuje horizontal' && ex.type === 'Compuesto';
+    }));
+
+    await page.click('#editPlan');
+    await page.locator('.pe-day').first().locator('.pe-ex').nth(0).locator('.f-pattern').fill('');
+    await page.locator('.pe-day').first().locator('.pe-ex').nth(0).locator('.f-type').fill('');
+    await page.click('#peSave');
+    await page.waitForTimeout(300);
+    ok('clearing pattern/type removes the tags rather than storing empty strings', await page.evaluate(() => {
+      const ex = state.profiles.hombre.blocks['block-1'].days[0].ex.find(e => e.id === 'chestpress');
+      return !('pattern' in ex) && !('type' in ex);
+    }));
 
     console.log('\n== timestamps + persistence across reload ==');
     await page.waitForTimeout(600);
@@ -397,6 +439,32 @@ const ok = (name, cond, extra) => {
        await page.evaluate(() => !('muscle' in getBlock().days[0].ex[1])));
     ok('a missing muscle tag is left absent',
        await page.evaluate(() => !('muscle' in getBlock().days[0].ex[2])));
+    await page.click('#blockbar >> text=Importar JSON');
+
+    console.log('\n== import: freeform pattern/type fields ==');
+    await page.fill('#importBlob', JSON.stringify({
+      name: 'Con patrones',
+      days: [{ name: 'D', ex: [
+        { id: 'x1', n: 'Uno', reps: '10', pattern: 'Empuje horizontal', type: 'Compuesto' },
+        { id: 'x2', n: 'Dos', reps: '10', pattern: '   ', type: '   ' },
+        { id: 'x3', n: 'Tres', reps: '10' },
+      ] }],
+    }));
+    await page.click('#importFromText');
+    await page.waitForTimeout(300);
+    ok('a block with custom pattern/type tags imports cleanly', (await page.textContent('#importError')) === '');
+    ok('arbitrary pattern/type tags are kept verbatim — the app enforces no taxonomy on import', await page.evaluate(() => {
+      const ex = getBlock().days[0].ex[0];
+      return ex.pattern === 'Empuje horizontal' && ex.type === 'Compuesto';
+    }));
+    ok('blank/whitespace-only pattern/type tags are left absent', await page.evaluate(() => {
+      const ex = getBlock().days[0].ex[1];
+      return !('pattern' in ex) && !('type' in ex);
+    }));
+    ok('missing pattern/type tags are left absent', await page.evaluate(() => {
+      const ex = getBlock().days[0].ex[2];
+      return !('pattern' in ex) && !('type' in ex);
+    }));
     await page.click('#blockbar >> text=Importar JSON');
 
     console.log('\n== escape closes sheets ==');

@@ -509,6 +509,8 @@ history intact.
           "alt": "o press de pecho en máquina",
           "cue": "Optional coaching cue.",
           "muscle": "Pecho",
+          "pattern": "Empuje horizontal",
+          "type": "Compuesto",
           "sets": 4,
           "reps": "6–10",
           "rest": 150,
@@ -557,6 +559,20 @@ Field notes:
 - `ex.alt`, `ex.cue`: optional free text.
 - `ex.muscle`: optional free text — which muscle the exercise counts
   towards in the weekly volume dashboard (e.g. `"Pecho"`, `"Espalda"`).
+  This is an anatomical grouping: hack squat and leg press both count as
+  `"Cuádriceps"`, RDL and leg curl both count as `"Isquios"`, because
+  that's the muscle each one is actually there to grow, regardless of the
+  machine or the movement pattern. Freeform, not a fixed list; left
+  unclassified if omitted.
+- `ex.pattern`, `ex.type`: optional free text — the same kind of tag as
+  `ex.muscle`, but answering "what shape is this movement" instead of
+  "what does it hit", and with nothing anatomical about it: `pattern` for
+  the movement's plane (e.g. `"Empuje horizontal"`, `"Tirón vertical"`,
+  `"Rodilla dominante"`) and `type` for compound vs. isolation (e.g.
+  `"Compuesto"`, `"Aislamiento"`). Both are switchable groupings in the
+  same volume dashboard as `muscle` — useful because a plan can look
+  balanced by muscle while still being thin on compound pressing, or heavy
+  on isolation work, and neither shows up in a muscle-only breakdown.
   Freeform, not a fixed list; left unclassified if omitted.
 - `phase`: optional — per-week (`1`–`8`) goal text shown in the banner.
   Any week left out falls back to a generic RIR-based default, so this
@@ -575,7 +591,7 @@ or smuggle markup onto the screen:
 | `days` | at most 14 |
 | `day.ex` | at most 40 per day |
 | `name`, `day.name` | 80 characters |
-| `ex.n` | 120 · `ex.reps` 40 · `ex.alt` 200 · `ex.cue` 400 · `ex.muscle` 40 |
+| `ex.n` | 120 · `ex.reps` 40 · `ex.alt` 200 · `ex.cue` 400 · `ex.muscle` 40 · `ex.pattern` 40 · `ex.type` 40 |
 | `day.pair` | 1000 characters |
 | `ex.sets` | clamped to 1–12 · `ex.rest` to 0–900s · `ex.add` to 1–8 |
 | `phase[w].r` / `.t` | 40 / 400 characters |

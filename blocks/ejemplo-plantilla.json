@@ -10,6 +10,8 @@
           "alt": "o press de pecho en máquina",
           "cue": "Omóplatos retraídos, barra a la altura del pecho",
           "muscle": "Pecho",
+          "pattern": "Empuje horizontal",
+          "type": "Compuesto",
           "sets": 4,
           "add": 5,
           "reps": "6–10",
@@ -19,6 +21,7 @@
         {
           "n": "Elevaciones laterales en polea",
           "muscle": "Hombro",
+          "type": "Aislamiento",
           "sets": 3,
           "reps": "12–20",
           "rest": 60
@@ -32,6 +35,8 @@
           "n": "Remo con barra",
           "alt": "o remo en máquina",
           "muscle": "Espalda",
+          "pattern": "Tirón horizontal",
+          "type": "Compuesto",
           "sets": 4,
           "reps": "8–12",
           "rest": 120,
@@ -40,6 +45,7 @@
         {
           "n": "Curl de bíceps con mancuernas",
           "muscle": "Bíceps",
+          "type": "Aislamiento",
           "sets": 3,
           "reps": "10–15",
           "rest": 0,
@@ -48,6 +54,7 @@
         {
           "n": "Extensión de tríceps en polea",
           "muscle": "Tríceps",
+          "type": "Aislamiento",
           "sets": 3,
           "reps": "10–15",
           "rest": 60,
