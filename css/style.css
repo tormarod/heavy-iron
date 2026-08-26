@@ -836,3 +836,32 @@ body {
   font-family: 'IBM Plex Mono', monospace; font-size: 10px;
   color: var(--soft); margin-top: 3px; line-height: 1.5;
 }
+
+/* ---- strength index, per muscle ----
+   Same family as the volume trend: a line over the block's weeks with the
+   baseline drawn as the reference it is. */
+.idx-row {
+  border: 1px solid var(--line); border-left: 3px solid var(--soft);
+  border-radius: 2px; background: var(--card);
+  padding: 8px 10px 4px; margin-bottom: 8px;
+}
+.idx-row.up { border-left-color: var(--signal); }
+.idx-row.down { border-left-color: var(--danger); }
+.idx-row.flat { border-left-color: var(--amber); }
+.idx-row.none { opacity: 0.72; }
+.idx-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 4px 8px; flex-wrap: wrap;
+}
+.idx-name { font-size: 12.5px; font-weight: 600; color: var(--ink); }
+.idx-n {
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+  font-weight: 600; color: var(--soft);
+}
+.idx-row.up .idx-n { color: var(--signal); }
+.idx-row.down .idx-n { color: var(--danger); }
+.idx-meta {
+  font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+  color: var(--soft); margin-top: 3px; line-height: 1.5;
+}
+.idx-chart { margin-top: 2px; }
