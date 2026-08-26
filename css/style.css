@@ -624,6 +624,50 @@ body {
 .vol-kg span { display: block; font-size: 11px; color: var(--soft); line-height: 1.4; margin-top: 2px; }
 .vol-kg-empty { flex: 1; font-size: 11.5px; color: var(--soft); }
 
+/* ---- volume across the block ----
+   Small multiples: one sparkline per muscle with the 10-20 band shaded
+   behind it. A dozen muscles superimposed on one chart is spaghetti on a
+   phone, and the band can only be read behind one series at a time. */
+.vol-warn {
+  font-size: 11.5px; line-height: 1.45; color: var(--amber);
+  background: var(--amber-soft); border: 1px solid var(--line);
+  border-radius: 2px; padding: 8px 10px; margin-bottom: 10px;
+}
+.vol-trend {
+  border: 1px solid var(--line); border-radius: 2px;
+  padding: 7px 10px 4px; margin-bottom: 8px; background: var(--card);
+}
+.vol-trend.flagged { border-color: var(--amber); background: var(--amber-soft); }
+/* Wraps rather than clips: "Cuádriceps" plus its verdict does not fit on
+   one line on a 360px phone, and a truncated verdict is worse than a
+   second line. */
+.vol-trend-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 4px 8px; flex-wrap: wrap;
+}
+.vol-trend-name { font-size: 12.5px; font-weight: 600; color: var(--ink); }
+.vol-trend-n {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px; color: var(--soft); text-align: right;
+}
+.vol-pri {
+  margin-left: 6px; font-family: 'IBM Plex Mono', monospace;
+  font-size: 8.5px; font-weight: 700; letter-spacing: 0.08em;
+  color: var(--amber); vertical-align: 1px;
+}
+.vol-trend-chart { margin-top: 2px; }
+
+/* ---- priority muscles, in the plan editor ---- */
+.pe-priority { margin: 12px 0 4px; }
+.pri-chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 4px 0 2px; }
+.pri-chip {
+  height: 28px; padding: 0 10px;
+  border: 1px solid var(--line); border-radius: 2px; background: var(--card);
+  font-size: 11.5px; color: var(--soft); cursor: pointer;
+}
+.pri-chip:hover { border-color: var(--amber); color: var(--ink); }
+.pri-chip.on { background: var(--amber); border-color: var(--amber); color: var(--on-signal); }
+
 /* ---- block manager ---- */
 .blk-row {
   display: flex; align-items: center; gap: 10px;

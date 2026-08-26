@@ -116,19 +116,36 @@ const DEFAULT_DAYS_PAREJA = [
   ]},
 ];
 
-function freshBlock(id, name, days, phase) {
+/* The muscles each plan is actually built around — the same ones the
+   comment at the top of this file describes in prose, now written down
+   where the volume dashboard can read them: mark a muscle prioritario and
+   it gets flagged if its weekly sets fall under the growth band. Upper
+   body for his plan, legs for hers. Arms and calves get direct work in
+   both, but neither plan is built around them, and calling everything a
+   priority is the same as calling nothing one.
+
+   Isquios is deliberately not on her list even though the plan is a leg
+   plan: at 7 direct sets a week it sits under the growth band, so marking
+   it would open a fresh install on an amber warning about its own shipped
+   plan. Mark it in "Editar plan" and the dashboard will say exactly that —
+   which is the feature working, not a bug. */
+const DEFAULT_PRIORITY_TU = ['Pecho', 'Espalda', 'Hombro'];
+const DEFAULT_PRIORITY_PAREJA = ['Glúteo', 'Cuádriceps'];
+
+function freshBlock(id, name, days, phase, priority) {
   return {
     id,
     name,
     createdAt: new Date().toISOString(),
     days: JSON.parse(JSON.stringify(days)),
     phase: JSON.parse(JSON.stringify(phase)),
+    priority: priority.slice(),
   };
 }
 
 function defaultState() {
-  const tuBlock = freshBlock('block-1', 'Bloque 1', DEFAULT_DAYS_TU, DEFAULT_PHASE_TU);
-  const parejaBlock = freshBlock('block-1', 'Bloque 1', DEFAULT_DAYS_PAREJA, DEFAULT_PHASE_PAREJA);
+  const tuBlock = freshBlock('block-1', 'Bloque 1', DEFAULT_DAYS_TU, DEFAULT_PHASE_TU, DEFAULT_PRIORITY_TU);
+  const parejaBlock = freshBlock('block-1', 'Bloque 1', DEFAULT_DAYS_PAREJA, DEFAULT_PHASE_PAREJA, DEFAULT_PRIORITY_PAREJA);
   return {
     activeProfile: 'hombre',
     profiles: {
