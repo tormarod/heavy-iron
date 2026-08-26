@@ -1,3 +1,9 @@
+/* Defined here, not in app.js, because this file loads first: block-editor.js
+   and profile-transfer.js call it immediately at parse time (every
+   `$('id').onclick = ...` wiring line), before app.js — which loads last —
+   would otherwise have defined it. */
+const $ = id => document.getElementById(id);
+
 /* Default seed data — used only the first time the app runs on a device
    (or after "Borrar todos los datos"). Editing after that happens through
    the "Editar plan" screen in the app itself, not this file.
