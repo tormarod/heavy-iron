@@ -377,20 +377,18 @@ out from under a session: when a new version has been cached, a small
   exercise falls away sharply by the last one, a small line appears under
   the sets — `⚠ caída de 4 reps: ¿primera serie al fallo?` — because that
   drop is usually the first set having been pushed closer to failure than
-  the ones after it. It takes **both** a drop of ≥3 reps and a drop of
-  ≥25 % of the first set, because those are different claims: at a fixed
-  load with real rest, sets taper by something like 10–25 % by the fourth
-  one, so `15·15·12·12` is an ordinary session and `8·7·6·5` is not, even
-  though both "drop 3 reps". Judging it on the absolute number alone
-  flagged every high-rep machine session as a first set taken to failure.
-- **An objetivo for this week's weight, also for free.** Under the sets,
-  in the same voice as the rep-decay line: `↗ objetivo: 65 kg × 6 (de 60×10
-  a 2 RIR)`. Last week's set is corrected for how close to failure it
-  actually went, and that estimate is solved back for the weight that lands
-  you at the *bottom* of the rep range at this week's prescribed RIR —
-  which is what double progression means and what the week banners already
-  say in prose. See [The weekly objetivo](#the-weekly-objetivo) below for
-  what it does and does not claim.
+  the ones after it. The threshold is **proportional**: a quarter of the
+  first set's reps, with a floor of 2. At a fixed load with real rest sets
+  taper by something like 10–25 % by the fourth one, so `15·15·12·12` is an
+  ordinary session and `8·7·6·5` is not, even though both "drop 3 reps".
+  Judging it on the absolute number alone flagged every high-rep machine
+  session as a first set taken to failure.
+- **An objetivo for this week's weight and reps, also for free.** Under the
+  sets, in the same voice as the rep-decay line: `↗ objetivo: 32 kg ×
+  15/15/13/13`. The reps decide whether to go up, down or hold; last week's
+  RIR scales what those reps were worth; e1RM only sizes the step once it
+  has been earned. See [The weekly objetivo](#the-weekly-objetivo) below
+  for what it does and does not claim.
 - **Energía, three chips before you start.** `baja` / `normal` / `alta`,
   the same shape as the RIR chips but asked at the top of the session,
   because how you arrived is a different question from how it went.
@@ -414,20 +412,14 @@ out from under a session: when a new version has been cached, a small
   have crammed into the technique cue. It is a plan field, not a log one:
   editing it here writes straight to the exercise, same as **Editar plan**
   would, just from where you actually notice it needs setting.
-- **Copiar pesos de semana anterior does double progression.** An exercise
-  with an `inc` set gets its copied weight bumped by that amount instead of
-  repeated as-is, but only when every set hit the top of the rep range last
-  week — same rule the week banners already state in prose, now checked
-  automatically. It also checks the other half of that rule: the cues say
-  "top of the range *at 2 RIR*", not just top of the range, so a set ground
-  out to failure doesn't count even if the rep number matches. A logged `0`
-  RIR chip says so directly; with no RIR logged, the rep-decay flag stands
-  in for it; and a set marked as a *forced* weight drop counts whatever the
-  chip says, because having to strip the stack to finish the reps is not an
-  inference about the set, it is a record of the weight being too heavy.
-  Any of those signals withholds the add and falls back to a plain copy
-  instead, and the status line says so ("… pero no sube — hubo que bajar
-  peso, o la última serie parece que fue al fallo y no a 2 RIR").
+- **Copiar pesos de semana anterior writes what the objetivo says.** It
+  calls the same estimate the line under the sets shows, so the button and
+  the line can never disagree: an exercise that earned the jump gets the
+  weight the set actually paid for, one that put a set under the range gets
+  the lower weight, and anything else is copied as it was. The status line
+  says how many did each. It used to carry its own inline copy of double
+  progression — top of range plus `ex.inc` — which could only ever answer
+  "same weight" or "one increment more".
 
 Everything above is keyboard reachable, the set ticks are real buttons
 with pressed state, dialogs close with `Escape`, and pinch-zoom is no
@@ -435,97 +427,95 @@ longer blocked.
 
 ## The weekly objetivo
 
-Under the sets of every exercise, one line: `↗ objetivo: 65 kg × 6 (de
-60×10 a 2 RIR)`. It is the answer to the only question you actually have
-standing in front of the machine, and it costs no new input — the reps are
-already in the log, they were just being read as a yes/no.
+Under the sets of every exercise, one line: `↗ objetivo: 32 kg × 15/15/13/13`.
+It is the answer to the only question you actually have standing in front
+of the machine, and it costs no new input — the reps are already in the
+log, they were just being read as a yes/no.
 
-**What it does.** `Copiar pesos` has exactly two answers: last week's
-weight, or last week's plus `inc`. Your reps decide which and are then
-discarded. Three things follow from that, and the middle one is expensive:
+**Double progression is rep-first.** The reps decide the case; e1RM only
+sizes the step, and only once the reps have earned the move. An estimator
+driven off e1RM alone tells a lifter who put up `32×15/15/12/12` on a 10–15
+range to jump to 35 kg and start again at 10 — throwing away two sets of 15
+he already owns and restarting him at the bottom of a range he never
+finished. So the rule reads the reps first and reaches for the arithmetic
+second.
 
-- **Under-loading at the start of a block compounds.** Hit the top of a
-  6–10 range at 3 RIR and `+2,5 kg` on a 60 kg lift is +4 %, against the
-  ~+8 % the set just said was there. You spend three or four weeks of an
-  eight-week block climbing back to where you already were.
-- **It can never say "go down."** 75×5 on a 6–10 range copies 75 again,
-  and again. The honest number is ~70.
-- **Exercises without an `inc` never progressed at all** — which, before
-  this, was most of them.
-
-**How it gets there.** It inverts the Epley estimate the charts already
-use. Correct last week's set for how close to failure it actually went,
-then solve back for the weight that lands you at the *bottom* of the rep
-range at this week's prescribed RIR — the bottom, because that is where
-double progression restarts every time the weight goes up:
+**The logged RIR is not a gate, it is a scale factor.** The same `32×12`
+means three different things at `2+`, `1` and `0` RIR. It enters the maths
+twice: it normalises last week's set to what it would have been at true
+failure, and it predicts what *this* week's prescribed RIR will produce.
 
 ```
-equiv    = reps + RIR                       // 2 RIR ≈ a set to failure 2 reps longer
-e1RM     = w × (1 + equiv / 30)             // the same est1RM the charts plot
-objetivo = e1RM / (1 + (repsMin + rirEstaSemana) / 30)
+rirLast   = the chip you tapped, or what the plan asked for that week
+equivFail = lastSetReps + rirLast          reps at true failure
+e1RM      = w × (1 + equivFail / 30)       Epley, the same est1RM the charts use
+predictedAt(w') = (e1RM / w' − 1) × 30 − rirThis
 ```
 
-`repsMin` is the bottom of `ex.reps`; `rirEstaSemana` is dug out of the
-free text in `phase[w].r`, so `"2–3 RIR"` reads as 3. Last week's RIR comes
-from the chip you tapped; when you didn't tap one, the RIR the plan asked
-for that week stands in and the line says so (`a 3 RIR previstos`).
+Then three cases, in this order:
 
-| La semana pasada | Copiar pesos | Objetivo | |
-|---|---|---|---|
-| 60×10 @ 3 RIR | 62,5 | **65** (+8,3 %) | empezaste flojo, y el set lo dijo |
-| 70×10 @ 1 RIR | 72,5 | **75** (+7,1 %) | tope del rango, casi al límite |
-| 70×10 @ 0 RIR | 70 | **70** (0 %) | al fallo — mantiene |
-| 65×8 @ 1 RIR | 67,5 | **67,5** (+3,8 %) | coinciden, como la mayoría de semanas |
-| 75×5 @ 0 RIR | 75 | **70** (−6,7 %) | lo que copiar pesos no puede decirte |
+| | when | answer |
+|---|---|---|
+| **Bajar** | any set fell below the bottom of the range | the weight that puts you back at the bottom, rounded **down** |
+| **Subir** | every set reached the top of the range | the step the set actually paid for, with the reps to expect there |
+| **Mantener** | anything in between | same weight, one more rep on each set (capped at the top) |
 
-**Which rep number it aims at depends on whether the weight moves**, and
-this is the half that makes the line advice rather than noise:
+`Bajar` is the answer `Copiar pesos` could never give: it copied the same
+weight forever, however badly it had been chosen.
 
-- **A new weight restarts you at the bottom of the range.** That is what
-  double progression means: `↗ objetivo: 65 kg × 6`.
-- **The same weight does the opposite.** You stay on it and climb toward
-  the *top* of the range, because getting every set there is what earns
-  the next jump: `→ objetivo: mantener 32 kg y llegar a 15 reps en todas
-  las series`. Telling someone who just did 32×12 to aim for 10 reads as
-  "do less", which is the one thing nobody needs an app for.
+**When holding, the target is per set** — `15/15/13/13`, not one number.
+Chasing one rep on each set is what the week is actually for, and it keeps
+the two sets of 15 you already own instead of quietly resetting them.
 
 **The guardrails**, in the order they apply:
 
-- **The same failure gate as `Copiar pesos`, with one asymmetry.** RIR 0, a
-  forced drop, or a rep decay of ≥3 all mean the set cannot be evidence
-  that *more* weight is there, so a proposed increase is withheld and the
-  line says why (`— la última serie fue al fallo`). A proposed *decrease*
-  is not withheld: grinding out five reps of a 6–10 range at 0 RIR is the
-  plainest possible statement that the weight is too heavy, and refusing to
-  say so is the bug, not the safeguard.
-- **±10 % a week**, applied *after* rounding and by stepping down to the
-  bound rather than rounding up through it — otherwise a 2,5 kg step lands
-  on 77,5 against a 77,0 ceiling.
-- **Rounded to something you can load**: the exercise's own `inc`, else
-  your default increment from **Ajustes**, else 2,5 kg / 5 lb.
-- **Above 15 reps it drops the estimate, not the advice.** Epley cannot
-  price a weight up there — but double progression does not need it to.
-  Every set at the top of the range earns one increment; anything short of
-  that holds the weight and buys reps first. Same rule `Copiar pesos`
-  applies, and a real answer where `sin estimar` used to be a dead end on
-  exactly the high-rep isolation work that lives up there.
-- **`2+` is read as exactly 2.** It's open-ended, so every estimate built
+- **Top of the range at 0 RIR, or with a forced drop, is not owned yet.**
+  Same weight again, run at the prescribed RIR: `tope del rango pero al
+  fallo — mismo peso, ejecútalo a 2 RIR`. Reaching the top means every set
+  equals the top, so there is no rep decay left to detect up there — only
+  the chip and a forced drop can still say the number cost more than it
+  should have.
+- **A step that would land you under the range steps back down**, one
+  increment at a time. This replaced a ±10 %/week clamp, which was the
+  wrong guardrail: on a coarse machine stack the only available step can
+  exceed 10 %, and the clamp then froze the exercise forever. Saying it in
+  reps says the same thing in the units the program already uses, and
+  degrades correctly.
+- **However coarse the stack, one step is always allowed** — and when that
+  step overshoots the range it says so rather than pretending otherwise:
+  `el siguiente escalón te deja en ~9 reps, por debajo del rango — normal
+  con stack grueso, sube en 1-2 semanas`.
+- **`2+` is read as exactly 2.** It is open-ended, so every estimate built
   on it comes out low — the right direction to be wrong in.
-- **A move smaller than one increment is `mantener`.** No false precision.
+- **A prescribed range reads as its hard end.** `"2–3 RIR"` is a week you
+  are meant to be able to take to 2; reading it as 3 quietly under-loads
+  everything built on it.
+- **Nothing above 15 reps.** Epley drifts badly up there, so it says `sin
+  estimar` instead of inventing a number.
 - **Nothing at all in a deload week**, where `phase[w].r` carries no number
-  to solve for and proposing a jump would be wrong anyway.
+  to solve for. A deload is not a progression week.
+
+**The note under the line is where RIR earns its place.** If last week's
+final set went to failure and this week prescribes 2 RIR, the rep count
+*should* fall — you are pulling back to the prescription, not losing
+ground. Without saying so the app looks like it is reporting a loss:
+
+```
+↗ objetivo: 32 kg × 15/15/13/13
+   ojo: la última fue a 0 RIR; a 2 RIR igual salen ~10 y no 12. No es retroceso.
+```
+
+**One rule, one place.** `Copiar pesos de semana anterior` calls this same
+estimate rather than carrying its own inline copy of double progression.
+That copy was case 2 and nothing else — it could only ever answer "same
+weight" or "one increment more", it could not size the step off what the
+set cost, and it could never say a weight was too heavy at all.
 
 **What it does not touch.** The greyed placeholder in the weight box is
 still last week's weight, unchanged. That number has a contract — tick
 without typing and it takes that — and it is what makes `Copiar pesos` safe
 to press. The objetivo is a line you read, never a number that gets logged
 for you.
-
-**One honest limit.** On light isolation work the smallest plate you own is
-often a bigger jump than the estimate wants: 12 kg on lateral raises with a
-1 kg step wants 12,8. There, adding a rep before adding weight is the
-correct mechanism and this adds nothing over plain double progression —
-`inc` wins and the line stays quiet with `mantener`.
 
 ## Weight drops
 
