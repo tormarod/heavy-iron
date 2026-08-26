@@ -321,6 +321,10 @@ body {
 }
 .ex-est.up { color: var(--signal); }
 .ex-est.down { color: var(--amber); }
+.ex-est-l { display: block; }
+/* The second line always reads as the aside it is, whatever the verdict
+   above it is coloured. */
+.ex-est-n { display: block; color: var(--soft); font-size: 10.5px; margin-top: 2px; }
 
 /* ---- energy at session start ----
    Same shape as the RIR chips, asked before the sets instead of after. */

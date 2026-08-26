@@ -1034,7 +1034,12 @@ const ok = (name, cond, extra) => {
     await seed(false);
     await page.click('#copyPrev');
     await page.waitForTimeout(300);
-    ok('top of range with no drop still levels up (60 → 62.5)', await week2First() === '62.5', await week2First());
+    /* 60×10 at the top of a 6–10 range, logged at the week's prescribed
+       3 RIR, prices out at ~67,9 and rounds to 67,5 — and the predicted 6,2
+       reps there still lands inside the range, so it stands. The button
+       used to add exactly one increment (62,5) no matter what the set
+       cost; it now calls the same estimate the session line shows. */
+    ok('top of range levels up by what the set paid for (60 → 67.5)', await week2First() === '67.5', await week2First());
 
     await seed(true);
     await page.click('#copyPrev');
@@ -1051,7 +1056,7 @@ const ok = (name, cond, extra) => {
     });
     await page.click('#copyPrev');
     await page.waitForTimeout(300);
-    ok('a planned dropset does not hold it back', await week2First() === '62.5', await week2First());
+    ok('a planned dropset does not hold it back', await week2First() === '67.5', await week2First());
 
     await page.evaluate(() => {
       const p = state.profiles.hombre;
@@ -1180,65 +1185,109 @@ const ok = (name, cond, extra) => {
     await dismissSetup(page);
     await page.waitForTimeout(400);
 
-    /* chestpress is the first exercise of day 1: 4 sets of 6–10, inc 2,5.
-       Seed a single previous week under it, stand on week 2, and read the
-       line the session draws under the sets. */
-    const seed = async (sets, rir, week) => {
-      await page.evaluate(([sets, rir, week]) => {
-        const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
-        const p = s.profiles.hombre;
-        p.log['block-1'] = { 'w1-d0': { chestpress: sets.map(x => ({ w: String(x[0]), r: String(x[1]), done: true })) } };
-        p.rir['block-1'] = rir ? { 'w1-d0': { chestpress: rir } } : {};
-        p.week = week;
-        p.day = 0;
-        localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
-      }, [sets, rir, week]);
-      await page.reload({ waitUntil: 'networkidle' });
-      await page.waitForTimeout(300);
-      const el = page.locator('.ex').first().locator('.ex-est');
-      return await el.count() ? (await el.textContent()) : '';
-    };
+    /* The spec's own table, in the app. Base: 32 kg, range 10–15,
+       rirThis = 2, inc = 2 — every case is a different verdict or a
+       different reason, which is the point of having three of them. */
+    const target = (sets, rir, inc) => page.evaluate(([sets, rir, inc]) => {
+      const block = { id: 'B', name: 'B', weeks: 8, deload: 0,
+        phase: { 1: { r: '2 RIR' }, 2: { r: '2 RIR' } },
+        days: [{ id: 'D', name: 'D', ex: [{ id: 'E', n: 'x', sets: sets.length, reps: '10–15', inc: inc }] }] };
+      const profile = { log: { B: { 'w1-D': { E: sets.map(r => ({ w: '32', r: String(r), done: true })) } } },
+        rir: rir ? { B: { 'w1-D': { E: rir } } } : {} };
+      const e = targetEstimate(profile, block, block.days[0], block.days[0].ex[0], 2);
+      return { kind: e && e.kind, line: e ? targetLine(e) : null, note: e ? targetNote(e) : '' };
+    }, [sets, rir, inc]);
 
-    const four = (w, r) => [[w, r], [w, r], [w, r], [w, r]];
+    /* Case 1 — the report that started this. Two sets of 15 already owned,
+       so the answer is one more rep per set at the same weight, NOT a jump
+       that restarts him at the bottom of a range he never finished. */
+    let t = await target([15, 15, 12, 12], '2+', 2);
+    ok('reps short of the top hold the weight and chase a rep per set',
+       t.kind === 'hold' && t.line === '↗ objetivo: 32 kg × 15/15/13/13', JSON.stringify(t));
+    ok('and with the RIR it was logged at, there is nothing to warn about', t.note === '', t.note);
 
-    /* Top of the range at 2 RIR. copyPrev's answer is 62,5; the set itself
-       says ~65 is there, and that gap compounds over a block. */
-    const up = await seed(four(60, 10), '2+', 2);
-    ok('un tope de rango a 2 RIR propone subir por encima de un solo escalón',
-       up.indexOf('↗') === 0 && up.includes('65'), up);
+    /* The same sets at a harder RIR mean less capacity, so this week's
+       prescription will produce fewer reps — which is not a loss. */
+    t = await target([15, 15, 12, 12], '1', 2);
+    ok('a harder last set still holds and chases reps',
+       t.line === '↗ objetivo: 32 kg × 15/15/13/13', t.line);
+    ok('but warns that pulling back to the prescription will cost reps',
+       t.note.includes('~11 y no 12') && t.note.includes('No es retroceso'), t.note);
+    t = await target([15, 15, 12, 12], '0', 2);
+    ok('and a set taken to failure warns harder', t.note.includes('~10 y no 12'), t.note);
+    t = await target([15, 15, 12, 12], '', 2);
+    ok('with no chip the plan’s own prescription stands in, and agrees',
+       t.line === '↗ objetivo: 32 kg × 15/15/13/13' && t.note === '', JSON.stringify(t));
 
-    /* Same reps, taken to failure: the arithmetic would still say "up", and
-       the failure gate is what stops it — exactly as copyPrev withholds. */
-    const held = await seed(four(60, 10), '0', 2);
-    ok('la misma serie al fallo mantiene el peso',
-       held.includes('mantener') && held.includes('60'), held);
+    /* Case 2 — every set at the top. The jump is earned, and e1RM sizes
+       it: not "one increment", but the step the set actually paid for. */
+    t = await target([15, 15, 15, 15], '2+', 2);
+    ok('top of the range on every set earns the jump',
+       t.kind === 'up' && t.line === '↗ objetivo: 34 kg × 12', JSON.stringify(t));
+    t = await target([15, 15, 15, 15], '1', 2);
+    ok('and the RIR it cost changes what to expect at the new weight',
+       t.line === '↗ objetivo: 34 kg × 11', t.line);
+    t = await target([15, 15, 15, 15], '0', 2);
+    ok('the top of the range reached at 0 RIR is not owned yet',
+       t.kind === 'hold' && t.line === '→ objetivo: mantener 32 kg × 15/15/15/15', JSON.stringify(t));
+    ok('and it says to run the same weight at the prescribed RIR instead',
+       t.note.includes('tope del rango pero al fallo'), t.note);
 
-    /* Five reps of a 6–10 range, and it cost everything: the weight was
-       picked too heavy. This is the answer copyPrev cannot give at all. */
-    const down = await seed(four(75, 5), '0', 2);
-    ok('un peso demasiado alto propone bajar aunque la serie fuera al fallo',
-       down.indexOf('↘') === 0, down);
+    /* A coarse stack cannot land inside the range, and the old ±10 %/week
+       clamp would have frozen the exercise forever rather than say so. */
+    t = await target([15, 15, 15, 15], '1', 4);
+    ok('a coarse stack still gets its one step', t.line === '↗ objetivo: 36 kg × 9', t.line);
+    ok('and is told the step overshoots the range on purpose',
+       t.note.includes('stack grueso'), t.note);
 
-    /* Epley drifts past 15 reps — say so rather than invent a number. */
-    const many = await seed(four(30, 18), '1', 2);
-    ok('por encima de 15 reps no estima', many.includes('sin estimar'), many);
+    /* Case 3 — the answer copyPrev could never give at all. */
+    t = await target([12, 10, 9, 8], '0', 2);
+    ok('sets under the bottom of the range mean the weight was too heavy',
+       t.kind === 'down' && t.line === '↘ objetivo: 28 kg × 10', JSON.stringify(t));
 
-    /* Week 8 is the deload: "Descarga" carries no RIR to solve for, and
-       proposing a jump in a deload week would be the wrong advice anyway. */
-    const deload = await seed(four(60, 10), '2+', 8);
-    ok('la semana de descarga no propone objetivo', deload === '', deload);
+    /* A deload prescribes no RIR to solve for, and is not a progression
+       week in the first place. */
+    ok('the deload week proposes nothing', await page.evaluate(() => {
+      const block = { id: 'B', name: 'B', weeks: 8, deload: 2,
+        phase: { 1: { r: '2 RIR' }, 2: { r: 'Descarga' } },
+        days: [{ id: 'D', ex: [{ id: 'E', n: 'x', sets: 1, reps: '10–15', inc: 2 }] }] };
+      const profile = { log: { B: { 'w1-D': { E: [{ w: '32', r: '12', done: true }] } } }, rir: {} };
+      return targetEstimate(profile, block, block.days[0], block.days[0].ex[0], 2);
+    }) === null);
 
-    /* Nothing logged yet: no previous session, no line, no noise. */
-    await page.evaluate(() => {
-      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
-      s.profiles.hombre.log['block-1'] = {};
-      s.profiles.hombre.week = 2;
-      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+    /* "2–3 RIR" is a week you are meant to be able to take to 2; reading
+       it as 3 quietly under-loads every estimate built on it. */
+    ok('a prescribed RIR range reads as its hard end', await page.evaluate(() =>
+      phaseRir({ phase: { 1: { r: '2–3 RIR' }, 2: { r: '0–1 RIR' } } }, 1) === 2 &&
+      phaseRir({ phase: { 1: { r: '2–3 RIR' }, 2: { r: '0–1 RIR' } } }, 2) === 0));
+
+    /* Epley cannot price a set that long, and says so rather than guess. */
+    ok('above the rep ceiling it says so', await page.evaluate(() => {
+      const block = { id: 'B', name: 'B', weeks: 8, deload: 0,
+        phase: { 1: { r: '2 RIR' }, 2: { r: '2 RIR' } },
+        days: [{ id: 'D', ex: [{ id: 'E', n: 'x', sets: 1, reps: '12–20', inc: 1 }] }] };
+      const profile = { log: { B: { 'w1-D': { E: [{ w: '12', r: '18', done: true }] } } }, rir: {} };
+      const e = targetEstimate(profile, block, block.days[0], block.days[0].ex[0], 2);
+      return e.kind === 'skip' && targetLine(e).includes('sin estimar');
+    }));
+
+    /* The rep-decay flag, on the numbers: the same 3-rep drop means
+       different things at 15 reps and at 8. */
+    const decay = await page.evaluate(() => {
+      const rows = a => a.map(r => ({ w: '32', r: String(r), done: true }));
+      return {
+        taper: repDecay(rows([15, 15, 12, 12])),
+        collapse: repDecay(rows([15, 12, 10, 8])),
+        lowStart: repDecay(rows([8, 7, 6, 5])),
+        highTaper: repDecay(rows([20, 19, 17, 16])),
+        tiny: repDecay(rows([12, 12, 11, 11])),
+      };
     });
-    await page.reload({ waitUntil: 'networkidle' });
-    await page.waitForTimeout(300);
-    ok('sin registro previo no hay línea de objetivo',
-       await page.locator('.ex').first().locator('.ex-est').count() === 0);
+    ok('15·15·12·12 es fatiga normal, no un fallo', decay.taper === 0, JSON.stringify(decay));
+    ok('15·12·10·8 sí es un desplome', decay.collapse === 7, JSON.stringify(decay));
+    ok('8·7·6·5 también, con la misma caída de 3 reps', decay.lowStart === 3, JSON.stringify(decay));
+    ok('20·19·17·16 no, por la misma razón que 15·15·12·12', decay.highTaper === 0, JSON.stringify(decay));
+    ok('y una caída de una o dos reps nunca cuenta', decay.tiny === 0, JSON.stringify(decay));
 
     /* Three sessions climbing, three flat: the whole point of the screen is
        telling those two apart without opening a chart per exercise. */

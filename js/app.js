@@ -941,16 +941,29 @@ const rowUsed = r => !!(r && (r.done || (r.w !== '' && r.w != null) || (r.r !== 
 
 /* ---------- rep-decay flag ----------
    Free, because it needs no input at all: derived from the reps already
-   typed into the first and last set of an exercise. A first set that drops
-   ≥3 reps by the last one was very likely taken closer to failure than the
-   ones after it — the single most common tell in a log that only records
-   {w, r, done}. Returns the drop, or 0 when there isn't one (fewer than two
-   sets with reps typed counts as no signal, not a flat line). */
+   typed into the first and last set of an exercise. A first set that falls
+   away sharply by the last one was very likely taken closer to failure than
+   the ones after it — the single most common tell in a log that only
+   records {w, r, done}. Returns the drop, or 0 when there isn't one (fewer
+   than two sets with reps typed counts as no signal, not a flat line).
+
+   Two thresholds, and it needs both. The absolute one keeps a one-rep
+   wobble from meaning anything. The proportional one is what stops the
+   flag firing on ordinary fatigue: at a fixed load with real rest, sets
+   taper by something like 10–25 % by the fourth one, so 15·15·12·12 is a
+   normal session and 8·7·6·5 is not, even though both "drop 3 reps".
+   Judging that on the absolute number alone called every high-rep machine
+   session a first set taken to failure — which is how this was written
+   first, and it was wrong on exactly the exercises that taper most. */
+const DECAY_MIN_REPS = 2, DECAY_MIN_SHARE = 0.25;
+
 function repDecay(rows) {
   const withReps = (rows || []).filter(r => r && r.r !== '' && r.r != null && !isNaN(num(r.r)));
   if (withReps.length < 2) return 0;
-  const drop = num(withReps[0].r) - num(withReps[withReps.length - 1].r);
-  return drop >= 3 ? drop : 0;
+  const first = num(withReps[0].r);
+  const drop = first - num(withReps[withReps.length - 1].r);
+  const floor = Math.max(DECAY_MIN_REPS, DECAY_MIN_SHARE * first);
+  return drop >= floor ? drop : 0;
 }
 
 /* The top of a rep range like "8–12" or "8-12" — the last number in the
@@ -998,14 +1011,16 @@ const rirNumber = v => (Object.prototype.hasOwnProperty.call(RIR_VALUE, v) ? RIR
 
 /* The RIR the *plan* asks for in a given week, dug out of the free text in
    `phase[w].r` — which is prose ("2–3 RIR", "0–1 RIR", "Descarga"), not a
-   field. The last number wins, so a range reads as its slack end and biases
-   the target low for the same reason '2+' does. A week with no number in it
-   at all — a deload, or a phase somebody wrote in their own words — returns
-   null, and everything downstream stays quiet rather than inventing one. */
+   field. The LOWEST number in the range wins: "2–3 RIR" is a week you are
+   meant to be able to take to 2, and reading it as 3 quietly under-loads
+   every estimate built on it. A week with no number at all — a deload, or
+   a phase somebody wrote in their own words — returns null, and the
+   estimate is skipped entirely rather than invented: a deload is not a
+   progression week. */
 function phaseRir(block, w) {
   const r = block && block.phase && block.phase[w] && block.phase[w].r;
   const nums = String(r || '').match(/\d+/g);
-  return nums && nums.length ? num(nums[nums.length - 1]) : null;
+  return nums && nums.length ? Math.min.apply(null, nums.map(num)) : null;
 }
 
 /* ---------- session note ----------
@@ -1753,7 +1768,8 @@ function drawApp() {
       '</div>' +
       '<div class="sets"></div>' +
       (decay ? '<div class="ex-decay"></div>' : '') +
-      (est ? '<div class="ex-est ' + est.kind + '"></div>' : '') +
+      (est ? '<div class="ex-est ' + est.kind + '"><span class="ex-est-l"></span>' +
+        (targetNote(est) ? '<span class="ex-est-n"></span>' : '') + '</div>' : '') +
       '<div class="ex-rir"><span class="ex-rir-lbl">RIR último set</span><div class="rir-chips"></div></div>' +
       (parked ? '<div class="ex-parked"></div>' : '');
 
@@ -1761,7 +1777,11 @@ function drawApp() {
       card.querySelector('.ex-decay').textContent = '⚠ caída de ' + decay + ' reps: ¿primera serie al fallo?';
     }
 
-    if (est) card.querySelector('.ex-est').textContent = targetLine(est);
+    if (est) {
+      card.querySelector('.ex-est-l').textContent = targetLine(est);
+      const noteEl = card.querySelector('.ex-est-n');
+      if (noteEl) noteEl.textContent = targetNote(est);
+    }
 
     if (parked) {
       card.querySelector('.ex-parked').textContent = parked === 1
@@ -2066,43 +2086,34 @@ $('copyPrev').onclick = () => {
   const profile = getProfile(), block = getBlock(), day = currentDay();
   const src = profile.log[block.id] && profile.log[block.id][slot(profile.week - 1, day.id)];
   if (profile.week === 1 || !src) { mark('No hay nada registrado en la semana ' + (profile.week - 1) + ' para este día'); return; }
-  let leveled = 0, heldBack = 0;
+  let leveled = 0, heldBack = 0, lowered = 0;
   exList(day).forEach(ex => {
     const from = src[ex.id]; if (!from || !from.length) return;
     const to = entry(profile, block.id, profile.week, day.id, ex.id, setsFor(ex, profile.week, block));
-    /* Double progression, automated: `ex.inc` is the step, and the condition
-       is the same one the week banners already state in prose — but the
-       cues actually say "top of the range AT 2 RIR", not just "top of the
-       range". A set ground out to failure can hit the same rep number
-       without meaning the same thing, so top-of-range alone isn't enough to
-       trust here — it has to agree with what the set actually cost.
-       A logged RIR of 0 (to failure) says so directly. RIR is optional
-       though, so when it wasn't tapped, the rep-decay flag stands in for
-       it: the same "first set probably went too close to failure" signal
-       the session view already shows for free. A *forced* weight drop
-       outranks both and is checked whatever the chip says — having to
-       strip the stack to finish the reps is not an inference about how
-       hard the set was, it is a record of the weight being too heavy.
-       (A planned dropset is not this and doesn't count.) Any of them
-       withholds the add and falls back to a plain copy, same as short of
-       `inc` or the range not being reached at all. */
-    const top = repRangeTop(ex.reps);
-    const reachedTop = top != null && from.every(r => r && r.done && hasReps(r) && num(r.r) >= top);
-    const priorRir = getRir(profile, block.id, profile.week - 1, day.id, ex.id);
-    const suspectFailure = forcedDrop(from) || priorRir === '0' || (!priorRir && repDecay(from) > 0);
-    const hitTop = !!(ex.inc && reachedTop && !suspectFailure);
-    if (hitTop) leveled++;
-    else if (ex.inc && reachedTop && suspectFailure) heldBack++;
+    /* One rule, one place: the same estimate the session line shows decides
+       what this button writes. It used to carry its own inline copy of
+       double progression — top of the range, minus a failure signal, plus
+       `ex.inc` — which is case 2 of targetEstimate() and nothing else. Two
+       implementations of one rule is how they drift, and this one could
+       only ever answer "same weight" or "one increment more": it could not
+       size the step off what the set actually cost, and it could never
+       say a weight was too heavy at all. */
+    const est = targetEstimate(profile, block, day, ex, profile.week);
+    const moved = est && (est.kind === 'up' || est.kind === 'down') ? est.weight : null;
+    if (est && est.kind === 'up') leveled++;
+    else if (est && est.kind === 'down') lowered++;
+    else if (est && (est.note === 'topFailure' || est.note === 'topForced')) heldBack++;
     to.forEach((r, i) => {
       if (r.done) return;
       const w = (from[i] || from[from.length - 1] || {}).w || '';
-      r.w = (hitTop && w !== '' && !isNaN(num(w))) ? String(Math.round((num(w) + ex.inc) * 100) / 100) : w;
+      r.w = moved != null ? String(moved) : w;
     });
   });
   save(); render();
   mark('Pesos copiados de la semana ' + (profile.week - 1) +
     (leveled ? ' — ' + leveled + (leveled === 1 ? ' ejercicio sube' : ' ejercicios suben') + ' de peso (tope de rango la semana pasada)' : '') +
-    (heldBack ? ' — ' + heldBack + (heldBack === 1 ? ' ejercicio llegó al tope pero no sube' : ' ejercicios llegaron al tope pero no suben') + ' (hubo que bajar peso, o la última serie parece que fue al fallo y no a 2 RIR)' : '') +
+    (lowered ? ' — ' + lowered + (lowered === 1 ? ' ejercicio baja' : ' ejercicios bajan') + ' de peso (alguna serie se quedó por debajo del rango)' : '') +
+    (heldBack ? ' — ' + heldBack + (heldBack === 1 ? ' ejercicio llegó al tope pero no sube' : ' ejercicios llegaron al tope pero no suben') + ' (hubo que bajar peso, o la última serie fue al fallo)' : '') +
     ' — supéralos');
 };
 
@@ -2175,124 +2186,168 @@ function bestSet(done, metric) {
   return best;
 }
 
-/* ---------- target weight for this week (Epley, inverted) ----------
-   copyPrev has exactly two answers — last week's weight, or last week's
-   plus `ex.inc` — and your reps only ever choose between them before being
-   thrown away. This reads them instead.
+/* ---------- target weight and reps for this week ----------
+   Double progression is REP-FIRST. e1RM only answers *how much* weight to
+   move, and only once the reps have earned the move. Driving the whole
+   estimate off e1RM instead — which is what this did first — tells a
+   lifter who put up 32×15/15/12/12 on a 10–15 range to jump to 35 kg and
+   restart at 10 reps, throwing away two sets of 15 he already owns and
+   putting him back at the bottom of a range he never finished. The reps
+   decide the case; e1RM only sizes the step.
 
-   Correct last week's set for how close to failure it actually went, then
-   solve the same estimate back for the weight that lands you at the BOTTOM
-   of the rep range at this week's prescribed RIR. That is what double
-   progression means and what the week banners already say in prose: you
-   come into a new weight at the bottom of the range and climb it.
+   The logged RIR is not a gate either, it is a scale factor. The same
+   32×12 means three different things at 2+, 1 and 0 RIR, and it enters the
+   arithmetic twice: it normalises last week's set to a failure-equivalent,
+   and it predicts what THIS week's prescribed RIR will actually produce.
 
-       equiv    = reps + RIR        (2 RIR ≈ a set to failure 2 reps longer)
-       e1RM     = w × (1 + equiv/30)                        ← est1RM above
-       objetivo = e1RM / (1 + (repsMin + rirEstaSemana)/30)
+       rirLast   = the chip, or what the plan asked for that week
+       equivFail = lastSetReps + rirLast      reps at true failure
+       e1RM      = w × (1 + equivFail/30)     Epley — est1RM() above
+       predictedAt(ww) = (e1RM/ww − 1) × 30 − rirThis
 
-   Nothing new is typed for this: the reps are already in the log, the RIR
-   chip is already there (and the week's prescribed RIR stands in when it
-   isn't), and the rep range and the phase text are already in the plan.
+   Then three cases, in this order. Any set under the bottom of the range
+   means the weight was picked too heavy — the answer copyPrev could never
+   give. Every set at or above the top means the jump is earned. Anything
+   in between holds the weight and buys reps, one per set.
 
-   The failure gate is copyPrev's, with one asymmetry that copyPrev has no
-   use for: a set that went to failure, needed a forced drop, or decayed by
-   three reps cannot be evidence that MORE weight is there, so a proposed
-   increase is withheld exactly as copyPrev withholds its `inc`. A proposed
-   *decrease* is not blocked by it — grinding out five reps of a 6–10 range
-   at 0 RIR is the plainest possible statement that the weight is too heavy,
-   and refusing to say so is the bug, not the safeguard. */
+   Nothing here is typed for it: the reps are in the log, the chip is
+   optional with the plan's own prescription standing in, and the range and
+   the phase text are in the plan. */
 
-/* Above this, Epley drifts far enough that the estimate would be inventing
-   a number rather than reading one. Say so instead. */
+/* Above this Epley drifts far enough that the estimate would be inventing
+   a number rather than reading one. */
 const EST_MAX_REPS = 15;
 
 function targetEstimate(profile, block, day, ex, week) {
   const prev = lastTime(profile, block.id, day.id, ex.id, week);
   if (!prev) return null;
 
-  const repsMin = repRangeBottom(ex.reps);
-  const rirNow = phaseRir(block, week);
-  /* No numeric RIR this week (a deload, or a phase written freehand) means
-     there is no target to solve for. Quiet is the right answer. */
-  if (!(repsMin > 0) || rirNow == null) return null;
+  const rows = prev.sets.filter(hasReps);
+  if (!rows.length) return null;
+  const sets = rows.map(r => num(r.r));
+  const last = sets[sets.length - 1];
+  /* The weight is assumed constant across the sets; where it varied, the
+     last set is the one the RIR chip describes. */
+  const w = num(rows[rows.length - 1].w);
+  const lo = repRangeBottom(ex.reps), hi = repRangeTop(ex.reps);
+  if (!(w > 0) || !(lo > 0) || !(hi > 0) || !(last > 0)) return null;
 
-  /* The RIR chip is recorded for the LAST set of the exercise ("RIR último
-     set"), so that is the set the correction applies to — pairing the
-     chip with any other set would be reading a number about one set as if
-     it described another. */
-  const withReps = prev.sets.filter(hasReps);
-  if (!withReps.length) return null;
-  const ref = withReps[withReps.length - 1];
-  const w = num(ref.w), reps = num(ref.r);
-  if (!(w > 0) || !(reps > 0)) return null;
+  /* A deload prescribes no RIR to solve for, and is not a progression
+     week in the first place. Say nothing at all. */
+  const rirThis = phaseRir(block, week);
+  if (rirThis == null) return null;
 
-  const priorRir = getRir(profile, block.id, prev.week, day.id, ex.id);
-  const logged = rirNumber(priorRir);
-  /* RIR is optional and often not tapped. Rather than go silent on most of
-     the log, fall back to what the plan asked for that week — and say in
-     the line itself that it is the plan's number, not yours. */
-  const rirThen = logged == null ? phaseRir(block, prev.week) : logged;
-  if (rirThen == null) return null;
+  const rirLogged = getRir(profile, block.id, prev.week, day.id, ex.id);
+  const loggedVal = rirNumber(rirLogged);
+  const rirLast = loggedVal == null ? phaseRir(block, prev.week) : loggedVal;
+  if (rirLast == null) return null;
 
-  const out = { week: prev.week, from: w, fromReps: reps, rir: rirThen,
-                assumed: logged == null, reps: repsMin, weight: w };
-  if (reps > EST_MAX_REPS) { out.kind = 'skip'; return out; }
+  const inc = incFor(ex);
+  const out = { week: prev.week, from: w, fromReps: last, sets: sets,
+                rir: rirLast, rirThis: rirThis, assumed: loggedVal == null,
+                weight: w, reps: [last] };
 
-  const step = incFor(ex);
-  const raw = est1RM(w, reps + rirThen) / (1 + (repsMin + rirNow) / 30);
+  if (last > EST_MAX_REPS) { out.kind = 'skip'; return out; }
 
-  /* Round first, clamp second. The other way round a 2,5 step rounds
-     straight back up through the ceiling — 77,5 on a 77,0 bound — so the
-     guardrail has to be applied to the number you would actually load, and
-     applied by stepping down to it rather than rounding up to it. */
-  const eps = 1e-9, lo = w * 0.9, hi = w * 1.1;
-  let t = roundToStep(raw, step);
-  if (t > hi + eps) t = Math.floor((hi + eps) / step) * step;
-  if (t < lo - eps) t = Math.ceil((lo - eps) / step) * step;
-  t = Math.round(t * 100) / 100;
+  const equivFail = last + rirLast;
+  const e1 = est1RM(w, equivFail);
+  const predictedAt = ww => (e1 / ww - 1) * 30 - rirThis;
+  const round2 = v => Math.round(v * 100) / 100;
 
-  const failed = forcedDrop(prev.sets) ? 'forced'
-    : priorRir === '0' ? 'failure'
-    : (!priorRir && repDecay(prev.sets) > 0) ? 'decay' : '';
-  /* A move smaller than one step is not a move: there is nothing to load
-     between the two numbers, and saying "+0,8 kg" would be false precision.
-     Same answer when the band turned out to be narrower than the step. */
-  if (!(t > 0) || t > hi + eps || Math.abs(t - w) < step - eps || (failed && t > w)) {
-    out.kind = 'hold';
-    out.why = (failed && t > w) ? failed : '';
+  /* Case 3 — any set under the bottom of the range. The weight was picked
+     too heavy, and rounding DOWN is the point: landing back inside the
+     range matters more than the last increment of load. */
+  if (sets.some(r => r < lo)) {
+    out.kind = 'down';
+    out.weight = round2(Math.floor((e1 / (1 + (lo + rirThis) / 30)) / inc) * inc);
+    out.reps = [lo];
     return out;
   }
-  out.kind = t > w ? 'up' : 'down';
-  out.weight = t;
+
+  /* Case 2 — every set at or above the top. The jump is earned. */
+  if (sets.every(r => r >= hi)) {
+    /* Hitting the top means every set equals hi, so there is no rep decay
+       left to detect — only a set taken to failure or one that needed the
+       weight stripped can still say the number was not honestly owned. */
+    if (forcedDrop(prev.sets) || rirLogged === '0') {
+      out.kind = 'hold';
+      out.reps = sets.map(() => hi);
+      out.note = forcedDrop(prev.sets) ? 'topForced' : 'topFailure';
+      return out;
+    }
+    let nw = roundToStep(e1 / (1 + (lo + rirThis) / 30), inc);
+    /* Step down rather than land under the range. This replaces the old
+       ±10 %/week clamp, which was the wrong guardrail: on a coarse machine
+       stack the only available step can exceed 10 %, and the clamp then
+       froze the exercise forever. Saying it in reps says the same thing in
+       the units the program already uses, and degrades correctly. */
+    while (nw > w + inc && predictedAt(nw) < lo) nw -= inc;
+    /* However coarse the stack, one step is always allowed. */
+    if (nw <= w) nw = w + inc;
+    nw = round2(nw);
+    const pred = Math.round(predictedAt(nw));
+    out.kind = 'up';
+    out.weight = nw;
+    out.reps = [pred];
+    if (pred < lo) out.note = 'coarse';
+    return out;
+  }
+
+  /* Case 1 — hold the weight, chase one more rep on each set. */
+  out.kind = 'hold';
+  out.reps = sets.map(r => Math.min(hi, r + 1));
+  const predLast = Math.round(equivFail - rirThis);
+  /* The whole reason RIR has to be in the arithmetic. If last week's final
+     set went to failure and this week prescribes 2 RIR, the rep count
+     SHOULD fall — that is pulling back to the prescription, not losing
+     ground. Without saying so the app looks like it is reporting a loss. */
+  if (predLast < last) { out.note = 'rirDrop'; out.predLast = predLast; }
   return out;
 }
 
 /* Deliberately the same voice and the same slot as the rep-decay warning:
    a line under the sets that you read, not a control you operate. The
-   greyed placeholder in the weight box is left exactly as it was — it has a
-   contract ("tick without typing takes that number") and that contract is
-   what makes copyPrev safe to press. */
-const EST_WHY = {
-  forced: 'hubo que bajar peso para acabarla',
-  failure: 'la última serie fue al fallo',
-  decay: 'las reps se cayeron por el camino',
-};
-
+   greyed placeholder in the weight box is left exactly as it was — it has
+   a contract ("tick without typing takes that number") and that contract
+   is what makes copyPrev safe to press. */
 function targetLine(est) {
   const u = ' ' + units();
   const n = v => String(Math.round(v * 100) / 100).replace('.', ',');
-  const from = ' (de ' + n(est.from) + '×' + est.fromReps + ' a ' + n(est.rir) + ' RIR' +
-    (est.assumed ? ' previstos' : '') + ')';
   if (est.kind === 'skip') {
     return 'objetivo: sin estimar — por encima de ' + EST_MAX_REPS +
       ' reps la estimación deja de valer';
   }
+  const reps = est.reps.join('/');
   if (est.kind === 'hold') {
-    return '→ objetivo: mantener ' + n(est.weight) + u + ' × ' + est.reps +
-      (est.why ? ' — ' + EST_WHY[est.why] : from);
+    /* An arrow only where something actually moves: holding the weight to
+       chase reps is progress, repeating the same set numbers is not. */
+    const climbing = est.reps.some((r, i) => r > est.sets[i]);
+    return (climbing ? '↗' : '→') + ' objetivo: ' + (climbing ? '' : 'mantener ') +
+      n(est.weight) + u + ' × ' + reps;
   }
-  return (est.kind === 'up' ? '↗' : '↘') + ' objetivo: ' + n(est.weight) + u +
-    ' × ' + est.reps + from;
+  return (est.kind === 'up' ? '↗' : '↘') + ' objetivo: ' + n(est.weight) + u + ' × ' + reps;
+}
+
+/* The second line, when there is one. Every one of these exists because
+   the number above it would otherwise be read as something it is not. */
+function targetNote(est) {
+  if (!est || !est.note) return '';
+  if (est.note === 'topFailure') {
+    return 'tope del rango pero al fallo — mismo peso, ejecútalo a ' + est.rirThis + ' RIR';
+  }
+  if (est.note === 'topForced') {
+    return 'tope del rango pero hubo que bajar peso — mismo peso, ejecútalo a ' + est.rirThis + ' RIR';
+  }
+  if (est.note === 'coarse') {
+    return 'el siguiente escalón te deja en ~' + est.reps[0] + ' reps, por debajo del rango — ' +
+      'normal con stack grueso, sube en 1-2 semanas';
+  }
+  if (est.note === 'rirDrop') {
+    return 'ojo: la última fue a ' + est.rir + ' RIR' + (est.assumed ? ' previstos' : '') +
+      '; a ' + est.rirThis + ' RIR igual salen ~' + est.predLast + ' y no ' + est.fromReps +
+      '. No es retroceso.';
+  }
+  return '';
 }
 
 function collectHistory(profile, blockId, dayId, exId, weeks, metric) {
