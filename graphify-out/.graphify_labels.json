@@ -1,1 +1,21 @@
-{"0": "jsQR Decoder Library", "1": "Block & Profile State Actions", "2": "Docs, Config & CI", "3": "App Constants & Defaults", "4": "Logged Sets & CSV Export", "5": "Calculator, Chart & QR Encoder", "6": "Volume & Plan Management", "7": "QR Sharing & Display", "8": "Profile Setup & Export", "9": "Rest Timer & Audio Alerts", "10": "Block Import & AI Prompt", "11": "Default Block Data", "12": "Smoke Tests", "13": "Ask Dialog", "14": "Toast & Backup Nag", "15": "Sheet Navigation", "16": "Service Worker Caching"}
+{
+  "0": "jsQR.js",
+  "1": "load",
+  "2": "Heavy Iron (project overview)",
+  "3": "app.js",
+  "4": "drawApp",
+  "5": "num",
+  "6": "block-editor.js",
+  "7": "drawQrShow",
+  "8": "openSetup",
+  "9": "stopRest",
+  "10": "renderProfileExports",
+  "11": "data.js",
+  "12": "smoke.js",
+  "13": "applyQrPayload",
+  "14": "_this",
+  "15": "profile-transfer.js",
+  "16": "sw.js",
+  "17": "migrate",
+  "18": "CLAUDE.md"
+}
