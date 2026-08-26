@@ -322,6 +322,41 @@ body {
 .ex-est.up { color: var(--signal); }
 .ex-est.down { color: var(--amber); }
 
+/* ---- energy at session start ----
+   Same shape as the RIR chips, asked before the sets instead of after. */
+.energy { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; flex-wrap: wrap; }
+.energy-lbl { font-size: 10px; color: var(--soft); font-family: 'IBM Plex Mono', monospace; }
+.energy-chips { display: flex; gap: 5px; }
+.energy-chip {
+  height: 26px; min-width: 44px; padding: 0 10px;
+  border: 1px solid var(--line); border-radius: 2px; background: var(--card);
+  font-size: 11px; color: var(--soft); cursor: pointer;
+}
+.energy-chip:hover { border-color: var(--signal); color: var(--signal); }
+.energy-chip.on { background: var(--signal); border-color: var(--signal); color: var(--on-signal); }
+
+/* ---- did the deload work ---- */
+.deload-check {
+  font-size: 11.5px; line-height: 1.45; color: var(--soft);
+  background: var(--sunk); border: 1px solid var(--line); border-radius: 2px;
+  padding: 8px 10px; margin: 0 0 10px;
+}
+.deload-check.good { color: var(--signal); background: var(--signal-soft); }
+.deload-check.bad { color: var(--amber); background: var(--amber-soft); }
+
+/* ---- session note ---- */
+.ses-note { margin: 0 0 10px; }
+.ses-note-lbl {
+  display: block; font-size: 10px; color: var(--soft);
+  font-family: 'IBM Plex Mono', monospace; margin-bottom: 4px;
+}
+#sesNote {
+  width: 100%; height: 36px; padding: 0 9px;
+  border: 1px solid var(--line); border-radius: 2px; background: var(--card);
+  font-size: 13px; color: var(--ink);
+}
+#sesNote:focus { outline: none; border-color: var(--signal); box-shadow: 0 0 0 2px var(--signal-soft); }
+
 /* ---- RIR chips ---- */
 .ex-rir { display: flex; align-items: center; gap: 8px; padding: 0 13px 10px; }
 .ex-rir-lbl { font-size: 10px; color: var(--soft); font-family: 'IBM Plex Mono', monospace; }
@@ -865,3 +900,38 @@ body {
   color: var(--soft); margin-top: 3px; line-height: 1.5;
 }
 .idx-chart { margin-top: 2px; }
+
+/* ---- block review ---- */
+.rev-deload {
+  font-size: 11.5px; line-height: 1.45; color: var(--soft);
+  background: var(--sunk); border: 1px solid var(--line); border-radius: 2px;
+  padding: 8px 10px; margin-bottom: 10px;
+}
+.rev-deload.good { color: var(--signal); background: var(--signal-soft); }
+.rev-deload.bad { color: var(--amber); background: var(--amber-soft); }
+.rev-row {
+  border: 1px solid var(--line); border-radius: 2px; background: var(--card);
+  padding: 8px 10px; margin-bottom: 6px;
+}
+.rev-row.priority { border-left: 3px solid var(--amber); }
+.rev-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 4px 8px; flex-wrap: wrap;
+}
+.rev-name { font-size: 12.5px; font-weight: 600; color: var(--ink); }
+.rev-n {
+  font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+  font-weight: 600; color: var(--ink);
+}
+.rev-meta {
+  font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+  color: var(--soft); margin-top: 3px; line-height: 1.5;
+}
+.rev-notes {
+  margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px;
+}
+.rev-notes-t {
+  font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+  color: var(--soft); margin-bottom: 5px;
+}
+.rev-note { font-size: 11.5px; color: var(--ink); line-height: 1.5; margin-bottom: 3px; }

@@ -209,6 +209,12 @@ function migrate() {
     if (!profile.theme) profile.theme = seed.theme;
     if (!profile.log || typeof profile.log !== 'object') profile.log = {};
     if (!profile.rir || typeof profile.rir !== 'object') profile.rir = {};
+    /* Two more parallel maps with the same blockId → slot shape as `rir`,
+       and absent by default for the same reason. Unlike RIR they describe
+       the *session* rather than a set, which is why they are keyed by slot
+       alone with no exercise under them. */
+    if (!profile.notes || typeof profile.notes !== 'object') profile.notes = {};
+    if (!profile.energy || typeof profile.energy !== 'object') profile.energy = {};
     if (!profile.blocks || typeof profile.blocks !== 'object' || !Object.keys(profile.blocks).length) {
       profile.blocks = seed.blocks;
       profile.blockOrder = seed.blockOrder.slice();
@@ -1002,6 +1008,63 @@ function phaseRir(block, w) {
   return nums && nums.length ? num(nums[nums.length - 1]) : null;
 }
 
+/* ---------- session note ----------
+   One free-text line per session, written once, at the end, away from the
+   sets. "Dormí 5 h", "sin desayunar", "gimnasio a reventar" — worthless
+   the day you write it and the only thing that explains a dip in the chart
+   six weeks later.
+
+   Deliberately not per set and deliberately not a field you have to fill:
+   the app's rule is that an input you skip on a hard day is worse than no
+   input, because the gaps start looking like data. A note is prose nobody
+   averages, so a missing one costs nothing. */
+const NOTE_LIMIT = 240;
+
+function getNote(profile, blockId, w, dayId) {
+  const blk = profile.notes[blockId];
+  return (blk && blk[slot(w, dayId)]) || '';
+}
+
+function setNoteText(profile, blockId, w, dayId, val) {
+  const k = slot(w, dayId);
+  const text = txt(val, NOTE_LIMIT);
+  if (text) {
+    if (!profile.notes[blockId]) profile.notes[blockId] = {};
+    profile.notes[blockId][k] = text;
+  } else if (profile.notes[blockId]) {
+    delete profile.notes[blockId][k];
+  }
+}
+
+/* ---------- energy at session start ----------
+   The same three-chip shape as RIR, asked once before you start rather
+   than after: how you arrived. Optional, absent by default, and — unlike
+   RIR — never fed into any estimate. It is read back as context in the
+   block review ("las sesiones flojas movieron un 18 % menos"), never
+   plotted as a line, because an optional input drawn as a continuous
+   series turns the days you didn't tap it into a story it cannot support. */
+const ENERGY_OPTIONS = ['baja', 'normal', 'alta'];
+const ENERGY_LABEL = {
+  baja: 'Llegas con poca energía',
+  normal: 'Llegas normal',
+  alta: 'Llegas fuerte',
+};
+
+function getEnergy(profile, blockId, w, dayId) {
+  const blk = profile.energy[blockId];
+  return (blk && blk[slot(w, dayId)]) || '';
+}
+
+function setEnergy(profile, blockId, w, dayId, val) {
+  const k = slot(w, dayId);
+  if (val) {
+    if (!profile.energy[blockId]) profile.energy[blockId] = {};
+    profile.energy[blockId][k] = val;
+  } else if (profile.energy[blockId]) {
+    delete profile.energy[blockId][k];
+  }
+}
+
 function setRir(profile, blockId, w, dayId, exId, val) {
   if (!profile.rir[blockId]) profile.rir[blockId] = {};
   const k = slot(w, dayId);
@@ -1140,6 +1203,20 @@ function purgeDayLog(profile, blockId, dayId) {
   const blk = profile.log[blockId];
   if (!blk) return;
   for (let w = 1; w <= MAX_WEEKS; w++) delete blk[slot(w, dayId)];
+  purgeSessionMeta(profile, blockId, dayId);
+}
+
+/* The session-level maps are keyed by slot alone, with no exercise under
+   them, so unlike `rir` they do not quietly become unreadable when the
+   sets they belonged to go: a note would still be sitting there when the
+   day came back. Whatever clears a session's sets clears these too. */
+function purgeSessionMeta(profile, blockId, dayId, onlyWeek) {
+  [profile.notes, profile.energy].forEach(map => {
+    const blk = map && map[blockId];
+    if (!blk) return;
+    if (onlyWeek) { delete blk[slot(onlyWeek, dayId)]; return; }
+    for (let w = 1; w <= MAX_WEEKS; w++) delete blk[slot(w, dayId)];
+  });
 }
 
 /* "Send to another session" in the plan editor: the exercise moves between
@@ -1615,6 +1692,9 @@ function drawApp() {
   $('banner').appendChild(bannerDiv);
 
   const day = days[profile.day];
+  drawEnergy(profile, block, day);
+  drawDeloadCheck(profile, block);
+  drawSessionNote(profile, block, day);
   const pairNote = soloMode() ? '' : (day.pair || '');
   $('pair').textContent = pairNote;
   $('pair').style.display = pairNote ? 'flex' : 'none';
@@ -1906,6 +1986,76 @@ function drawApp() {
   $('note').textContent = head + (extra.length ? ' · ' + extra.join(' · ') + '.' : '');
 }
 
+/* Three chips before the sets rather than after them: this is how you
+   arrived, and answering it once you have finished is answering a
+   different question. */
+function drawEnergy(profile, block, day) {
+  const host = $('energy');
+  host.innerHTML = '<span class="energy-lbl">¿Cómo llegas?</span><div class="energy-chips"></div>';
+  const chips = host.querySelector('.energy-chips');
+  const current = getEnergy(profile, block.id, profile.week, day.id);
+  ENERGY_OPTIONS.forEach(opt => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'energy-chip' + (current === opt ? ' on' : '');
+    b.textContent = opt;
+    b.setAttribute('aria-pressed', current === opt ? 'true' : 'false');
+    b.setAttribute('aria-label', ENERGY_LABEL[opt]);
+    b.onclick = () => {
+      setEnergy(profile, block.id, profile.week, day.id, current === opt ? '' : opt);
+      save(); render();
+    };
+    chips.appendChild(b);
+  });
+}
+
+function drawSessionNote(profile, block, day) {
+  const el = $('sesNote');
+  const stored = getNote(profile, block.id, profile.week, day.id);
+  /* Never write over what is being typed: render() runs on every tick. */
+  if (document.activeElement !== el) el.value = stored;
+  el.setAttribute('maxlength', NOTE_LIMIT);
+  el.oninput = e => {
+    setNoteText(profile, block.id, profile.week, day.id, e.target.value);
+    save();
+  };
+}
+
+/* ---------- did the deload work? ----------
+   Nothing checked whether the week after a deload actually came back up,
+   which is the only evidence there is about whether your deloads are the
+   right length. One comparison, on matched pairs so a swapped exercise
+   cannot fake it: the week before the deload against the week after. */
+function deloadCheck(profile, block) {
+  const dl = deloadWeek(block);
+  if (!dl || dl < 2 || dl + 1 > blockWeeks(block)) return null;
+  const before = dl - 1, after = dl + 1;
+  const byEx = strengthByExercise(profile, block);
+  const ratios = [];
+  Object.keys(byEx).forEach(exId => {
+    const a = byEx[exId][before - 1], b = byEx[exId][after - 1];
+    if (a > 0 && b > 0) ratios.push(b / a);
+  });
+  if (!ratios.length) return null;
+  const change = 100 * (ratios.reduce((t, v) => t + v, 0) / ratios.length - 1);
+  return { before: before, after: after, deload: dl, n: ratios.length, change: change };
+}
+
+function drawDeloadCheck(profile, block) {
+  const el = $('deloadCheck');
+  const d = deloadCheck(profile, block);
+  /* Only where it is the news of the week — standing on the week after the
+     deload. The block review carries it the rest of the time. */
+  if (!d || profile.week !== d.after) { el.style.display = 'none'; return; }
+  const pct = (d.change > 0 ? '+' : d.change < 0 ? '−' : '') +
+    String(Math.abs(Math.round(d.change * 10) / 10)).replace('.', ',') + ' %';
+  el.textContent = (d.change >= 1 ? '✓ La descarga funcionó: ' : d.change <= -1 ? '⚠ Tras la descarga has bajado: ' : '→ Tras la descarga estás igual: ') +
+    pct + ' respecto a la semana ' + d.before +
+    ' (sobre ' + (d.n === 1 ? '1 ejercicio' : d.n + ' ejercicios') + ').';
+  el.className = 'deload-check' + (d.change >= 1 ? ' good' : d.change <= -1 ? ' bad' : '');
+  el.style.display = 'block';
+}
+
 /* ---------- day/data actions ---------- */
 function currentDay() {
   const days = dayList(getBlock());
@@ -1966,6 +2116,8 @@ $('clearDay').onclick = async () => {
   if (!okd) return;
   snapshotForUndo('Borrado ' + day.name + ', semana ' + profile.week + '.');
   if (profile.log[block.id]) delete profile.log[block.id][slot(profile.week, day.id)];
+  if (profile.rir[block.id]) delete profile.rir[block.id][slot(profile.week, day.id)];
+  purgeSessionMeta(profile, block.id, day.id, profile.week);
   save(); render();
   mark('Día borrado');
 };
@@ -1979,7 +2131,13 @@ $('wipe').onclick = async () => {
   });
   if (!okd) return;
   snapshotForUndo('Borrado todo el registro de ' + profile.label + '.');
+  /* Everything the sheet promises, not just the sets: the RIR chips used
+     to survive this, invisibly (nothing reads one without the sets it
+     belonged to) but still on disk after you asked for them to be gone. */
   profile.log = {};
+  profile.rir = {};
+  profile.notes = {};
+  profile.energy = {};
   save(); render();
   mark('Registro de ' + profile.label + ' borrado');
 };
@@ -3751,14 +3909,16 @@ $('bCsv').onclick = () => {
    parsing, regardless of load order. See js/block-editor.js,
    js/diagnostics.js and js/profile-transfer.js for why that matters. */
 wireBlockEditor();
-/* Guarded, unlike its two siblings, because diagnostics.js is *new*: a
-   returning user whose service worker still holds the previous shell can
-   be served this app.js against an index.html that has no script tag for
-   it yet. An unguarded call would throw here, load() below would never
-   run, and the app would sit on "Cargando tu registro…" — the same stuck
-   screen the last script split caused. Losing one button until the worker
-   updates is the right failure. */
+/* Guarded, unlike wireBlockEditor/wireProfileTransfer, because these two
+   files are newer than some already-deployed shells: a returning user
+   whose service worker still holds the previous index.html can be served
+   this app.js against markup that has no script tag for them yet. An
+   unguarded call would throw here, load() below would never run, and the
+   app would sit on "Cargando tu registro…" — the same stuck screen the
+   first script split caused. Losing a button until the worker updates is
+   the right failure. */
 if (typeof wireDiagnostics === 'function') wireDiagnostics();
+if (typeof wireReview === 'function') wireReview();
 wireProfileTransfer();
 
 load();

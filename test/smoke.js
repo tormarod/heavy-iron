@@ -347,6 +347,14 @@ const ok = (name, cond, extra) => {
 
     console.log('\n== a new block is named in-app ==');
     await page.click('#blockbar >> text=+ Nuevo bloque');
+    /* The block being left has sets logged by now, so the review is
+       offered first — see the block-review section further down. Decline
+       it here; this case is about the name prompt behind it. */
+    await page.waitForTimeout(250);
+    if (await page.locator('#askSheet.up').count() && !(await page.locator('#askInput').isVisible())) {
+      await page.click('#askCancel');
+      await page.waitForTimeout(300);
+    }
     ok('the name prompt is an in-app sheet', await page.locator('#askInput').isVisible());
     await answerDialog(page, true, 'Bloque de prueba');
     ok('the block is created with that name', (await page.textContent('#title')).includes('Bloque de prueba'));
@@ -1623,6 +1631,220 @@ const ok = (name, cond, extra) => {
          const r = strengthRows(getProfile(), getBlock()).find(x => x.tag === 'Pecho');
          return Math.round(r.change * 100) / 100;
        }) === 0);
+    await ctx.close();
+  }
+
+  // ---------- session note, energy, deload check ----------
+  {
+    console.log('\n== nota, energía y control de descarga ==');
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await dismissSetup(page);
+    await page.waitForTimeout(700);
+
+    ok('the energy chips are offered before the sets', await page.locator('.energy-chip').count() === 3);
+    ok('and start empty, like the RIR chips', await page.locator('.energy-chip.on').count() === 0);
+    await page.click('.energy-chip:has-text("baja")');
+    await page.waitForTimeout(500);
+    ok('tapping one records it',
+       await page.evaluate(() => JSON.parse(localStorage.getItem('heavy-iron-v1'))
+         .profiles.hombre.energy['block-1']['w1-d0']) === 'baja');
+    await page.click('.energy-chip.on');
+    await page.waitForTimeout(500);
+    ok('tapping it again clears it rather than leaving a wrong answer',
+       await page.evaluate(() => {
+         const e = JSON.parse(localStorage.getItem('heavy-iron-v1')).profiles.hombre.energy['block-1'];
+         return !e || e['w1-d0'] === undefined;
+       }));
+
+    await page.fill('#sesNote', 'Dormí 5 h');
+    await page.waitForTimeout(500);
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(400);
+    ok('a session note survives a reload', await page.inputValue('#sesNote') === 'Dormí 5 h');
+
+    /* The note is keyed by slot with no exercise under it, so unlike the
+       RIR chips it would still be sitting there when the day came back. */
+    await page.click('#clearDay');
+    await answerDialog(page, true);
+    await page.waitForTimeout(400);
+    ok('clearing the day clears its note too', await page.inputValue('#sesNote') === '');
+
+    /* "Borrar todo el registro" used to leave the RIR chips on disk. */
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      const pr = s.profiles.hombre;
+      pr.rir['block-1'] = { 'w1-d0': { chestpress: '1' } };
+      pr.notes['block-1'] = { 'w1-d0': 'algo' };
+      pr.energy['block-1'] = { 'w1-d0': 'alta' };
+      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+    });
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(400);
+    await page.click('#wipe');
+    await answerDialog(page, true);
+    await page.waitForTimeout(500);
+    ok('wiping the log wipes the RIR, notes and energy with it',
+       await page.evaluate(() => {
+         const pr = JSON.parse(localStorage.getItem('heavy-iron-v1')).profiles.hombre;
+         return !Object.keys(pr.rir).length && !Object.keys(pr.notes).length && !Object.keys(pr.energy).length;
+       }));
+
+    /* Deload on week 4, with weeks 3 and 5 logged: the only evidence there
+       is about whether the deload was the right length. */
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      const pr = s.profiles.hombre;
+      const DAY = 86400000, start = Date.now() - 35 * DAY;
+      const one = (w, r, ts) => [{ w: String(w), r: String(r), done: true, ts: ts }];
+      pr.blocks['block-1'].deload = 4;
+      pr.log['block-1'] = {
+        'w3-d0': { chestpress: one(60, 8, start) },
+        'w4-d0': { chestpress: one(36, 8, start + 7 * DAY) },
+        'w5-d0': { chestpress: one(63, 8, start + 14 * DAY) },
+      };
+      pr.week = 5;
+      pr.day = 0;
+      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+    });
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(400);
+    const dl = await page.locator('#deloadCheck').textContent();
+    ok('the week after a deload says whether it worked', dl.includes('+5 %') && dl.includes('semana 3'), dl);
+    ok('and reads as a win when strength came back up',
+       (await page.getAttribute('#deloadCheck', 'class')).includes('good'));
+    await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('heavy-iron-v1')); s.profiles.hombre.week = 6; localStorage.setItem('heavy-iron-v1', JSON.stringify(s)); });
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(400);
+    ok('and it only shows on the week it is news',
+       await page.evaluate(() => getComputedStyle(document.getElementById('deloadCheck')).display) === 'none');
+
+    /* The artefact this had to not become: a deload is ~60 % of the weight
+       on purpose, so counting it would report a block that did exactly what
+       it was told as a loss. */
+    const noArtefact = await page.evaluate(() => {
+      const r = strengthRows(getProfile(), getBlock()).find(x => x.tag === 'Pecho');
+      return { change: Math.round(r.change * 10) / 10, base: r.base, last: r.lastWeek };
+    });
+    ok('the deload week is never an end of the strength comparison',
+       noArtefact.change === 5 && noArtefact.base === 2 && noArtefact.last === 4, JSON.stringify(noArtefact));
+    ok('and never reaches the fitted trend either', await page.evaluate(() => {
+      const pts = diagPoints(getProfile(), 'chestpress', getBlock().id);
+      return pts.length === 2 && pts.every(p => p.weight >= 60);
+    }));
+    await ctx.close();
+  }
+
+  // ---------- block review ----------
+  {
+    console.log('\n== revisión del bloque ==');
+    /* The export is the feature, so the copy buttons are tested for real
+       rather than around — which needs the clipboard permission Chromium
+       withholds by default. */
+    const ctx = await browser.newContext({ permissions: ['clipboard-write'] });
+    const page = await ctx.newPage();
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await dismissSetup(page);
+    await page.waitForTimeout(700);
+
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      const pr = s.profiles.hombre;
+      const DAY = 86400000, start = Date.now() - 55 * DAY;
+      const one = (w, r, ts) => [{ w: String(w), r: String(r), done: true, ts: ts }];
+      pr.blocks['block-1'].priority = ['Pecho', 'Espalda', 'Hombro'];
+      pr.log['block-1'] = {};
+      for (let i = 0; i < 7; i++) {
+        const ts = start + i * 7 * DAY;
+        pr.log['block-1']['w' + (i + 1) + '-d0'] = { chestpress: one(60 + i * 2.5, 8, ts), pecdeck: one(45, 12, ts) };
+      }
+      pr.notes['block-1'] = { 'w3-d0': 'Dormí 5 h', 'w6-d0': 'Gimnasio lleno' };
+      pr.energy['block-1'] = { 'w3-d0': 'baja', 'w1-d0': 'alta' };
+      pr.week = 7;
+      pr.day = 0;
+      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+    });
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(400);
+
+    await page.click('#blockbar button:has-text("Revisión")');
+    await page.waitForTimeout(400);
+    ok('the review opens from the block bar', await page.locator('#reviewSheet.up').count() === 1);
+    const rows = await page.evaluate(() => [...document.querySelectorAll('.rev-row')]
+      .map(r => r.dataset.tag + '|' + r.querySelector('.rev-n').textContent));
+    ok('it reports strength per muscle',
+       rows.some(r => r.startsWith('Pecho|') && r.includes('+12,5 %')), JSON.stringify(rows.slice(0, 3)));
+    ok('priority muscles come first',
+       (await page.evaluate(() => document.querySelector('.rev-row').classList.contains('priority'))));
+    ok('and it carries the session notes', await page.locator('.rev-note').count() === 2);
+
+    const text = await page.evaluate(() => reviewText(buildBlockReview(getProfile(), getBlock())));
+    ok('the brief names the block', text.includes('"Bloque 1"'), text.slice(0, 80));
+    ok('the brief carries strength, attendance and volume per muscle',
+       /Pecho \(PRIORITARIO\).*fuerza \+12,5 %.*sesiones 7\/\d+.*series\/semana/.test(text),
+       (text.match(/- Pecho.*/) || [''])[0]);
+    ok('the brief carries the energy summary', text.includes('### Energía al empezar'));
+    ok('the brief carries the notes', text.includes('Dormí 5 h'));
+    ok('and closes with instructions for whatever writes the next block',
+       text.includes('bloque siguiente'));
+
+    /* The loop the whole proposal exists to close: the same prompt the
+       import sheet hands out, with the evidence stapled to it. */
+    await page.click('#reviewCopy');
+    await page.waitForTimeout(400);
+    ok('copying the review reports success',
+       (await page.locator('#reviewStatus').textContent()).includes('copiada'),
+       await page.locator('#reviewStatus').textContent());
+    await page.click('#reviewPrompt');
+    await page.waitForTimeout(900);
+    const status = await page.locator('#reviewStatus').textContent();
+    ok('and the prompt copy staples the review onto the JSON format spec',
+       status.includes('revisión'), status);
+
+    await page.click('#reviewClose');
+    await page.waitForTimeout(300);
+
+    /* "+ Nuevo bloque" offers the review first, and picking it resumes the
+       flow when the sheet closes instead of dead-ending. */
+    await page.click('#blockbar button:has-text("+ Nuevo bloque")');
+    await page.waitForTimeout(300);
+    ok('starting a new block offers the review of the one you are leaving',
+       (await page.locator('#askBody').textContent()).includes('revisión'));
+    await page.click('#askOk');
+    await page.waitForTimeout(400);
+    ok('choosing to read it opens the review', await page.locator('#reviewSheet.up').count() === 1);
+    await page.click('#reviewClose');
+    await page.waitForTimeout(400);
+    ok('and closing it picks the new-block flow back up',
+       await page.locator('#askSheet.up').count() === 1 &&
+       (await page.locator('#askT').textContent()).includes('Nuevo bloque'));
+    await page.click('#askCancel');
+    await page.waitForTimeout(300);
+
+    /* Declining goes straight to naming it, with no review in between. */
+    await page.click('#blockbar button:has-text("+ Nuevo bloque")');
+    await page.waitForTimeout(300);
+    await page.click('#askCancel');
+    await page.waitForTimeout(400);
+    ok('declining the review goes straight to naming the block',
+       (await page.locator('#askT').textContent()).includes('Nuevo bloque'));
+    await page.click('#askCancel');
+    await page.waitForTimeout(300);
+
+    /* A block with nothing logged has nothing to review, and says so
+       instead of printing a page of zeroes. */
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      s.profiles.hombre.log['block-1'] = {};
+      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+    });
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(400);
+    await page.click('#blockbar button:has-text("Revisión")');
+    await page.waitForTimeout(300);
+    ok('an empty block says there is nothing to review yet',
+       await page.locator('#reviewHost .chart-empty').count() === 1);
     await ctx.close();
   }
 

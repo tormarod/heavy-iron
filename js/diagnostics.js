@@ -61,6 +61,11 @@ function diagPoints(profile, exId, onlyBlockId) {
     const blk = profile.log[bId];
     if (!block || !blk) return;
     for (let w = 1; w <= blockWeeks(block); w++) {
+      /* The deload is prescribed at roughly 60 % of the weight, so leaving
+         it in drags the fitted line down and reports a block that did
+         exactly what it was told as "bajando". Skipped here rather than
+         at the verdict, so it cannot reach the slope at all. */
+      if (w === deloadWeek(block)) continue;
       Object.keys(blk).forEach(k => {
         const m = /^w(\d+)-(.+)$/.exec(k);
         if (!m || +m[1] !== w) return;
@@ -339,11 +344,18 @@ function strengthRows(profile, block) {
     byMuscle[tag].push(byEx[exId]);
   });
 
+  /* A deload week is lighter on purpose. Its sets are real and stay on the
+     chart, but it can be neither end of the comparison: measuring to it
+     would report a planned ~40 % back-off as a strength loss, which is the
+     same artefact the volume view already refuses to draw. */
+  const dl = deloadWeek(block);
+  const usable = w => w + 1 !== dl;
+
   return Object.keys(byMuscle).map(tag => {
     const series = byMuscle[tag];
     let base = -1;
     for (let w = 0; w < weeks && base < 0; w++) {
-      if (series.some(s => s[w] != null)) base = w;
+      if (usable(w) && series.some(s => s[w] != null)) base = w;
     }
     const index = new Array(weeks).fill(null);
     const matched = new Array(weeks).fill(0);
@@ -359,7 +371,7 @@ function strengthRows(profile, block) {
       }
     }
     let lastWeek = -1;
-    for (let w = weeks - 1; w >= 0 && lastWeek < 0; w--) if (index[w] != null) lastWeek = w;
+    for (let w = weeks - 1; w >= 0 && lastWeek < 0; w--) if (usable(w) && index[w] != null) lastWeek = w;
     return {
       tag: tag,
       index: index,
