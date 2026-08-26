@@ -37,8 +37,14 @@ function renderBlockBar() {
   const newBtn = document.createElement('button');
   newBtn.className = 'sm';
   newBtn.textContent = '+ Nuevo bloque';
-  newBtn.onclick = newBlock;
+  newBtn.onclick = () => newBlock();
   host.appendChild(newBtn);
+
+  const reviewBtn = document.createElement('button');
+  reviewBtn.className = 'sm';
+  reviewBtn.textContent = 'Revisión';
+  reviewBtn.onclick = openReview;
+  host.appendChild(reviewBtn);
 
   const importBtn = document.createElement('button');
   importBtn.className = 'sm';
@@ -129,9 +135,23 @@ function renderBlockManager() {
 
 
 
-async function newBlock() {
+async function newBlock(skipReview) {
   const profile = getProfile();
   const current = getBlock();
+  /* The moment the last block is worth reading is the moment you start the
+     next one — which is exactly when the app used to say nothing at all.
+     Asked before the name, so choosing to read it costs nothing you have
+     already typed, and the flow picks up where it left off when the review
+     closes rather than dead-ending on a sheet. Offered, never forced. */
+  const doneSets = blockDoneSets(profile, current.id);
+  if (!skipReview && doneSets > 0) {
+    const look = await ask({
+      title: '¿Repasas "' + current.name + '" antes?',
+      body: 'Llevas ' + setsLabel(doneSets) + ' en él. La revisión resume qué músculo se movió, a cuántas sesiones llegaste y cómo quedó el volumen — y se copia como prompt para que tu IA escriba el siguiente bloque contra eso.',
+      okLabel: 'Ver la revisión', cancelLabel: 'Crear sin repasar',
+    });
+    if (look) { openReview(() => newBlock(true)); return; }
+  }
   const n = profile.blockOrder.length + 1;
   const name = await askText({
     title: 'Nuevo bloque',

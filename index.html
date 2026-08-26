@@ -45,10 +45,16 @@
   </div>
   <div class="wrap">
     <div id="banner"></div>
+    <div class="energy" id="energy"></div>
+    <p class="deload-check" id="deloadCheck" style="display:none"></p>
     <div class="pair" id="pair"></div>
     <div class="bar"><i id="barfill" style="width:0%"></i></div>
     <div id="list"><div class="skel">Cargando tu registro…</div></div>
     <div class="foot">
+      <div class="ses-note">
+        <label class="ses-note-lbl" for="sesNote">Nota de la sesión</label>
+        <input type="text" id="sesNote" autocomplete="off" placeholder="dormí 5 h, sin desayunar, gimnasio lleno…">
+      </div>
       <p class="ex-parked" id="beyond" style="display:none"></p>
       <p class="note" id="note"></p>
       <div class="foot-btns">
@@ -339,6 +345,25 @@
     </div>
   </div>
 
+  <!-- what the block actually did, and the brief for the next one -->
+  <div class="sheet" id="reviewSheet">
+    <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="reviewTitle">
+      <div class="sheet-t" id="reviewTitle">Revisión del bloque</div>
+      <p class="sheet-d">Lo que de verdad hizo este bloque: fuerza por músculo, sesiones a las que llegaste y series que hiciste frente a las previstas. Todo sale de lo que ya tienes registrado.</p>
+      <p class="sheet-d" id="reviewSub"></p>
+      <div id="reviewHost"></div>
+      <div class="sheet-hr"></div>
+      <p class="sheet-d">Cópiate el prompt con esta revisión dentro y pásaselo a tu IA: el bloque que te devuelva estará escrito contra lo que pasó, no contra lo que recuerdes. Pega el JSON en "Importar JSON".</p>
+      <div class="sheet-btns">
+        <button class="sm key" id="reviewPrompt">Copiar prompt con la revisión</button>
+        <button class="sm" id="reviewCopy">Copiar solo la revisión</button>
+        <button class="sm" id="reviewDownload">Descargar (.txt)</button>
+        <button class="sm" id="reviewClose">Cerrar</button>
+      </div>
+      <div id="reviewStatus" class="status" style="text-align:left;padding-top:4px;"></div>
+    </div>
+  </div>
+
   <!-- every exercise's e1RM trend at once, crossed with the log's own signals -->
   <div class="sheet" id="diagSheet">
     <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="diagTitle">
@@ -424,6 +449,7 @@
 <script src="js/data.js"></script>
 <script src="js/block-editor.js"></script>
 <script src="js/diagnostics.js"></script>
+<script src="js/review.js"></script>
 <script src="js/profile-transfer.js"></script>
 <script src="js/app.js"></script>
 </body>

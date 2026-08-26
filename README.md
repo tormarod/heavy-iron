@@ -56,6 +56,8 @@ from a copy of the plan and leaves this one's history where it is.
   of the current plan, and **Gestionar** to delete the ones you no longer
   want without disturbing the block you are training — see
   [Deleting blocks](#deleting-blocks-you-no-longer-want).
+- **A review at the end of each block**, exportable as the prompt that
+  writes the next one — see [The block review](#the-block-review).
 - **Plan editor**: edit exercise names, alternatives, cues, sets, reps,
   rest time, and shared/superserie flags for the active block, add or
   remove exercises and days, and reorder them — all without losing what
@@ -384,6 +386,22 @@ out from under a session: when a new version has been cached, a small
   which is what double progression means and what the week banners already
   say in prose. See [The weekly objetivo](#the-weekly-objetivo) below for
   what it does and does not claim.
+- **Energía, three chips before you start.** `baja` / `normal` / `alta`,
+  the same shape as the RIR chips but asked at the top of the session,
+  because how you arrived is a different question from how it went.
+  Optional and absent by default. It is never fed into any estimate and
+  never plotted as a line — it comes back as context in the block review
+  ("las sesiones flojas movieron un 18 % menos"), which is all an optional
+  input can honestly support.
+- **A note per session.** One free-text line under the sets: *dormí 5 h*,
+  *sin desayunar*, *gimnasio a reventar*. Worthless the day you write it
+  and the only thing that explains a dip in the chart six weeks later. It
+  is prose nobody averages, so a session you skip it on costs nothing.
+- **After a deload, whether it worked.** Standing on the week after a
+  deload, one line says how the same exercises came back compared with the
+  week before it — matched pairs, so a swapped machine cannot fake it. It
+  is the only evidence there is about whether your deloads are the right
+  length.
 - **A ↓ on every set, for the weight that came off.** See
   [Weight drops](#weight-drops) below.
 - **Ajustes**, collapsed. A `⚙` button under each exercise's name opens a
@@ -818,6 +836,48 @@ through — pretending to know is the one thing this view is for not doing —
 and a muscle with a single logged week says *sin comparación* instead of
 drawing a flat line that would read as "no change".
 
+## The block review
+
+**Revisión**, in the block bar, is the reckoning `+ Nuevo bloque` never
+used to make. Eight weeks of evidence sat in the log and the block written
+on top of it was written from memory.
+
+It collects what the other screens already compute, one row per muscle:
+strength change from [the index](#strength-per-muscle-across-exercise-swaps),
+sessions made against sessions planned from
+[frequency](#frequency-from-the-timestamps-you-already-have), sets actually
+done against sets prescribed from
+[the volume trend](#volume-across-the-block), the deload check, and your
+session notes. Priority muscles come first. It invents nothing; it gathers.
+
+**The export is the feature.** *Copiar prompt con la revisión* hands you
+the same JSON-format prompt the import sheet gives out — with the evidence
+stapled underneath. Paste it into whatever writes your next block, paste
+the JSON that comes back into **Importar JSON**, and the next block is
+written against what actually happened rather than what you remember of
+it. There is also *Copiar solo la revisión* and a `.txt` download.
+
+`+ Nuevo bloque` offers it before doing anything else, and only when the
+block you are leaving has something logged. The question comes before the
+name prompt, so choosing to read it costs nothing you have already typed,
+and closing the review picks the new-block flow back up rather than
+dropping you on a sheet. Declining goes straight to naming it — the review
+is offered, never forced.
+
+### What a deload does to these numbers
+
+A deload week is prescribed at roughly 60 % of the weight, so anything that
+measures strength has to refuse to count it, or a block that did exactly
+what it was told reads as a loss. Two places had to learn this:
+
+- The **strength index** keeps the deload on the chart — those sets
+  happened — but will not use it as either end of a comparison.
+- The **fitted trend** on the Diagnóstico tab drops it before fitting, so a
+  planned back-off cannot pull an exercise into `bajando`.
+
+The volume view already worked this way, for the same reason: halving the
+sets is the point of the week, not a lapse in it.
+
 ## Editing a block mid-way
 
 A block you are three weeks into is not frozen. **Editar plan** lets you
@@ -1225,6 +1285,7 @@ fixing it quietly.
 | `js/data.js` | the default plans, used only on a device's first run |
 | `js/block-editor.js` | block CRUD/list, importing a block from JSON, and the plan editor |
 | `js/diagnostics.js` | the Diagnóstico screen: e1RM trend per exercise crossed with the log's own signals, real frequency per muscle from the row timestamps, and the indexed strength-per-muscle chart |
+| `js/review.js` | the block review and the brief it exports for the next block |
 | `js/profile-transfer.js` | backup/restore and moving one profile between phones as a file |
 | `js/app.js` | everything else: state, rendering, QR transfer, calculator, volume dashboard |
 | `js/vendor/` | the two QR libraries, verbatim from npm — see the README in there |
