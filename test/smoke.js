@@ -1261,15 +1261,26 @@ const ok = (name, cond, extra) => {
       phaseRir({ phase: { 1: { r: '2–3 RIR' }, 2: { r: '0–1 RIR' } } }, 1) === 2 &&
       phaseRir({ phase: { 1: { r: '2–3 RIR' }, 2: { r: '0–1 RIR' } } }, 2) === 0));
 
-    /* Epley cannot price a set that long, and says so rather than guess. */
-    ok('above the rep ceiling it says so', await page.evaluate(() => {
+    /* The rep ceiling gates the two cases that have to price a weight, and
+       only those. Holding to chase reps is rep arithmetic, so a 12–20 range
+       — which spends most of its life above 15 reps — still gets an answer
+       rather than being silenced on the work it applies to most. */
+    const high = (sets, all) => page.evaluate(([sets, all]) => {
       const block = { id: 'B', name: 'B', weeks: 8, deload: 0,
         phase: { 1: { r: '2 RIR' }, 2: { r: '2 RIR' } },
-        days: [{ id: 'D', ex: [{ id: 'E', n: 'x', sets: 1, reps: '12–20', inc: 1 }] }] };
-      const profile = { log: { B: { 'w1-D': { E: [{ w: '12', r: '18', done: true }] } } }, rir: {} };
+        days: [{ id: 'D', ex: [{ id: 'E', n: 'x', sets: sets.length, reps: '12–20', inc: 1 }] }] };
+      const profile = { log: { B: { 'w1-D': { E: sets.map(r => ({ w: '12', r: String(r), done: true })) } } },
+        rir: all ? { B: { 'w1-D': { E: '2+' } } } : {} };
       const e = targetEstimate(profile, block, block.days[0], block.days[0].ex[0], 2);
-      return e.kind === 'skip' && targetLine(e).includes('sin estimar');
-    }));
+      return { kind: e.kind, line: targetLine(e) };
+    }, [sets, all]);
+    let h = await high([18, 17, 16, 16], false);
+    ok('a long set short of the top still holds and chases reps',
+       h.kind === 'hold' && h.line === '↗ objetivo: 12 kg × 19/18/17/17', JSON.stringify(h));
+    /* Pricing a jump off an 18-rep set is what Epley cannot do. */
+    h = await high([20, 20, 20, 20], true);
+    ok('but a jump off a long set is still refused rather than guessed',
+       h.kind === 'skip' && h.line.includes('sin estimar'), JSON.stringify(h));
 
     /* The rep-decay flag, on the numbers: the same 3-rep drop means
        different things at 15 reps and at 8. */

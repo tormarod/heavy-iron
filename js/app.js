@@ -2247,7 +2247,13 @@ function targetEstimate(profile, block, day, ex, week) {
                 rir: rirLast, rirThis: rirThis, assumed: loggedVal == null,
                 weight: w, reps: [last] };
 
-  if (last > EST_MAX_REPS) { out.kind = 'skip'; return out; }
+  /* Only the two cases that have to PRICE a weight need Epley, and only
+     those two are blocked by its rep ceiling. Holding the weight to chase
+     one more rep per set is pure rep arithmetic — it never touches the
+     estimate — so checking the ceiling before the cases silenced the app
+     on exactly the high-rep isolation work where holding is nearly always
+     the answer. A 12–20 range spends most of its life above 15 reps. */
+  const canPrice = last <= EST_MAX_REPS;
 
   const equivFail = last + rirLast;
   const e1 = est1RM(w, equivFail);
@@ -2258,6 +2264,7 @@ function targetEstimate(profile, block, day, ex, week) {
      too heavy, and rounding DOWN is the point: landing back inside the
      range matters more than the last increment of load. */
   if (sets.some(r => r < lo)) {
+    if (!canPrice) { out.kind = 'skip'; return out; }
     out.kind = 'down';
     out.weight = round2(Math.floor((e1 / (1 + (lo + rirThis) / 30)) / inc) * inc);
     out.reps = [lo];
@@ -2275,6 +2282,7 @@ function targetEstimate(profile, block, day, ex, week) {
       out.note = forcedDrop(prev.sets) ? 'topForced' : 'topFailure';
       return out;
     }
+    if (!canPrice) { out.kind = 'skip'; return out; }
     let nw = roundToStep(e1 / (1 + (lo + rirThis) / 30), inc);
     /* Step down rather than land under the range. This replaces the old
        ±10 %/week clamp, which was the wrong guardrail: on a coarse machine
@@ -2293,7 +2301,9 @@ function targetEstimate(profile, block, day, ex, week) {
     return out;
   }
 
-  /* Case 1 — hold the weight, chase one more rep on each set. */
+  /* Case 1 — hold the weight, chase one more rep on each set. No Epley
+     here, and the note below is a rep subtraction rather than an estimate,
+     so both stand however long the sets ran. */
   out.kind = 'hold';
   out.reps = sets.map(r => Math.min(hi, r + 1));
   const predLast = Math.round(equivFail - rirThis);

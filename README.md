@@ -490,8 +490,12 @@ the two sets of 15 you already own instead of quietly resetting them.
 - **A prescribed range reads as its hard end.** `"2–3 RIR"` is a week you
   are meant to be able to take to 2; reading it as 3 quietly under-loads
   everything built on it.
-- **Nothing above 15 reps.** Epley drifts badly up there, so it says `sin
-  estimar` instead of inventing a number.
+- **Nothing above 15 reps — for the two cases that price a weight.** Epley
+  drifts badly up there, so `Subir` and `Bajar` say `sin estimar` rather
+  than invent a number. `Mantener` is unaffected: chasing one more rep per
+  set is rep arithmetic that never touches the estimate, and a 12–20 range
+  spends most of its life above 15 reps, so gating it there would silence
+  the app on exactly the work holding applies to most.
 - **Nothing at all in a deload week**, where `phase[w].r` carries no number
   to solve for. A deload is not a progression week.
 
