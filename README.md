@@ -894,7 +894,9 @@ fixing it quietly.
 | `index.html` | the whole markup: header, session list, and the dialogs |
 | `css/style.css` | one stylesheet; all colours are tokens declared at the top, twice (light and dark) |
 | `js/data.js` | the default plans, used only on a device's first run |
-| `js/app.js` | everything else: state, rendering, plan editor, import, backup, QR transfer, calculator, volume dashboard |
+| `js/block-editor.js` | block CRUD/list, importing a block from JSON, and the plan editor |
+| `js/profile-transfer.js` | backup/restore and moving one profile between phones as a file |
+| `js/app.js` | everything else: state, rendering, QR transfer, calculator, volume dashboard |
 | `js/vendor/` | the two QR libraries, verbatim from npm — see the README in there |
 | `sw.js` | offline caching; bump `CACHE_VERSION` when releasing |
 | `manifest.webmanifest`, `icon.svg` | what makes it installable |
