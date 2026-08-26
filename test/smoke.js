@@ -1219,9 +1219,67 @@ const ok = (name, cond, extra) => {
     ok('un peso demasiado alto propone bajar aunque la serie fuera al fallo',
        down.indexOf('↘') === 0, down);
 
-    /* Epley drifts past 15 reps — say so rather than invent a number. */
+    /* Past the rep ceiling Epley cannot price a weight, but double
+       progression still can. chestpress is 6–10, so 18 reps clears the top
+       of the range on every set: that earns one increment, and says so
+       instead of the dead-end "sin estimar" it used to give. */
     const many = await seed(four(30, 18), '1', 2);
-    ok('por encima de 15 reps no estima', many.includes('sin estimar'), many);
+    ok('por encima de 15 reps sigue habiendo consejo, sin estimar peso',
+       many.indexOf('↗') === 0 && many.includes('32,5') && many.includes('tope del rango'), many);
+
+    /* The case that started this: 15·15·12·12 on a 10–15 range is ordinary
+       fatigue, every rep inside the range. It used to trip the rep-decay
+       flag on the absolute 3-rep drop and answer "mantener × 10", which
+       reads as "do fewer reps than you just did". */
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      const ex = s.profiles.hombre.blocks['block-1'].days[0].ex[0];
+      ex.reps = '10–15';
+      ex.inc = 2.5;
+      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+    });
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(300);
+    const taper = await seed([[32, 15], [32, 15], [32, 12], [32, 12]], '', 2);
+    ok('un descenso normal de reps no se lee como fallo',
+       !taper.includes('se cayeron'), taper);
+    ok('y al mantener el peso el objetivo es el tope del rango, no el suelo',
+       taper.includes('mantener 32') && taper.includes('15 reps'), taper);
+
+    /* The same absolute drop from a lower first set is a different animal,
+       and still has to be caught. */
+    const collapse = await seed([[32, 15], [32, 12], [32, 10], [32, 8]], '', 2);
+    ok('un desplome de verdad sí se marca', collapse.includes('se cayeron'), collapse);
+
+    /* Short of the top of a high-rep range: hold the weight, buy the reps. */
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      s.profiles.hombre.blocks['block-1'].days[0].ex[0].reps = '12–20';
+      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+    });
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(300);
+    const highShort = await seed([[12, 18], [12, 17], [12, 16], [12, 16]], '', 2);
+    ok('con muchas reps pero sin llegar al tope, mantiene y sube reps',
+       highShort.includes('mantener 12') && highShort.includes('20 reps'), highShort);
+
+    /* The threshold itself, on the numbers rather than through the DOM:
+       the same 3-rep drop means different things at 15 reps and at 8. */
+    const decay = await page.evaluate(() => {
+      const rows = a => a.map(r => ({ w: '32', r: String(r), done: true }));
+      return {
+        taper: repDecay(rows([15, 15, 12, 12])),
+        collapse: repDecay(rows([15, 12, 10, 8])),
+        lowStart: repDecay(rows([8, 7, 6, 5])),
+        highTaper: repDecay(rows([20, 19, 17, 16])),
+        tiny: repDecay(rows([12, 12, 11, 11])),
+      };
+    });
+    ok('15·15·12·12 es fatiga normal, no un fallo', decay.taper === 0, JSON.stringify(decay));
+    ok('15·12·10·8 sí es un desplome', decay.collapse === 7, JSON.stringify(decay));
+    ok('8·7·6·5 también, con la misma caída de 3 reps', decay.lowStart === 3, JSON.stringify(decay));
+    ok('20·19·17·16 no, por la misma razón que 15·15·12·12', decay.highTaper === 0, JSON.stringify(decay));
+    ok('y una caída de una o dos reps nunca cuenta', decay.tiny === 0, JSON.stringify(decay));
 
     /* Week 8 is the deload: "Descarga" carries no RIR to solve for, and
        proposing a jump in a deload week would be the wrong advice anyway. */

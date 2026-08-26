@@ -941,16 +941,29 @@ const rowUsed = r => !!(r && (r.done || (r.w !== '' && r.w != null) || (r.r !== 
 
 /* ---------- rep-decay flag ----------
    Free, because it needs no input at all: derived from the reps already
-   typed into the first and last set of an exercise. A first set that drops
-   ≥3 reps by the last one was very likely taken closer to failure than the
-   ones after it — the single most common tell in a log that only records
-   {w, r, done}. Returns the drop, or 0 when there isn't one (fewer than two
-   sets with reps typed counts as no signal, not a flat line). */
+   typed into the first and last set of an exercise. A first set that falls
+   away sharply by the last one was very likely taken closer to failure than
+   the ones after it — the single most common tell in a log that only
+   records {w, r, done}. Returns the drop, or 0 when there isn't one (fewer
+   than two sets with reps typed counts as no signal, not a flat line).
+
+   Two thresholds, and it needs both. The absolute one keeps a one-rep
+   wobble from meaning anything. The proportional one is what stops the
+   flag firing on ordinary fatigue: at a fixed load with real rest, sets
+   taper by something like 10–25 % by the fourth one, so 15·15·12·12 is a
+   normal session and 8·7·6·5 is not, even though both "drop 3 reps".
+   Judging that on the absolute number alone called every high-rep machine
+   session a first set taken to failure — which is how this was written
+   first, and it was wrong on exactly the exercises that taper most. */
+const DECAY_MIN_REPS = 3, DECAY_MIN_SHARE = 0.25;
+
 function repDecay(rows) {
   const withReps = (rows || []).filter(r => r && r.r !== '' && r.r != null && !isNaN(num(r.r)));
   if (withReps.length < 2) return 0;
-  const drop = num(withReps[0].r) - num(withReps[withReps.length - 1].r);
-  return drop >= 3 ? drop : 0;
+  const first = num(withReps[0].r);
+  const drop = first - num(withReps[withReps.length - 1].r);
+  if (drop < DECAY_MIN_REPS) return 0;
+  return (first > 0 && drop / first >= DECAY_MIN_SHARE) ? drop : 0;
 }
 
 /* The top of a rep range like "8–12" or "8-12" — the last number in the
@@ -2234,11 +2247,49 @@ function targetEstimate(profile, block, day, ex, week) {
   const rirThen = logged == null ? phaseRir(block, prev.week) : logged;
   if (rirThen == null) return null;
 
+  /* Which rep number the target is aimed at depends on whether the weight
+     moves, and getting this backwards is the difference between advice and
+     noise. A NEW weight restarts you at the bottom of the range — that is
+     what double progression means. The SAME weight does the opposite: you
+     stay on it and climb toward the top of the range, which is the
+     condition for earning the next jump. Telling someone holding 32 kg for
+     12 reps to aim for 10 reads as "do less", which is the one thing
+     nobody needs an app for. */
+  const repsTop = repRangeTop(ex.reps) || repsMin;
+
   const out = { week: prev.week, from: w, fromReps: reps, rir: rirThen,
                 assumed: logged == null, reps: repsMin, weight: w };
-  if (reps > EST_MAX_REPS) { out.kind = 'skip'; return out; }
 
   const step = incFor(ex);
+  /* Computed before the high-rep branch below, because that branch needs to
+     know whether the set is evidence of anything either. */
+  const failed = forcedDrop(prev.sets) ? 'forced'
+    : priorRir === '0' ? 'failure'
+    : (!priorRir && repDecay(prev.sets) > 0) ? 'decay' : '';
+
+  /* Above the rep ceiling Epley cannot price a weight — but double
+     progression does not need it to. Every set at the top of the range
+     earns one increment; anything short of that keeps the weight and buys
+     reps first. That is the same rule copyPrev applies, and it is a real
+     answer where "sin estimar" was a dead end on precisely the high-rep
+     isolation work that lives up here. */
+  if (reps > EST_MAX_REPS) {
+    const top = repRangeTop(ex.reps);
+    const allTop = top != null && prev.sets.length > 0 &&
+      prev.sets.every(r => r && hasReps(r) && num(r.r) >= top);
+    out.blind = true;
+    if (allTop && !failed) {
+      out.kind = 'up';
+      out.weight = Math.round((w + step) * 100) / 100;
+      out.reps = repsMin;
+    } else {
+      out.kind = 'hold';
+      out.reps = repsTop;
+      out.why = failed;
+    }
+    return out;
+  }
+
   const raw = est1RM(w, reps + rirThen) / (1 + (repsMin + rirNow) / 30);
 
   /* Round first, clamp second. The other way round a 2,5 step rounds
@@ -2251,15 +2302,17 @@ function targetEstimate(profile, block, day, ex, week) {
   if (t < lo - eps) t = Math.ceil((lo - eps) / step) * step;
   t = Math.round(t * 100) / 100;
 
-  const failed = forcedDrop(prev.sets) ? 'forced'
-    : priorRir === '0' ? 'failure'
-    : (!priorRir && repDecay(prev.sets) > 0) ? 'decay' : '';
   /* A move smaller than one step is not a move: there is nothing to load
      between the two numbers, and saying "+0,8 kg" would be false precision.
      Same answer when the band turned out to be narrower than the step. */
   if (!(t > 0) || t > hi + eps || Math.abs(t - w) < step - eps || (failed && t > w)) {
     out.kind = 'hold';
-    out.why = (failed && t > w) ? failed : '';
+    out.reps = repsTop;
+    /* Reported whenever the signal is there, not only when it was what
+       suppressed a rise. A set that collapsed from 15 reps to 8 usually
+       computes to a hold on its own arithmetic, and saying nothing about
+       why is the one case where the reader most needs telling. */
+    out.why = failed;
     return out;
   }
   out.kind = t > w ? 'up' : 'down';
@@ -2283,16 +2336,18 @@ function targetLine(est) {
   const n = v => String(Math.round(v * 100) / 100).replace('.', ',');
   const from = ' (de ' + n(est.from) + '×' + est.fromReps + ' a ' + n(est.rir) + ' RIR' +
     (est.assumed ? ' previstos' : '') + ')';
-  if (est.kind === 'skip') {
-    return 'objetivo: sin estimar — por encima de ' + EST_MAX_REPS +
-      ' reps la estimación deja de valer';
-  }
   if (est.kind === 'hold') {
-    return '→ objetivo: mantener ' + n(est.weight) + u + ' × ' + est.reps +
-      (est.why ? ' — ' + EST_WHY[est.why] : from);
+    /* "× top of the range" and "mantener" together are the instruction:
+       same weight, more reps, and the jump is earned once every set gets
+       there. The reason, when there is one, replaces the arithmetic —
+       nobody needs the inputs when the answer is "that set cost too
+       much". */
+    return '→ objetivo: mantener ' + n(est.weight) + u + ' y llegar a ' + est.reps +
+      ' reps en todas las series' +
+      (est.why ? ' — ' + EST_WHY[est.why] : est.blind ? '' : from);
   }
   return (est.kind === 'up' ? '↗' : '↘') + ' objetivo: ' + n(est.weight) + u +
-    ' × ' + est.reps + from;
+    ' × ' + est.reps + (est.blind ? ' (tope del rango la semana pasada)' : from);
 }
 
 function collectHistory(profile, blockId, dayId, exId, weeks, metric) {

@@ -374,10 +374,15 @@ out from under a session: when a new version has been cached, a small
   the same chip again clears it. It travels with a "plan + registro" QR
   share, and shows up as its own column in the CSV export.
 - **A rep-decay warning, for free.** No input needed: if the first set of an
-  exercise has ≥3 more reps typed than the last one, a small line appears
-  under the sets — `⚠ caída de 4 reps: ¿primera serie al fallo?` — because
-  that drop is usually the first set having been pushed closer to failure
-  than the ones after it.
+  exercise falls away sharply by the last one, a small line appears under
+  the sets — `⚠ caída de 4 reps: ¿primera serie al fallo?` — because that
+  drop is usually the first set having been pushed closer to failure than
+  the ones after it. It takes **both** a drop of ≥3 reps and a drop of
+  ≥25 % of the first set, because those are different claims: at a fixed
+  load with real rest, sets taper by something like 10–25 % by the fourth
+  one, so `15·15·12·12` is an ordinary session and `8·7·6·5` is not, even
+  though both "drop 3 reps". Judging it on the absolute number alone
+  flagged every high-rep machine session as a first set taken to failure.
 - **An objetivo for this week's weight, also for free.** Under the sets,
   in the same voice as the rep-decay line: `↗ objetivo: 65 kg × 6 (de 60×10
   a 2 RIR)`. Last week's set is corrected for how close to failure it
@@ -473,6 +478,17 @@ for that week stands in and the line says so (`a 3 RIR previstos`).
 | 65×8 @ 1 RIR | 67,5 | **67,5** (+3,8 %) | coinciden, como la mayoría de semanas |
 | 75×5 @ 0 RIR | 75 | **70** (−6,7 %) | lo que copiar pesos no puede decirte |
 
+**Which rep number it aims at depends on whether the weight moves**, and
+this is the half that makes the line advice rather than noise:
+
+- **A new weight restarts you at the bottom of the range.** That is what
+  double progression means: `↗ objetivo: 65 kg × 6`.
+- **The same weight does the opposite.** You stay on it and climb toward
+  the *top* of the range, because getting every set there is what earns
+  the next jump: `→ objetivo: mantener 32 kg y llegar a 15 reps en todas
+  las series`. Telling someone who just did 32×12 to aim for 10 reads as
+  "do less", which is the one thing nobody needs an app for.
+
 **The guardrails**, in the order they apply:
 
 - **The same failure gate as `Copiar pesos`, with one asymmetry.** RIR 0, a
@@ -487,8 +503,12 @@ for that week stands in and the line says so (`a 3 RIR previstos`).
   on 77,5 against a 77,0 ceiling.
 - **Rounded to something you can load**: the exercise's own `inc`, else
   your default increment from **Ajustes**, else 2,5 kg / 5 lb.
-- **Nothing above 15 reps.** Epley drifts badly up there, so it says `sin
-  estimar` instead of inventing a number.
+- **Above 15 reps it drops the estimate, not the advice.** Epley cannot
+  price a weight up there — but double progression does not need it to.
+  Every set at the top of the range earns one increment; anything short of
+  that holds the weight and buys reps first. Same rule `Copiar pesos`
+  applies, and a real answer where `sin estimar` used to be a dead end on
+  exactly the high-rep isolation work that lives up there.
 - **`2+` is read as exactly 2.** It's open-ended, so every estimate built
   on it comes out low — the right direction to be wrong in.
 - **A move smaller than one increment is `mantener`.** No false precision.
