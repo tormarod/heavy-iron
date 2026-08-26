@@ -1504,6 +1504,128 @@ const ok = (name, cond, extra) => {
     await ctx.close();
   }
 
+  // ---------- strength index per muscle ----------
+  {
+    console.log('\n== índice de fuerza por músculo ==');
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await dismissSetup(page);
+    await page.waitForTimeout(700);
+
+    /* Four weeks of chest. chestpress climbs 60 → 67,5 (+12,5 % on its
+       e1RM), pecdeck stays flat, and inclinepress — a much heavier
+       machine — only appears from week 3. Averaging raw e1RM would show
+       the chest jumping off a cliff the week the new machine arrives;
+       matched pairs is what stops that. */
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      const pr = s.profiles.hombre;
+      const DAY = 86400000, start = Date.now() - 27 * DAY;
+      const one = (w, r, ts) => [{ w: String(w), r: String(r), done: true, ts: ts }];
+      pr.log['block-1'] = {};
+      for (let i = 0; i < 4; i++) {
+        const ts = start + i * 7 * DAY;
+        const slot = { chestpress: one(60 + i * 2.5, 8, ts), pecdeck: one(45, 12, ts) };
+        if (i >= 2) slot.inclinepress = one(200, 8, ts);
+        pr.log['block-1']['w' + (i + 1) + '-d0'] = slot;
+      }
+      pr.week = 4;
+      pr.day = 0;
+      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+    });
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(400);
+    await page.click('#diagBtn');
+    await page.waitForTimeout(200);
+    await page.click('#diagView .seg-btn[data-view="index"]');
+    await page.waitForTimeout(300);
+
+    ok('the strength view opens', await page.locator('.idx-row').count() > 0);
+    ok('the across-blocks toggle is hidden here too',
+       await page.evaluate(() => getComputedStyle(document.getElementById('diagScope')).display) === 'none');
+
+    const chest = await page.evaluate(() => {
+      const r = strengthRows(getProfile(), getBlock()).find(x => x.tag === 'Pecho');
+      return { index: r.index.map(v => v == null ? null : Math.round(v * 10) / 10), matched: r.matched, base: r.base, exercises: r.exercises };
+    });
+    /* +12,5 % on one exercise and 0 % on the other averages to +6,25 %.
+       A ratio of averages would not: the numbers differ enough that this
+       pins which of the two the code does. */
+    ok('the index averages each exercise’s own ratio, not their loads',
+       chest.index[3] === 106.3, JSON.stringify(chest.index));
+    ok('a machine that appears mid-block never enters the average',
+       chest.matched[2] === 2 && chest.matched[3] === 2 && chest.exercises === 3, JSON.stringify(chest.matched));
+    /* The cliff this whole view exists to remove: week 3 must continue the
+       line, not jump. */
+    ok('so the week the new machine arrives is not a cliff',
+       Math.abs(chest.index[2] - chest.index[1]) < 3, JSON.stringify(chest.index));
+    const meta = await page.evaluate(() => document.querySelector('.idx-row[data-tag="Pecho"] .idx-meta').textContent);
+    ok('and the row says how many exercises it actually rests on',
+       meta.includes('sobre 2 ejercicios de 3'), meta);
+    ok('the headline reads as a percentage from the baseline week',
+       (await page.evaluate(() => document.querySelector('.idx-row[data-tag="Pecho"] .idx-n').textContent))
+         .includes('+6,3 %'));
+
+    /* A log that starts late still gets a baseline it can use. */
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      const pr = s.profiles.hombre;
+      const DAY = 86400000, start = Date.now() - 27 * DAY;
+      const one = (w, r, ts) => [{ w: String(w), r: String(r), done: true, ts: ts }];
+      pr.log['block-1'] = {
+        'w3-d0': { chestpress: one(60, 8, start) },
+        'w4-d0': { chestpress: one(66, 8, start + 7 * DAY) },
+      };
+      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+    });
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(400);
+    const late = await page.evaluate(() => {
+      const r = strengthRows(getProfile(), getBlock()).find(x => x.tag === 'Pecho');
+      return { base: r.base, change: Math.round(r.change * 10) / 10 };
+    });
+    ok('a log starting at week 3 is indexed from week 3, not from nothing',
+       late.base === 2 && late.change === 10, JSON.stringify(late));
+
+    /* One week of data has nothing to compare against, and says so rather
+       than drawing a flat line that means "no change". */
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      s.profiles.hombre.log['block-1'] = { 'w1-d0': { chestpress: [{ w: '60', r: '8', done: true, ts: Date.now() }] } };
+      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+    });
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(400);
+    await page.click('#diagBtn');
+    await page.waitForTimeout(200);
+    await page.click('#diagView .seg-btn[data-view="index"]');
+    await page.waitForTimeout(250);
+    ok('a single logged week offers no comparison instead of a fake flat line',
+       await page.locator('.chart-empty').count() === 1);
+
+    /* Same rep ceiling as the trend — a 20-rep back-off set would move a
+       whole muscle's index on an estimate Epley cannot support. */
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      const DAY = 86400000, start = Date.now() - 7 * DAY;
+      s.profiles.hombre.log['block-1'] = {
+        'w1-d0': { chestpress: [{ w: '60', r: '8', done: true, ts: start }] },
+        'w2-d0': { chestpress: [{ w: '60', r: '8', done: true, ts: start + DAY },
+                                { w: '30', r: '25', done: true, ts: start + DAY }] },
+      };
+      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+    });
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(400);
+    ok('sets past the rep ceiling are left out of the index',
+       await page.evaluate(() => {
+         const r = strengthRows(getProfile(), getBlock()).find(x => x.tag === 'Pecho');
+         return Math.round(r.change * 100) / 100;
+       }) === 0);
+    await ctx.close();
+  }
+
   // ---------- layout on real phone widths ----------
   {
     console.log('\n== layout ==');

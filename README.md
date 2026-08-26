@@ -72,9 +72,10 @@ from a copy of the plan and leaves this one's history where it is.
   [The weekly objetivo](#the-weekly-objetivo).
 - **Diagnóstico**: every exercise's strength trend at once, ranked worst
   first and crossed with the signals already in your log, so a stall comes
-  with a reason and something to change — plus how often you actually
-  trained each muscle, read off the timestamps already on every ticked
-  set. See [Diagnóstico](#diagnóstico).
+  with a reason and something to change; how often you actually trained
+  each muscle, read off the timestamps already on every ticked set; and one
+  strength line per muscle that survives changing machines. See
+  [Diagnóstico](#diagnóstico).
 - **Volume as a trend, with landmarks**: the block's weeks in one view per
   muscle, against the 10–20 hard-sets band, with the muscles you marked
   `prioritario` flagged in amber when they fall under it — see
@@ -690,8 +691,9 @@ Twenty-two exercises, each with its own chart behind its own button. Nobody
 opens twenty-two charts — and the diagnosis was never inside any one of
 them anyway. It lives in the comparison, and nothing was making it.
 
-**Diagnóstico** in the footer has two tabs — **Por ejercicio** and
-**Frecuencia** — and both read entirely off what you already log.
+**Diagnóstico** in the footer has three tabs — **Por ejercicio**,
+**Frecuencia** and **Fuerza** — and all three read entirely off what you
+already log.
 
 **Por ejercicio** fits a line through the estimated 1RM of
 every exercise in the current plan at once and sorts them **worst first**:
@@ -782,6 +784,39 @@ Retired exercises still count toward the sessions you did (they were
 trained), but not toward what the plan asks for (they are not scheduled any
 more). A ticked set with no timestamp — logged before the app recorded
 them, or imported without one — is skipped rather than filed at the epoch.
+
+### Strength per muscle, across exercise swaps
+
+A per-exercise chart fragments every time you change a machine, and over a
+year of blocks you will. **Fuerza**, the third tab, gives one line per
+muscle instead: *Pecho +8 % en 8 semanas* is the sentence you were actually
+after, and it is much closer to "my chest grew" than any single machine's
+number.
+
+Two decisions are what make it survive a swap:
+
+- **It indexes to a baseline week rather than plotting kilos.** The first
+  week that muscle has anything logged is 100 (usually week 1; a log that
+  starts late gets a baseline it can actually use). Different exercises
+  carry wildly different absolute loads, and a leg press would drown a leg
+  extension in any average of raw weight.
+- **Each week is compared to the baseline over the exercises present in
+  both** — matched pairs. Averaging whatever happened to be logged that
+  week instead would turn every swapped machine into a cliff, which is
+  precisely the artefact this view exists to remove. Each row says how many
+  exercises its endpoint rests on (`sobre 2 ejercicios de 3`), so the
+  number never looks broader than it is.
+
+The average is of each exercise's *own ratio*, not a ratio of averages: an
+exercise counts once regardless of what it loads, for the same reason the
+index is a ratio in the first place. Sets past 15 reps are excluded exactly
+as they are on the trend tab, so one 20-rep back-off set cannot move a
+muscle's whole index on an estimate Epley cannot support.
+
+A week with no matched pair breaks the line rather than being interpolated
+through — pretending to know is the one thing this view is for not doing —
+and a muscle with a single logged week says *sin comparación* instead of
+drawing a flat line that would read as "no change".
 
 ## Editing a block mid-way
 
@@ -1189,7 +1224,7 @@ fixing it quietly.
 | `css/style.css` | one stylesheet; all colours are tokens declared at the top, twice (light and dark) |
 | `js/data.js` | the default plans, used only on a device's first run |
 | `js/block-editor.js` | block CRUD/list, importing a block from JSON, and the plan editor |
-| `js/diagnostics.js` | the Diagnóstico screen: e1RM trend per exercise crossed with the log's own signals, and real frequency per muscle from the row timestamps |
+| `js/diagnostics.js` | the Diagnóstico screen: e1RM trend per exercise crossed with the log's own signals, real frequency per muscle from the row timestamps, and the indexed strength-per-muscle chart |
 | `js/profile-transfer.js` | backup/restore and moving one profile between phones as a file |
 | `js/app.js` | everything else: state, rendering, QR transfer, calculator, volume dashboard |
 | `js/vendor/` | the two QR libraries, verbatim from npm — see the README in there |

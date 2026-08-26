@@ -42,7 +42,7 @@ const DIAG_TRENDS = {
 };
 
 let diagScope = 'block';  /* 'block' | 'all' */
-let diagView = 'trend';   /* 'trend' = per exercise | 'freq' = per muscle */
+let diagView = 'trend';   /* 'trend' per exercise | 'freq' | 'index' per muscle */
 
 /* Every session this exercise was logged in, oldest first, as one e1RM
    point each. Modelled on collectHistoryAll(), but it keeps what the charts
@@ -272,6 +272,154 @@ function buildHeatmapSVG(days) {
   return svg;
 }
 
+/* ---------- strength index per muscle ----------
+   A per-exercise chart fragments every time you change a machine, and over
+   a year of blocks you will. "Pecho +8 % en 8 semanas" is the sentence
+   actually being looked for, and it is much closer to "my chest grew" than
+   any single machine's number.
+
+   Two decisions make it survive a swap:
+
+   1. It indexes to a baseline week rather than plotting kilos. Different
+      exercises carry wildly different absolute loads, and a leg press
+      would drown an extension in any average of raw weight.
+   2. Each week is compared to the baseline over the exercises present in
+      BOTH — matched pairs. Averaging whatever was logged that week instead
+      would turn every swapped machine into a cliff, which is exactly the
+      artefact this view exists to remove.
+
+   The average is of each exercise's own ratio, not a ratio of averages: an
+   exercise counts once regardless of what it loads, which is the same
+   reason the index is a ratio in the first place. */
+
+/* Best estimated 1RM per exercise per week of this block, as
+   { exId: [w1, w2, …] } with null for a week it was not logged. A muscle
+   trained on two days in the same week keeps the better of the two — the
+   week's best, same rule the progress chart uses within a session. */
+function strengthByExercise(profile, block) {
+  const muscleOf = muscleOfBlock(block);
+  const weeks = blockWeeks(block);
+  const blk = profile.log[block.id] || {};
+  const out = {};
+  Object.keys(blk).forEach(k => {
+    const m = /^w(\d+)-(.+)$/.exec(k);
+    if (!m) return;
+    const w = +m[1];
+    if (w < 1 || w > weeks) return;
+    const slot = blk[k] || {};
+    Object.keys(slot).forEach(exId => {
+      if (!muscleOf[exId]) return;
+      const rows = slot[exId];
+      if (!Array.isArray(rows)) return;
+      /* Same rep ceiling as the trend: past it Epley is inventing a number
+         rather than reading one, and one 20-rep back-off set would move a
+         muscle's whole index. */
+      const done = rows.filter(r => r && r.done && hasReps(r) && num(r.w) > 0 && num(r.r) <= EST_MAX_REPS);
+      if (!done.length) return;
+      let best = 0;
+      done.forEach(r => { const v = est1RM(num(r.w), num(r.r)); if (v > best) best = v; });
+      if (!out[exId]) out[exId] = new Array(weeks).fill(null);
+      if (out[exId][w - 1] == null || best > out[exId][w - 1]) out[exId][w - 1] = best;
+    });
+  });
+  return out;
+}
+
+/* One indexed series per muscle. The baseline is the first week that muscle
+   has anything logged in — usually week 1, but a log that starts late gets
+   a baseline it can actually use instead of an empty chart. */
+function strengthRows(profile, block) {
+  const muscleOf = muscleOfBlock(block);
+  const byEx = strengthByExercise(profile, block);
+  const weeks = blockWeeks(block);
+  const byMuscle = {};
+  Object.keys(byEx).forEach(exId => {
+    const tag = muscleOf[exId];
+    if (!byMuscle[tag]) byMuscle[tag] = [];
+    byMuscle[tag].push(byEx[exId]);
+  });
+
+  return Object.keys(byMuscle).map(tag => {
+    const series = byMuscle[tag];
+    let base = -1;
+    for (let w = 0; w < weeks && base < 0; w++) {
+      if (series.some(s => s[w] != null)) base = w;
+    }
+    const index = new Array(weeks).fill(null);
+    const matched = new Array(weeks).fill(0);
+    if (base >= 0) {
+      for (let w = base; w < weeks; w++) {
+        const ratios = [];
+        series.forEach(s => {
+          if (s[base] != null && s[w] != null && s[base] > 0) ratios.push(s[w] / s[base]);
+        });
+        if (!ratios.length) continue;
+        index[w] = 100 * ratios.reduce((t, v) => t + v, 0) / ratios.length;
+        matched[w] = ratios.length;
+      }
+    }
+    let lastWeek = -1;
+    for (let w = weeks - 1; w >= 0 && lastWeek < 0; w--) if (index[w] != null) lastWeek = w;
+    return {
+      tag: tag,
+      index: index,
+      matched: matched,
+      base: base,
+      lastWeek: lastWeek,
+      exercises: series.length,
+      change: lastWeek > base ? index[lastWeek] - 100 : null,
+      priority: isPriority(block, tag),
+    };
+  }).sort((a, b) =>
+    (a.change == null ? 1 : 0) - (b.change == null ? 1 : 0) ||
+    (a.change || 0) - (b.change || 0) ||
+    a.tag.localeCompare(b.tag, 'es'));
+}
+
+/* Same visual family as the volume trend: a line across the block's weeks,
+   with the baseline drawn as the reference it is. Gaps are gaps — a week
+   with no matched pair breaks the line rather than being interpolated
+   through, because pretending to know is the one thing this view is for
+   not doing. */
+function buildIndexSVG(index, weeks, currentWeek) {
+  const W = 300, H = 46, padX = 2, padT = 5, padB = 5;
+  const plotH = H - padT - padB;
+  const vals = index.filter(v => v != null);
+  const lo = Math.min(100, ...vals), hi = Math.max(100, ...vals);
+  /* Never let a flat line fill the box: a ±1 % wobble drawn edge to edge
+     reads as a transformation. */
+  const span = Math.max(hi - lo, 8);
+  const mid = (hi + lo) / 2;
+  const top = mid + span / 2, bottom = mid - span / 2;
+  const x = i => padX + (weeks < 2 ? (W - padX * 2) / 2 : (i / (weeks - 1)) * (W - padX * 2));
+  const y = v => padT + plotH - ((v - bottom) / (top - bottom)) * plotH;
+
+  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block;" role="img" aria-hidden="true">';
+  svg += '<line x1="0" y1="' + y(100) + '" x2="' + W + '" y2="' + y(100) +
+    '" stroke="var(--soft)" stroke-width="1" stroke-dasharray="3 3" opacity="0.55"/>';
+  let run = [];
+  const flush = () => {
+    if (run.length > 1) {
+      svg += '<polyline points="' + run.join(' ') + '" fill="none" stroke="var(--signal)" ' +
+        'stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
+    }
+    run = [];
+  };
+  index.forEach((v, i) => {
+    if (v == null) { flush(); return; }
+    run.push(x(i) + ',' + y(v));
+  });
+  flush();
+  index.forEach((v, i) => {
+    if (v == null) return;
+    const here = i + 1 === currentWeek;
+    svg += '<circle cx="' + x(i) + '" cy="' + y(v) + '" r="' + (here ? 3.5 : 2) +
+      '" fill="' + (here ? 'var(--ink)' : 'var(--signal)') + '"/>';
+  });
+  svg += '</svg>';
+  return svg;
+}
+
 /* Least squares over the window, expressed as a fraction of the exercise's
    own mean e1RM so the number is comparable between a lateral raise and a
    leg press. */
@@ -414,6 +562,56 @@ const fmtDays = d => {
    sessions a week asks for. Two sessions a week is every 3,5 days. */
 const plannedGap = perWeek => (perWeek > 0 ? 7 / perWeek : null);
 
+function drawDiagIndex(profile, block) {
+  const weeks = blockWeeks(block), week = profile.week;
+  const rows = strengthRows(profile, block);
+  const host = $('diagHost');
+
+  $('diagSub').textContent = block.name + ' — fuerza por músculo, con la primera semana registrada de cada uno como 100. ' +
+    'Cada semana se compara con esa base solo sobre los ejercicios presentes en las dos, así que cambiar de máquina no rompe la línea.';
+
+  host.innerHTML = '';
+  const moved = rows.filter(r => r.change != null);
+  if (!moved.length) {
+    host.innerHTML = '<p class="chart-empty">Hacen falta al menos dos semanas con el mismo ejercicio registrado para poder comparar. ' +
+      'Sigue anotando: esto se llena solo.</p>';
+    return;
+  }
+
+  rows.forEach(r => {
+    const el = document.createElement('div');
+    el.className = 'idx-row' + (r.change == null ? ' none' : r.change > 0.5 ? ' up' : r.change < -0.5 ? ' down' : ' flat');
+    el.dataset.tag = r.tag;
+    el.innerHTML =
+      '<div class="idx-head"><span class="idx-name"></span><span class="idx-n"></span></div>' +
+      '<div class="idx-meta"></div>' +
+      '<div class="idx-chart"></div>';
+    const name = el.querySelector('.idx-name');
+    name.textContent = r.tag;
+    if (r.priority) {
+      const b = document.createElement('span');
+      b.className = 'vol-pri';
+      b.textContent = 'PRIORITARIO';
+      name.appendChild(b);
+    }
+    el.querySelector('.idx-n').textContent = r.change == null
+      ? 'sin comparación'
+      : diagPct(r.change / 100) + ' desde la semana ' + (r.base + 1);
+    /* How many exercises the endpoint actually rests on. When it is fewer
+       than the muscle has, the missing ones are the swaps this view is
+       deliberately not counting — say so rather than let the number look
+       broader than it is. */
+    const n = r.lastWeek >= 0 ? r.matched[r.lastWeek] : 0;
+    el.querySelector('.idx-meta').textContent = r.change == null
+      ? (r.exercises === 1 ? '1 ejercicio, una sola semana' : r.exercises + ' ejercicios, una sola semana')
+      : 'sobre ' + (n === 1 ? '1 ejercicio' : n + ' ejercicios') +
+        (n < r.exercises ? ' de ' + r.exercises + ' (el resto no está en las dos semanas)' : '') +
+        ' · semana ' + (r.base + 1) + ' → ' + (r.lastWeek + 1);
+    el.querySelector('.idx-chart').innerHTML = buildIndexSVG(r.index, weeks, week);
+    host.appendChild(el);
+  });
+}
+
 function drawDiagFreq(profile, block) {
   const week = profile.week;
   const rows = freqRows(profile, block, week);
@@ -490,10 +688,12 @@ function drawDiag() {
     b.setAttribute('aria-pressed', b.dataset.scope === diagScope ? 'true' : 'false');
     b.onclick = () => { diagScope = b.dataset.scope; drawDiag(); };
   });
-  /* Adherence is measured against a plan, and only the current block has
-     one — so the across-blocks toggle has nothing to switch here. */
-  $('diagScope').style.display = diagView === 'freq' ? 'none' : '';
+  /* Adherence is measured against a plan and the index against a baseline
+     week, and only the current block has either — so the across-blocks
+     toggle has nothing to switch on those two. */
+  $('diagScope').style.display = diagView === 'trend' ? '' : 'none';
   if (diagView === 'freq') { drawDiagFreq(profile, block); return; }
+  if (diagView === 'index') { drawDiagIndex(profile, block); return; }
 
   const rows = diagRows(profile, block);
   const counted = rows.filter(r => r.trend !== 'none');
