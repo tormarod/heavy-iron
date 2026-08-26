@@ -1,22 +1,22 @@
 # Graph Report - heavy-iron  (2026-08-26)
 
 ## Corpus Check
-- 17 files · ~88,547 words
+- 21 files · ~89,241 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 350 nodes · 764 edges · 19 communities (15 shown, 4 thin omitted)
+- 360 nodes · 782 edges · 24 communities (16 shown, 8 thin omitted)
 - Extraction: 96% EXTRACTED · 4% INFERRED · 0% AMBIGUOUS · INFERRED: 31 edges (avg confidence: 0.87)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `cc31c1ae`
+- Built from commit: `6c5abacd`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - jsQR.js
-- load
+- toast
 - Heavy Iron (project overview)
 - app.js
 - drawApp
@@ -24,7 +24,7 @@
 - block-editor.js
 - drawQrShow
 - openSetup
-- stopRest
+- startRest
 - renderProfileExports
 - data.js
 - smoke.js
@@ -34,6 +34,11 @@
 - sw.js
 - migrate
 - CLAUDE.md
+- mark
+- .tmp_check.js
+- .tmp_check2.js
+- .tmp_repro.js
+- .tmp_repro2.js
 
 ## God Nodes (most connected - your core abstractions)
 1. `drawApp()` - 37 edges
@@ -67,51 +72,51 @@
 - **CSP-scoped vendored QR script loading** — index_csp, readme_content_security_policy, js_vendor_readme_overview, js_vendor_readme_qrcode_js, js_vendor_readme_jsqr_js [INFERRED 0.85]
 - **README feature sections mapped 1:1 to index.html dialogs** — readme_qr_transfer, readme_warmup_calculator, readme_weekly_volume, readme_first_run_setup, readme_importing_blocks_json, readme_block_manager, index_qr_sheet, index_calc_sheet, index_volume_sheet, index_setup_sheet, index_import_sheet, index_blocks_sheet [INFERRED 0.85]
 
-## Communities (19 total, 4 thin omitted)
+## Communities (24 total, 8 thin omitted)
 
 ### Community 0 - "jsQR.js"
 Cohesion: 0.07
 Nodes (38): binarize(), BitMatrix(), BitStream(), buildFunctionPatternMask(), computeDimension(), countBlackWhiteRun(), countBlackWhiteRunTowardsPoint(), decode() (+30 more)
 
-### Community 1 - "load"
-Cohesion: 0.19
-Nodes (15): applyTheme(), flushSave(), hideToast(), load(), mark(), maybeNagBackup(), readRaw(), registerServiceWorker() (+7 more)
+### Community 1 - "toast"
+Cohesion: 0.33
+Nodes (6): flushSave(), hideToast(), maybeNagBackup(), registerServiceWorker(), snapshotForUndo(), toast()
 
 ### Community 2 - "Heavy Iron (project overview)"
 Cohesion: 0.06
 Nodes (37): Deploy to GitHub Pages (workflow), cache-version job (enforces CACHE_VERSION bump), smoke job (Playwright browser tests), Smoke tests (workflow), Heavy Iron app icon (maskable barbell icon), index.html app shell, blocksSheet dialog (Gestionar bloques), calcSheet dialog (Calculadora, Barra/Máquina) (+29 more)
 
 ### Community 3 - "app.js"
-Cohesion: 0.05
-Nodes (36): ACCENT_LABEL, ACCENTS, ask(), askText(), calcDraft, closeAsk(), CRC32_TABLE, DEFAULT_BAR_WEIGHT (+28 more)
+Cohesion: 0.06
+Nodes (34): ACCENT_LABEL, ACCENTS, ask(), askText(), calcDraft, closeAsk(), CRC32_TABLE, DEFAULT_BAR_WEIGHT (+26 more)
 
 ### Community 4 - "drawApp"
-Cohesion: 0.11
-Nodes (43): blockShareLog(), blockSharePlan(), blockShareRir(), blockTagsFor(), blockWeeks(), buildCsv(), buildQrPayload(), clampInt() (+35 more)
+Cohesion: 0.10
+Nodes (43): blockShareLog(), blockSharePlan(), blockShareRir(), blockTagsFor(), blockTonnageByWeek(), blockWeeks(), buildCsv(), buildQrPayload() (+35 more)
 
 ### Community 5 - "num"
-Cohesion: 0.12
-Nodes (28): bestByExercise(), bestSet(), blockTonnageByWeek(), buildBarSVG(), buildChartSVG(), collectHistory(), collectHistoryAll(), drawCalc() (+20 more)
+Cohesion: 0.11
+Nodes (31): bestByExercise(), bestSet(), buildBarSVG(), buildChartSVG(), collectHistory(), collectHistoryAll(), currentDay(), drawCalc() (+23 more)
 
 ### Community 6 - "block-editor.js"
-Cohesion: 0.12
-Nodes (25): applyImportedBlock(), blockDate(), blockFromNormalized(), blockPickerLabel(), buildAiPrompt(), buildDayBox(), buildExRow(), copyBlockPrompt() (+17 more)
+Cohesion: 0.13
+Nodes (30): applyImportedBlock(), blockDate(), blockFromNormalized(), blockPickerLabel(), buildAiPrompt(), buildDayBox(), buildExRow(), closePlanEditor() (+22 more)
 
 ### Community 7 - "drawQrShow"
-Cohesion: 0.13
-Nodes (20): blockDoneSets(), blockLoggedSets(), buildQrSVG(), bytesToB64u(), closeQr(), closeSetup(), closeSheet(), crc32() (+12 more)
+Cohesion: 0.17
+Nodes (13): blockDoneSets(), blockLoggedSets(), buildQrSVG(), bytesToB64u(), crc32(), drawQrShow(), loadScriptOnce(), qrDecoderReady() (+5 more)
 
 ### Community 8 - "openSetup"
 Cohesion: 0.29
 Nodes (8): accentOf(), openSetup(), profileKeys(), renderProfiles(), renderSetup(), setNote(), soloMode(), visibleProfileKeys()
 
-### Community 9 - "stopRest"
-Cohesion: 0.27
-Nodes (10): beep(), nudgeRest(), primeAudio(), releaseWakeLock(), requestWakeLock(), startAlarmLoop(), startRest(), stopAlarmLoop() (+2 more)
+### Community 9 - "startRest"
+Cohesion: 0.32
+Nodes (8): beep(), nudgeRest(), primeAudio(), requestWakeLock(), startAlarmLoop(), startRest(), stopAlarmLoop(), tick()
 
 ### Community 10 - "renderProfileExports"
 Cohesion: 0.29
-Nodes (7): downloadFile(), profileExportPayload(), renderProfileExports(), setsLabel(), setsWithDoneLabel(), showRecovery(), slugify()
+Nodes (7): downloadFile(), profileExportPayload(), renderProfileExports(), resetBackupNag(), setsLabel(), setsWithDoneLabel(), showRecovery()
 
 ### Community 11 - "data.js"
 Cohesion: 0.33
@@ -122,32 +127,36 @@ Cohesion: 0.28
 Nodes (9): applyQrPayload(), countShareLog(), importIdMaps(), muscleTag(), normalizeImportedLog(), normalizeImportedRir(), patternTag(), txt() (+1 more)
 
 ### Community 15 - "profile-transfer.js"
-Cohesion: 0.52
-Nodes (6): countBackupSets(), countProfileSets(), describeBackupProblem(), describeProfileProblem(), loadProfileFromText(), restoreFromText()
+Cohesion: 0.50
+Nodes (7): countBackupSets(), countProfileSets(), describeBackupProblem(), describeProfileProblem(), loadProfileFromText(), restoreFromText(), wireProfileTransfer()
 
 ### Community 17 - "migrate"
-Cohesion: 0.40
-Nodes (5): clampNum(), emptyBlock(), genericPhase(), migrate(), uid()
+Cohesion: 0.24
+Nodes (11): applyTheme(), clampNum(), emptyBlock(), genericPhase(), load(), migrate(), readRaw(), render() (+3 more)
+
+### Community 19 - "mark"
+Cohesion: 0.22
+Nodes (11): closeQr(), closeSetup(), closeSheet(), drawQr(), mark(), openQr(), qrReceiver(), save() (+3 more)
 
 ## Knowledge Gaps
-- **53 isolated node(s):** `expandedSetup`, `MUSCLE_SUGGESTIONS`, `PATTERN_SUGGESTIONS`, `TYPE_SUGGESTIONS`, `MUSCLE_BY_ID` (+48 more)
+- **57 isolated node(s):** `{ chromium }`, `{ chromium }`, `{ chromium }`, `{ chromium }`, `expandedSetup` (+52 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **4 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **8 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `num()` connect `num` to `migrate`, `app.js`, `drawApp`, `_this`?**
-  _High betweenness centrality (0.026) - this node is a cross-community bridge._
+  _High betweenness centrality (0.025) - this node is a cross-community bridge._
 - **Why does `rowUsed()` connect `drawApp` to `app.js`, `profile-transfer.js`, `applyQrPayload`, `drawQrShow`?**
-  _High betweenness centrality (0.023) - this node is a cross-community bridge._
+  _High betweenness centrality (0.024) - this node is a cross-community bridge._
+- **Why does `countBackupSets()` connect `profile-transfer.js` to `drawApp`?**
+  _High betweenness centrality (0.011) - this node is a cross-community bridge._
 - **Are the 2 inferred relationships involving `num()` (e.g. with `.mod()` and `.multiply()`) actually correct?**
   _`num()` has 2 INFERRED edges - model-reasoned connections that need verification._
-- **What connects `expandedSetup`, `MUSCLE_SUGGESTIONS`, `PATTERN_SUGGESTIONS` to the rest of the system?**
-  _53 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **What connects `{ chromium }`, `{ chromium }`, `{ chromium }` to the rest of the system?**
+  _57 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `jsQR.js` be split into smaller, more focused modules?**
   _Cohesion score 0.074034902168165 - nodes in this community are weakly interconnected._
 - **Should `Heavy Iron (project overview)` be split into smaller, more focused modules?**
   _Cohesion score 0.05855855855855856 - nodes in this community are weakly interconnected._
-- **Should `app.js` be split into smaller, more focused modules?**
-  _Cohesion score 0.053426248548199766 - nodes in this community are weakly interconnected._

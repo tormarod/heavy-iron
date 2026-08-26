@@ -127,27 +127,7 @@ function renderBlockManager() {
   });
 }
 
-$('blkKeepCurrent').onclick = async () => {
-  const profile = getProfile();
-  const others = profile.blockOrder.filter(id => id !== profile.activeBlock);
-  if (!others.length) { await tell('Nada que eliminar', '"' + getBlock().name + '" ya es el único bloque de ' + profile.label + '.'); return; }
-  const sets = others.reduce((t, id) => t + blockLoggedSets(profile, id), 0);
-  const names = others.map(id => '· ' + blockPickerLabel(profile, id)).join('\n');
-  const okd = await ask({
-    title: '¿Eliminar los otros ' + others.length + ' bloques de ' + profile.label + '?',
-    body: names + '\n\n' +
-      (sets ? 'Se borran ' + setsLabel(sets) + ' en total. ' : 'No tienen nada registrado. ') +
-      '"' + getBlock().name + '" y todo su registro se quedan como están. No se puede deshacer.',
-    okLabel: 'Eliminar', danger: true,
-  });
-  if (!okd) return;
-  const n = deleteBlocks(profile, others);
-  renderBlockManager();
-  mark(n + (n === 1 ? ' bloque eliminado' : ' bloques eliminados') + ' — el bloque actual intacto');
-};
 
-$('blkClose').onclick = () => closeSheet('blocksSheet');
-$('blocksSheet').addEventListener('click', e => { if (e.target.id === 'blocksSheet') closeSheet('blocksSheet'); });
 
 async function newBlock() {
   const profile = getProfile();
@@ -371,14 +351,6 @@ function openImportSheet() {
   loadRepoBlockList();
 }
 
-$('importFromText').onclick = () => {
-  setNote($('importError'), '', false);
-  let raw;
-  try { raw = JSON.parse($('importBlob').value); } catch (e) { setNote($('importError'), 'Eso no es JSON válido.', true); return; }
-  applyImportedBlock(raw, 'texto pegado');
-};
-$('importClose').onclick = () => closeSheet('importSheet');
-$('importSheet').addEventListener('click', e => { if (e.target.id === 'importSheet') closeSheet('importSheet'); });
 
 /* Builds a self-contained prompt for a third party's AI agent, describing
    the block JSON shape from the same limits the importer itself enforces
@@ -468,10 +440,6 @@ async function copyBlockPrompt(noteEl) {
   }
 }
 
-$('importDownloadTemplate').onclick = () => downloadBlockTemplate($('importError'));
-$('importCopyPrompt').onclick = () => copyBlockPrompt($('importError'));
-$('setupDownloadTemplate').onclick = () => downloadBlockTemplate($('setupImportStatus'));
-$('setupCopyPrompt').onclick = () => copyBlockPrompt($('setupImportStatus'));
 
 /* ---------- plan editor ----------
    Everything here edits a *draft* copy of the block; nothing reaches the
@@ -481,31 +449,20 @@ $('setupCopyPrompt').onclick = () => copyBlockPrompt($('setupImportStatus'));
    removing something that has history retires it instead of deleting it.
    Erasing logged sets for good takes a second, explicit click in
    "Retirados". */
-let draftBlock = null;
-let draftPurge = [];
+let peDraftBlock = null;
+let peDraftPurge = [];
 /* exId -> the session it lived in when the editor was opened. The real log
    is still filed under that session until "Guardar cambios", so anything
    that reads "how much history does this exercise have" while the sheet is
    open has to look there, not at wherever the draft has moved it to. */
-let draftOriginalDay = {};
+let peDraftOriginalDay = {};
 
-$('editPlan').onclick = () => {
-  draftBlock = JSON.parse(JSON.stringify(getBlock()));
-  draftPurge = [];
-  draftOriginalDay = {};
-  draftBlock.days.forEach(day => day.ex.forEach(ex => { draftOriginalDay[ex.id] = day.id; }));
-  $('peBlockName').value = draftBlock.name;
-  $('peWeeks').value = blockWeeks(draftBlock);
-  renderDeloadOptions();
-  renderPlanEditor();
-  openSheet('planSheet');
-};
 
 /* Logged-set counts for the editor: keyed off the exercise's original
-   session (see draftOriginalDay) so a pending "send to another session"
+   session (see peDraftOriginalDay) so a pending "send to another session"
    move doesn't make its history look gone before the draft is saved. */
 function draftExLogged(profile, exId, currentDayId) {
-  return loggedSets(profile, draftBlock.id, draftOriginalDay[exId] || currentDayId, exId);
+  return loggedSets(profile, peDraftBlock.id, peDraftOriginalDay[exId] || currentDayId, exId);
 }
 function draftDayLogged(profile, day) {
   return day.ex.reduce((t, ex) => t + draftExLogged(profile, ex.id, day.id), 0);
@@ -522,9 +479,9 @@ function moveExToDay(ex, fromDay, toDay) {
 /* The deload list only offers weeks the block actually has, so shortening a
    block cannot leave the deload pointing off the end of it. */
 function renderDeloadOptions() {
-  const weeks = clampInt($('peWeeks').value, 1, MAX_WEEKS, blockWeeks(draftBlock));
+  const weeks = clampInt($('peWeeks').value, 1, MAX_WEEKS, blockWeeks(peDraftBlock));
   const sel = $('peDeload');
-  const current = deloadWeek(draftBlock);
+  const current = deloadWeek(peDraftBlock);
   sel.innerHTML = '';
   const none = document.createElement('option');
   none.value = '0';
@@ -539,17 +496,6 @@ function renderDeloadOptions() {
   sel.value = String(current >= 1 && current <= weeks ? current : 0);
 }
 
-$('peWeeks').oninput = () => {
-  draftBlock.weeks = clampInt($('peWeeks').value, 1, MAX_WEEKS, 8);
-  if (deloadWeek(draftBlock) > draftBlock.weeks) draftBlock.deload = 0;
-  renderDeloadOptions();
-  draftBlock.deload = clampInt($('peDeload').value, 0, MAX_WEEKS, 0);
-  renderPlanEditor();
-};
-$('peDeload').onchange = () => {
-  draftBlock.deload = clampInt($('peDeload').value, 0, MAX_WEEKS, 0);
-  renderPlanEditor();
-};
 
 function newExercise() {
   return { id: uid('ex'), n: '', alt: '', cue: '', sets: 3, reps: '10–15', rest: 90, share: 0, ss: 0 };
@@ -571,7 +517,7 @@ function renderPlanEditor() {
   const profile = getProfile();
   host.innerHTML = '';
 
-  const live = dayList(draftBlock);
+  const live = dayList(peDraftBlock);
   live.forEach((day, pos) => host.appendChild(buildDayBox(profile, day, pos, live.length)));
 
   const addDay = document.createElement('button');
@@ -579,7 +525,7 @@ function renderPlanEditor() {
   addDay.className = 'pe-add-ex';
   addDay.textContent = '+ Añadir día';
   addDay.onclick = () => {
-    draftBlock.days.push({ id: uid('d'), name: 'Día ' + (live.length + 1), ex: [newExercise()] });
+    peDraftBlock.days.push({ id: uid('d'), name: 'Día ' + (live.length + 1), ex: [newExercise()] });
     renderPlanEditor();
   };
   host.appendChild(addDay);
@@ -617,8 +563,8 @@ function buildDayBox(profile, day, pos, liveCount) {
   up.disabled = pos === 0;
   down.disabled = pos === liveCount - 1;
   del.disabled = liveCount === 1;
-  up.onclick = () => { moveLive(draftBlock.days, day, -1); renderPlanEditor(); };
-  down.onclick = () => { moveLive(draftBlock.days, day, 1); renderPlanEditor(); };
+  up.onclick = () => { moveLive(peDraftBlock.days, day, -1); renderPlanEditor(); };
+  down.onclick = () => { moveLive(peDraftBlock.days, day, 1); renderPlanEditor(); };
   del.onclick = async () => {
     if (logged) {
       const okd = await ask({
@@ -635,7 +581,7 @@ function buildDayBox(profile, day, pos, liveCount) {
         okLabel: 'Quitar', danger: true,
       });
       if (!okd) return;
-      draftBlock.days.splice(draftBlock.days.indexOf(day), 1);
+      peDraftBlock.days.splice(peDraftBlock.days.indexOf(day), 1);
     }
     renderPlanEditor();
   };
@@ -655,7 +601,7 @@ function buildDayBox(profile, day, pos, liveCount) {
 
 function renderRetired(host, profile) {
   const items = [];
-  draftBlock.days.forEach(day => {
+  peDraftBlock.days.forEach(day => {
     if (day.off) { items.push({ day }); return; }
     day.ex.forEach(ex => { if (ex.off) items.push({ day, ex }); });
   });
@@ -696,11 +642,11 @@ function renderRetired(host, profile) {
       });
       if (!okd) return;
       if (isDay) {
-        draftBlock.days.splice(draftBlock.days.indexOf(it.day), 1);
-        draftPurge.push({ dayId: it.day.id });
+        peDraftBlock.days.splice(peDraftBlock.days.indexOf(it.day), 1);
+        peDraftPurge.push({ dayId: it.day.id });
       } else {
         it.day.ex.splice(it.day.ex.indexOf(it.ex), 1);
-        draftPurge.push({ dayId: it.day.id, exId: it.ex.id });
+        peDraftPurge.push({ dayId: it.day.id, exId: it.ex.id });
       }
       renderPlanEditor();
     };
@@ -796,7 +742,7 @@ function buildExRow(profile, day, ex, pos, liveCount) {
   if (logged) row.querySelector('.pe-log-tag').textContent = setsLabel(logged);
 
   const moveSel = row.querySelector('.pe-move-sel');
-  const otherDays = dayList(draftBlock).filter(d => d !== day);
+  const otherDays = dayList(peDraftBlock).filter(d => d !== day);
   if (otherDays.length) {
     const placeholder = document.createElement('option');
     placeholder.value = '';
@@ -843,32 +789,32 @@ function buildExRow(profile, day, ex, pos, liveCount) {
   return row;
 }
 
-/* Pulls the form fields (name/weeks/deload) into draftBlock, regenerates
+/* Pulls the form fields (name/weeks/deload) into peDraftBlock, regenerates
    the phase banner for whatever weeks that leaves it with, and defaults
    blank day names — the same shape-up that used to live inline in
    "Guardar cambios". Shared with the export button below: exporting reads
-   draftBlock too, so it needs to see the fields as currently typed, not as
+   peDraftBlock too, so it needs to see the fields as currently typed, not as
    they were when the sheet was opened, and shouldn't ship a plan missing a
    name or a set of reps any more than a save should write one. Returns an
-   error message, or null once draftBlock is ready to use. */
+   error message, or null once peDraftBlock is ready to use. */
 function syncDraftFromForm() {
-  draftBlock.name = $('peBlockName').value.trim() || draftBlock.name;
-  draftBlock.weeks = clampInt($('peWeeks').value, 1, MAX_WEEKS, blockWeeks(draftBlock));
-  draftBlock.deload = clampInt($('peDeload').value, 0, MAX_WEEKS, 0);
-  if (draftBlock.deload > draftBlock.weeks) draftBlock.deload = 0;
+  peDraftBlock.name = $('peBlockName').value.trim() || peDraftBlock.name;
+  peDraftBlock.weeks = clampInt($('peWeeks').value, 1, MAX_WEEKS, blockWeeks(peDraftBlock));
+  peDraftBlock.deload = clampInt($('peDeload').value, 0, MAX_WEEKS, 0);
+  if (peDraftBlock.deload > peDraftBlock.weeks) peDraftBlock.deload = 0;
   /* Weeks the block has grown into need a goal to show in the banner, and
      the deload week may have moved; anything you wrote yourself is kept. */
-  const phase = draftBlock.phase && typeof draftBlock.phase === 'object' ? draftBlock.phase : {};
-  const generic = genericPhase(draftBlock.weeks, draftBlock.deload);
+  const phase = peDraftBlock.phase && typeof peDraftBlock.phase === 'object' ? peDraftBlock.phase : {};
+  const generic = genericPhase(peDraftBlock.weeks, peDraftBlock.deload);
   const nextPhase = {};
-  for (let w = 1; w <= draftBlock.weeks; w++) {
+  for (let w = 1; w <= peDraftBlock.weeks; w++) {
     const mine = phase[w] || phase[String(w)];
-    const isDeload = w === draftBlock.deload;
+    const isDeload = w === peDraftBlock.deload;
     const wasDeload = mine && mine.r === DELOAD_PHASE.r;
     nextPhase[w] = (mine && mine.r && mine.t && isDeload === wasDeload) ? mine : generic[w];
   }
-  draftBlock.phase = nextPhase;
-  const days = dayList(draftBlock);
+  peDraftBlock.phase = nextPhase;
+  const days = dayList(peDraftBlock);
   if (!days.length) return 'El bloque necesita al menos un día.';
   days.forEach((day, i) => { if (!String(day.name || '').trim()) day.name = 'Día ' + (i + 1); });
   for (const day of days) {
@@ -882,30 +828,6 @@ function syncDraftFromForm() {
   return null;
 }
 
-$('peSave').onclick = async () => {
-  const problem = syncDraftFromForm();
-  if (problem) { await tell('Falta algo', problem); return; }
-  const profile = getProfile();
-  /* Catch the real log up on any "enviar a…" moves made while the sheet was
-     open, before anything below reads or purges it by session id. */
-  draftBlock.days.forEach(day => {
-    day.ex.forEach(ex => {
-      const from = draftOriginalDay[ex.id];
-      if (from && from !== day.id) moveExLog(profile, draftBlock.id, from, day.id, ex.id);
-    });
-  });
-  /* The only path that erases logged sets, and only the ones explicitly
-     confirmed in "Retirados". */
-  draftPurge.forEach(p => {
-    if (p.exId) purgeExLog(profile, draftBlock.id, p.dayId, p.exId);
-    else purgeDayLog(profile, draftBlock.id, p.dayId);
-  });
-  profile.blocks[draftBlock.id] = draftBlock;
-  draftBlock = null; draftPurge = []; draftOriginalDay = {};
-  save(); render();
-  closeSheet('planSheet');
-  mark('Plan actualizado — el registro se mantiene');
-};
 
 /* Same shape as the "block" QR payload and the repo's blocks/*.json
    templates — no ids, no log, retired days/exercises left out — so the
@@ -915,39 +837,136 @@ $('peSave').onclick = async () => {
    first just to pull a template out of a block you're reshaping — it goes
    through the same field-sync and validation "Guardar cambios" does, so
    what you export is never missing a name or a rep range either. */
-$('peExport').onclick = async () => {
-  const problem = syncDraftFromForm();
-  if (problem) { await tell('Falta algo', problem); return; }
-  renderPlanEditor();
-  const plan = blockSharePlan(draftBlock);
-  const name = 'heavy-iron-plan-' + (slugify(draftBlock.name) || 'bloque') + '-' + new Date().toISOString().slice(0, 10) + '.json';
-  downloadFile(name, JSON.stringify(plan, null, 2), 'application/json');
-  mark('Plan descargado — sin registro, listo para "Importar JSON" en otro sitio');
-};
 
 function closePlanEditor() {
   closeSheet('planSheet');
-  draftBlock = null;
-  draftPurge = [];
-  draftOriginalDay = {};
+  peDraftBlock = null;
+  peDraftPurge = [];
+  peDraftOriginalDay = {};
 }
 
-$('peClose').onclick = closePlanEditor;
-$('planSheet').addEventListener('click', e => { if (e.target.id === 'planSheet') closePlanEditor(); });
 
-$('peDeleteBlock').onclick = async () => {
-  const profile = getProfile();
-  if (profile.blockOrder.length <= 1) { await tell('No se puede', 'No puedes eliminar el único bloque de ' + profile.label + '.'); return; }
-  const id = draftBlock.id;
-  const sets = blockLoggedSets(profile, id);
-  const okd = await ask({
-    title: '¿Eliminar "' + draftBlock.name + '"?',
-    body: (sets ? 'Se borran sus ' + setsLabel(sets) + '. ' : 'No tiene nada registrado. ') +
-      'Es el bloque en el que estás entrenando: al borrarlo pasas al bloque más reciente que quede. No se puede deshacer.',
-    okLabel: 'Eliminar', danger: true,
-  });
-  if (!okd) return;
-  closePlanEditor();
-  deleteBlocks(profile, [id]);
-  mark('Bloque eliminado');
-};
+function wireBlockEditor() {
+  $('blkKeepCurrent').onclick = async () => {
+    const profile = getProfile();
+    const others = profile.blockOrder.filter(id => id !== profile.activeBlock);
+    if (!others.length) { await tell('Nada que eliminar', '"' + getBlock().name + '" ya es el único bloque de ' + profile.label + '.'); return; }
+    const sets = others.reduce((t, id) => t + blockLoggedSets(profile, id), 0);
+    const names = others.map(id => '· ' + blockPickerLabel(profile, id)).join('\n');
+    const okd = await ask({
+      title: '¿Eliminar los otros ' + others.length + ' bloques de ' + profile.label + '?',
+      body: names + '\n\n' +
+        (sets ? 'Se borran ' + setsLabel(sets) + ' en total. ' : 'No tienen nada registrado. ') +
+        '"' + getBlock().name + '" y todo su registro se quedan como están. No se puede deshacer.',
+      okLabel: 'Eliminar', danger: true,
+    });
+    if (!okd) return;
+    const n = deleteBlocks(profile, others);
+    renderBlockManager();
+    mark(n + (n === 1 ? ' bloque eliminado' : ' bloques eliminados') + ' — el bloque actual intacto');
+  };
+
+  $('blkClose').onclick = () => closeSheet('blocksSheet');
+
+  $('blocksSheet').addEventListener('click', e => { if (e.target.id === 'blocksSheet') closeSheet('blocksSheet'); });
+
+  $('importFromText').onclick = () => {
+    setNote($('importError'), '', false);
+    let raw;
+    try { raw = JSON.parse($('importBlob').value); } catch (e) { setNote($('importError'), 'Eso no es JSON válido.', true); return; }
+    applyImportedBlock(raw, 'texto pegado');
+  };
+
+  $('importClose').onclick = () => closeSheet('importSheet');
+
+  $('importSheet').addEventListener('click', e => { if (e.target.id === 'importSheet') closeSheet('importSheet'); });
+
+  $('importDownloadTemplate').onclick = () => downloadBlockTemplate($('importError'));
+
+  $('importCopyPrompt').onclick = () => copyBlockPrompt($('importError'));
+
+  $('setupDownloadTemplate').onclick = () => downloadBlockTemplate($('setupImportStatus'));
+
+  $('setupCopyPrompt').onclick = () => copyBlockPrompt($('setupImportStatus'));
+
+  $('editPlan').onclick = () => {
+    peDraftBlock = JSON.parse(JSON.stringify(getBlock()));
+    peDraftPurge = [];
+    peDraftOriginalDay = {};
+    peDraftBlock.days.forEach(day => day.ex.forEach(ex => { peDraftOriginalDay[ex.id] = day.id; }));
+    $('peBlockName').value = peDraftBlock.name;
+    $('peWeeks').value = blockWeeks(peDraftBlock);
+    renderDeloadOptions();
+    renderPlanEditor();
+    openSheet('planSheet');
+  };
+
+  $('peWeeks').oninput = () => {
+    peDraftBlock.weeks = clampInt($('peWeeks').value, 1, MAX_WEEKS, 8);
+    if (deloadWeek(peDraftBlock) > peDraftBlock.weeks) peDraftBlock.deload = 0;
+    renderDeloadOptions();
+    peDraftBlock.deload = clampInt($('peDeload').value, 0, MAX_WEEKS, 0);
+    renderPlanEditor();
+  };
+
+  $('peDeload').onchange = () => {
+    peDraftBlock.deload = clampInt($('peDeload').value, 0, MAX_WEEKS, 0);
+    renderPlanEditor();
+  };
+
+  $('peSave').onclick = async () => {
+    const problem = syncDraftFromForm();
+    if (problem) { await tell('Falta algo', problem); return; }
+    const profile = getProfile();
+    /* Catch the real log up on any "enviar a…" moves made while the sheet was
+       open, before anything below reads or purges it by session id. */
+    peDraftBlock.days.forEach(day => {
+      day.ex.forEach(ex => {
+        const from = peDraftOriginalDay[ex.id];
+        if (from && from !== day.id) moveExLog(profile, peDraftBlock.id, from, day.id, ex.id);
+      });
+    });
+    /* The only path that erases logged sets, and only the ones explicitly
+       confirmed in "Retirados". */
+    peDraftPurge.forEach(p => {
+      if (p.exId) purgeExLog(profile, peDraftBlock.id, p.dayId, p.exId);
+      else purgeDayLog(profile, peDraftBlock.id, p.dayId);
+    });
+    profile.blocks[peDraftBlock.id] = peDraftBlock;
+    peDraftBlock = null; peDraftPurge = []; peDraftOriginalDay = {};
+    save(); render();
+    closeSheet('planSheet');
+    mark('Plan actualizado — el registro se mantiene');
+  };
+
+  $('peExport').onclick = async () => {
+    const problem = syncDraftFromForm();
+    if (problem) { await tell('Falta algo', problem); return; }
+    renderPlanEditor();
+    const plan = blockSharePlan(peDraftBlock);
+    const name = 'heavy-iron-plan-' + (slugify(peDraftBlock.name) || 'bloque') + '-' + new Date().toISOString().slice(0, 10) + '.json';
+    downloadFile(name, JSON.stringify(plan, null, 2), 'application/json');
+    mark('Plan descargado — sin registro, listo para "Importar JSON" en otro sitio');
+  };
+
+  $('peClose').onclick = closePlanEditor;
+
+  $('planSheet').addEventListener('click', e => { if (e.target.id === 'planSheet') closePlanEditor(); });
+
+  $('peDeleteBlock').onclick = async () => {
+    const profile = getProfile();
+    if (profile.blockOrder.length <= 1) { await tell('No se puede', 'No puedes eliminar el único bloque de ' + profile.label + '.'); return; }
+    const id = peDraftBlock.id;
+    const sets = blockLoggedSets(profile, id);
+    const okd = await ask({
+      title: '¿Eliminar "' + peDraftBlock.name + '"?',
+      body: (sets ? 'Se borran sus ' + setsLabel(sets) + '. ' : 'No tiene nada registrado. ') +
+        'Es el bloque en el que estás entrenando: al borrarlo pasas al bloque más reciente que quede. No se puede deshacer.',
+      okLabel: 'Eliminar', danger: true,
+    });
+    if (!okd) return;
+    closePlanEditor();
+    deleteBlocks(profile, [id]);
+    mark('Bloque eliminado');
+  };
+}

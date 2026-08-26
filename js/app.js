@@ -13,6 +13,8 @@ let focusDrop = '';
 let tId = null, tEndAt = 0, tTotal = 0, tOverNotified = false;
 let wakeLock = null;
 
+const $ = id => document.getElementById(id);
+
 /* Anything that ends up inside an innerHTML string goes through this first.
    Exercise names, rep ranges and the numbers you logged all reach the app
    from places it does not control — a pasted block, a JSON file fetched
@@ -3306,6 +3308,15 @@ $('bCsv').onclick = () => {
   downloadFile('heavy-iron-series-' + new Date().toISOString().slice(0, 10) + '.csv', csv, 'text/csv;charset=utf-8');
   mark(lines === 1 ? '1 serie exportada' : lines + ' series exportadas');
 };
+
+/* block-editor.js and profile-transfer.js load before app.js, but their
+   DOM wiring (button clicks etc.) is deferred into these two functions
+   instead of running at their own top level — so it only ever runs once
+   every script on the page (this one included) has finished parsing,
+   regardless of load order. See js/block-editor.js and
+   js/profile-transfer.js for why that matters. */
+wireBlockEditor();
+wireProfileTransfer();
 
 load();
 registerServiceWorker();

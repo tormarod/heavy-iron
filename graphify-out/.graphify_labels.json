@@ -1,6 +1,6 @@
 {
   "0": "jsQR.js",
-  "1": "load",
+  "1": "toast",
   "2": "Heavy Iron (project overview)",
   "3": "app.js",
   "4": "drawApp",
@@ -8,7 +8,7 @@
   "6": "block-editor.js",
   "7": "drawQrShow",
   "8": "openSetup",
-  "9": "stopRest",
+  "9": "startRest",
   "10": "renderProfileExports",
   "11": "data.js",
   "12": "smoke.js",
@@ -17,5 +17,10 @@
   "15": "profile-transfer.js",
   "16": "sw.js",
   "17": "migrate",
-  "18": "CLAUDE.md"
+  "18": "CLAUDE.md",
+  "19": "mark",
+  "20": ".tmp_check.js",
+  "21": ".tmp_check2.js",
+  "22": ".tmp_repro.js",
+  "23": ".tmp_repro2.js"
 }
