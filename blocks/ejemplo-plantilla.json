@@ -69,6 +69,7 @@
       ]
     }
   ],
+  "priority": ["Pecho"],
   "phase": {
     "1": { "r": "2–3 RIR", "t": "Ajustando pesos." },
     "4": { "r": "1–2 RIR", "t": "+1 serie en el primer ejercicio de cada día." },

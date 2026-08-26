@@ -206,6 +206,11 @@
         </div>
       </div>
       <p class="setup-hint">En la semana de descarga cada ejercicio hace la mitad de sus series (mínimo 2). Elige "Sin descarga" si este bloque no lleva.</p>
+      <div class="pe-priority">
+        <span class="pe-field-lbl">Músculos prioritarios de este bloque</span>
+        <div class="pri-chips" id="pePriority" role="group" aria-label="Músculos prioritarios de este bloque"></div>
+        <p class="setup-hint" id="pePriorityHint"></p>
+      </div>
       <div id="peDays"></div>
       <div class="sheet-btns">
         <button class="sm key" id="peSave">Guardar cambios</button>
@@ -318,6 +323,10 @@
         <button type="button" class="seg-btn" data-dim="muscle">Músculo</button>
         <button type="button" class="seg-btn" data-dim="pattern">Patrón</button>
         <button type="button" class="seg-btn" data-dim="type">Tipo</button>
+      </div>
+      <div class="seg" id="volumeSpan" role="group" aria-label="Periodo">
+        <button type="button" class="seg-btn" data-span="week">Esta semana</button>
+        <button type="button" class="seg-btn" data-span="block">Todo el bloque</button>
       </div>
       <p class="sheet-d" id="volumeSub"></p>
       <!-- kilos moved in the block so far: log-only, so it sits outside the

@@ -304,5 +304,10 @@
       "r": "Descarga",
       "t": "Mitad de series, ~60% del peso. Nada duro. De eso se trata."
     }
-  }
+  },
+  "priority": [
+    "Pecho",
+    "Espalda",
+    "Hombro"
+  ]
 }

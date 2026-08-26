@@ -257,7 +257,12 @@ function normalizeImportedBlock(raw) {
     }
   }
 
-  return { name, weeks, deload, days, phase };
+  /* Same freeform treatment as the muscle tags it points at: cleaned and
+     capped, never validated against the plan — a name with no exercises
+     under it just never gets flagged. */
+  const priority = cleanPriority(raw.priority);
+
+  return { name, weeks, deload, days, phase, priority };
 }
 
 /* A fresh block object from an already-validated import. Shared by every
@@ -265,12 +270,15 @@ function normalizeImportedBlock(raw) {
    already has blocks, and installing it as the very first one during setup
    — so they can't drift on what fields a block actually needs. */
 function blockFromNormalized(normalized) {
-  return {
+  const block = {
     id: 'block-' + Date.now(),
     name: normalized.name, createdAt: new Date().toISOString(),
     weeks: normalized.weeks, deload: normalized.deload,
     days: normalized.days, phase: normalized.phase,
   };
+  /* Absent unless there is one, same as on any other block. */
+  if (normalized.priority && normalized.priority.length) block.priority = normalized.priority.slice();
+  return block;
 }
 
 /* Filing an already-validated block into the current profile. Split out from
@@ -393,6 +401,9 @@ async function buildAiPrompt() {
     '      ]',
     '    }',
     '  ],',
+    '  "priority": [ // opcional — músculos prioritarios del bloque, con los mismos nombres que uses en "muscle" (máx ' + PRIORITY_MAX + ')',
+    '    "Pecho", "Hombro"',
+    '  ],',
     '  "phase": { // opcional — objetivo de cada semana, clave = número de semana',
     '    "1": { "r": string corto, p.ej. RIR objetivo (máx ' + L.phaseR + ' car.), "t": texto del objetivo de esa semana (máx ' + L.phaseT + ' car.) }',
     '  }',
@@ -512,10 +523,48 @@ function moveLive(arr, item, dir) {
   arr[j] = item;
 }
 
+/* The priority muscles of this block, as chips you tap rather than a field
+   you type into: the taxonomy is freeform, but the useful answers are the
+   muscle names already in the plan, and a typo would silently mark nothing.
+   A stored name whose exercises have since been retired still gets a chip,
+   so it can be un-marked rather than being stuck in the block invisibly. */
+function renderPriorityChips() {
+  const host = $('pePriority');
+  const tags = blockTagsFor('muscle', peDraftBlock).filter(t => t !== UNCLASSIFIED_LABEL);
+  blockPriority(peDraftBlock).forEach(t => { if (tags.indexOf(t) < 0) tags.push(t); });
+  tags.sort((a, b) => a.localeCompare(b, 'es'));
+
+  host.innerHTML = '';
+  tags.forEach(tag => {
+    const on = isPriority(peDraftBlock, tag);
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'pri-chip' + (on ? ' on' : '');
+    b.textContent = tag;
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.setAttribute('aria-label', tag + (on ? ' — prioritario, quitar' : ' — marcar como prioritario'));
+    b.onclick = () => {
+      const next = blockPriority(peDraftBlock).slice();
+      const at = next.indexOf(tag);
+      if (at >= 0) next.splice(at, 1); else next.push(tag);
+      const clean = cleanPriority(next);
+      if (clean.length) peDraftBlock.priority = clean; else delete peDraftBlock.priority;
+      renderPriorityChips();
+    };
+    host.appendChild(b);
+  });
+
+  $('pePriorityHint').textContent = tags.length
+    ? 'Los que marques se vigilan en "Volumen muscular → Todo el bloque": si un músculo prioritario se queda por debajo de la franja de 10–20 series por semana, lo avisa.'
+    : 'Ningún ejercicio de este bloque tiene músculo asignado todavía. Ponles uno abajo y aparecerán aquí.';
+}
+
 function renderPlanEditor() {
   const host = $('peDays');
   const profile = getProfile();
   host.innerHTML = '';
+
+  renderPriorityChips();
 
   const live = dayList(peDraftBlock);
   live.forEach((day, pos) => host.appendChild(buildDayBox(profile, day, pos, live.length)));

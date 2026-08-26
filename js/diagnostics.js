@@ -145,6 +145,15 @@ function diagVerdict(trend, sig) {
              cambio: 'Marca el RIR unas semanas: sin eso no se puede distinguir fatiga de falta de intensidad.' };
   }
   if (trend === 'up') {
+    /* The one row of the matrix that needs the volume side: growing on
+       fewer sets than the range asks for is not a problem, it is unused
+       margin — and the muscle you said the block was for is where to
+       spend it. */
+    if (sig.volLow) {
+      return { lectura: 'Funciona, y con margen: ' + sig.volTag + ' se queda por debajo de la franja de series' +
+                 (sig.volPriority ? ', siendo prioritario' : ''),
+               cambio: 'Va bien con pocas series. Si quieres más, añádeselas a ' + sig.volTag + ' antes que a nada.' };
+    }
     return { lectura: 'Funciona', cambio: 'No toques nada.' };
   }
   return { lectura: 'Aún no hay suficientes sesiones',
@@ -157,6 +166,11 @@ function diagVerdict(trend, sig) {
 function diagRows(profile, block) {
   const rows = [];
   const seen = new Set();
+  /* Volume as actually logged, not as prescribed: "you have room to add
+     sets" is a claim about the sets you did. Computed once for the whole
+     block and looked up per exercise by its muscle tag. */
+  const volByTag = {};
+  volumeTrendRows('log', profile, block, 'muscle').forEach(r => { volByTag[r.label] = r; });
   dayList(block).forEach(day => {
     exList(day).forEach(ex => {
       if (seen.has(ex.id)) return;
@@ -173,6 +187,12 @@ function diagRows(profile, block) {
         estDown: !!est && est.kind === 'down',
         gap: diagMedianGap(points),
       };
+      const vol = volByTag[muscleTag(ex)];
+      if (vol && vol.label !== UNCLASSIFIED_LABEL) {
+        sig.volTag = vol.label;
+        sig.volPriority = vol.priority;
+        sig.volLow = vol.zone === 'under' || vol.zone === 'maint';
+      }
       let trend = 'none', pct = 0, change = null;
       if (points.length >= DIAG_MIN_SESSIONS) {
         pct = diagSlope(points);

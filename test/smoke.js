@@ -1275,6 +1275,115 @@ const ok = (name, cond, extra) => {
     await ctx.close();
   }
 
+  // ---------- volume across the block + priority muscles ----------
+  {
+    console.log('\n== volumen del bloque y músculos prioritarios ==');
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await dismissSetup(page);
+    /* save() is debounced 400ms; a seed written inside that window gets
+       clobbered by the pending flush. */
+    await page.waitForTimeout(700);
+
+    ok('the shipped plan declares its priority muscles',
+       (await page.evaluate(() => (JSON.parse(localStorage.getItem('heavy-iron-v1'))
+          .profiles.hombre.blocks['block-1'].priority || []).join(','))) === 'Pecho,Espalda,Hombro');
+
+    await page.click('#volumeBtn');
+    await page.waitForTimeout(200);
+    ok('the volume sheet still opens on this week', await page.locator('#volumeSpan .seg-btn[data-span="week"]').getAttribute('aria-pressed') === 'true');
+    await page.click('#volumeSpan .seg-btn[data-span="block"]');
+    await page.waitForTimeout(250);
+
+    const rowsOf = () => page.evaluate(() => [...document.querySelectorAll('.vol-trend')].map(r => ({
+      tag: r.dataset.tag, cls: r.className, n: r.querySelector('.vol-trend-n').textContent,
+    })));
+    let rows = await rowsOf();
+    ok('one row per muscle in the block', rows.length >= 7, JSON.stringify(rows.map(r => r.tag)));
+    ok('each row reports where the muscle typically sits',
+       rows.every(r => /series?\/semana/.test(r.n)), JSON.stringify(rows.map(r => r.n)));
+    ok('a muscle inside 10–20 reads as in the band',
+       (rows.find(r => r.tag === 'Pecho') || {}).n.includes('en la franja'), (rows.find(r => r.tag === 'Pecho') || {}).n);
+    /* "Sin clasificar" is a bucket the app assigned itself, not a muscle —
+       it gets a number but never a verdict against a per-muscle landmark. */
+    const unc = rows.find(r => r.tag === 'Sin clasificar');
+    ok('the unclassified bucket gets no band verdict',
+       !!unc && !/franja|mantenimiento/.test(unc.n), unc && unc.n);
+    ok('the shipped plan raises no alarm about itself', await page.locator('.vol-warn').count() === 0);
+
+    /* Starve a priority muscle and the amber flag has to fire, sort first,
+       and name the non-priority muscle eating the volume. */
+    await page.click('#volumeClose');
+    await page.waitForTimeout(200);
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      s.profiles.hombre.blocks['block-1'].days.forEach(d => d.ex.forEach(e => {
+        if (e.muscle === 'Pecho') { e.sets = 1; delete e.add; }
+        /* Tríceps, not Hombro: the "eating the volume" half of the warning
+           is about muscles you did NOT mark, and Hombro ships marked. */
+        if (e.muscle === 'Tríceps') e.sets = 12;
+      }));
+      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+    });
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(400);
+    await page.click('#volumeBtn');
+    await page.waitForTimeout(150);
+    await page.click('#volumeSpan .seg-btn[data-span="block"]');
+    await page.waitForTimeout(250);
+    ok('a starved priority muscle raises the amber flag', await page.locator('.vol-warn').count() === 1);
+    const warn = await page.locator('.vol-warn').textContent();
+    ok('the flag names the priority muscle', warn.includes('Pecho'), warn);
+    ok('and the non-priority muscle sitting over the band', warn.includes('Tríceps'), warn);
+    rows = await rowsOf();
+    ok('the flagged muscle sorts first', rows[0].tag === 'Pecho' && rows[0].cls.includes('flagged'), JSON.stringify(rows[0]));
+
+    /* The band is a per-muscle landmark: no such number exists for a
+       movement pattern, so switching dimension drops it. */
+    await page.click('#volumeDim .seg-btn[data-dim="pattern"]');
+    await page.waitForTimeout(250);
+    ok('no band on the pattern dimension', await page.locator('.vol-warn').count() === 0);
+    ok('and no band verdict in the rows either',
+       (await rowsOf()).every(r => !/franja|mantenimiento/.test(r.n)));
+    await page.click('#volumeDim .seg-btn[data-dim="muscle"]');
+    await page.click('#volumeClose');
+    await page.waitForTimeout(200);
+
+    /* Marking priorities is a chip you tap, not a field you type. */
+    await page.click('#editPlan');
+    await page.waitForTimeout(300);
+    const chips = () => page.evaluate(() => [...document.querySelectorAll('#pePriority .pri-chip')]
+      .map(c => c.textContent + (c.getAttribute('aria-pressed') === 'true' ? '*' : '')));
+    const before = await chips();
+    ok('the plan editor offers a chip per muscle in the block', before.length >= 7, JSON.stringify(before));
+    ok('the shipped priorities start marked', before.filter(c => c.endsWith('*')).length === 3, JSON.stringify(before));
+    ok('the unclassified bucket is never offered as a priority', !before.some(c => c.startsWith('Sin clasificar')));
+    await page.click('#pePriority .pri-chip:not(.on)');
+    await page.waitForTimeout(150);
+    ok('tapping a chip marks it', (await chips()).filter(c => c.endsWith('*')).length === 4);
+    await page.click('#pePriority .pri-chip.on');
+    await page.waitForTimeout(150);
+    ok('tapping it again clears it', (await chips()).filter(c => c.endsWith('*')).length === 3);
+    await page.click('#peSave');
+    await page.waitForTimeout(400);
+    ok('priorities survive a save and a reload',
+       (await page.evaluate(() => (JSON.parse(localStorage.getItem('heavy-iron-v1'))
+          .profiles.hombre.blocks['block-1'].priority || []).length)) === 3);
+
+    /* It travels with the plan, like every other block-level field. */
+    ok('the exported plan carries the priorities',
+       await page.evaluate(() => (blockSharePlan(getBlock()).priority || []).join(',')) === 'Pecho,Espalda,Hombro');
+    ok('an import without priorities simply has none',
+       await page.evaluate(() => (normalizeImportedBlock({ days: [{ ex: [{ n: 'X', reps: '8-12' }] }] }).priority || []).length) === 0);
+    ok('an imported list is cleaned like any other freeform tag',
+       await page.evaluate(() => normalizeImportedBlock({
+         priority: ['  Pecho  ', 'Pecho', '', 'Espalda'],
+         days: [{ ex: [{ n: 'X', reps: '8-12' }] }],
+       }).priority.join(',')) === 'Pecho,Espalda');
+    await ctx.close();
+  }
+
   // ---------- layout on real phone widths ----------
   {
     console.log('\n== layout ==');

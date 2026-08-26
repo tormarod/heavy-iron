@@ -73,6 +73,10 @@ from a copy of the plan and leaves this one's history where it is.
 - **Diagnóstico**: every exercise's strength trend at once, ranked worst
   first and crossed with the signals already in your log, so a stall comes
   with a reason and something to change — see [Diagnóstico](#diagnóstico).
+- **Volume as a trend, with landmarks**: the block's weeks in one view per
+  muscle, against the 10–20 hard-sets band, with the muscles you marked
+  `prioritario` flagged in amber when they fall under it — see
+  [Volume across the block](#volume-across-the-block).
 - **Weekly volume, three ways to slice it**: hard sets per muscle, per
   movement pattern, or compound vs. isolation — as the plan prescribes
   them this week, or as you actually ticked them, with the kilos moved so
@@ -567,12 +571,13 @@ underneath. Groups sitting at zero are listed too — seeing which of *this
 block's own* muscles are getting nothing this week is as much the point as
 the ranking.
 
-Two toggles:
+Three toggles:
 
 | Toggle | |
 |---|---|
 | **Plan** vs. **Registrado** | what this week asks for, against what you have actually ticked done. **Plan** counts sets the way the session does, so the deload halving and the "+1 set from week N" additions are already in the number. |
 | **Músculo** / **Patrón** / **Tipo** | which tag to group by: `ex.muscle`, `ex.pattern`, `ex.type` — see [the JSON shape](#block-json-shape). |
+| **Esta semana** vs. **Todo el bloque** | one week's bars, or the whole block as a trend with the growth band drawn on it — see [Volume across the block](#volume-across-the-block). |
 
 The dimensions are orthogonal on purpose. "What does this hit" and "what
 shape is this movement" are different questions, and a plan can look
@@ -586,9 +591,72 @@ its `type` first, so isolation work — which rarely has a pressing or
 pulling plane worth naming — groups under *Aislamiento* instead of burying
 that total among the genuinely untagged.
 
-Both toggles keep the same set of rows, so switching one only ever moves
-the numbers. That is what makes plan-against-done readable as adherence
-rather than as two unrelated charts.
+All three toggles keep the same set of rows, so switching one only ever
+moves the numbers. That is what makes plan-against-done readable as
+adherence rather than as two unrelated charts.
+
+### Volume across the block
+
+One week at a time answers "what did I do on Monday". It cannot answer the
+question you actually have, which is *did chest volume go up across this
+block, and is it enough?* **Todo el bloque** answers that: one line per
+muscle across every week of the block, and — on the **Músculo**
+dimension — the landmarks that turn a number into a verdict.
+
+- **The shaded band is 10–20 hard sets per muscle per week.** Roughly the
+  floor for growth at the bottom, and the point past which more sets keep
+  helping but with clearly diminishing returns and a rising fatigue bill at
+  the top.
+- **The dotted line is 6.** Below it you are maintaining, not growing —
+  which is fine for legs on an upper-body block, and fatal for the muscle
+  the block is supposed to be for.
+- **Each row says where that muscle typically sits**, as a median across
+  the weeks that count. The deload is excluded, because halving it is the
+  point of it, and on **Registrado** so are weeks you have not trained yet:
+  a week with nothing logged is not a week of low volume.
+- **The current week is the filled dot**, and the deload week is the faint
+  vertical line.
+
+These are working ranges from the hypertrophy literature, not precision
+targets — individual response varies enough that the point of drawing them
+is to find *your* numbers. That is why they are a band you read against
+rather than a target the app nags you toward.
+
+It draws small multiples — one sparkline per muscle — rather than a dozen
+lines on one chart. On a 375px phone the superimposed version is spaghetti,
+and the band can only be shaded legibly behind one series at a time.
+
+The band is a *per-muscle* landmark, so **Patrón** and **Tipo** get the
+trend without it: nobody has established a weekly set range for horizontal
+pushing. **Sin clasificar** gets a line and a number but no verdict either
+— it is a bucket whose members' only shared property is a missing tag.
+
+### Priority muscles
+
+**Editar plan** has a row of chips, one per muscle in the block: tap the
+ones this block is actually *for*. They are stored on the block itself
+(`block.priority`), not on your profile, because priorities change from
+block to block — legs this one, arms the next — and they travel with the
+plan through export, QR and JSON import.
+
+The payoff is one line, in amber, at the top of **Todo el bloque**: when a
+muscle you marked sits under the band it says so, and if a muscle you
+*didn't* mark is sitting over the band it names that one too. That is the
+whole complaint — "I'm not growing where I want to" — rendered as two
+numbers instead of a feeling.
+
+They are chips rather than a text field because the taxonomy is freeform
+everywhere else and a typo would silently mark nothing. A muscle you
+marked whose exercises have since been retired keeps its chip, so you can
+un-mark it rather than leaving it set invisibly.
+
+The shipped plans come with theirs already marked — `Pecho`, `Espalda`,
+`Hombro` on the men's, `Glúteo`, `Cuádriceps` on the women's — matching
+what each plan is documented to be built around. `Isquios` is deliberately
+left unmarked on the women's plan: at 7 direct sets a week it sits under
+the band, so marking it would open a fresh install on a warning about its
+own shipped plan. Mark it yourself and the dashboard will say exactly
+that, which is the feature working rather than a bug.
 
 ### Kilos moved so far
 
@@ -651,7 +719,11 @@ exactly why guessing at a stall goes wrong.
 | plano | ninguna | Estancado sin señal clara | Marca el RIR unas semanas — sin eso no se distingue fatiga de falta de intensidad |
 | bajando | huecos >7 días de mediana | Asistencia, no programa | Nada que tocar en el plan |
 | bajando | sin huecos | Pierde fuerza de verdad | Si varios ejercicios bajan a la vez, mira el descanso y lo que comes — eso la app no lo ve |
+| subiendo | el músculo va bajo la franja | Margen sin usar | Va bien con pocas series — si añades, añádeselas ahí primero |
 | subiendo | — | Funciona | No toques nada |
+
+The volume row reads **Registrado**, not **Plan**: "you have room to add
+sets" is a claim about the sets you actually did.
 
 The signals are read off the most recent sessions rather than the whole
 window, because what you change on Monday answers to how last Monday went.
@@ -910,6 +982,7 @@ history intact.
       ]
     }
   ],
+  "priority": ["Pecho", "Hombro"],
   "phase": {
     "1": { "r": "2–3 RIR", "t": "Text shown for week 1's goal." },
     "8": { "r": "Descarga", "t": "Text shown for week 8 (deload)." }
@@ -951,6 +1024,12 @@ Field notes:
   both fall back to your default increment from **Ajustes** (2,5 kg / 5 lb
   out of the box) — so it is worth setting per exercise where the real step
   differs: 1 kg on cable lateral raises, 5 kg on a leg press.
+- `priority` (block): optional list of muscle names — the muscles this
+  block is *for*, using the same freeform names as `ex.muscle`. Trimmed,
+  de-duplicated and capped at 12; anything blank or unrecognisable is
+  dropped rather than rejecting the import. Nothing checks that a name has
+  exercises under it — a name with none simply never gets flagged. See
+  [Priority muscles](#priority-muscles).
 - `weeks` (block): optional, 1–16, defaults to `8`.
 - `deload` (block): optional — the week number whose sets are halved. Use
   `0` for a block with no deload. Defaults to `8` on an 8-week block and
