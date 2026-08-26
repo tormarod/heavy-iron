@@ -5,6 +5,11 @@ let ready = false;
 /* Exercise ids whose "Ajustes" (machine setup) box is expanded right now —
    in-memory only, so every fresh open of the app starts collapsed again. */
 const expandedSetup = new Set();
+/* Set by the ↓ button so the render it triggers can put the cursor straight
+   into the weight box of the drop it just created — the same trick the
+   "Ajustes" box uses, but for a field that does not exist until the render
+   after the click. Cleared as soon as it is honoured. */
+let focusDrop = '';
 let tId = null, tEndAt = 0, tTotal = 0, tOverNotified = false;
 let wakeLock = null;
 
@@ -858,7 +863,7 @@ function entry(profile, blockId, w, dayId, exId, n) {
   return a.slice(0, n);
 }
 
-const rowUsed = r => !!(r && (r.done || (r.w !== '' && r.w != null) || (r.r !== '' && r.r != null)));
+const rowUsed = r => !!(r && (r.done || (r.w !== '' && r.w != null) || (r.r !== '' && r.r != null) || dropsOf(r).some(dropUsed)));
 
 /* ---------- rep-decay flag ----------
    Free, because it needs no input at all: derived from the reps already
@@ -906,6 +911,70 @@ function setRir(profile, blockId, w, dayId, exId, val) {
   if (!profile.rir[blockId][k]) profile.rir[blockId][k] = {};
   if (val) profile.rir[blockId][k][exId] = val;
   else delete profile.rir[blockId][k][exId];
+}
+
+/* ---------- weight drops ----------
+   A drop is what happened *inside* one set after the weight came off: the
+   planned kind (a dropset — you finished the set, stripped the stack and
+   kept going) and the unplanned kind (you couldn't reach the target reps at
+   that weight, so you dropped and finished them lighter). Same numbers
+   either way, opposite meanings, which is why `dk` records which it was.
+
+   Unlike RIR, this does NOT get a parallel map: a drop belongs to one
+   specific set of one specific exercise, and a map keyed by set index would
+   need re-syncing every time the plan's set count moved, plus a twin of
+   every purge/move/clear path. Living on the row means clearing a day,
+   deleting a block, moving an exercise between days and undo all carry it
+   for free. The cost is paid in two places only — the share/import
+   normalizers and the CSV — and an older copy of the app receiving a QR
+   transfer just ignores the field, which loses the drops and keeps the log.
+
+   `d` is an array, not a single pair, because a triple drop is one set:
+   60×8 → 45×5 → 30×4 is three entries against set 3, not three sets. */
+const DROP_KINDS = ['drop', 'forced'];
+const DROP_LABEL = { drop: 'Dropset', forced: 'Forzado' };
+const DROP_HINT = {
+  drop: 'Dropset: acabaste la serie y bajaste peso para seguir',
+  forced: 'Forzado: no llegabas a las reps, bajaste peso para acabarlas',
+};
+/* Enough for a run-the-rack (60→45→35→25); past that you are doing a
+   different exercise, not a drop. */
+const MAX_DROPS = 4;
+
+/* Defensive on purpose: `d` arrives from localStorage and from imported
+   payloads, and every reader below runs inside the session render. This one
+   hands back the *stored* array rather than a cleaned copy, so the indices
+   the ✕ buttons splice on stay honest — which is why the readers filter
+   with dropUsed (null-safe) instead of trusting the entries. */
+const dropsOf = r => (r && Array.isArray(r.d)) ? r.d : [];
+const dropUsed = d => !!(d && ((d.w !== '' && d.w != null) || (d.r !== '' && d.r != null)));
+const dropKind = r => (r && DROP_KINDS.indexOf(r.dk) >= 0) ? r.dk : 'drop';
+
+/* Only the segments that hold both numbers move any weight, and only a
+   ticked set counts at all — exactly the rule the main tonnage line
+   already follows for the set itself. */
+function dropVolume(r) {
+  return dropsOf(r).filter(dropUsed).reduce((t, d) => {
+    const w = num(d.w), reps = num(d.r);
+    return t + ((isNaN(w) || isNaN(reps)) ? 0 : w * reps);
+  }, 0);
+}
+
+/* "60×8" for the set, "60×8 ↓45×5" once it has a drop — the one string used
+   by the previous-week line and the CSV both. */
+function setSummary(r) {
+  const head = String(r.w == null ? '' : r.w) + '×' + (r.r === '' || r.r == null ? '?' : r.r);
+  const tail = dropsOf(r).filter(dropUsed)
+    .map(d => '↓' + (d.w === '' || d.w == null ? '?' : d.w) + '×' + (d.r === '' || d.r == null ? '?' : d.r));
+  return tail.length ? head + ' ' + tail.join(' ') : head;
+}
+
+/* A set the weight had to come off to finish is the plainest statement there
+   is that the weight was too heavy — so it joins RIR-0 and rep decay as a
+   reason for copyPrev to withhold next week's automatic increase. A planned
+   dropset says nothing of the sort and is deliberately not counted here. */
+function forcedDrop(rows) {
+  return (rows || []).some(r => r && r.done && dropKind(r) === 'forced' && dropsOf(r).some(dropUsed));
 }
 
 /* Rows logged past what the current plan shows — kept, but out of sight. */
@@ -1917,7 +1986,7 @@ function drawApp() {
     const prev = lastTime(profile, block.id, day.id, ex.id, profile.week);
     const prevTxt = prev
       ? '<div class="last"><span class="tag">Sem. ' + prev.week + '</span><span><b>' +
-        prev.sets.map(s => esc(s.w) + '×' + esc(s.r || '?')).join('</b> · <b>') + '</b></span></div>'
+        prev.sets.map(s => esc(setSummary(s))).join('</b> · <b>') + '</b></span></div>'
       : '';
 
     const decay = repDecay(rows);
@@ -2013,6 +2082,12 @@ function drawApp() {
       if (r.done) {
         const w = num(r.w), reps = num(r.r);
         if (!isNaN(w) && !isNaN(reps)) tonnage += w * reps;
+        /* The reps after the weight came off are still reps that moved
+           weight. They do not add a *set* anywhere — not to the progress
+           bar, not to the volume dashboard, which compares set counts
+           against the plan — but leaving them out of the tonnage would
+           under-report the hardest sets in the session. */
+        tonnage += dropVolume(r);
         if (r.ts > lastTs) lastTs = r.ts;
       }
 
@@ -2021,10 +2096,13 @@ function drawApp() {
       /* text + inputmode rather than type=number: a Spanish keyboard sends a
          comma, and type=number throws the whole value away when it sees one,
          so "22,5" silently became an empty box. */
+      const drops = dropsOf(r);
       row.innerHTML =
         '<div class="set-n">' + (si + 1) + '</div>' +
         '<div class="fld"><input type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next"><u>' + esc(units()) + '</u></div>' +
         '<div class="fld"><input type="text" inputmode="numeric" autocomplete="off" enterkeyhint="next"><u>rep</u></div>' +
+        '<button type="button" class="drop-add' + (drops.length ? ' on' : '') + '"' +
+          (drops.length >= MAX_DROPS ? ' disabled' : '') + '>↓</button>' +
         '<button type="button" class="tick' + (r.done ? ' on' : '') + '" aria-pressed="' + (r.done ? 'true' : 'false') + '">✓</button>';
 
       const [wIn, rIn] = row.querySelectorAll('input');
@@ -2061,11 +2139,93 @@ function drawApp() {
         save(); render();
         if (adopted) mark('Serie ' + (si + 1) + ' anotada con ' + adopted + ' ' + units() + ' (lo de la semana anterior) — cámbialo si no fue eso');
       };
+
+      /* ↓ adds a segment rather than opening a panel: there is nothing to
+         configure before you have one, and mid-set — rest timer running,
+         hand on the stack — one tap and a cursor in the weight box is the
+         whole interaction. The segments are the panel. */
+      const dropAdd = row.querySelector('.drop-add');
+      dropAdd.setAttribute('aria-label', drops.length >= MAX_DROPS
+        ? 'Máximo de bajadas de peso alcanzado en la serie ' + (si + 1) + ' de ' + ex.n
+        : 'Añadir bajada de peso a la serie ' + (si + 1) + ' de ' + ex.n);
+      dropAdd.onclick = () => {
+        if (dropsOf(r).length >= MAX_DROPS) return;
+        if (!Array.isArray(r.d)) r.d = [];
+        r.d.push({ w: '', r: '' });
+        focusDrop = ex.id + '#' + si + '#' + (r.d.length - 1);
+        save(); render();
+      };
       box.appendChild(row);
+
+      drops.forEach((d, di) => {
+        if (!d || typeof d !== 'object' || Array.isArray(d)) return;
+        const dRow = document.createElement('div');
+        dRow.className = 'drop-row' + (r.done ? ' done' : '');
+        dRow.innerHTML =
+          '<div class="drop-n">↳</div>' +
+          '<div class="fld"><input type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next"><u>' + esc(units()) + '</u></div>' +
+          '<div class="fld"><input type="text" inputmode="numeric" autocomplete="off" enterkeyhint="next"><u>rep</u></div>' +
+          '<span></span>' +
+          '<button type="button" class="drop-x">✕</button>';
+
+        const [dwIn, drIn] = dRow.querySelectorAll('input');
+        dwIn.value = d.w == null ? '' : d.w;
+        drIn.value = d.r == null ? '' : d.r;
+        dwIn.placeholder = '—';
+        drIn.placeholder = '—';
+        const where = 'bajada ' + (di + 1) + ', serie ' + (si + 1) + ' de ' + ex.n;
+        dwIn.setAttribute('aria-label', 'Peso tras bajar, ' + where);
+        drIn.setAttribute('aria-label', 'Repeticiones tras bajar, ' + where);
+        dwIn.oninput = e => { d.w = e.target.value.replace(/[^0-9.,]/g, ''); if (d.w !== e.target.value) e.target.value = d.w; save(); };
+        drIn.oninput = e => { d.r = e.target.value.replace(/[^0-9]/g, ''); if (d.r !== e.target.value) e.target.value = d.r; save(); };
+
+        const del = dRow.querySelector('.drop-x');
+        del.setAttribute('aria-label', 'Quitar ' + where);
+        del.onclick = () => {
+          r.d.splice(di, 1);
+          /* No segments left means no kind to remember either — the row goes
+             back to being exactly the {w,r,done,ts} it started as. */
+          if (!r.d.length) { delete r.d; delete r.dk; }
+          save(); render();
+        };
+
+        box.appendChild(dRow);
+
+        /* Marked now, focused at the end of the render: the card is still
+           detached from the document at this point, and focus() on a
+           detached element is silently a no-op. */
+        if (focusDrop === ex.id + '#' + si + '#' + di) dwIn.dataset.dropFocus = '1';
+      });
+
+      /* One kind per set, not per segment: a triple drop is one decision
+         about one set, and the two readings never mix inside it. */
+      if (drops.length) {
+        const kindRow = document.createElement('div');
+        kindRow.className = 'drop-kind';
+        const current = dropKind(r);
+        DROP_KINDS.forEach(k => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'drop-chip ' + k + (current === k ? ' on' : '');
+          b.textContent = DROP_LABEL[k];
+          b.setAttribute('aria-pressed', current === k ? 'true' : 'false');
+          b.setAttribute('aria-label', DROP_HINT[k] + ' — serie ' + (si + 1) + ' de ' + ex.n);
+          b.title = DROP_HINT[k];
+          b.onclick = () => { r.dk = k; save(); render(); };
+          kindRow.appendChild(b);
+        });
+        box.appendChild(kindRow);
+      }
     });
 
     list.appendChild(card);
   });
+
+  if (focusDrop) {
+    focusDrop = '';
+    const target = list.querySelector('[data-drop-focus]');
+    if (target) target.focus();
+  }
 
   $('barfill').style.width = total ? (doneN / total * 100) + '%' : '0%';
 
@@ -2110,13 +2270,17 @@ $('copyPrev').onclick = () => {
        A logged RIR of 0 (to failure) says so directly. RIR is optional
        though, so when it wasn't tapped, the rep-decay flag stands in for
        it: the same "first set probably went too close to failure" signal
-       the session view already shows for free. Either one withholds the
-       add and falls back to a plain copy, same as short of `inc` or the
-       range not being reached at all. */
+       the session view already shows for free. A *forced* weight drop
+       outranks both and is checked whatever the chip says — having to
+       strip the stack to finish the reps is not an inference about how
+       hard the set was, it is a record of the weight being too heavy.
+       (A planned dropset is not this and doesn't count.) Any of them
+       withholds the add and falls back to a plain copy, same as short of
+       `inc` or the range not being reached at all. */
     const top = repRangeTop(ex.reps);
     const reachedTop = top != null && from.every(r => r && r.done && hasReps(r) && num(r.r) >= top);
     const priorRir = getRir(profile, block.id, profile.week - 1, day.id, ex.id);
-    const suspectFailure = priorRir === '0' || (!priorRir && repDecay(from) > 0);
+    const suspectFailure = forcedDrop(from) || priorRir === '0' || (!priorRir && repDecay(from) > 0);
     const hitTop = !!(ex.inc && reachedTop && !suspectFailure);
     if (hitTop) leveled++;
     else if (ex.inc && reachedTop && suspectFailure) heldBack++;
@@ -2129,7 +2293,7 @@ $('copyPrev').onclick = () => {
   save(); render();
   mark('Pesos copiados de la semana ' + (profile.week - 1) +
     (leveled ? ' — ' + leveled + (leveled === 1 ? ' ejercicio sube' : ' ejercicios suben') + ' de peso (tope de rango la semana pasada)' : '') +
-    (heldBack ? ' — ' + heldBack + (heldBack === 1 ? ' ejercicio llegó al tope pero no sube' : ' ejercicios llegaron al tope pero no suben') + ' (la última serie parece que fue al fallo, no a 2 RIR)' : '') +
+    (heldBack ? ' — ' + heldBack + (heldBack === 1 ? ' ejercicio llegó al tope pero no sube' : ' ejercicios llegaron al tope pero no suben') + ' (hubo que bajar peso, o la última serie parece que fue al fallo y no a 2 RIR)' : '') +
     ' — supéralos');
 };
 
@@ -3643,6 +3807,12 @@ function blockShareLog(profile, block) {
         kept[exId] = rows.slice(0, last + 1).map(r => {
           const row = { w: r && r.w != null ? String(r.w) : '', r: r && r.r != null ? String(r.r) : '', done: !!(r && r.done) };
           if (r && Number.isFinite(+r.ts) && +r.ts > 0) row.ts = +r.ts;
+          /* Half-typed segments are dropped rather than sent: they are worth
+             nothing on the other phone and every byte here costs QR frames.
+             `dk` only travels when there is something for it to describe. */
+          const drops = dropsOf(r).filter(dropUsed)
+            .map(d => ({ w: d.w != null ? String(d.w) : '', r: d.r != null ? String(d.r) : '' }));
+          if (drops.length) { row.d = drops; row.dk = dropKind(r); }
           return row;
         });
       });
@@ -3774,6 +3944,14 @@ function normalizeImportedLog(rawLog, rawBlock, normalized) {
         if (!r || typeof r !== 'object' || Array.isArray(r)) return { w: '', r: '', done: false };
         const row = { w: txt(r.w, LOG_LIMITS.val), r: txt(r.r, LOG_LIMITS.val), done: !!r.done };
         if (Number.isFinite(+r.ts) && +r.ts > 0) row.ts = +r.ts;
+        const drops = (Array.isArray(r.d) ? r.d : []).slice(0, MAX_DROPS)
+          .filter(d => d && typeof d === 'object' && !Array.isArray(d))
+          .map(d => ({ w: txt(d.w, LOG_LIMITS.val), r: txt(d.r, LOG_LIMITS.val) }))
+          .filter(dropUsed);
+        if (drops.length) {
+          row.d = drops;
+          row.dk = DROP_KINDS.indexOf(r.dk) >= 0 ? r.dk : 'drop';
+        }
         return row;
       });
       if (rows.length) kept[exId] = rows;
@@ -4140,7 +4318,7 @@ function csvCell(v) {
 }
 
 function buildCsv() {
-  const rows = [['perfil', 'bloque', 'semana', 'dia', 'ejercicio', 'serie', units(), 'reps', 'hecha', 'fecha', 'rir']];
+  const rows = [['perfil', 'bloque', 'semana', 'dia', 'ejercicio', 'serie', units(), 'reps', 'hecha', 'fecha', 'rir', 'bajadas', 'tipo_bajada']];
   Object.keys(state.profiles).forEach(pk => {
     const profile = state.profiles[pk];
     profile.blockOrder.forEach(bId => {
@@ -4157,8 +4335,15 @@ function buildCsv() {
             const rir = getRir(profile, bId, w, day.id, ex.id);
             arr.forEach((r, i) => {
               if (!rowUsed(r)) return;
+              /* Drops stay on their set's own row, as "45x5 30x4", rather
+                 than becoming rows of their own — "serie" has to keep
+                 meaning the set number the plan asked for, or every count
+                 taken off this file stops matching the app's. */
+              const used = dropsOf(r).filter(dropUsed);
+              const drops = used.map(d => (d.w == null ? '' : d.w) + 'x' + (d.r == null ? '' : d.r)).join(' ');
               rows.push([profile.label, block.name, w, day.name, ex.n, i + 1, r.w, r.r,
-                         r.done ? 'si' : 'no', r.ts ? new Date(r.ts).toISOString().slice(0, 10) : '', rir]);
+                         r.done ? 'si' : 'no', r.ts ? new Date(r.ts).toISOString().slice(0, 10) : '', rir,
+                         drops, used.length ? DROP_LABEL[dropKind(r)] : '']);
             });
           }
         });

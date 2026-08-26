@@ -20,6 +20,7 @@ row per set:
 | Control | What it does |
 |---|---|
 | the two boxes | the weight and the reps you did. The greyed number is what you lifted on that set the last week you logged it — tick without typing and it takes that. `22,5` works. |
+| **↓** | records weight coming off *that* set — a dropset, or the drop you needed to finish the reps. Adds an indented row with its own boxes; up to four per set. See [Weight drops](#weight-drops). |
 | **✓** | marks the set done, and starts the rest timer. This is the control that counts: only ticked sets feed the chart, the **RÉCORD** badge and the totals. |
 | **⚙** | machine settings for that exercise — seat height, pin position. Saved to the plan, not to the log. |
 | **RIR último set** — `2+` `1` `0` | how the last set actually felt. Optional; tap the same chip again to clear it. |
@@ -80,6 +81,10 @@ from a copy of the plan and leaves this one's history where it is.
   box, a **RÉCORD** badge when a set beats everything you have ever logged
   on that exercise, and the session's total volume in the footer — see
   [During the session](#during-the-session).
+- **Weight drops on any set**: record a dropset, or the weight you had to
+  strip off to finish the reps, without inventing a set that wasn't there.
+  Marking a drop as *forzado* stops the automatic weight increase next
+  week — see [Weight drops](#weight-drops).
 - **Light and dark**, following the phone unless you override it with the
   ◐ button in the header.
 - **Backup / restore**: download a `.json` file with both profiles'
@@ -344,6 +349,8 @@ out from under a session: when a new version has been cached, a small
   under the sets — `⚠ caída de 4 reps: ¿primera serie al fallo?` — because
   that drop is usually the first set having been pushed closer to failure
   than the ones after it.
+- **A ↓ on every set, for the weight that came off.** See
+  [Weight drops](#weight-drops) below.
 - **Ajustes**, collapsed. A `⚙` button under each exercise's name opens a
   one-line field for seat height, pin position — whatever you'd otherwise
   have crammed into the technique cue. It is a plan field, not a log one:
@@ -357,13 +364,67 @@ out from under a session: when a new version has been cached, a small
   "top of the range *at 2 RIR*", not just top of the range, so a set ground
   out to failure doesn't count even if the rep number matches. A logged `0`
   RIR chip says so directly; with no RIR logged, the rep-decay flag stands
-  in for it. Either signal withholds the add and falls back to a plain copy
-  instead, and the status line says so ("… pero no sube — la última serie
-  parece que fue al fallo, no a 2 RIR").
+  in for it; and a set marked as a *forced* weight drop counts whatever the
+  chip says, because having to strip the stack to finish the reps is not an
+  inference about the set, it is a record of the weight being too heavy.
+  Any of those signals withholds the add and falls back to a plain copy
+  instead, and the status line says so ("… pero no sube — hubo que bajar
+  peso, o la última serie parece que fue al fallo y no a 2 RIR").
 
 Everything above is keyboard reachable, the set ticks are real buttons
 with pressed state, dialogs close with `Escape`, and pinch-zoom is no
 longer blocked.
+
+## Weight drops
+
+Every set row has a **↓** between the rep box and the tick. Pressing it
+adds an indented sub-row under that set with its own weight and rep boxes,
+and puts the cursor straight in the weight one — one tap, mid-set, with a
+hand still on the stack.
+
+Press **↓** again for another segment, up to four, so a triple drop
+(`60×8 → 45×5 → 30×4`) is recorded as what it is: **one set** with two
+drops, not three sets. **✕** removes a segment; removing the last one
+leaves the row exactly as it was before.
+
+Under the segments sit two chips, and which one you pick is the whole
+point of recording this:
+
+- **Dropset** — you finished the set, stripped weight and kept going. A
+  technique you chose. This is the default.
+- **Forzado** — you couldn't reach the target reps at that weight, so you
+  dropped and finished them lighter. This one is amber, because it changes
+  what the app does next week: it joins `0` RIR and the rep-decay flag as a
+  reason for **Copiar pesos de semana anterior** to *withhold* the
+  automatic increase, even on a week where every set hit the top of the
+  range. A dropset says nothing of the sort and never blocks it.
+
+### What a drop counts as
+
+- **Volume, yes.** The reps after the weight came off still moved weight,
+  so they are added to the footer's `kg movidos`.
+- **A set, no.** The progress bar, the "N de M series hechas" count and the
+  weekly volume dashboard all still see one set — the dashboard exists to
+  compare hard sets against what the plan asked for, and a drop doesn't
+  change what the plan asked for.
+- **A record, no.** A drop is lighter than the set it came off by
+  definition, so it can't win a **RÉCORD** badge and never enters the
+  progress chart or the estimated 1RM.
+
+### Where it shows up
+
+Last week's line on the card prints the drops with the set they belong to
+(`60×10 ↓45×5`), and so does the CSV export — as two extra columns,
+`bajadas` and `tipo_bajada`, rather than extra rows, so `serie` keeps
+meaning the set number the plan asked for and every count taken off that
+file still matches the app's. Drops travel with a "plan + registro" QR
+share; a phone running a version of the app from before this feature will
+read everything else in that payload and quietly ignore them.
+
+Drops are stored on the log row itself (`d`, plus `dk` for the kind) rather
+than in a side table like RIR, because a drop belongs to one specific set —
+so clearing a day, deleting a block, moving an exercise to another day and
+**Deshacer** all carry it without any extra bookkeeping.
 
 ## Warm-ups and plate maths
 
