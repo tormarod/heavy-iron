@@ -1,43 +1,8 @@
 /* ---------- backup / restore ---------- */
-$('backup').onclick = () => {
-  $('blob').value = JSON.stringify({ app: STORAGE_KEY, v: 1, saved: new Date().toISOString(), data: state });
-  renderProfileExports();
-  openSheet('sheet');
-};
-$('bClose').onclick = () => closeSheet('sheet');
-$('sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeSheet('sheet'); });
 
-$('bDownload').onclick = () => {
-  const payload = JSON.stringify({ app: STORAGE_KEY, v: 1, saved: new Date().toISOString(), data: state }, null, 2);
-  downloadFile('heavy-iron-backup-' + new Date().toISOString().slice(0, 10) + '.json', payload, 'application/json');
-  resetBackupNag();
-  mark('Copia descargada — ' + setsLabel(countBackupSets(state)));
-};
 
-$('bUploadBtn').onclick = () => $('bUpload').click();
-$('bUpload').addEventListener('change', e => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => restoreFromText(reader.result);
-  reader.readAsText(file);
-  e.target.value = '';
-});
 
-$('bCopy').onclick = async () => {
-  const ta = $('blob');
-  ta.focus(); ta.select();
-  try {
-    if (navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(ta.value);
-    else if (!document.execCommand('copy')) throw new Error();
-    resetBackupNag();
-    mark('Copiado al portapapeles');
-  } catch (e) {
-    mark('No se pudo copiar — selecciona el texto y cópialo a mano', true);
-  }
-};
 
-$('bRestore').onclick = () => restoreFromText($('blob').value);
 
 /* A restore replaces everything, so a file that is *almost* a backup is the
    most dangerous input the app takes: accepting it wipes real history and
@@ -194,4 +159,50 @@ async function loadProfileFromText(text) {
      the result of an import does the same. */
   flushSave();
   mark(state.profiles[target].label + ' cargado — ' + setsLabel(theirs) + landingNote(state.profiles[target]));
+}
+
+
+function wireProfileTransfer() {
+  $('backup').onclick = () => {
+    $('blob').value = JSON.stringify({ app: STORAGE_KEY, v: 1, saved: new Date().toISOString(), data: state });
+    renderProfileExports();
+    openSheet('sheet');
+  };
+
+  $('bClose').onclick = () => closeSheet('sheet');
+
+  $('sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeSheet('sheet'); });
+
+  $('bDownload').onclick = () => {
+    const payload = JSON.stringify({ app: STORAGE_KEY, v: 1, saved: new Date().toISOString(), data: state }, null, 2);
+    downloadFile('heavy-iron-backup-' + new Date().toISOString().slice(0, 10) + '.json', payload, 'application/json');
+    resetBackupNag();
+    mark('Copia descargada — ' + setsLabel(countBackupSets(state)));
+  };
+
+  $('bUploadBtn').onclick = () => $('bUpload').click();
+
+  $('bUpload').addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => restoreFromText(reader.result);
+    reader.readAsText(file);
+    e.target.value = '';
+  });
+
+  $('bCopy').onclick = async () => {
+    const ta = $('blob');
+    ta.focus(); ta.select();
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(ta.value);
+      else if (!document.execCommand('copy')) throw new Error();
+      resetBackupNag();
+      mark('Copiado al portapapeles');
+    } catch (e) {
+      mark('No se pudo copiar — selecciona el texto y cópialo a mano', true);
+    }
+  };
+
+  $('bRestore').onclick = () => restoreFromText($('blob').value);
 }
