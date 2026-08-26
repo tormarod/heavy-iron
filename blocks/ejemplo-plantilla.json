@@ -25,6 +25,7 @@
           "muscle": "Hombro",
           "type": "Aislamiento",
           "sets": 3,
+          "inc": 1,
           "reps": "12–20",
           "rest": 60
         }
@@ -40,6 +41,7 @@
           "pattern": "Tirón horizontal",
           "type": "Compuesto",
           "sets": 4,
+          "inc": 2.5,
           "reps": "8–12",
           "rest": 120,
           "share": 1
@@ -49,6 +51,7 @@
           "muscle": "Bíceps",
           "type": "Aislamiento",
           "sets": 3,
+          "inc": 2,
           "reps": "10–15",
           "rest": 0,
           "ss": 1
@@ -58,6 +61,7 @@
           "muscle": "Tríceps",
           "type": "Aislamiento",
           "sets": 3,
+          "inc": 2.5,
           "reps": "10–15",
           "rest": 60,
           "ss": 1

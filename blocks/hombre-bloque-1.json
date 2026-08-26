@@ -13,6 +13,7 @@
           "alt": "o press de banca con barra",
           "sets": 4,
           "add": 5,
+          "inc": 2.5,
           "reps": "6–10",
           "rest": 150,
           "cue": "El ejercicio pesado del día: llega a 10 reps limpias en las 4 series antes de subir peso"
@@ -24,6 +25,7 @@
           "n": "Elevaciones laterales en polea",
           "alt": "o con mancuernas",
           "sets": 4,
+          "inc": 1,
           "reps": "12–20",
           "rest": 60,
           "cue": "Van aquí a propósito: hoy no hay remos, y son lo único que deja descansar al hombro frontal entre press y press"
@@ -35,6 +37,7 @@
           "alt": "o press militar con mancuernas",
           "sets": 4,
           "add": 7,
+          "inc": 2.5,
           "reps": "8–12",
           "rest": 150
         },
@@ -45,6 +48,7 @@
           "n": "Press inclinado en máquina",
           "alt": "o press inclinado con mancuernas",
           "sets": 4,
+          "inc": 2.5,
           "reps": "8–12",
           "rest": 150
         },
@@ -55,6 +59,7 @@
           "n": "Contractora / aperturas en polea",
           "alt": "o aperturas con mancuernas",
           "sets": 4,
+          "inc": 2.5,
           "reps": "12–15",
           "rest": 90,
           "cue": "Estirar del todo atrás — sin recortar el recorrido"
@@ -66,6 +71,7 @@
           "n": "Extensiones de tríceps en polea",
           "alt": "o press francés",
           "sets": 4,
+          "inc": 2.5,
           "reps": "12–15",
           "rest": 75
         },
@@ -75,6 +81,7 @@
           "n": "Face pull en polea",
           "alt": "o contractora inversa",
           "sets": 3,
+          "inc": 1,
           "reps": "15–20",
           "rest": 60,
           "cue": "Segunda dosis de deltoide posterior de la semana: equilibra todo el empuje del día"
@@ -92,6 +99,7 @@
           "n": "Sentadilla hack",
           "alt": "o pendular / sentadilla con barra",
           "sets": 3,
+          "inc": 5,
           "reps": "8–12",
           "rest": 180,
           "cue": "Dosis corta de pierna: 3 series bien hechas, profundidad por debajo de la paralela"
@@ -103,6 +111,7 @@
           "n": "Prensa de piernas",
           "alt": "",
           "sets": 3,
+          "inc": 5,
           "reps": "10–15",
           "rest": 150,
           "cue": "Pies a media altura y a la anchura de los hombros — mas cuadriceps. Ella los pone altos y abiertos: cambiad la posicion entre series"
@@ -115,6 +124,7 @@
           "alt": "o dominadas",
           "sets": 4,
           "add": 5,
+          "inc": 2.5,
           "reps": "8–12",
           "rest": 150,
           "cue": "El ejercicio pesado del día. Pecho arriba, codos hacia los bolsillos"
@@ -126,6 +136,7 @@
           "n": "Remo en máquina con apoyo pectoral",
           "alt": "o remo con barra",
           "sets": 4,
+          "inc": 2.5,
           "reps": "10–15",
           "rest": 120
         },
@@ -135,6 +146,7 @@
           "n": "Jalón agarre neutro",
           "alt": "o dominadas asistidas / pullover en polea",
           "sets": 3,
+          "inc": 2.5,
           "reps": "10–12",
           "rest": 120
         },
@@ -145,6 +157,7 @@
           "n": "Contractora inversa (deltoide posterior)",
           "alt": "o pájaros con mancuernas",
           "sets": 4,
+          "inc": 2.5,
           "reps": "15–20",
           "rest": 0,
           "ss": 1
@@ -156,6 +169,7 @@
           "n": "Curl en polea",
           "alt": "o curl inclinado con mancuernas",
           "sets": 3,
+          "inc": 1,
           "reps": "10–15",
           "rest": 75,
           "ss": 1
@@ -167,6 +181,7 @@
           "n": "Curl martillo con cuerda",
           "alt": "o curl martillo con mancuernas",
           "sets": 4,
+          "inc": 2.5,
           "reps": "12–15",
           "rest": 60
         }
@@ -183,6 +198,7 @@
           "n": "Peso muerto rumano en multipower",
           "alt": "o hiperextensiones a 45°",
           "sets": 3,
+          "inc": 2.5,
           "reps": "8–12",
           "rest": 150,
           "cue": "Cadera atrás, busca el estiramiento del femoral. Sin redondear la espalda"
@@ -194,6 +210,7 @@
           "n": "Curl femoral sentado",
           "alt": "o curl femoral tumbado",
           "sets": 2,
+          "inc": 2.5,
           "reps": "12–15",
           "rest": 90
         },
@@ -203,6 +220,7 @@
           "n": "Press de pecho en polea alta, de pie",
           "alt": "poleas por encima del hombro, empuje en diagonal hacia el suelo",
           "sets": 3,
+          "inc": 2.5,
           "reps": "10–15",
           "rest": 90,
           "cue": "Unico angulo bajo de la semana: paso adelante, tronco algo inclinado, y junta las manos abajo y adentro. Peso moderado, aqui te limita el equilibrio y no el pecho"
@@ -213,6 +231,7 @@
           "n": "Remo sentado en polea",
           "alt": "o remo con apoyo pectoral",
           "sets": 3,
+          "inc": 2.5,
           "reps": "10–15",
           "rest": 120
         },
@@ -222,6 +241,7 @@
           "n": "Curl inclinado en polea",
           "alt": "o curl inclinado con mancuernas",
           "sets": 4,
+          "inc": 1,
           "reps": "10–15",
           "rest": 0,
           "ss": 1,
@@ -233,6 +253,7 @@
           "n": "Extensión de tríceps sobre la cabeza",
           "alt": "en polea o con mancuerna",
           "sets": 4,
+          "inc": 2.5,
           "reps": "12–15",
           "rest": 75,
           "ss": 1
@@ -243,6 +264,7 @@
           "n": "Elevaciones laterales en polea",
           "alt": "o con mancuernas",
           "sets": 4,
+          "inc": 1,
           "reps": "12–20",
           "rest": 60
         }

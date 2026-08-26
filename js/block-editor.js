@@ -380,7 +380,7 @@ async function buildAiPrompt() {
     '          "sets": número opcional 1-12 (por defecto 3),',
     '          "rest": número opcional — segundos de descanso 0-900 (por defecto 90; usa 0 si el ejercicio va encadenado en superserie),',
     '          "add": número entero opcional 1-weeks — desde esa semana se añade una serie extra (progresión de series; tiene que ser un entero o se rechaza todo el bloque),',
-    '          "inc": número opcional, admite decimales, ' + INC_MIN + '-' + INC_MAX + ' — cuánto peso añadir cuando "copiar semana anterior" detecta que se llegó al tope del rango en todas las series (progresión de carga),',
+    '          "inc": número opcional, admite decimales, ' + INC_MIN + '-' + INC_MAX + ' — el escalón de peso más pequeño que se puede cargar en ese ejercicio: cuánto añade "copiar semana anterior" al llegar al tope del rango en todas las series, y a qué se redondea el objetivo de peso de cada semana. Si falta, se usa el incremento por defecto de los ajustes. Pon uno realista por ejercicio (mancuernas y poleas suelen subir de 1-2,5 en 2,5; prensas y hacks, de 5 en 5),',
     '          "alt": string opcional — alternativa (máx ' + L.alt + ' car.),',
     '          "cue": string opcional — indicación técnica, para todas las series (máx ' + L.cue + ' car.),',
     '          "setup": string opcional — ajustes de la máquina (altura de asiento, posición del respaldo…), no técnica (máx ' + SETUP_LIMIT + ' car.),',

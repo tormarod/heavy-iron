@@ -16,7 +16,7 @@
    are deleted on activate, and the app shows an "Actualizar" prompt rather
    than swapping the code under a session in progress. */
 
-const CACHE_VERSION = 'v23';
+const CACHE_VERSION = 'v24';
 const SHELL_CACHE = 'heavy-iron-shell-' + CACHE_VERSION;
 const RUNTIME_CACHE = 'heavy-iron-runtime-' + CACHE_VERSION;
 
@@ -26,6 +26,7 @@ const SHELL = [
   'css/style.css',
   'js/app.js',
   'js/block-editor.js',
+  'js/diagnostics.js',
   'js/profile-transfer.js',
   'js/data.js',
   'manifest.webmanifest',

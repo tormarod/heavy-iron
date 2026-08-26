@@ -1163,6 +1163,118 @@ const ok = (name, cond, extra) => {
     await ctx.close();
   }
 
+  // ---------- target weight + diagnóstico ----------
+  {
+    console.log('\n== objetivo de peso y diagnóstico ==');
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await dismissSetup(page);
+    await page.waitForTimeout(400);
+
+    /* chestpress is the first exercise of day 1: 4 sets of 6–10, inc 2,5.
+       Seed a single previous week under it, stand on week 2, and read the
+       line the session draws under the sets. */
+    const seed = async (sets, rir, week) => {
+      await page.evaluate(([sets, rir, week]) => {
+        const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+        const p = s.profiles.hombre;
+        p.log['block-1'] = { 'w1-d0': { chestpress: sets.map(x => ({ w: String(x[0]), r: String(x[1]), done: true })) } };
+        p.rir['block-1'] = rir ? { 'w1-d0': { chestpress: rir } } : {};
+        p.week = week;
+        p.day = 0;
+        localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+      }, [sets, rir, week]);
+      await page.reload({ waitUntil: 'networkidle' });
+      await page.waitForTimeout(300);
+      const el = page.locator('.ex').first().locator('.ex-est');
+      return await el.count() ? (await el.textContent()) : '';
+    };
+
+    const four = (w, r) => [[w, r], [w, r], [w, r], [w, r]];
+
+    /* Top of the range at 2 RIR. copyPrev's answer is 62,5; the set itself
+       says ~65 is there, and that gap compounds over a block. */
+    const up = await seed(four(60, 10), '2+', 2);
+    ok('un tope de rango a 2 RIR propone subir por encima de un solo escalón',
+       up.indexOf('↗') === 0 && up.includes('65'), up);
+
+    /* Same reps, taken to failure: the arithmetic would still say "up", and
+       the failure gate is what stops it — exactly as copyPrev withholds. */
+    const held = await seed(four(60, 10), '0', 2);
+    ok('la misma serie al fallo mantiene el peso',
+       held.includes('mantener') && held.includes('60'), held);
+
+    /* Five reps of a 6–10 range, and it cost everything: the weight was
+       picked too heavy. This is the answer copyPrev cannot give at all. */
+    const down = await seed(four(75, 5), '0', 2);
+    ok('un peso demasiado alto propone bajar aunque la serie fuera al fallo',
+       down.indexOf('↘') === 0, down);
+
+    /* Epley drifts past 15 reps — say so rather than invent a number. */
+    const many = await seed(four(30, 18), '1', 2);
+    ok('por encima de 15 reps no estima', many.includes('sin estimar'), many);
+
+    /* Week 8 is the deload: "Descarga" carries no RIR to solve for, and
+       proposing a jump in a deload week would be the wrong advice anyway. */
+    const deload = await seed(four(60, 10), '2+', 8);
+    ok('la semana de descarga no propone objetivo', deload === '', deload);
+
+    /* Nothing logged yet: no previous session, no line, no noise. */
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      s.profiles.hombre.log['block-1'] = {};
+      s.profiles.hombre.week = 2;
+      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+    });
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(300);
+    ok('sin registro previo no hay línea de objetivo',
+       await page.locator('.ex').first().locator('.ex-est').count() === 0);
+
+    /* Three sessions climbing, three flat: the whole point of the screen is
+       telling those two apart without opening a chart per exercise. */
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      const p = s.profiles.hombre;
+      const four = (w, r) => [0, 1, 2, 3].map(() => ({ w: String(w), r: String(r), done: true, ts: Date.now() }));
+      p.log['block-1'] = {};
+      [60, 65, 70, 75].forEach((w, i) => {
+        p.log['block-1']['w' + (i + 1) + '-d0'] = { chestpress: four(w, 8), lat1: four(12, 12) };
+      });
+      p.week = 5;
+      p.day = 0;
+      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+    });
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(300);
+    await page.click('#diagBtn');
+    await page.waitForTimeout(300);
+    ok('el diagnóstico se abre', await page.locator('#diagSheet.up').count() === 1);
+    const verdicts = await page.evaluate(() => {
+      const out = {};
+      document.querySelectorAll('#diagHost .diag-row').forEach(r => {
+        out[r.dataset.ex] = r.className + ' | ' + r.querySelector('.diag-read').textContent;
+      });
+      return out;
+    });
+    const climbing = verdicts.chestpress || '';
+    const flat = verdicts.lat1 || '';
+    ok('un ejercicio que sube sale como subiendo', climbing.includes('up'), climbing);
+    ok('un ejercicio clavado sale como plano', flat.includes('flat'), flat);
+    ok('lo peor sale primero',
+       (await page.locator('#diagHost .diag-row').first().getAttribute('class') || '').includes('flat'));
+    ok('un ejercicio sin sesiones suficientes no recibe veredicto',
+       (verdicts.facepull || '').includes('none'), verdicts.facepull);
+    /* Same name on two days, two different exercises — one row each. */
+    ok('dos ejercicios con el mismo nombre no se pisan',
+       !!verdicts.lat1 && !!verdicts.lat2 && verdicts.lat1 !== verdicts.lat2);
+    await page.click('#diagClose');
+    await page.waitForTimeout(200);
+    ok('el diagnóstico se cierra', await page.locator('#diagSheet.up').count() === 0);
+    await ctx.close();
+  }
+
   // ---------- layout on real phone widths ----------
   {
     console.log('\n== layout ==');
