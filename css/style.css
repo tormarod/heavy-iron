@@ -324,8 +324,11 @@ body {
 .rir-chip:hover { border-color: var(--signal); color: var(--signal); }
 .rir-chip.on { background: var(--signal); border-color: var(--signal); color: var(--on-signal); }
 
+/* The two number boxes stay on 1fr each so they keep the lion's share of a
+   360px phone; ↓ is deliberately the narrowest control in the row, since
+   it is the one you press least. */
 .set-row {
-  display: grid; grid-template-columns: 26px 1fr 1fr 42px;
+  display: grid; grid-template-columns: 26px 1fr 1fr 30px 42px;
   gap: 7px; align-items: center; padding: 5px 0;
 }
 .set-n { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--soft); }
@@ -352,6 +355,56 @@ body {
   display: flex; align-items: center; justify-content: center; transition: all .12s;
 }
 .tick { width: 100%; font-family: 'Archivo', sans-serif; padding: 0; }
+
+/* ---- weight drops ----
+   A drop belongs to the set above it, so the sub-row shares the set row's
+   grid and is only marked out by the ↳ in the set-number column and a rule
+   down the left. Nothing is indented by margin: the weight and rep boxes
+   have to line up with the ones they came off, or the pair stops reading as
+   one set at a glance. */
+.drop-add {
+  height: 40px; width: 100%; padding: 0;
+  border: 1px solid var(--line); border-radius: 2px; background: var(--card);
+  font-family: 'Archivo', sans-serif; font-size: 14px; color: var(--line);
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  transition: all .12s;
+}
+.drop-add:hover:not(:disabled) { border-color: var(--signal); color: var(--signal); }
+.drop-add.on { border-color: var(--signal); color: var(--signal); }
+.drop-add:disabled { cursor: default; opacity: .4; }
+
+.drop-row {
+  display: grid; grid-template-columns: 26px 1fr 1fr 30px 42px;
+  gap: 7px; align-items: center; padding: 2px 0;
+}
+.drop-row .fld input { height: 34px; font-size: 13px; }
+.drop-row.done .fld input { background: var(--sunk); }
+.drop-n {
+  font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+  color: var(--soft); text-align: right; padding-right: 3px;
+}
+.drop-x {
+  height: 34px; width: 100%; padding: 0;
+  border: 1px solid var(--line); border-radius: 2px; background: var(--card);
+  font-family: 'Archivo', sans-serif; font-size: 11px; color: var(--soft);
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.drop-x:hover { border-color: var(--danger); color: var(--danger); }
+
+/* Sits under the segments, left-aligned with the number boxes so it reads
+   as a footnote to them rather than another input. */
+.drop-kind { display: flex; gap: 5px; padding: 2px 0 6px 33px; }
+.drop-chip {
+  padding: 3px 8px;
+  border: 1px solid var(--line); border-radius: 2px; background: var(--card);
+  font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600;
+  color: var(--soft); cursor: pointer;
+}
+.drop-chip:hover { border-color: var(--signal); color: var(--signal); }
+.drop-chip.on { background: var(--signal); border-color: var(--signal); color: var(--on-signal); }
+/* A forced drop is the one that changes what "Copiar semana anterior" does
+   next week, so it does not get to look like the neutral choice. */
+.drop-chip.forced.on { background: var(--amber); border-color: var(--amber); color: var(--on-share); }
 .tick:hover { border-color: var(--signal); color: var(--signal); }
 .tick.on { background: var(--signal); border-color: var(--signal); color: var(--on-signal); }
 

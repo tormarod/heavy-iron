@@ -878,6 +878,164 @@ const ok = (name, cond, extra) => {
     await ctx.close();
   }
 
+  // ---------- weight drops ----------
+  {
+    console.log('\n== weight drops ==');
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await dismissSetup(page);
+    await page.waitForTimeout(400);
+
+    const card = page.locator('.ex').first();
+    const row1 = card.locator('.set-row').first();
+    await row1.locator('input').nth(0).fill('60');
+    await row1.locator('input').nth(1).fill('8');
+    await row1.locator('.tick').click();
+    await page.waitForTimeout(300);
+
+    ok('every set row offers a ↓ button', await card.locator('.set-row .drop-add').count() >= 4);
+    await card.locator('.set-row').first().locator('.drop-add').click();
+    await page.waitForTimeout(300);
+    ok('↓ opens a drop sub-row on that set', await card.locator('.drop-row').count() === 1);
+    ok('and the dropset/forzado chips with it', await card.locator('.drop-kind .drop-chip').count() === 2);
+    /* The card is still detached from the document while it is being built,
+       so focusing the new box has to wait until the render has attached it —
+       this is the assertion that catches that regressing. */
+    ok('the cursor lands in the new weight box',
+       await page.evaluate(() => !!(document.activeElement && document.activeElement.closest('.drop-row'))));
+
+    await card.locator('.drop-row').first().locator('input').nth(0).fill('45');
+    await card.locator('.drop-row').first().locator('input').nth(1).fill('5');
+    await page.waitForTimeout(400);
+
+    const storedRow = () => page.evaluate(() => {
+      flushSave();
+      return JSON.parse(localStorage.getItem('heavy-iron-v1')).profiles.hombre.log['block-1']['w1-d0'].chestpress[0];
+    });
+    let r = await storedRow();
+    ok('the drop is stored on the set row it belongs to',
+       JSON.stringify(r.d) === '[{"w":"45","r":"5"}]', JSON.stringify(r));
+    ok('a drop is a planned dropset until told otherwise', r.dk === undefined || r.dk === 'drop', r.dk);
+
+    await page.evaluate(() => render());
+    await page.waitForTimeout(200);
+    let note = await page.textContent('#note');
+    ok('drop reps count toward tonnage (60*8 + 45*5 = 705)', note.includes('705'), note);
+    ok('but a set with a drop is still one set', /^1 de \d+ series hechas/.test(note), note);
+
+    for (let i = 0; i < 6; i++) {
+      const btn = card.locator('.set-row').first().locator('.drop-add');
+      if (await btn.isDisabled()) break;
+      await btn.click();
+      await page.waitForTimeout(150);
+    }
+    ok('a set takes at most 4 drops', await card.locator('.drop-row').count() === 4);
+    ok('↓ goes disabled at the cap', await card.locator('.set-row').first().locator('.drop-add').isDisabled());
+    for (let i = 0; i < 3; i++) {
+      await card.locator('.drop-row').last().locator('.drop-x').click();
+      await page.waitForTimeout(150);
+    }
+    ok('✕ removes one drop at a time', await card.locator('.drop-row').count() === 1);
+
+    await card.locator('.drop-kind .drop-chip.forced').click();
+    await page.waitForTimeout(300);
+    ok('the forced kind is recorded', (await storedRow()).dk === 'forced');
+
+    const csv = await page.evaluate(() => buildCsv());
+    ok('CSV grows two columns rather than two rows', /bajadas,tipo_bajada/.test(csv.split('\r\n')[0]));
+    ok('CSV keeps the drop on its own set row', /45x5,Forzado/.test(csv), csv.split('\r\n')[1]);
+
+    const rt = await page.evaluate(() => {
+      const p = state.profiles.hombre, bl = p.blocks['block-1'];
+      const plan = blockSharePlan(bl);
+      const shared = blockShareLog(p, bl);
+      return JSON.stringify(normalizeImportedLog(shared, plan, normalizeImportedBlock(plan)));
+    });
+    ok('a QR transfer round-trips drops and their kind',
+       /"d":\[\{"w":"45","r":"5"\}\],"dk":"forced"/.test(rt), rt.slice(0, 200));
+
+    await card.locator('.drop-row').first().locator('.drop-x').click();
+    await page.waitForTimeout(300);
+    r = await storedRow();
+    ok('the last drop leaving takes its kind with it', r.d === undefined && r.dk === undefined, JSON.stringify(r));
+
+    /* Double progression: a week at the top of the range normally earns the
+       increment, and a set the weight had to come off to finish does not. */
+    const seed = forced => page.evaluate(f => {
+      const p = state.profiles.hombre, bl = p.blocks['block-1'];
+      const ex = bl.days[0].ex[0];
+      ex.inc = 2.5;
+      const n = setsFor(ex, 1, bl);
+      const rows = [];
+      for (let i = 0; i < n; i++) rows.push({ w: '60', r: '10', done: true, ts: Date.now() });
+      if (f) { rows[n - 1].d = [{ w: '45', r: '3' }]; rows[n - 1].dk = 'forced'; }
+      p.log[bl.id]['w1-d0'] = { [ex.id]: rows };
+      delete p.log[bl.id]['w2-d0'];
+      p.week = 2; p.day = 0;
+      save(); render();
+    }, forced);
+    const week2First = () => page.evaluate(() =>
+      state.profiles.hombre.log['block-1']['w2-d0'].chestpress[0].w);
+
+    /* The rest timer the tick above started sits over the footer buttons. */
+    if (await page.locator('#timer.up').count()) await page.click('#tskip');
+
+    await seed(false);
+    await page.click('#copyPrev');
+    await page.waitForTimeout(300);
+    ok('top of range with no drop still levels up (60 → 62.5)', await week2First() === '62.5', await week2First());
+
+    await seed(true);
+    await page.click('#copyPrev');
+    await page.waitForTimeout(300);
+    ok('a forced drop holds the increment back', await week2First() === '60', await week2First());
+    ok('and says why', /bajar peso/.test(await page.textContent('#status')), await page.textContent('#status'));
+
+    await page.evaluate(() => {
+      const p = state.profiles.hombre;
+      const rows = p.log['block-1']['w1-d0'].chestpress;
+      rows[rows.length - 1].dk = 'drop';
+      delete p.log['block-1']['w2-d0'];
+      save(); render();
+    });
+    await page.click('#copyPrev');
+    await page.waitForTimeout(300);
+    ok('a planned dropset does not hold it back', await week2First() === '62.5', await week2First());
+
+    await page.evaluate(() => {
+      const p = state.profiles.hombre;
+      p.log['block-1']['w1-d0'].chestpress[0].d = [{ w: '45', r: '5' }];
+      save(); render();
+    });
+    await page.waitForTimeout(200);
+    ok('last week\'s line shows the drop it carried',
+       /60×10 ↓45×5/.test(await page.locator('.ex').first().locator('.last').textContent()),
+       await page.locator('.ex').first().locator('.last').textContent());
+
+    /* A restore drops the backup's JSON straight into state and runs
+       migrate(), which deliberately never rewrites log rows — so junk in a
+       hand-edited `d` reaches the renderer and must not blank the app.
+       The slot is rewritten from scratch here so the count below is only
+       ever about this one row. */
+    await page.evaluate(() => {
+      const p = state.profiles.hombre;
+      p.log['block-1']['w1-d0'] = {
+        chestpress: [{ w: '60', r: '10', done: true, d: [null, 'nonsense', { w: '40', r: '6' }] }],
+      };
+      p.week = 1; p.day = 0;   /* the copyPrev cases above moved us to week 2 */
+      save(); render();
+    });
+    await page.waitForTimeout(200);
+    ok('a malformed drop entry does not take the session down with it',
+       await page.locator('.ex').count() > 0);
+    ok('and the usable drop in the same array still renders',
+       await page.locator('.drop-row').count() === 1,
+       'drop rows: ' + await page.locator('.drop-row').count());
+
+    await ctx.close();
+  }
+
   // ---------- offline ----------
   {
     console.log('\n== offline ==');
