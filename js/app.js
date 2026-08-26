@@ -1769,7 +1769,7 @@ function drawApp() {
       '<div class="sets"></div>' +
       (decay ? '<div class="ex-decay"></div>' : '') +
       (est ? '<div class="ex-est ' + est.kind + '"><span class="ex-est-l"></span>' +
-        (targetNote(est) ? '<span class="ex-est-n"></span>' : '') + '</div>' : '') +
+        targetNotes(est).map(() => '<span class="ex-est-n"></span>').join('') + '</div>' : '') +
       '<div class="ex-rir"><span class="ex-rir-lbl">RIR último set</span><div class="rir-chips"></div></div>' +
       (parked ? '<div class="ex-parked"></div>' : '');
 
@@ -1779,8 +1779,8 @@ function drawApp() {
 
     if (est) {
       card.querySelector('.ex-est-l').textContent = targetLine(est);
-      const noteEl = card.querySelector('.ex-est-n');
-      if (noteEl) noteEl.textContent = targetNote(est);
+      const noteEls = card.querySelectorAll('.ex-est-n');
+      targetNotes(est).forEach((t, i) => { if (noteEls[i]) noteEls[i].textContent = t; });
     }
 
     if (parked) {
@@ -2224,11 +2224,32 @@ function targetEstimate(profile, block, day, ex, week) {
 
   const rows = prev.sets.filter(hasReps);
   if (!rows.length) return null;
-  const sets = rows.map(r => num(r.r));
+
+  /* The weight is *usually* constant across the sets, and the rule below
+     reads a rep count per set — so when it varied, taking one set's weight
+     and every set's reps mixes them into nonsense. 14×15, 14×11, 9×12 came
+     out as "9 kg × 15/12/13": fifteen reps at a weight two of the three
+     sets were nowhere near.
+
+     So the working weight is the one most of the sets were actually done
+     at, heaviest on a tie, and only those sets feed the rule. Whatever was
+     done at some other weight — a back-off, a stack that had to come down,
+     a mis-tap — is left out and said so, rather than folded in as though
+     it had happened at the working weight. */
+  const weights = rows.map(r => num(r.w)).filter(v => v > 0);
+  if (!weights.length) return null;
+  const seen = {};
+  weights.forEach(v => { seen[v] = (seen[v] || 0) + 1; });
+  let w = weights[0];
+  Object.keys(seen).forEach(k => {
+    const v = num(k);
+    if (seen[k] > seen[w] || (seen[k] === seen[w] && v > w)) w = v;
+  });
+
+  const atW = rows.filter(r => num(r.w) === w);
+  const apart = rows.length - atW.length;
+  const sets = atW.map(r => num(r.r));
   const last = sets[sets.length - 1];
-  /* The weight is assumed constant across the sets; where it varied, the
-     last set is the one the RIR chip describes. */
-  const w = num(rows[rows.length - 1].w);
   const lo = repRangeBottom(ex.reps), hi = repRangeTop(ex.reps);
   if (!(w > 0) || !(lo > 0) || !(hi > 0) || !(last > 0)) return null;
 
@@ -2237,7 +2258,12 @@ function targetEstimate(profile, block, day, ex, week) {
   const rirThis = phaseRir(block, week);
   if (rirThis == null) return null;
 
-  const rirLogged = getRir(profile, block.id, prev.week, day.id, ex.id);
+  /* The chip records the RIR of the LAST set of the session. When that set
+     was not at the working weight it describes a set this estimate is not
+     built on, so it is not this set's evidence — the plan's own
+     prescription stands in instead, exactly as when no chip was tapped. */
+  const chipFits = num(rows[rows.length - 1].w) === w;
+  const rirLogged = chipFits ? getRir(profile, block.id, prev.week, day.id, ex.id) : '';
   const loggedVal = rirNumber(rirLogged);
   const rirLast = loggedVal == null ? phaseRir(block, prev.week) : loggedVal;
   if (rirLast == null) return null;
@@ -2245,7 +2271,7 @@ function targetEstimate(profile, block, day, ex, week) {
   const inc = incFor(ex);
   const out = { week: prev.week, from: w, fromReps: last, sets: sets,
                 rir: rirLast, rirThis: rirThis, assumed: loggedVal == null,
-                weight: w, reps: [last] };
+                apart: apart, weight: w, reps: [last] };
 
   /* Only the two cases that have to PRICE a weight need Epley, and only
      those two are blocked by its rep ceiling. Holding the weight to chase
@@ -2338,26 +2364,31 @@ function targetLine(est) {
   return (est.kind === 'up' ? '↗' : '↘') + ' objetivo: ' + n(est.weight) + u + ' × ' + reps;
 }
 
-/* The second line, when there is one. Every one of these exists because
-   the number above it would otherwise be read as something it is not. */
-function targetNote(est) {
-  if (!est || !est.note) return '';
+/* The lines under the estimate, in order. Every one of them exists because
+   the number above it would otherwise be read as something it is not, and
+   more than one can be true at once — a set logged at another weight and a
+   RIR that will cost reps are independent facts about the same session. */
+function targetNotes(est) {
+  const out = [];
+  if (!est) return out;
+  if (est.apart) {
+    out.push(est.apart === 1
+      ? 'una serie fue a otro peso y queda fuera: el objetivo va sobre las que hiciste a ' + est.from + ' ' + units()
+      : est.apart + ' series fueron a otro peso y quedan fuera: el objetivo va sobre las que hiciste a ' + est.from + ' ' + units());
+  }
   if (est.note === 'topFailure') {
-    return 'tope del rango pero al fallo — mismo peso, ejecútalo a ' + est.rirThis + ' RIR';
-  }
-  if (est.note === 'topForced') {
-    return 'tope del rango pero hubo que bajar peso — mismo peso, ejecútalo a ' + est.rirThis + ' RIR';
-  }
-  if (est.note === 'coarse') {
-    return 'el siguiente escalón te deja en ~' + est.reps[0] + ' reps, por debajo del rango — ' +
-      'normal con stack grueso, sube en 1-2 semanas';
-  }
-  if (est.note === 'rirDrop') {
-    return 'ojo: la última fue a ' + est.rir + ' RIR' + (est.assumed ? ' previstos' : '') +
+    out.push('tope del rango pero al fallo — mismo peso, ejecútalo a ' + est.rirThis + ' RIR');
+  } else if (est.note === 'topForced') {
+    out.push('tope del rango pero hubo que bajar peso — mismo peso, ejecútalo a ' + est.rirThis + ' RIR');
+  } else if (est.note === 'coarse') {
+    out.push('el siguiente escalón te deja en ~' + est.reps[0] + ' reps, por debajo del rango — ' +
+      'normal con stack grueso, sube en 1-2 semanas');
+  } else if (est.note === 'rirDrop') {
+    out.push('ojo: la última fue a ' + est.rir + ' RIR' + (est.assumed ? ' previstos' : '') +
       '; a ' + est.rirThis + ' RIR igual salen ~' + est.predLast + ' y no ' + est.fromReps +
-      '. No es retroceso.';
+      '. No es retroceso.');
   }
-  return '';
+  return out;
 }
 
 function collectHistory(profile, blockId, dayId, exId, weeks, metric) {

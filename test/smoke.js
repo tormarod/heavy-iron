@@ -1195,7 +1195,7 @@ const ok = (name, cond, extra) => {
       const profile = { log: { B: { 'w1-D': { E: sets.map(r => ({ w: '32', r: String(r), done: true })) } } },
         rir: rir ? { B: { 'w1-D': { E: rir } } } : {} };
       const e = targetEstimate(profile, block, block.days[0], block.days[0].ex[0], 2);
-      return { kind: e && e.kind, line: e ? targetLine(e) : null, note: e ? targetNote(e) : '' };
+      return { kind: e && e.kind, line: e ? targetLine(e) : null, note: e ? targetNotes(e).join(' | ') : '' };
     }, [sets, rir, inc]);
 
     /* Case 1 — the report that started this. Two sets of 15 already owned,
@@ -1239,6 +1239,48 @@ const ok = (name, cond, extra) => {
     ok('a coarse stack still gets its one step', t.line === '↗ objetivo: 36 kg × 9', t.line);
     ok('and is told the step overshoots the range on purpose',
        t.note.includes('stack grueso'), t.note);
+
+    /* The weight is not always constant across the sets, and the rule reads
+       a rep count per set — so taking one set's weight and every set's reps
+       mixed them into nonsense. Reported from a real session: 14×15, 14×11,
+       9×12 came out as "9 kg × 15/12/13", fifteen reps at a weight two of
+       the three sets were nowhere near. */
+    const mixed = (rows, rir) => page.evaluate(([rows, rir]) => {
+      const block = { id: 'B', name: 'B', weeks: 8, deload: 0,
+        phase: { 1: { r: '2 RIR' }, 2: { r: '2 RIR' } },
+        days: [{ id: 'D', ex: [{ id: 'E', n: 'x', sets: rows.length, reps: '10–15', inc: 1 }] }] };
+      const profile = { log: { B: { 'w1-D': { E: rows.map(x => ({ w: x[0], r: x[1], done: true })) } } },
+        rir: rir ? { B: { 'w1-D': { E: rir } } } : {} };
+      const e = targetEstimate(profile, block, block.days[0], block.days[0].ex[0], 2);
+      return { line: targetLine(e), from: e.from, sets: e.sets, notes: targetNotes(e) };
+    }, [rows, rir]);
+
+    let m = await mixed([['14', '15'], ['14', '11'], ['9', '12']], '0');
+    ok('the working weight is the one most sets were done at',
+       m.from === 14 && m.line === '↗ objetivo: 14 kg × 15/12', JSON.stringify(m));
+    ok('and the set at another weight is left out, not folded in',
+       m.sets.join() === '15,11' && m.notes[0].includes('una serie fue a otro peso'), JSON.stringify(m));
+    /* The chip records the last set of the session. That set was the 9 kg
+       one, so it is not evidence about the 14 kg sets this rests on. */
+    ok('a RIR chip describing a set at another weight is not used',
+       !m.notes.join(' ').includes('No es retroceso'), JSON.stringify(m.notes));
+
+    m = await mixed([['14', '15'], ['14', '11'], ['14', '12']], '0');
+    ok('a constant weight is untouched by any of that',
+       m.from === 14 && m.line === '↗ objetivo: 14 kg × 15/12/13' &&
+       m.notes[0].includes('No es retroceso'), JSON.stringify(m));
+
+    /* A back-off set after the working sets must not drag the verdict down
+       with it — every set at the working weight hit the top here. */
+    m = await mixed([['14', '15'], ['14', '15'], ['14', '15'], ['9', '20']], '');
+    ok('a back-off set does not cost the jump the working sets earned',
+       m.line === '↗ objetivo: 15 kg × 12', JSON.stringify(m));
+
+    /* Every set at its own weight: the heaviest breaks the tie, which is
+       the top set, and it fell under the range. */
+    m = await mixed([['12', '14'], ['14', '11'], ['16', '9']], '');
+    ok('with no repeated weight the heaviest set decides',
+       m.from === 16 && m.line === '↘ objetivo: 15 kg × 10', JSON.stringify(m));
 
     /* Case 3 — the answer copyPrev could never give at all. */
     t = await target([12, 10, 9, 8], '0', 2);

@@ -463,6 +463,17 @@ Then three cases, in this order:
 `Bajar` is the answer `Copiar pesos` could never give: it copied the same
 weight forever, however badly it had been chosen.
 
+**The weight is taken from the sets that did the work.** It is usually
+constant across an exercise, but when it varied — a back-off set, a stack
+that had to come down, a mis-tap — reading one set's weight alongside every
+set's reps mixes them into nonsense: `14×15 · 14×11 · 9×12` once came out
+as `9 kg × 15/12/13`, fifteen reps at a weight two of the three sets were
+nowhere near. So the working weight is the one **most** of the sets were
+done at (heaviest on a tie), only those sets feed the rule, and the line
+says which ones it left out. A RIR chip that describes a set at some other
+weight is not evidence about these ones either, so the plan's prescription
+stands in instead.
+
 **When holding, the target is per set** — `15/15/13/13`, not one number.
 Chasing one rep on each set is what the week is actually for, and it keeps
 the two sets of 15 you already own instead of quietly resetting them.
