@@ -1384,6 +1384,126 @@ const ok = (name, cond, extra) => {
     await ctx.close();
   }
 
+  // ---------- frequency per muscle, from r.ts ----------
+  {
+    console.log('\n== frecuencia por músculo ==');
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await dismissSetup(page);
+    await page.waitForTimeout(700);
+
+    /* Four weeks. Day 1 every week; day 2 only in weeks 1 and 4, which puts
+       a three-week hole in its muscles; day 3 every week. The whole point
+       of the view is telling that hole apart from a programming problem. */
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      const pr = s.profiles.hombre;
+      const DAY = 86400000;
+      const start = Date.now() - 27 * DAY;
+      const sets = (w, r, ts) => [0, 1, 2, 3].map(() => ({ w: String(w), r: String(r), done: true, ts: ts }));
+      pr.log['block-1'] = {};
+      for (let i = 0; i < 4; i++) {
+        const base = start + i * 7 * DAY;
+        pr.log['block-1']['w' + (i + 1) + '-d0'] = { chestpress: sets(60 + i * 2.5, 8, base) };
+        if (i === 0 || i === 3) pr.log['block-1']['w' + (i + 1) + '-d1'] = { hacksquat: sets(80, 10, base + 2 * DAY) };
+        pr.log['block-1']['w' + (i + 1) + '-d2'] = { rdl: sets(70, 10, base + 4 * DAY) };
+      }
+      pr.week = 4;
+      pr.day = 0;
+      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+    });
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(400);
+    await page.click('#diagBtn');
+    await page.waitForTimeout(250);
+
+    /* The doc's whole point: the spacing has to sit next to the trend, not
+       on a screen of its own. */
+    const trendNums = await page.evaluate(() => [...document.querySelectorAll('.diag-row')]
+      .map(r => r.dataset.ex + '|' + r.querySelector('.diag-num').textContent));
+    ok('the exercise rows carry the session spacing beside the trend',
+       trendNums.some(t => t.startsWith('chestpress|') && /cada 7 días/.test(t)),
+       JSON.stringify(trendNums.slice(0, 3)));
+
+    await page.click('#diagView .seg-btn[data-view="freq"]');
+    await page.waitForTimeout(300);
+    ok('the frequency view opens', await page.locator('.freq-row').count() > 0);
+    /* Adherence is measured against a plan and only this block has one. */
+    ok('the across-blocks toggle is hidden where it means nothing',
+       await page.evaluate(() => getComputedStyle(document.getElementById('diagScope')).display) === 'none');
+
+    const freq = await page.evaluate(() => {
+      const out = {};
+      document.querySelectorAll('.freq-row').forEach(r => {
+        out[r.dataset.tag] = {
+          behind: r.classList.contains('behind'),
+          gap: r.querySelector('.freq-gap').textContent,
+          meta: r.querySelector('.freq-meta').textContent,
+        };
+      });
+      return out;
+    });
+    ok('a muscle trained every week reads as every 7 days',
+       (freq['Isquios'] || {}).gap === 'cada 7 días', JSON.stringify(freq['Isquios']));
+    ok('and at full adherence it is not flagged',
+       freq['Isquios'] && !freq['Isquios'].behind && freq['Isquios'].meta.includes('4 de 4'), JSON.stringify(freq['Isquios']));
+    ok('a muscle trained in weeks 1 and 4 reads as a three-week gap',
+       (freq['Cuádriceps'] || {}).gap === 'cada 21 días', JSON.stringify(freq['Cuádriceps']));
+    ok('and is flagged as wider than the plan asks for',
+       freq['Cuádriceps'] && freq['Cuádriceps'].behind && freq['Cuádriceps'].meta.includes('2 de 4'), JSON.stringify(freq['Cuádriceps']));
+    ok('a muscle the plan wants twice a week but got once is flagged too',
+       freq['Pecho'] && freq['Pecho'].behind && freq['Pecho'].meta.includes('previsto cada 3,5 días'), JSON.stringify(freq['Pecho']));
+    ok('a muscle never trained says so rather than inventing a gap',
+       (freq['Bíceps'] || {}).gap === 'sin sesiones' && freq['Bíceps'].meta.includes('0 de 8'), JSON.stringify(freq['Bíceps']));
+
+    /* Never getting there at all is the worst attendance case, not the
+       best — sorting on the gap alone used to file it last. */
+    const order = await page.evaluate(() => [...document.querySelectorAll('.freq-row')].map(r => r.dataset.tag));
+    ok('the muscles with no sessions sort above the well-attended ones',
+       order.indexOf('Bíceps') < order.indexOf('Isquios'), JSON.stringify(order));
+
+    ok('the calendar counts the days actually trained',
+       (await page.locator('.freq-cal-t').textContent()).startsWith('10 días'),
+       await page.locator('.freq-cal-t').textContent());
+    ok('the calendar draws a cell per day of the block',
+       await page.evaluate(() => document.querySelectorAll('.freq-cal-g rect').length % 7 === 0 &&
+                                 document.querySelectorAll('.freq-cal-g rect').length >= 28));
+
+    /* A set ticked late at night belongs to the day you trained: building
+       the key off UTC would file it under tomorrow. */
+    ok('day keys follow the local calendar, not UTC', await page.evaluate(() => {
+      const late = new Date(2026, 0, 15, 23, 30).getTime();
+      return dayKey(late) === '2026-01-15';
+    }));
+
+    /* Rows logged before timestamps existed, or imported without them,
+       must not become a session at the epoch. */
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      s.profiles.hombre.log['block-1']['w2-d1'] = { hacksquat: [{ w: '80', r: '10', done: true }] };
+      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+    });
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(400);
+    await page.click('#diagBtn');
+    await page.waitForTimeout(200);
+    await page.click('#diagView .seg-btn[data-view="freq"]');
+    await page.waitForTimeout(250);
+    ok('a ticked set with no timestamp is not counted as a session at the epoch',
+       (await page.evaluate(() => {
+         const r = [...document.querySelectorAll('.freq-row')].find(x => x.dataset.tag === 'Cuádriceps');
+         return r.querySelector('.freq-gap').textContent;
+       })) === 'cada 21 días');
+
+    await page.click('#diagView .seg-btn[data-view="trend"]');
+    await page.waitForTimeout(200);
+    ok('switching back restores the exercise view', await page.locator('.diag-row').count() > 0);
+    ok('and brings the across-blocks toggle back',
+       await page.evaluate(() => getComputedStyle(document.getElementById('diagScope')).display) !== 'none');
+    await ctx.close();
+  }
+
   // ---------- layout on real phone widths ----------
   {
     console.log('\n== layout ==');

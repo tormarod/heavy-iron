@@ -72,7 +72,9 @@ from a copy of the plan and leaves this one's history where it is.
   [The weekly objetivo](#the-weekly-objetivo).
 - **Diagnóstico**: every exercise's strength trend at once, ranked worst
   first and crossed with the signals already in your log, so a stall comes
-  with a reason and something to change — see [Diagnóstico](#diagnóstico).
+  with a reason and something to change — plus how often you actually
+  trained each muscle, read off the timestamps already on every ticked
+  set. See [Diagnóstico](#diagnóstico).
 - **Volume as a trend, with landmarks**: the block's weeks in one view per
   muscle, against the 10–20 hard-sets band, with the muscles you marked
   `prioritario` flagged in amber when they fall under it — see
@@ -688,7 +690,10 @@ Twenty-two exercises, each with its own chart behind its own button. Nobody
 opens twenty-two charts — and the diagnosis was never inside any one of
 them anyway. It lives in the comparison, and nothing was making it.
 
-**Diagnóstico** in the footer fits a line through the estimated 1RM of
+**Diagnóstico** in the footer has two tabs — **Por ejercicio** and
+**Frecuencia** — and both read entirely off what you already log.
+
+**Por ejercicio** fits a line through the estimated 1RM of
 every exercise in the current plan at once and sorts them **worst first**:
 `bajando` · `plano` · `subiendo`. Like everything else here it asks for no
 new input — it reads the weights, reps, RIR chips and timestamps you are
@@ -732,6 +737,51 @@ doesn't relabel a perfectly attended exercise as an attendance problem.
 
 Two exercises can share a name — the same lateral raise on two different
 days — and they get one row each, computed separately.
+
+### Frequency, from the timestamps you already have
+
+Every ticked set carries `r.ts`, and until now nothing read it but one line
+in the session footer. **Frecuencia**, the second tab of the same sheet,
+turns it into the answer to the question that otherwise eats a whole block:
+*is the program not working, or did I only train twice that month?*
+
+At three days a week, one skipped session quietly moves chest from every
+~3,5 days to every ~7 — and training a muscle twice a week beats once when
+the volume is equal. A lift that stalls on that spacing has an attendance
+record behind it, not a programming problem.
+
+It sits in the same sheet as the trend, and the exercise rows carry their
+own spacing (`· cada 7 días`) next to the slope, deliberately: a stall and a
+nine-day gap have to be read together or the wrong thing gets changed.
+
+Each muscle gets:
+
+- **The median gap between sessions that actually trained it.** Median, so
+  one holiday in the middle of a block doesn't relabel an otherwise
+  well-attended muscle. A session is a logged day with at least one ticked
+  set for that muscle, dated by the first set you ticked in it — which is
+  when you were in the gym.
+- **Sessions done against sessions planned**, counted over week 1 to the
+  week you are on. The current week is included and still in progress, so
+  early in a week the percentage reads a little low.
+- **What the plan asked for**, as the same kind of gap: a muscle on two of
+  your training days is every 3,5 days. When the real spacing is more than
+  half a day wider than that, the row turns amber — half a day of slack, so
+  a session moved from Monday to Tuesday isn't a lapse.
+
+Above them is a calendar of the block: one column per week, Monday at the
+top, each day shaded by how many sets you ticked on it. The shape of the
+gaps is the point, and a column of numbers hides it.
+
+Rows sort by worst attendance first, and a muscle you never trained at all
+sorts above one you trained every week — it has no gaps to measure, but
+zero of eight sessions is the loudest thing on the screen, not the
+quietest.
+
+Retired exercises still count toward the sessions you did (they were
+trained), but not toward what the plan asks for (they are not scheduled any
+more). A ticked set with no timestamp — logged before the app recorded
+them, or imported without one — is skipped rather than filed at the epoch.
 
 ## Editing a block mid-way
 
@@ -1139,7 +1189,7 @@ fixing it quietly.
 | `css/style.css` | one stylesheet; all colours are tokens declared at the top, twice (light and dark) |
 | `js/data.js` | the default plans, used only on a device's first run |
 | `js/block-editor.js` | block CRUD/list, importing a block from JSON, and the plan editor |
-| `js/diagnostics.js` | the Diagnóstico screen: e1RM trend per exercise, crossed with the log's own signals |
+| `js/diagnostics.js` | the Diagnóstico screen: e1RM trend per exercise crossed with the log's own signals, and real frequency per muscle from the row timestamps |
 | `js/profile-transfer.js` | backup/restore and moving one profile between phones as a file |
 | `js/app.js` | everything else: state, rendering, QR transfer, calculator, volume dashboard |
 | `js/vendor/` | the two QR libraries, verbatim from npm — see the README in there |

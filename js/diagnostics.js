@@ -42,6 +42,7 @@ const DIAG_TRENDS = {
 };
 
 let diagScope = 'block';  /* 'block' | 'all' */
+let diagView = 'trend';   /* 'trend' = per exercise | 'freq' = per muscle */
 
 /* Every session this exercise was logged in, oldest first, as one e1RM
    point each. Modelled on collectHistoryAll(), but it keeps what the charts
@@ -82,6 +83,193 @@ function diagPoints(profile, exId, onlyBlockId) {
     }
   });
   return out;
+}
+
+/* ---------- frequency, from the timestamps already on every row ----------
+   Every ticked set carries `r.ts` and nothing read it except one line in
+   the session footer. It answers the question that otherwise eats a whole
+   block: at three days a week, one skipped session quietly moves chest
+   from every ~3,5 days to every ~7, and a lift that stalls on that spacing
+   has an attendance record behind it, not a programming problem.
+
+   Which is why this lives in the same sheet as the trend rather than a
+   screen of its own — a stall and a nine-day gap have to be read together
+   or the wrong thing gets changed. */
+
+/* Local calendar day, not UTC: a set ticked at 23:30 belongs to the day you
+   trained, and toISOString() would file half your evening sessions under
+   tomorrow. */
+function dayKey(ts) {
+  const d = new Date(ts);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+/* Every exercise the block has ever carried, retired ones included, mapped
+   to its muscle. Retired exercises are excluded from the *plan* side below
+   — they are not scheduled any more — but the sessions they were logged in
+   still happened, and dropping them would invent gaps that were not there. */
+function muscleOfBlock(block) {
+  const map = {};
+  (block.days || []).forEach(day => {
+    (day.ex || []).forEach(ex => { map[ex.id] = muscleTag(ex); });
+  });
+  return map;
+}
+
+/* The sessions in which a muscle was actually trained, as one local day
+   each, oldest first. A session is a logged day-slot with at least one
+   ticked set of an exercise tagged to that muscle; its date is the first
+   set ticked in it, which is when you were in the gym. */
+function muscleSessions(profile, block, upToWeek) {
+  const muscleOf = muscleOfBlock(block);
+  const blk = profile.log[block.id] || {};
+  const out = {};
+  Object.keys(blk).forEach(k => {
+    const m = /^w(\d+)-(.+)$/.exec(k);
+    if (!m) return;
+    const w = +m[1];
+    if (w < 1 || w > upToWeek) return;
+    const slot = blk[k] || {};
+    const firstTs = {};
+    Object.keys(slot).forEach(exId => {
+      const tag = muscleOf[exId];
+      if (!tag) return;
+      const rows = slot[exId];
+      if (!Array.isArray(rows)) return;
+      rows.forEach(r => {
+        if (!r || !r.done || !(r.ts > 0)) return;
+        if (!firstTs[tag] || r.ts < firstTs[tag]) firstTs[tag] = r.ts;
+      });
+    });
+    Object.keys(firstTs).forEach(tag => {
+      if (!out[tag]) out[tag] = [];
+      out[tag].push(firstTs[tag]);
+    });
+  });
+  Object.keys(out).forEach(tag => out[tag].sort((a, b) => a - b));
+  return out;
+}
+
+/* Median gap in days between consecutive sessions. Median because one
+   holiday in the middle of a block would drag a mean past every threshold
+   and label an otherwise well-attended muscle an attendance problem. */
+function medianGapDays(stamps) {
+  if (!stamps || stamps.length < 2) return null;
+  const gaps = [];
+  for (let i = 1; i < stamps.length; i++) gaps.push((stamps[i] - stamps[i - 1]) / 86400000);
+  gaps.sort((a, b) => a - b);
+  const mid = Math.floor(gaps.length / 2);
+  return gaps.length % 2 ? gaps[mid] : (gaps[mid - 1] + gaps[mid]) / 2;
+}
+
+/* How often the plan says to train each muscle: the live days that carry at
+   least one exercise for it. Retired exercises are not counted — the plan
+   as it stands is what adherence is measured against. */
+function plannedMuscleDays(block) {
+  const out = {};
+  blockTagsFor('muscle', block).forEach(t => { out[t] = 0; });
+  dayList(block).forEach(day => {
+    const tags = {};
+    exList(day).forEach(ex => { tags[muscleTag(ex)] = 1; });
+    Object.keys(tags).forEach(t => { out[t] = (out[t] || 0) + 1; });
+  });
+  return out;
+}
+
+/* One row per muscle: how often the plan asks for it, how often you
+   actually got there, and the spacing that came out of it. Sorted by the
+   thing worth acting on — the widest gaps first. */
+function freqRows(profile, block, upToWeek) {
+  const planned = plannedMuscleDays(block);
+  const sessions = muscleSessions(profile, block, upToWeek);
+  const rows = Object.keys(planned).map(tag => {
+    const stamps = sessions[tag] || [];
+    const plannedTotal = planned[tag] * upToWeek;
+    return {
+      tag: tag,
+      perWeek: planned[tag],
+      planned: plannedTotal,
+      done: stamps.length,
+      adherence: plannedTotal ? stamps.length / plannedTotal : null,
+      gap: medianGapDays(stamps),
+      priority: isPriority(block, tag),
+      last: stamps.length ? stamps[stamps.length - 1] : 0,
+    };
+  });
+  /* Worst attendance first, and "never got there at all" is the worst of
+     all — sorting by gap alone would file a muscle with zero sessions
+     below one you trained every week, since it has no gaps to measure. */
+  return rows.sort((a, b) =>
+    (a.adherence == null ? 1 : a.adherence) - (b.adherence == null ? 1 : b.adherence) ||
+    (b.gap == null ? -1 : b.gap) - (a.gap == null ? -1 : a.gap) ||
+    a.tag.localeCompare(b.tag, 'es'));
+}
+
+/* Every day of the block with something ticked on it, and how much — the
+   input for the calendar strip below. */
+function trainedDays(profile, block) {
+  const blk = profile.log[block.id] || {};
+  const days = {};
+  Object.keys(blk).forEach(k => {
+    const slot = blk[k] || {};
+    Object.keys(slot).forEach(exId => {
+      const rows = slot[exId];
+      if (!Array.isArray(rows)) return;
+      rows.forEach(r => {
+        if (!r || !r.done || !(r.ts > 0)) return;
+        const key = dayKey(r.ts);
+        days[key] = (days[key] || 0) + 1;
+      });
+    });
+  });
+  return days;
+}
+
+/* A calendar, because the shape of the gaps is the point and a list of
+   numbers hides it: one column per week, Monday at the top, shaded by how
+   many sets were ticked that day. Capped to the most recent weeks so a
+   profile with a year of history still fits on a phone. */
+const HEAT_MAX_WEEKS = 18;
+
+function buildHeatmapSVG(days) {
+  const keys = Object.keys(days).sort();
+  if (!keys.length) return '';
+  const parse = k => { const p = k.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); };
+  const last = parse(keys[keys.length - 1]);
+  let first = parse(keys[0]);
+  /* Start the grid on the Monday of the first trained week. */
+  const back = (first.getDay() + 6) % 7;
+  first = new Date(first.getFullYear(), first.getMonth(), first.getDate() - back);
+  let weeks = Math.floor((last - first) / (7 * 86400000)) + 1;
+  if (weeks > HEAT_MAX_WEEKS) {
+    first = new Date(first.getFullYear(), first.getMonth(), first.getDate() + (weeks - HEAT_MAX_WEEKS) * 7);
+    weeks = HEAT_MAX_WEEKS;
+  }
+  const max = Math.max(1, ...keys.map(k => days[k]));
+
+  const cell = 11, gap = 2, padL = 16, padT = 2;
+  const W = padL + weeks * (cell + gap), H = padT + 7 * (cell + gap);
+  const labels = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block;max-width:' +
+    (W * 1.6) + 'px" role="img" aria-label="Días entrenados">';
+  labels.forEach((l, r) => {
+    if (r % 2) return;  /* every other row, or they collide at this size */
+    svg += '<text x="0" y="' + (padT + r * (cell + gap) + cell - 1) + '" font-size="7.5" fill="var(--soft)" ' +
+      'font-family="IBM Plex Mono, monospace">' + l + '</text>';
+  });
+  for (let c = 0; c < weeks; c++) {
+    for (let r = 0; r < 7; r++) {
+      const d = new Date(first.getFullYear(), first.getMonth(), first.getDate() + c * 7 + r);
+      const n = days[dayKey(d.getTime())] || 0;
+      const x = padL + c * (cell + gap), y = padT + r * (cell + gap);
+      const fill = n ? 'var(--signal)' : 'var(--sunk)';
+      const op = n ? (0.35 + 0.65 * (n / max)) : 1;
+      svg += '<rect x="' + x + '" y="' + y + '" width="' + cell + '" height="' + cell +
+        '" rx="2" fill="' + fill + '" opacity="' + (Math.round(op * 100) / 100) + '"/>';
+    }
+  }
+  svg += '</svg>';
+  return svg;
 }
 
 /* Least squares over the window, expressed as a fraction of the exercise's
@@ -202,7 +390,7 @@ function diagRows(profile, block) {
       }
       rows.push(Object.assign({
         id: ex.id, name: ex.n, day: day.name, sessions: points.length,
-        trend: trend, pct: pct, change: change, est: est,
+        trend: trend, pct: pct, change: change, est: est, gap: sig.gap,
       }, diagVerdict(trend, sig)));
     });
   });
@@ -217,13 +405,95 @@ function diagRows(profile, block) {
 const diagPct = v => (v > 0 ? '+' : v < 0 ? '−' : '') +
   String(Math.abs(Math.round(v * 1000) / 10)).replace('.', ',') + ' %';
 
+const fmtDays = d => {
+  const n = Math.round(d * 10) / 10;
+  return String(n).replace('.', ',') + (n === 1 ? ' día' : ' días');
+};
+
+/* The plan's own spacing, for the muscle rows: 7 days over the number of
+   sessions a week asks for. Two sessions a week is every 3,5 days. */
+const plannedGap = perWeek => (perWeek > 0 ? 7 / perWeek : null);
+
+function drawDiagFreq(profile, block) {
+  const week = profile.week;
+  const rows = freqRows(profile, block, week);
+  const host = $('diagHost');
+
+  $('diagSub').textContent = block.name + ' — cada cuánto entrenas de verdad cada músculo, ' +
+    'de las fechas que ya lleva cada serie marcada. Hasta la semana ' + week + ' incluida, que aún está en curso.';
+
+  host.innerHTML = '';
+  const trained = trainedDays(profile, block);
+  const heat = buildHeatmapSVG(trained);
+  if (heat) {
+    const cal = document.createElement('div');
+    cal.className = 'freq-cal';
+    cal.innerHTML = '<div class="freq-cal-t"></div><div class="freq-cal-g">' + heat + '</div>';
+    const dayCount = Object.keys(trained).length;
+    cal.querySelector('.freq-cal-t').textContent = dayCount === 1
+      ? '1 día entrenado en este bloque'
+      : dayCount + ' días entrenados en este bloque';
+    host.appendChild(cal);
+  }
+
+  if (!rows.some(r => r.done > 0)) {
+    const p = document.createElement('p');
+    p.className = 'chart-empty';
+    p.textContent = 'Aún no hay ninguna serie marcada como hecha con fecha en este bloque. ' +
+      'Las fechas se guardan solas al marcar una serie.';
+    host.appendChild(p);
+    return;
+  }
+
+  rows.forEach(r => {
+    const target = plannedGap(r.perWeek);
+    /* "Behind" means the real spacing is meaningfully wider than the one
+       the plan asks for — half a day of slack, so a session moved from
+       Monday to Tuesday doesn't read as a lapse. */
+    const behind = r.gap != null && target != null && r.gap > target + 0.5;
+    const el = document.createElement('div');
+    el.className = 'freq-row' + (behind ? ' behind' : '');
+    el.dataset.tag = r.tag;
+    el.innerHTML =
+      '<div class="freq-head"><span class="freq-name"></span><span class="freq-gap"></span></div>' +
+      '<div class="freq-meta"></div>';
+    const name = el.querySelector('.freq-name');
+    name.textContent = r.tag;
+    if (r.priority) {
+      const b = document.createElement('span');
+      b.className = 'vol-pri';
+      b.textContent = 'PRIORITARIO';
+      name.appendChild(b);
+    }
+    el.querySelector('.freq-gap').textContent = r.gap == null
+      ? (r.done === 1 ? 'una sola sesión' : 'sin sesiones')
+      : 'cada ' + fmtDays(r.gap);
+    el.querySelector('.freq-meta').textContent =
+      r.done + ' de ' + r.planned + ' sesiones' +
+      (r.adherence == null ? '' : ' (' + Math.round(r.adherence * 100) + ' %)') +
+      (target == null ? '' : ' · previsto cada ' + fmtDays(target)) +
+      /* The amber is the fast read; this is the same thing in words, for
+         anyone the colour doesn't reach. */
+      (behind ? ' · más espaciado de lo previsto' : '');
+    host.appendChild(el);
+  });
+}
+
 function drawDiag() {
   const profile = getProfile(), block = getBlock();
 
+  $('diagView').querySelectorAll('.seg-btn').forEach(b => {
+    b.setAttribute('aria-pressed', b.dataset.view === diagView ? 'true' : 'false');
+    b.onclick = () => { diagView = b.dataset.view; drawDiag(); };
+  });
   $('diagScope').querySelectorAll('.seg-btn').forEach(b => {
     b.setAttribute('aria-pressed', b.dataset.scope === diagScope ? 'true' : 'false');
     b.onclick = () => { diagScope = b.dataset.scope; drawDiag(); };
   });
+  /* Adherence is measured against a plan, and only the current block has
+     one — so the across-blocks toggle has nothing to switch here. */
+  $('diagScope').style.display = diagView === 'freq' ? 'none' : '';
+  if (diagView === 'freq') { drawDiagFreq(profile, block); return; }
 
   const rows = diagRows(profile, block);
   const counted = rows.filter(r => r.trend !== 'none');
@@ -265,7 +535,8 @@ function drawDiag() {
     el.querySelector('.diag-num').textContent = r.trend === 'none'
       ? (r.sessions === 0 ? 'sin sesiones registradas'
         : r.sessions === 1 ? '1 sesión registrada' : r.sessions + ' sesiones registradas')
-      : diagPct(r.change) + ' en ' + r.sessions + ' sesiones · ' + diagPct(r.pct) + ' por sesión';
+      : diagPct(r.change) + ' en ' + r.sessions + ' sesiones · ' + diagPct(r.pct) + ' por sesión' +
+        (r.gap == null ? '' : ' · cada ' + fmtDays(r.gap));
     el.querySelector('.diag-read').textContent = r.lectura;
     el.querySelector('.diag-do').textContent = r.cambio;
     host.appendChild(el);
