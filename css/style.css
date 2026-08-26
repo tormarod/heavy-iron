@@ -598,6 +598,21 @@ body {
 .chart-table th { color: var(--soft); font-weight: 600; text-align: right; }
 .chart-table td:first-child, .chart-table th:first-child { text-align: left; }
 
+/* ---- kilos-moved strip (volume sheet) ----
+   Tonnage is a different unit from the set counts charted under it, so it
+   reads as two boxed figures rather than another row in that table. */
+.vol-kg { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.vol-kg > div {
+  flex: 1; min-width: 130px; padding: 8px 10px;
+  background: var(--sunk); border: 1px solid var(--line); border-radius: 2px;
+}
+.vol-kg b {
+  display: block; font-family: 'IBM Plex Mono', monospace;
+  font-size: 15px; font-weight: 600; color: var(--ink);
+}
+.vol-kg span { display: block; font-size: 11px; color: var(--soft); line-height: 1.4; margin-top: 2px; }
+.vol-kg-empty { flex: 1; font-size: 11.5px; color: var(--soft); }
+
 /* ---- block manager ---- */
 .blk-row {
   display: flex; align-items: center; gap: 10px;
