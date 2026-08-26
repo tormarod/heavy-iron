@@ -69,8 +69,10 @@ from a copy of the plan and leaves this one's history where it is.
   consistent strength trend.
 - **Weekly volume, three ways to slice it**: hard sets per muscle, per
   movement pattern, or compound vs. isolation — as the plan prescribes
-  them this week, or as you actually ticked them. See
-  [Weekly volume](#weekly-volume-by-muscle-pattern-or-type).
+  them this week, or as you actually ticked them, with the kilos moved so
+  far in the block on top. See
+  [Weekly volume](#weekly-volume-by-muscle-pattern-or-type) and
+  [Kilos moved so far](#kilos-moved-so-far).
 - **A warm-up and plate calculator**: a ramp up to your working weight and,
   on a barbell, which plates go on each side. See
   [Warm-ups](#warm-ups-and-plate-maths).
@@ -402,7 +404,8 @@ point of recording this:
 ### What a drop counts as
 
 - **Volume, yes.** The reps after the weight came off still moved weight,
-  so they are added to the footer's `kg movidos`.
+  so they are added to the footer's `kg movidos` — and to the block total
+  in the volume view.
 - **A set, no.** The progress bar, the "N de M series hechas" count and the
   weekly volume dashboard all still see one set — the dashboard exists to
   compare hard sets against what the plan asked for, and a drop doesn't
@@ -481,6 +484,30 @@ that total among the genuinely untagged.
 Both toggles keep the same set of rows, so switching one only ever moves
 the numbers. That is what makes plan-against-done readable as adherence
 rather than as two unrelated charts.
+
+### Kilos moved so far
+
+Above the bars sits the other half of the volume question: not how many
+hard sets, but how much weight has actually gone up and down. The session
+footer already reports the day's `kg movidos`; this strip is the same
+number added up over the block — the block total, and this week's share of
+it on its own — so a week that felt light next to the one before it has a
+figure attached.
+
+It is the same arithmetic as the footer line, `weight × reps` over every
+set you have ticked done, drops included. Three things follow from that:
+
+- It ignores the **Plan** / **Registrado** toggle. Tonnage only ever comes
+  from what was ticked; the plan has no weights in it to total up.
+- It counts sets logged against **retired exercises and extra sets** too,
+  which the bar chart deliberately doesn't. Dropping an exercise from the
+  plan doesn't unlift the sets you already did.
+- Weeks past the end of a shortened block are left out, the same as
+  everywhere else they're hidden — the "series en semanas por encima"
+  notice in the session is what speaks for those.
+
+Until a second week has kilos in it the strip shows one figure rather than
+printing the same number twice.
 
 ## Editing a block mid-way
 

@@ -141,8 +141,48 @@ const ok = (name, cond, extra) => {
       return (svg.match(/<rect/g) || []).length === 3;
     }));
 
+    ok('setVolume counts the set plus its drops, and only when ticked', await page.evaluate(() => {
+      const r = { done: true, w: '60', r: '8', d: [{ w: '45', r: '5' }] };
+      return setVolume(r) === 60 * 8 + 45 * 5 && setVolume({ w: '60', r: '8' }) === 0;
+    }));
+    ok('setVolume ignores a ticked set with a missing number', await page.evaluate(() =>
+      setVolume({ done: true, w: '', r: '8' }) === 0));
+    ok('blockTonnageByWeek indexes by week and skips weeks past the block length', await page.evaluate(() => {
+      const block = { id: 'tb', weeks: 2, days: [] };
+      const profile = { log: { tb: {
+        'w1-d1': { a: [{ done: true, w: '10', r: '10' }] },
+        'w2-d1': { a: [{ done: true, w: '20', r: '10' }, { w: '99', r: '9' }] },
+        'w3-d1': { a: [{ done: true, w: '50', r: '10' }] },
+      } } };
+      return JSON.stringify(blockTonnageByWeek(profile, block)) === JSON.stringify([100, 200]);
+    }));
+    ok('blockTonnageByWeek still counts a retired exercise\'s logged sets', await page.evaluate(() => {
+      const block = { id: 'tb', weeks: 1, days: [{ id: 'd1', ex: [{ id: 'a', off: 1 }] }] };
+      const profile = { log: { tb: { 'w1-d1': { a: [{ done: true, w: '10', r: '10' }] } } } };
+      return blockTonnageByWeek(profile, block)[0] === 100;
+    }));
+
     await page.click('#volumeBtn');
     ok('the volume sheet opens', await page.locator('#volumeSheet.up').count() === 1);
+    const kgStrip = await page.textContent('#volumeTonnage');
+    ok('the kilos strip reports the block total (the one logged set, 22.5*10)', kgStrip.includes('225'), kgStrip);
+    ok('with only week 1 logged it says so instead of printing the same number twice',
+       kgStrip.includes('todo en la semana 1') && (kgStrip.match(/225/g) || []).length === 1, kgStrip);
+    const twoWeekStrip = await page.evaluate(() => {
+      const p = getProfile(), b = getBlock(), day = dayList(b)[0].id;
+      p.log[b.id][slot(2, day)] = { probe: [{ done: true, w: '100', r: '10' }] };
+      p.week = 2;
+      drawVolumeTonnage(p, b, 2);
+      const t = document.getElementById('volumeTonnage').textContent;
+      delete p.log[b.id][slot(2, day)];
+      p.week = 1;
+      drawVolumeTonnage(p, b, 1);
+      /* es-ES leaves four-digit numbers ungrouped (1225, not 1.225) — the
+         thousands dot only shows up from five digits on. */
+      return t;
+    });
+    ok('once an earlier week carries kilos the strip splits into block and week',
+       twoWeekStrip.includes('1225 ') && twoWeekStrip.includes('1000 ') && twoWeekStrip.includes('2 semanas registradas'), twoWeekStrip);
     ok('starts on Plan scope', await page.getAttribute('#volumeScope >> text=Plan', 'aria-pressed') === 'true');
     const tagCount = await page.evaluate(() => blockTagsFor('muscle', getBlock()).length);
     ok('one row per muscle tag actually used in this block', await page.locator('#volumeHost .chart-table tbody tr').count() === tagCount);
@@ -158,6 +198,8 @@ const ok = (name, cond, extra) => {
     await page.click('#volumeScope >> text=Registrado');
     await page.waitForTimeout(200);
     ok('the sub-label switches to registered sets', (await page.textContent('#volumeSub')).includes('marcadas como hechas'));
+    ok('the kilos strip is the same on either scope — tonnage is log-only',
+       (await page.textContent('#volumeTonnage')) === kgStrip);
     const topLogRow = await page.locator('#volumeHost .chart-table tbody tr').first().textContent();
     ok('the one completed set so far counts under Pecho', topLogRow.includes('Pecho') && topLogRow.trim().endsWith('1'), topLogRow);
 

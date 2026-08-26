@@ -960,6 +960,23 @@ function dropVolume(r) {
   }, 0);
 }
 
+/* Kilos moved by one logged set: the set itself plus whatever the drops
+   added. The reps after the weight came off are still reps that moved
+   weight — they do not add a *set* anywhere (not to the progress bar, not
+   to the volume dashboard, which compares set counts against the plan) but
+   leaving them out would under-report the hardest sets in the session.
+   Only a ticked set counts, and only one with both numbers filled in. */
+function setVolume(r) {
+  if (!r || !r.done) return 0;
+  const w = num(r.w), reps = num(r.r);
+  return ((isNaN(w) || isNaN(reps)) ? 0 : w * reps) + dropVolume(r);
+}
+
+/* Kilos in the unit the app is showing, grouped the Spanish way: the
+   numbers here run to five digits by mid-block, and "45320 kg" is a number
+   you have to count digits on. */
+const fmtKg = n => Math.round(n).toLocaleString('es-ES') + ' ' + units();
+
 /* "60×8" for the set, "60×8 ↓45×5" once it has a drop — the one string used
    by the previous-week line and the CSV both. */
 function setSummary(r) {
@@ -2080,14 +2097,7 @@ function drawApp() {
     const box = card.querySelector('.sets');
     rows.forEach((r, si) => {
       if (r.done) {
-        const w = num(r.w), reps = num(r.r);
-        if (!isNaN(w) && !isNaN(reps)) tonnage += w * reps;
-        /* The reps after the weight came off are still reps that moved
-           weight. They do not add a *set* anywhere — not to the progress
-           bar, not to the volume dashboard, which compares set counts
-           against the plan — but leaving them out of the tonnage would
-           under-report the hardest sets in the session. */
-        tonnage += dropVolume(r);
+        tonnage += setVolume(r);
         if (r.ts > lastTs) lastTs = r.ts;
       }
 
@@ -2238,7 +2248,7 @@ function drawApp() {
   $('beyond').style.display = stranded ? 'block' : 'none';
 
   const extra = [];
-  if (tonnage > 0) extra.push('Volumen: ' + Math.round(tonnage).toLocaleString('es-ES') + ' ' + units() + ' movidos');
+  if (tonnage > 0) extra.push('Volumen: ' + fmtKg(tonnage) + ' movidos');
   if (prs) extra.push(prs === 1 ? '1 récord personal' : prs + ' récords personales');
   if (lastTs) extra.push('último registro ' + new Date(lastTs).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }));
   const head = doneN === total
@@ -3175,6 +3185,33 @@ function volumeRows(totals) {
     .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label, 'es'));
 }
 
+/* Kilos moved in this block, week by week — index 0 is week 1, and a week
+   with nothing ticked stays at zero rather than disappearing.
+   The log is walked raw here instead of through dayList/exList, unlike the
+   set counts above: a retired exercise's sets were still lifted, and rows
+   parked past an exercise's current set count were still lifted too.
+   Hiding them from the plan doesn't unlift them. Weeks past the block's
+   current length are left out for the same reason the session view hides
+   them — the "series en semanas por encima" notice is what speaks for
+   those. */
+function blockTonnageByWeek(profile, block) {
+  const weeks = blockWeeks(block);
+  const out = new Array(weeks).fill(0);
+  const blk = profile.log[block.id] || {};
+  Object.keys(blk).forEach(k => {
+    const m = /^w(\d+)-/.exec(k);
+    if (!m) return;
+    const w = +m[1];
+    if (w < 1 || w > weeks) return;
+    const s = blk[k] || {};
+    Object.keys(s).forEach(exId => {
+      const rows = s[exId];
+      if (Array.isArray(rows)) out[w - 1] += rows.reduce((t, r) => t + setVolume(r), 0);
+    });
+  });
+  return out;
+}
+
 /* Horizontal sibling of buildChartSVG: one bar per row, same monospace
    labels and accent colour so it reads as the same chart family. */
 function buildBarSVG(rows) {
@@ -3198,6 +3235,34 @@ function buildBarSVG(rows) {
   return svg;
 }
 
+/* The kilos strip above the bars. It answers a different question from
+   the chart below it — "how much have I actually shifted in this block",
+   not "where did this week's sets go" — so it sits in its own boxed row and
+   ignores both toggles: tonnage only ever comes from what was ticked done,
+   there is no plan-side number to compare it against. */
+function drawVolumeTonnage(profile, block, week) {
+  const byWeek = blockTonnageByWeek(profile, block);
+  const total = byWeek.reduce((t, v) => t + v, 0);
+  const thisWeek = byWeek[week - 1] || 0;
+  const logged = byWeek.filter(v => v > 0).length;
+  const host = $('volumeTonnage');
+  if (!total) {
+    host.innerHTML = '<p class="vol-kg-empty">Aún no has movido ningún kilo en este bloque.</p>';
+    return;
+  }
+  /* Early in a block the two figures are the same number twice, which reads
+     as a bug rather than as a total. One tile until they diverge. */
+  if (total === thisWeek) {
+    host.innerHTML = '<div><b>' + esc(fmtKg(total)) + '</b><span>movidos en el bloque, todo en la semana ' + week + '</span></div>';
+    return;
+  }
+  host.innerHTML =
+    '<div><b>' + esc(fmtKg(total)) + '</b><span>movidos en el bloque · ' +
+      (logged === 1 ? '1 semana registrada' : logged + ' semanas registradas') + '</span></div>' +
+    '<div><b>' + esc(fmtKg(thisWeek)) + '</b><span>' +
+      (thisWeek ? 'esta semana (semana ' + week + ')' : 'aún nada esta semana (semana ' + week + ')') + '</span></div>';
+}
+
 let volumeScope = 'plan';  /* 'plan' | 'log' */
 let volumeDim = 'muscle';  /* key into VOLUME_DIMENSIONS */
 
@@ -3217,6 +3282,8 @@ function drawVolume() {
     b.setAttribute('aria-pressed', b.dataset.dim === volumeDim ? 'true' : 'false');
     b.onclick = () => { volumeDim = b.dataset.dim; drawVolume(); };
   });
+
+  drawVolumeTonnage(profile, block, week);
 
   const dimLabel = VOLUME_DIMENSIONS[volumeDim].label.toLowerCase();
   const isLog = volumeScope === 'log';
