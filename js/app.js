@@ -56,6 +56,29 @@ const clampNum = (v, lo, hi, dflt, step) => {
    a plate change and nothing past a round-trip's worth of iron. */
 const INC_MIN = 0.25, INC_MAX = 50, INC_STEP = 0.25;
 
+/* The step to fall back on when an exercise declares no `inc` of its own —
+   and most don't, since it is an optional field. Something has to round the
+   target weight below to a number you can actually load, so the chain runs
+   exercise → your own default (Ajustes) → this. Deliberately the smallest
+   plate/stack step that exists on most equipment rather than a typical one:
+   rounding to a step finer than the machine has only ever costs you the
+   difference between two real notches, while rounding to a coarser one
+   invents jumps the stack cannot make.
+
+   Only ever used for ROUNDING a number the app shows you. copyPrev stays
+   keyed on an explicit `ex.inc`: it writes weights into the log, and
+   defaulting a step for an exercise nobody declared one for would quietly
+   put +2,5 kg on a 12 kg lateral raise. */
+const DEFAULT_INC = { kg: 2.5, lb: 5 };
+
+/* Never call this before migrate() has run — it reads state.prefs. */
+const incFor = ex => {
+  const own = ex ? num(ex.inc) : NaN;
+  if (own > 0) return own;
+  const pref = num(state && state.prefs && state.prefs.inc);
+  return pref > 0 ? pref : DEFAULT_INC[units()];
+};
+
 /* Log rows are filed under a day's *id*, not its position, so days can be
    added, retired or reordered without the weeks logged under them moving
    with the shuffle. */
@@ -269,6 +292,10 @@ function migrate() {
      or plate set. */
   if (!(num(state.prefs.barWeight) > 0)) state.prefs.barWeight = DEFAULT_BAR_WEIGHT[state.prefs.units];
   else state.prefs.barWeight = num(state.prefs.barWeight);
+  /* Your default weight step, for every exercise that doesn't declare its
+     own `inc`. Seeded from the active unit exactly like the bar weight, and
+     never rescaled afterwards for the same reason. */
+  state.prefs.inc = clampNum(state.prefs.inc, INC_MIN, INC_MAX, 0, INC_STEP) || DEFAULT_INC[state.prefs.units];
   if (!Array.isArray(state.prefs.plates) || !state.prefs.plates.length) {
     state.prefs.plates = DEFAULT_PLATES[state.prefs.units].slice();
   } else {
@@ -548,6 +575,7 @@ function openSetup(firstRun) {
     plan: 'example',
     barWeight: state.prefs.barWeight,
     platesText: state.prefs.plates.join(', '),
+    inc: state.prefs.inc,
     /* On a first run the name boxes start empty, so the placeholder invites
        you to type rather than making you clear somebody else's name out
        first. Left empty, the shipped label stands. */
@@ -566,8 +594,10 @@ function openSetup(firstRun) {
   $('setupClose').textContent = firstRun ? 'Saltar' : 'Cerrar sin guardar';
   $('setupPlanField').style.display = firstRun ? '' : 'none';
   $('setupCalcField').style.display = firstRun ? 'none' : '';
+  $('setupIncField').style.display = firstRun ? 'none' : '';
   $('setupBarWeight').value = setupDraft.barWeight;
   $('setupPlates').value = setupDraft.platesText;
+  $('setupInc').value = setupDraft.inc;
   $('setupImportBlob').value = '';
   setNote($('setupImportStatus'), '', false);
 
@@ -587,6 +617,7 @@ function renderSetup() {
     b.onclick = () => { setupDraft.units = b.dataset.units; renderSetup(); };
   });
   $('setupBarWeightU').textContent = setupDraft.units;
+  $('setupIncU').textContent = setupDraft.units;
   $('setupPlan').querySelectorAll('.seg-btn').forEach(b => {
     b.setAttribute('aria-pressed', b.dataset.plan === setupDraft.plan ? 'true' : 'false');
     b.onclick = () => { setupDraft.plan = b.dataset.plan; renderSetup(); };
@@ -632,6 +663,7 @@ function renderSetup() {
 
 $('setupBarWeight').addEventListener('input', e => { if (setupDraft) setupDraft.barWeight = e.target.value; });
 $('setupPlates').addEventListener('input', e => { if (setupDraft) setupDraft.platesText = e.target.value; });
+$('setupInc').addEventListener('input', e => { if (setupDraft) setupDraft.inc = e.target.value; });
 
 $('setupSave').onclick = () => {
   /* Validated before anything else is touched: an invalid paste has to
@@ -664,11 +696,14 @@ $('setupSave').onclick = () => {
   if (setupFirstRun) {
     state.prefs.barWeight = DEFAULT_BAR_WEIGHT[state.prefs.units];
     state.prefs.plates = DEFAULT_PLATES[state.prefs.units].slice();
+    state.prefs.inc = DEFAULT_INC[state.prefs.units];
   } else {
     const bw = num(setupDraft.barWeight);
     if (bw > 0) state.prefs.barWeight = bw;
     const plates = String(setupDraft.platesText || '').split(',').map(num).filter(p => p > 0);
     if (plates.length) state.prefs.plates = plates;
+    const inc = clampNum(setupDraft.inc, INC_MIN, INC_MAX, 0, INC_STEP);
+    if (inc > 0) state.prefs.inc = inc;
   }
   if (state.mode === 'solo') state.activeProfile = setupDraft.people[0].key;
 
@@ -888,6 +923,15 @@ function repRangeTop(reps) {
   return nums && nums.length ? num(nums[nums.length - 1]) : null;
 }
 
+/* The bottom of the same range — the first number, so "8–12" gives 8 and a
+   plain "12" gives 12 (a single number is a range one wide, not an error).
+   Double progression resets here every time the weight goes up, which is
+   what makes it the rep count the target weight below is solved for. */
+function repRangeBottom(reps) {
+  const nums = String(reps || '').match(/\d+(?:[.,]\d+)?/g);
+  return nums && nums.length ? num(nums[0]) : null;
+}
+
 /* ---------- RIR (reps in reserve) ----------
    The app prescribes an RIR target per week in `phase`, but used to record
    nothing about what actually happened — so there was no way to tell a hard
@@ -903,6 +947,26 @@ const RIR_LABEL = { '2+': '2+ RIR', '1': '1 RIR', '0': '0 RIR (al fallo)' };
 function getRir(profile, blockId, w, dayId, exId) {
   const slotRir = profile.rir[blockId] && profile.rir[blockId][slot(w, dayId)];
   return (slotRir && slotRir[exId]) || '';
+}
+
+/* The chip as a number the arithmetic can use. '2+' is open-ended — it may
+   have been four — so it is read as exactly 2, which makes every estimate
+   built on it come out low. That is the right direction to be wrong in:
+   under-shooting costs one week of a slightly light set, over-shooting
+   costs a failed session. */
+const RIR_VALUE = { '2+': 2, '1': 1, '0': 0 };
+const rirNumber = v => (Object.prototype.hasOwnProperty.call(RIR_VALUE, v) ? RIR_VALUE[v] : null);
+
+/* The RIR the *plan* asks for in a given week, dug out of the free text in
+   `phase[w].r` — which is prose ("2–3 RIR", "0–1 RIR", "Descarga"), not a
+   field. The last number wins, so a range reads as its slack end and biases
+   the target low for the same reason '2+' does. A week with no number in it
+   at all — a deload, or a phase somebody wrote in their own words — returns
+   null, and everything downstream stays quiet rather than inventing one. */
+function phaseRir(block, w) {
+  const r = block && block.phase && block.phase[w] && block.phase[w].r;
+  const nums = String(r || '').match(/\d+/g);
+  return nums && nums.length ? num(nums[nums.length - 1]) : null;
 }
 
 function setRir(profile, blockId, w, dayId, exId, val) {
@@ -1553,6 +1617,9 @@ function drawApp() {
       : '';
 
     const decay = repDecay(rows);
+    /* Read off the previous session, so it is the same number all week and
+       does not move as you tick sets. */
+    const est = targetEstimate(profile, block, day, ex, profile.week);
     const setupOpen = expandedSetup.has(ex.id);
 
     card.innerHTML =
@@ -1573,12 +1640,15 @@ function drawApp() {
       '</div>' +
       '<div class="sets"></div>' +
       (decay ? '<div class="ex-decay"></div>' : '') +
+      (est ? '<div class="ex-est ' + est.kind + '"></div>' : '') +
       '<div class="ex-rir"><span class="ex-rir-lbl">RIR último set</span><div class="rir-chips"></div></div>' +
       (parked ? '<div class="ex-parked"></div>' : '');
 
     if (decay) {
       card.querySelector('.ex-decay').textContent = '⚠ caída de ' + decay + ' reps: ¿primera serie al fallo?';
     }
+
+    if (est) card.querySelector('.ex-est').textContent = targetLine(est);
 
     if (parked) {
       card.querySelector('.ex-parked').textContent = parked === 1
@@ -1912,6 +1982,126 @@ function bestSet(done, metric) {
   let best = done[0];
   done.forEach(r => { if (num(r.w) > num(best.w)) best = r; });
   return best;
+}
+
+/* ---------- target weight for this week (Epley, inverted) ----------
+   copyPrev has exactly two answers — last week's weight, or last week's
+   plus `ex.inc` — and your reps only ever choose between them before being
+   thrown away. This reads them instead.
+
+   Correct last week's set for how close to failure it actually went, then
+   solve the same estimate back for the weight that lands you at the BOTTOM
+   of the rep range at this week's prescribed RIR. That is what double
+   progression means and what the week banners already say in prose: you
+   come into a new weight at the bottom of the range and climb it.
+
+       equiv    = reps + RIR        (2 RIR ≈ a set to failure 2 reps longer)
+       e1RM     = w × (1 + equiv/30)                        ← est1RM above
+       objetivo = e1RM / (1 + (repsMin + rirEstaSemana)/30)
+
+   Nothing new is typed for this: the reps are already in the log, the RIR
+   chip is already there (and the week's prescribed RIR stands in when it
+   isn't), and the rep range and the phase text are already in the plan.
+
+   The failure gate is copyPrev's, with one asymmetry that copyPrev has no
+   use for: a set that went to failure, needed a forced drop, or decayed by
+   three reps cannot be evidence that MORE weight is there, so a proposed
+   increase is withheld exactly as copyPrev withholds its `inc`. A proposed
+   *decrease* is not blocked by it — grinding out five reps of a 6–10 range
+   at 0 RIR is the plainest possible statement that the weight is too heavy,
+   and refusing to say so is the bug, not the safeguard. */
+
+/* Above this, Epley drifts far enough that the estimate would be inventing
+   a number rather than reading one. Say so instead. */
+const EST_MAX_REPS = 15;
+
+function targetEstimate(profile, block, day, ex, week) {
+  const prev = lastTime(profile, block.id, day.id, ex.id, week);
+  if (!prev) return null;
+
+  const repsMin = repRangeBottom(ex.reps);
+  const rirNow = phaseRir(block, week);
+  /* No numeric RIR this week (a deload, or a phase written freehand) means
+     there is no target to solve for. Quiet is the right answer. */
+  if (!(repsMin > 0) || rirNow == null) return null;
+
+  /* The RIR chip is recorded for the LAST set of the exercise ("RIR último
+     set"), so that is the set the correction applies to — pairing the
+     chip with any other set would be reading a number about one set as if
+     it described another. */
+  const withReps = prev.sets.filter(hasReps);
+  if (!withReps.length) return null;
+  const ref = withReps[withReps.length - 1];
+  const w = num(ref.w), reps = num(ref.r);
+  if (!(w > 0) || !(reps > 0)) return null;
+
+  const priorRir = getRir(profile, block.id, prev.week, day.id, ex.id);
+  const logged = rirNumber(priorRir);
+  /* RIR is optional and often not tapped. Rather than go silent on most of
+     the log, fall back to what the plan asked for that week — and say in
+     the line itself that it is the plan's number, not yours. */
+  const rirThen = logged == null ? phaseRir(block, prev.week) : logged;
+  if (rirThen == null) return null;
+
+  const out = { week: prev.week, from: w, fromReps: reps, rir: rirThen,
+                assumed: logged == null, reps: repsMin, weight: w };
+  if (reps > EST_MAX_REPS) { out.kind = 'skip'; return out; }
+
+  const step = incFor(ex);
+  const raw = est1RM(w, reps + rirThen) / (1 + (repsMin + rirNow) / 30);
+
+  /* Round first, clamp second. The other way round a 2,5 step rounds
+     straight back up through the ceiling — 77,5 on a 77,0 bound — so the
+     guardrail has to be applied to the number you would actually load, and
+     applied by stepping down to it rather than rounding up to it. */
+  const eps = 1e-9, lo = w * 0.9, hi = w * 1.1;
+  let t = roundToStep(raw, step);
+  if (t > hi + eps) t = Math.floor((hi + eps) / step) * step;
+  if (t < lo - eps) t = Math.ceil((lo - eps) / step) * step;
+  t = Math.round(t * 100) / 100;
+
+  const failed = forcedDrop(prev.sets) ? 'forced'
+    : priorRir === '0' ? 'failure'
+    : (!priorRir && repDecay(prev.sets) > 0) ? 'decay' : '';
+  /* A move smaller than one step is not a move: there is nothing to load
+     between the two numbers, and saying "+0,8 kg" would be false precision.
+     Same answer when the band turned out to be narrower than the step. */
+  if (!(t > 0) || t > hi + eps || Math.abs(t - w) < step - eps || (failed && t > w)) {
+    out.kind = 'hold';
+    out.why = (failed && t > w) ? failed : '';
+    return out;
+  }
+  out.kind = t > w ? 'up' : 'down';
+  out.weight = t;
+  return out;
+}
+
+/* Deliberately the same voice and the same slot as the rep-decay warning:
+   a line under the sets that you read, not a control you operate. The
+   greyed placeholder in the weight box is left exactly as it was — it has a
+   contract ("tick without typing takes that number") and that contract is
+   what makes copyPrev safe to press. */
+const EST_WHY = {
+  forced: 'hubo que bajar peso para acabarla',
+  failure: 'la última serie fue al fallo',
+  decay: 'las reps se cayeron por el camino',
+};
+
+function targetLine(est) {
+  const u = ' ' + units();
+  const n = v => String(Math.round(v * 100) / 100).replace('.', ',');
+  const from = ' (de ' + n(est.from) + '×' + est.fromReps + ' a ' + n(est.rir) + ' RIR' +
+    (est.assumed ? ' previstos' : '') + ')';
+  if (est.kind === 'skip') {
+    return 'objetivo: sin estimar — por encima de ' + EST_MAX_REPS +
+      ' reps la estimación deja de valer';
+  }
+  if (est.kind === 'hold') {
+    return '→ objetivo: mantener ' + n(est.weight) + u + ' × ' + est.reps +
+      (est.why ? ' — ' + EST_WHY[est.why] : from);
+  }
+  return (est.kind === 'up' ? '↗' : '↘') + ' objetivo: ' + n(est.weight) + u +
+    ' × ' + est.reps + from;
 }
 
 function collectHistory(profile, blockId, dayId, exId, weeks, metric) {
@@ -3309,13 +3499,21 @@ $('bCsv').onclick = () => {
   mark(lines === 1 ? '1 serie exportada' : lines + ' series exportadas');
 };
 
-/* block-editor.js and profile-transfer.js load before app.js, but their
-   DOM wiring (button clicks etc.) is deferred into these two functions
-   instead of running at their own top level — so it only ever runs once
-   every script on the page (this one included) has finished parsing,
-   regardless of load order. See js/block-editor.js and
-   js/profile-transfer.js for why that matters. */
+/* block-editor.js, diagnostics.js and profile-transfer.js load before
+   app.js, but their DOM wiring (button clicks etc.) is deferred into these
+   functions instead of running at their own top level — so it only ever
+   runs once every script on the page (this one included) has finished
+   parsing, regardless of load order. See js/block-editor.js,
+   js/diagnostics.js and js/profile-transfer.js for why that matters. */
 wireBlockEditor();
+/* Guarded, unlike its two siblings, because diagnostics.js is *new*: a
+   returning user whose service worker still holds the previous shell can
+   be served this app.js against an index.html that has no script tag for
+   it yet. An unguarded call would throw here, load() below would never
+   run, and the app would sit on "Cargando tu registro…" — the same stuck
+   screen the last script split caused. Losing one button until the worker
+   updates is the right failure. */
+if (typeof wireDiagnostics === 'function') wireDiagnostics();
 wireProfileTransfer();
 
 load();

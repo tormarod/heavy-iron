@@ -56,6 +56,7 @@
         <button class="sm" id="editPlan">Editar plan</button>
         <button class="sm" id="calcBtn">Calculadora</button>
         <button class="sm" id="volumeBtn">Volumen muscular</button>
+        <button class="sm" id="diagBtn">Diagnóstico</button>
         <button class="sm" id="clearDay">Borrar este día</button>
         <button class="sm" id="backup">Copia de seguridad</button>
         <button class="sm" id="settings">Ajustes</button>
@@ -133,6 +134,12 @@
         <span class="pe-field-lbl">Calculadora — discos disponibles por lado (separados por coma)</span>
         <input type="text" id="setupPlates" class="pe-block-name" style="margin-bottom:0;">
         <p class="setup-hint">Se usan al calcular el calentamiento y el reparto de discos. Cambiar la unidad no convierte estos números — revísalos si acabas de cambiarla.</p>
+      </div>
+
+      <div class="setup-field" id="setupIncField">
+        <span class="pe-field-lbl">Incremento de peso por defecto</span>
+        <div class="fld"><input type="text" inputmode="decimal" autocomplete="off" id="setupInc"><u id="setupIncU"></u></div>
+        <p class="setup-hint">El escalón más pequeño que puedes cargar, para los ejercicios que no traen el suyo. Se usa para redondear el objetivo de peso de cada semana. Cada ejercicio puede llevar el suyo propio en "Editar plan", y ese manda: solo ese cuenta al copiar los pesos de la semana anterior.</p>
       </div>
 
       <div class="sheet-btns">
@@ -323,6 +330,23 @@
     </div>
   </div>
 
+  <!-- every exercise's e1RM trend at once, crossed with the log's own signals -->
+  <div class="sheet" id="diagSheet">
+    <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="diagTitle">
+      <div class="sheet-t" id="diagTitle">Diagnóstico</div>
+      <p class="sheet-d">Todos los ejercicios del plan a la vez, ordenados por lo que peor va. Sale entero de lo que ya anotas: pesos, repeticiones, RIR y las fechas de cada serie.</p>
+      <div class="seg" id="diagScope" role="group" aria-label="Alcance del diagnóstico">
+        <button type="button" class="seg-btn" data-scope="block">Este bloque</button>
+        <button type="button" class="seg-btn" data-scope="all">Todos los bloques</button>
+      </div>
+      <p class="sheet-d" id="diagSub"></p>
+      <div id="diagHost"></div>
+      <div class="sheet-btns">
+        <button class="sm" id="diagClose">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- screen-to-camera transfer: plan, plan + progress, or a whole profile -->
   <div class="sheet" id="qrSheet">
     <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="qrTitle">
@@ -385,6 +409,7 @@
 
 <script src="js/data.js"></script>
 <script src="js/block-editor.js"></script>
+<script src="js/diagnostics.js"></script>
 <script src="js/profile-transfer.js"></script>
 <script src="js/app.js"></script>
 </body>

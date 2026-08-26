@@ -67,6 +67,12 @@ from a copy of the plan and leaves this one's history where it is.
   block you have ever run, either as raw weight or as an estimated one-rep
   max (Epley) so a program moving between rep ranges still shows a
   consistent strength trend.
+- **A target weight for every exercise, every week**, read off last week's
+  reps and RIR rather than guessed — see
+  [The weekly objetivo](#the-weekly-objetivo).
+- **Diagnóstico**: every exercise's strength trend at once, ranked worst
+  first and crossed with the signals already in your log, so a stall comes
+  with a reason and something to change — see [Diagnóstico](#diagnóstico).
 - **Weekly volume, three ways to slice it**: hard sets per muscle, per
   movement pattern, or compound vs. isolation — as the plan prescribes
   them this week, or as you actually ticked them, with the kilos moved so
@@ -127,9 +133,21 @@ starting plan stays editable under **Ajustes** in the footer — the starting
 plan isn't offered later because by then swapping it would throw away real
 history, which is what blocks are for instead.
 
-**Ajustes** also holds two fields the first run doesn't ask about, because
-there is nothing to set them against yet: your bar weight and the plates
-you have, used by [the calculator](#warm-ups-and-plate-maths).
+**Ajustes** also holds three fields the first run doesn't ask about,
+because there is nothing to set them against yet: your bar weight and the
+plates you have, used by [the calculator](#warm-ups-and-plate-maths), and
+your **default weight increment** — the smallest step you can actually
+load. That last one is what [the weekly objetivo](#the-weekly-objetivo)
+rounds to for every exercise that doesn't carry an `inc` of its own; an
+exercise that does carry one always wins over it. It starts at 2,5 kg
+(5 lb) and, like the bar weight, is seeded from whichever unit you picked
+and never rescaled afterwards.
+
+It deliberately does *not* feed **Copiar pesos**: that button writes
+weights into your log, and adding a default step to an exercise nobody
+declared one for would silently put +2,5 kg on a 12 kg lateral raise.
+Copying stays keyed on an explicit `ex.inc`; the objetivo line, which only
+ever tells you something, is where the fallback is safe.
 
 **About units.** `kg`/`lb` is a *label*, not a conversion. The app never
 touches the number you typed — you write down what's on the machine, and
@@ -351,6 +369,14 @@ out from under a session: when a new version has been cached, a small
   under the sets — `⚠ caída de 4 reps: ¿primera serie al fallo?` — because
   that drop is usually the first set having been pushed closer to failure
   than the ones after it.
+- **An objetivo for this week's weight, also for free.** Under the sets,
+  in the same voice as the rep-decay line: `↗ objetivo: 65 kg × 6 (de 60×10
+  a 2 RIR)`. Last week's set is corrected for how close to failure it
+  actually went, and that estimate is solved back for the weight that lands
+  you at the *bottom* of the rep range at this week's prescribed RIR —
+  which is what double progression means and what the week banners already
+  say in prose. See [The weekly objetivo](#the-weekly-objetivo) below for
+  what it does and does not claim.
 - **A ↓ on every set, for the weight that came off.** See
   [Weight drops](#weight-drops) below.
 - **Ajustes**, collapsed. A `⚙` button under each exercise's name opens a
@@ -376,6 +402,85 @@ out from under a session: when a new version has been cached, a small
 Everything above is keyboard reachable, the set ticks are real buttons
 with pressed state, dialogs close with `Escape`, and pinch-zoom is no
 longer blocked.
+
+## The weekly objetivo
+
+Under the sets of every exercise, one line: `↗ objetivo: 65 kg × 6 (de
+60×10 a 2 RIR)`. It is the answer to the only question you actually have
+standing in front of the machine, and it costs no new input — the reps are
+already in the log, they were just being read as a yes/no.
+
+**What it does.** `Copiar pesos` has exactly two answers: last week's
+weight, or last week's plus `inc`. Your reps decide which and are then
+discarded. Three things follow from that, and the middle one is expensive:
+
+- **Under-loading at the start of a block compounds.** Hit the top of a
+  6–10 range at 3 RIR and `+2,5 kg` on a 60 kg lift is +4 %, against the
+  ~+8 % the set just said was there. You spend three or four weeks of an
+  eight-week block climbing back to where you already were.
+- **It can never say "go down."** 75×5 on a 6–10 range copies 75 again,
+  and again. The honest number is ~70.
+- **Exercises without an `inc` never progressed at all** — which, before
+  this, was most of them.
+
+**How it gets there.** It inverts the Epley estimate the charts already
+use. Correct last week's set for how close to failure it actually went,
+then solve back for the weight that lands you at the *bottom* of the rep
+range at this week's prescribed RIR — the bottom, because that is where
+double progression restarts every time the weight goes up:
+
+```
+equiv    = reps + RIR                       // 2 RIR ≈ a set to failure 2 reps longer
+e1RM     = w × (1 + equiv / 30)             // the same est1RM the charts plot
+objetivo = e1RM / (1 + (repsMin + rirEstaSemana) / 30)
+```
+
+`repsMin` is the bottom of `ex.reps`; `rirEstaSemana` is dug out of the
+free text in `phase[w].r`, so `"2–3 RIR"` reads as 3. Last week's RIR comes
+from the chip you tapped; when you didn't tap one, the RIR the plan asked
+for that week stands in and the line says so (`a 3 RIR previstos`).
+
+| La semana pasada | Copiar pesos | Objetivo | |
+|---|---|---|---|
+| 60×10 @ 3 RIR | 62,5 | **65** (+8,3 %) | empezaste flojo, y el set lo dijo |
+| 70×10 @ 1 RIR | 72,5 | **75** (+7,1 %) | tope del rango, casi al límite |
+| 70×10 @ 0 RIR | 70 | **70** (0 %) | al fallo — mantiene |
+| 65×8 @ 1 RIR | 67,5 | **67,5** (+3,8 %) | coinciden, como la mayoría de semanas |
+| 75×5 @ 0 RIR | 75 | **70** (−6,7 %) | lo que copiar pesos no puede decirte |
+
+**The guardrails**, in the order they apply:
+
+- **The same failure gate as `Copiar pesos`, with one asymmetry.** RIR 0, a
+  forced drop, or a rep decay of ≥3 all mean the set cannot be evidence
+  that *more* weight is there, so a proposed increase is withheld and the
+  line says why (`— la última serie fue al fallo`). A proposed *decrease*
+  is not withheld: grinding out five reps of a 6–10 range at 0 RIR is the
+  plainest possible statement that the weight is too heavy, and refusing to
+  say so is the bug, not the safeguard.
+- **±10 % a week**, applied *after* rounding and by stepping down to the
+  bound rather than rounding up through it — otherwise a 2,5 kg step lands
+  on 77,5 against a 77,0 ceiling.
+- **Rounded to something you can load**: the exercise's own `inc`, else
+  your default increment from **Ajustes**, else 2,5 kg / 5 lb.
+- **Nothing above 15 reps.** Epley drifts badly up there, so it says `sin
+  estimar` instead of inventing a number.
+- **`2+` is read as exactly 2.** It's open-ended, so every estimate built
+  on it comes out low — the right direction to be wrong in.
+- **A move smaller than one increment is `mantener`.** No false precision.
+- **Nothing at all in a deload week**, where `phase[w].r` carries no number
+  to solve for and proposing a jump would be wrong anyway.
+
+**What it does not touch.** The greyed placeholder in the weight box is
+still last week's weight, unchanged. That number has a contract — tick
+without typing and it takes that — and it is what makes `Copiar pesos` safe
+to press. The objetivo is a line you read, never a number that gets logged
+for you.
+
+**One honest limit.** On light isolation work the smallest plate you own is
+often a bigger jump than the estimate wants: 12 kg on lateral raises with a
+1 kg step wants 12,8. There, adding a rep before adding weight is the
+correct mechanism and this adds nothing over plain double progression —
+`inc` wins and the line stays quiet with `mantener`.
 
 ## Weight drops
 
@@ -509,6 +614,53 @@ set you have ticked done, drops included. Three things follow from that:
 Until a second week has kilos in it the strip shows one figure rather than
 printing the same number twice.
 
+## Diagnóstico
+
+Twenty-two exercises, each with its own chart behind its own button. Nobody
+opens twenty-two charts — and the diagnosis was never inside any one of
+them anyway. It lives in the comparison, and nothing was making it.
+
+**Diagnóstico** in the footer fits a line through the estimated 1RM of
+every exercise in the current plan at once and sorts them **worst first**:
+`bajando` · `plano` · `subiendo`. Like everything else here it asks for no
+new input — it reads the weights, reps, RIR chips and timestamps you are
+already recording.
+
+- **The slope** is least squares over the last 6 sessions, expressed as a
+  percentage of that exercise's own average e1RM, so a lateral raise and a
+  leg press are comparable. Inside ±0,5 % per session is flat.
+- **Fewer than 3 sessions gets no verdict at all** — two flat weeks is
+  noise, not a stall.
+- **Sets above 15 reps are dropped**, not plotted: Epley drifts up there,
+  and one 20-rep back-off set would fake a trend that never happened.
+- **Este bloque / Todos los bloques** switches between the current block's
+  history and everything you have ever logged for those exercises.
+
+The ranking on its own would still just be a list. What makes it a
+diagnosis is the second half: each trend is crossed with what the log says
+about *how* those sessions went, and the reading and the fix come from
+that. The two right-hand columns below point at opposite changes, which is
+exactly why guessing at a stall goes wrong.
+
+| e1RM | Señal en el registro | Lectura | Qué cambias |
+|---|---|---|---|
+| plano | objetivo por debajo del peso actual | Peso mal elegido | Baja al objetivo y sube el rango de reps como es debido |
+| plano | RIR 0, o una bajada forzada | Fatiga, no falta de esfuerzo | Mismo peso, vuelve a 1–2 RIR. Apretar más es la palanca equivocada |
+| plano | caída de reps ≥3 | Primera serie al fallo | Empieza más ligero para que las series 2 y 3 sumen volumen |
+| plano | RIR 2+ repetido | Falta intensidad | Sube carga o reps: te dejas el estímulo sin usar |
+| plano | ninguna | Estancado sin señal clara | Marca el RIR unas semanas — sin eso no se distingue fatiga de falta de intensidad |
+| bajando | huecos >7 días de mediana | Asistencia, no programa | Nada que tocar en el plan |
+| bajando | sin huecos | Pierde fuerza de verdad | Si varios ejercicios bajan a la vez, mira el descanso y lo que comes — eso la app no lo ve |
+| subiendo | — | Funciona | No toques nada |
+
+The signals are read off the most recent sessions rather than the whole
+window, because what you change on Monday answers to how last Monday went.
+The gap check is a **median**, so one holiday in the middle of a block
+doesn't relabel a perfectly attended exercise as an attendance problem.
+
+Two exercises can share a name — the same lateral raise on two different
+days — and they get one row each, computed separately.
+
 ## Editing a block mid-way
 
 A block you are three weeks into is not frozen. **Editar plan** lets you
@@ -636,6 +788,14 @@ The two profiles have deliberately different priorities, and the day
 split follows from them: the men's plan prioritises upper body and
 treats legs as maintenance, the women's plan prioritises legs and keeps
 each muscle on a single day.
+
+Every exercise in both plans declares an `inc` — the smallest step that
+machine can really be loaded with, 1 kg on cable lateral raises, 2,5 on the
+machine presses, 5 on the hack squat, leg press and hip thrust. That is
+what double progression adds when you hit the top of the range, and what
+the weekly objetivo rounds to. Only new installs get them: an existing log
+is never rewritten, so set them yourself in **Editar plan** if you started
+before this.
 
 **Mujer — músculos separados por día.** Each muscle is trained on exactly
 one day of the week, counting the indirect work compounds do. The plan
@@ -782,10 +942,15 @@ Field notes:
   whole import with an error rather than getting silently rounded, because
   a rounded `add` used to rewrite the program's set count without saying
   so.
-- `ex.inc`: optional, decimals allowed (e.g. `2.5`) — the weight step
-  **Copiar pesos de semana anterior** adds once every set of this exercise
-  hit the top of `ex.reps` the week before (double progression). Clamped to
-  0.25–50 in whatever unit the profile uses, rounded to the nearest 0.25.
+- `ex.inc`: optional, decimals allowed (e.g. `2.5`) — the smallest weight
+  step this exercise can actually be loaded with. It does two jobs: it is
+  what **Copiar pesos de semana anterior** adds once every set hit the top
+  of `ex.reps` the week before (double progression), and it is what
+  [the weekly objetivo](#the-weekly-objetivo) rounds to. Clamped to 0.25–50
+  in whatever unit the profile uses, rounded to the nearest 0.25. Omitted,
+  both fall back to your default increment from **Ajustes** (2,5 kg / 5 lb
+  out of the box) — so it is worth setting per exercise where the real step
+  differs: 1 kg on cable lateral raises, 5 kg on a leg press.
 - `weeks` (block): optional, 1–16, defaults to `8`.
 - `deload` (block): optional — the week number whose sets are halved. Use
   `0` for a block with no deload. Defaults to `8` on an 8-week block and
@@ -895,6 +1060,7 @@ fixing it quietly.
 | `css/style.css` | one stylesheet; all colours are tokens declared at the top, twice (light and dark) |
 | `js/data.js` | the default plans, used only on a device's first run |
 | `js/block-editor.js` | block CRUD/list, importing a block from JSON, and the plan editor |
+| `js/diagnostics.js` | the Diagnóstico screen: e1RM trend per exercise, crossed with the log's own signals |
 | `js/profile-transfer.js` | backup/restore and moving one profile between phones as a file |
 | `js/app.js` | everything else: state, rendering, QR transfer, calculator, volume dashboard |
 | `js/vendor/` | the two QR libraries, verbatim from npm — see the README in there |
