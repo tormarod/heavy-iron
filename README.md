@@ -769,11 +769,22 @@ exactly why guessing at a stall goes wrong.
 | plano | ninguna | Estancado sin señal clara | Marca el RIR unas semanas — sin eso no se distingue fatiga de falta de intensidad |
 | bajando | huecos >7 días de mediana | Asistencia, no programa | Nada que tocar en el plan |
 | bajando | sin huecos | Pierde fuerza de verdad | Si varios ejercicios bajan a la vez, mira el descanso y lo que comes — eso la app no lo ve |
+| subiendo | la ficha manda MANTENER (tope del rango al fallo) | Sube, pero comprado con esfuerzo | Mismo peso a la RIR prevista — si las reps aguantan ahí, entonces sube |
 | subiendo | el músculo va bajo la franja | Margen sin usar | Va bien con pocas series — si añades, añádeselas ahí primero |
 | subiendo | — | Funciona | No toques nada |
 
 The volume row reads **Registrado**, not **Plan**: "you have room to add
 sets" is a claim about the sets you actually did.
+
+The `subiendo` + `MANTENER` row is not a stall — the reps really did climb.
+It is a rise bought with **effort** rather than with load, and it reads off
+the note [the weekly objetivo](#the-weekly-objetivo) already
+files against that exercise rather than re-deriving anything. It is what a
+calibration week that started too heavy looks like three weeks later: the
+weight never moves, the reps walk up the range, and every session is logged
+at 0 RIR in a week that prescribed 2. Before this row the session screen
+said *MANTENER* while Diagnóstico said *no toques nada* — one log, two
+screens, opposite instructions.
 
 The signals are read off the most recent sessions rather than the whole
 window, because what you change on Monday answers to how last Monday went.

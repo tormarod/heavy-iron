@@ -1382,6 +1382,49 @@ const ok = (name, cond, extra) => {
     await page.click('#diagClose');
     await page.waitForTimeout(200);
     ok('el diagnóstico se cierra', await page.locator('#diagSheet.up').count() === 0);
+
+    /* The case the screen used to read as "Funciona · No toques nada" while
+       the session's own target said MANTENER: 45 kg for three weeks, reps
+       walking 8 → 10 → 12 up a 6–10 range, every session logged at 0 RIR in
+       weeks that prescribed 2–3. The reps really did climb, so the trend is
+       genuinely `subiendo` — what is wrong is what it was bought with. */
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      const p = s.profiles.hombre;
+      const DAY = 86400000, start = Date.now() - 21 * DAY;
+      const four = (w, r, ts) => [0, 1, 2, 3].map(() => ({ w: String(w), r: String(r), done: true, ts: ts }));
+      p.log['block-1'] = {};
+      p.rir['block-1'] = {};
+      [8, 10, 12].forEach((r, i) => {
+        p.log['block-1']['w' + (i + 1) + '-d0'] = { chestpress: four(45, r, start + i * 7 * DAY) };
+        p.rir['block-1']['w' + (i + 1) + '-d0'] = { chestpress: '0' };
+      });
+      p.week = 4;
+      p.day = 0;
+      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+    });
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(300);
+    await page.click('#diagBtn');
+    await page.waitForTimeout(300);
+    const held = await page.evaluate(() => {
+      const r = document.querySelector('#diagHost .diag-row[data-ex="chestpress"]');
+      return { cls: r.className, read: r.querySelector('.diag-read').textContent,
+               do: r.querySelector('.diag-do').textContent };
+    });
+    ok('subir a base de fallo sigue siendo subir', held.cls.includes('up'), JSON.stringify(held));
+    ok('pero el diagnóstico ya no dice que no toques nada',
+       held.read.includes('MANTENER') && !held.do.includes('No toques nada'), JSON.stringify(held));
+    /* The point of the row: it says the same thing as the session's target,
+       because it reads that target's own note rather than re-deriving it. */
+    ok('y coincide con lo que manda el objetivo de la semana', await page.evaluate(() => {
+      const block = getBlock(), day = block.days[0];
+      const est = targetEstimate(getProfile(), block, day, day.ex.find(e => e.id === 'chestpress'), 4);
+      return est.kind === 'hold' && est.note === 'topFailure';
+    }), JSON.stringify(held));
+    ok('y pide el RIR que prescribe la semana en curso', held.do.includes('1 RIR'), JSON.stringify(held));
+    await page.click('#diagClose');
+    await page.waitForTimeout(200);
     await ctx.close();
   }
 

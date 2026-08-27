@@ -493,6 +493,24 @@ function diagVerdict(trend, sig) {
              cambio: 'Marca el RIR unas semanas: sin eso no se puede distinguir fatiga de falta de intensidad.' };
   }
   if (trend === 'up') {
+    /* The row that stops this screen contradicting the session's own
+       target. targetEstimate() already refuses the jump when the top of
+       the range was reached at failure or with the weight stripped — it
+       returns MANTENER — and until now the diagnosis read that same
+       exercise as "Funciona · No toques nada". Two screens, one log,
+       opposite instructions.
+
+       It is not a stall: the reps really did climb. It is a rise bought
+       with effort rather than with load, which is what a calibration week
+       that started too heavy looks like three weeks later — you spend the
+       block earning your way to the top of the range at 0 RIR instead of
+       at the RIR the plan asked for. Checked before the volume row: what
+       to do about this week's weight beats where to spend spare sets. */
+    if (sig.held) {
+      return { lectura: 'Sube, pero la ficha manda MANTENER — el tope del rango ' +
+                 (sig.held === 'forced' ? 'llegó bajando el peso a mitad de serie' : 'llegó al fallo, no al RIR previsto'),
+               cambio: 'Mismo peso, ejecutado a ' + sig.heldRir + ' RIR. Si las reps aguantan ahí, entonces sube.' };
+    }
     /* The one row of the matrix that needs the volume side: growing on
        fewer sets than the range asks for is not a problem, it is unused
        margin — and the muscle you said the block was for is where to
@@ -533,6 +551,13 @@ function diagRows(profile, block) {
         failure: !!last && (last.rir === '0' || forcedDrop(last.rows)),
         decay: !!last && repDecay(last.rows) >= 3,
         estDown: !!est && est.kind === 'down',
+        /* Not a fourth reading of the log: the target rule already crossed
+           the top of the range with the failure signals and came back with
+           MANTENER. Reading its note rather than re-deriving it is what
+           keeps the two screens saying the same thing. */
+        held: est && est.kind === 'hold' && (est.note === 'topFailure' || est.note === 'topForced')
+          ? (est.note === 'topForced' ? 'forced' : 'failure') : null,
+        heldRir: est ? est.rirThis : null,
         gap: diagMedianGap(points),
       };
       const vol = volByTag[muscleTag(ex)];
