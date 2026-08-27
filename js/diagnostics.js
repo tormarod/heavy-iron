@@ -6,11 +6,17 @@
    This screen fits a line through the estimated 1RM of every exercise in
    the current plan at once and sorts them worst first, then crosses each
    trend with the signals the log already carries — the RIR chip, the
-   rep-decay flag, forced drops, the timestamps on every ticked row, and the
-   target weight from targetEstimate(). A stall on its own says nothing. A
-   stall next to "RIR 2+ every week" and a stall next to "0 RIR and a forced
-   drop" point at opposite fixes, which is exactly why guessing at it goes
-   wrong.
+   rep-decay flag, forced drops, the timestamps on every ticked row, the
+   kilos each session moved, and the target weight from targetEstimate().
+   A stall on its own says nothing. A stall next to "RIR 2+ every week" and
+   a stall next to "0 RIR and a forced drop" point at opposite fixes, which
+   is exactly why guessing at it goes wrong.
+
+   The estimated 1RM comes off the BEST set of a session and nothing else,
+   which is the right number for "am I getting stronger" and blind to half
+   of what a session is — so a second line is fitted through kilos per set,
+   and the two are read together. 45×12/8/6 and 45×12/12/11 are the same
+   point on the first line and 135 kilos apart on the second.
 
    Nothing here asks for a single new input. Everything it reads is already
    being typed, or already derived from what is.
@@ -33,6 +39,13 @@ const DIAG_FLAT = 0.005;
 /* Above this, a "stall" is an attendance record, not a programming
    problem — see the matrix. */
 const DIAG_GAP_DAYS = 7;
+/* The same idea for the work axis, and it needs its own number. e1RM moves
+   in kilos and DIAG_FLAT is drawn for that; kilos per set move in REPS,
+   and one rep out of ten is a 10 % session all by itself. Half a percent
+   would fire this on ordinary wobble. One and a half sits above the noise
+   a ±1 rep session puts through a six-point fit and well below the ~10 %
+   per session a set genuinely walking up its rep range puts up. */
+const DIAG_WORK_FLAT = 0.015;
 
 const DIAG_TRENDS = {
   down: { label: 'bajando', plural: 'bajando', rank: 0 },
@@ -75,11 +88,20 @@ function diagPoints(profile, exId, onlyBlockId) {
         if (!done.length) return;
         let best = done[0];
         done.forEach(r => { if (est1RM(num(r.w), num(r.r)) > est1RM(num(best.w), num(best.r))) best = r; });
+        /* The work side of the same session, and it counts every ticked
+           set — EST_MAX_REPS and all. That ceiling is a statement about
+           Epley, not about kilos: a 20-rep set moved weight whether or not
+           an estimate can honestly be read off it. setVolume() rather than
+           w × r so there is still exactly one definition of "kilos moved"
+           in the app, drops included, same as the volume strip. */
+        const worked = rows.filter(r => r && r.done && hasReps(r) && num(r.w) > 0);
         out.push({
           label: block.name + ' · S' + w,
           e1rm: est1RM(num(best.w), num(best.r)),
           weight: num(best.w),
           reps: num(best.r),
+          vol: worked.reduce((t, r) => t + setVolume(r), 0),
+          sets: worked.length,
           ts: rows.reduce((t, r) => (r && r.done && r.ts > t ? r.ts : t), 0),
           rir: getRir(profile, bId, w, m[2], exId),
           rows: rows.filter(r => r && r.done),
@@ -432,18 +454,26 @@ function buildIndexSVG(index, weeks, currentWeek) {
   return svg;
 }
 
-/* Least squares over the window, expressed as a fraction of the exercise's
-   own mean e1RM so the number is comparable between a lateral raise and a
-   leg press. */
-function diagSlope(points) {
-  const n = points.length;
+/* Least squares over the window, expressed as a fraction of the series'
+   own mean so the number is comparable between a lateral raise and a leg
+   press — and, now that two things are fitted, between kilos and kilos per
+   set, which do not share a unit either. */
+function fitSlope(values) {
+  const n = values.length;
   const mx = (n - 1) / 2;
-  const my = points.reduce((t, p) => t + p.e1rm, 0) / n;
+  const my = values.reduce((t, v) => t + v, 0) / n;
   let cov = 0, varx = 0;
-  points.forEach((p, i) => { cov += (i - mx) * (p.e1rm - my); varx += (i - mx) * (i - mx); });
+  values.forEach((v, i) => { cov += (i - mx) * (v - my); varx += (i - mx) * (i - mx); });
   const slope = varx ? cov / varx : 0;
   return my ? slope / my : 0;
 }
+
+const diagSlope = points => fitSlope(points.map(p => p.e1rm));
+
+/* Kilos per set, not kilos. The claim the verdict makes is about what a
+   set is worth, and a block that adds a fourth set has not made the first
+   three any harder — raw tonnage would report that as progress. */
+const diagWorkSlope = points => fitSlope(points.map(p => p.vol / p.sets));
 
 /* Median rather than mean: one three-week holiday in the middle of a block
    would drag an average past the threshold and label a perfectly attended
@@ -489,10 +519,64 @@ function diagVerdict(trend, sig) {
       return { lectura: 'Falta intensidad — RIR 2+ repetido',
                cambio: 'Sube carga o reps: te estás dejando el estímulo sin usar.' };
     }
+    /* The row the top-set metric cannot see, and the reason the work axis
+       is here at all. diagPoints() keeps the BEST set of a session and
+       throws the rest away, so 45×12/8/6 and 45×12/12/11 are the same
+       point on the chart — identical e1RM, nine more reps of work.
+       That is series 2 and 3 catching up, which is progress, and calling
+       it a stall sends you to fix a lift that is fixing itself.
+
+       Last of the flat rows on purpose: every signal above it is a reason
+       the extra kilos are not good news. A forced drop adds work too —
+       setVolume() counts the reps after the weight came off, as it
+       should — and `failure` has already claimed that session two rows
+       up, which is why the work reading needs no rule of its own for it. */
+    if (sig.workPct > DIAG_WORK_FLAT) {
+      return { lectura: 'La serie tope está clavada, pero el trabajo sube — ' + diagPct(sig.workPct) +
+                 ' de kilos por serie cada sesión',
+               cambio: 'Las series de después se están poniendo al día. Déjalo correr: cuando dejen de sumar, entonces sí es un estancamiento.' };
+    }
+    /* The same axis pointing the other way, and it has to be said or the
+       row below it lies: "neither one is moving" is false when the kilos
+       are moving downwards. A top set that holds while the session's work
+       drains away is fatigue arriving across the session rather than
+       within it — which is why `decay`, the within-session version of the
+       same story, is checked further up and wins when both fire. */
+    if (sig.workPct < -DIAG_WORK_FLAT) {
+      return { lectura: 'La serie tope aguanta, pero el trabajo cae — ' + diagPct(sig.workPct) +
+                 ' de kilos por serie cada sesión',
+               cambio: 'Se te vacían las series de después. Empieza más ligero, o quita una serie y haz enteras las que queden.' };
+    }
+    /* Flat on both axes is a stronger statement than flat on one, and it
+       is the one case here that has actually been measured rather than
+       merely not detected — so it gets said, instead of being filed under
+       "no clear signal" with the sessions nobody marked an RIR on. */
+    if (sig.workPct != null) {
+      return { lectura: 'Estancado de verdad — ni la serie tope ni los kilos por serie se mueven',
+               cambio: 'No hay progreso escondido en las series de después: haz lo que mande el objetivo de la semana, y si lleva medio bloque igual, cambia el ejercicio.' };
+    }
     return { lectura: 'Estancado, sin una señal clara en el registro',
              cambio: 'Marca el RIR unas semanas: sin eso no se puede distinguir fatiga de falta de intensidad.' };
   }
   if (trend === 'up') {
+    /* The row that stops this screen contradicting the session's own
+       target. targetEstimate() already refuses the jump when the top of
+       the range was reached at failure or with the weight stripped — it
+       returns MANTENER — and until now the diagnosis read that same
+       exercise as "Funciona · No toques nada". Two screens, one log,
+       opposite instructions.
+
+       It is not a stall: the reps really did climb. It is a rise bought
+       with effort rather than with load, which is what a calibration week
+       that started too heavy looks like three weeks later — you spend the
+       block earning your way to the top of the range at 0 RIR instead of
+       at the RIR the plan asked for. Checked before the volume row: what
+       to do about this week's weight beats where to spend spare sets. */
+    if (sig.held) {
+      return { lectura: 'Sube, pero la ficha manda MANTENER — el tope del rango ' +
+                 (sig.held === 'forced' ? 'llegó bajando el peso a mitad de serie' : 'llegó al fallo, no al RIR previsto'),
+               cambio: 'Mismo peso, ejecutado a ' + sig.heldRir + ' RIR. Si las reps aguantan ahí, entonces sube.' };
+    }
     /* The one row of the matrix that needs the volume side: growing on
        fewer sets than the range asks for is not a problem, it is unused
        margin — and the muscle you said the block was for is where to
@@ -533,8 +617,28 @@ function diagRows(profile, block) {
         failure: !!last && (last.rir === '0' || forcedDrop(last.rows)),
         decay: !!last && repDecay(last.rows) >= 3,
         estDown: !!est && est.kind === 'down',
+        /* Not a fourth reading of the log: the target rule already crossed
+           the top of the range with the failure signals and came back with
+           MANTENER. Reading its note rather than re-deriving it is what
+           keeps the two screens saying the same thing. */
+        held: est && est.kind === 'hold' && (est.note === 'topFailure' || est.note === 'topForced')
+          ? (est.note === 'topForced' ? 'forced' : 'failure') : null,
+        heldRir: est ? est.rirThis : null,
         gap: diagMedianGap(points),
       };
+      /* Withheld unless the set count held still across the whole window.
+         Per-set already takes the count out of the total, but not out of
+         the average: a fourth set is a tired set, so adding one lowers
+         kilos per set and dropping one raises it. Refusing to read it then
+         costs a true flag rather than inventing a false one, which is the
+         direction to be wrong in. The kilos check is the divide's guard:
+         every point diagPoints() emits has a positive weight and a
+         positive rep count today, and this is what keeps that a fact
+         rather than an assumption. */
+      if (points.length >= DIAG_MIN_SESSIONS &&
+          points.every(p => p.sets === points[0].sets && p.vol > 0)) {
+        sig.workPct = diagWorkSlope(points);
+      }
       const vol = volByTag[muscleTag(ex)];
       if (vol && vol.label !== UNCLASSIFIED_LABEL) {
         sig.volTag = vol.label;

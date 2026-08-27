@@ -1382,6 +1382,134 @@ const ok = (name, cond, extra) => {
     await page.click('#diagClose');
     await page.waitForTimeout(200);
     ok('el diagnóstico se cierra', await page.locator('#diagSheet.up').count() === 0);
+
+    /* The case the screen used to read as "Funciona · No toques nada" while
+       the session's own target said MANTENER: 45 kg for three weeks, reps
+       walking 8 → 10 → 12 up a 6–10 range, every session logged at 0 RIR in
+       weeks that prescribed 2–3. The reps really did climb, so the trend is
+       genuinely `subiendo` — what is wrong is what it was bought with. */
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      const p = s.profiles.hombre;
+      const DAY = 86400000, start = Date.now() - 21 * DAY;
+      const four = (w, r, ts) => [0, 1, 2, 3].map(() => ({ w: String(w), r: String(r), done: true, ts: ts }));
+      p.log['block-1'] = {};
+      p.rir['block-1'] = {};
+      [8, 10, 12].forEach((r, i) => {
+        p.log['block-1']['w' + (i + 1) + '-d0'] = { chestpress: four(45, r, start + i * 7 * DAY) };
+        p.rir['block-1']['w' + (i + 1) + '-d0'] = { chestpress: '0' };
+      });
+      p.week = 4;
+      p.day = 0;
+      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+    });
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(300);
+    await page.click('#diagBtn');
+    await page.waitForTimeout(300);
+    const held = await page.evaluate(() => {
+      const r = document.querySelector('#diagHost .diag-row[data-ex="chestpress"]');
+      return { cls: r.className, read: r.querySelector('.diag-read').textContent,
+               do: r.querySelector('.diag-do').textContent };
+    });
+    ok('subir a base de fallo sigue siendo subir', held.cls.includes('up'), JSON.stringify(held));
+    ok('pero el diagnóstico ya no dice que no toques nada',
+       held.read.includes('MANTENER') && !held.do.includes('No toques nada'), JSON.stringify(held));
+    /* The point of the row: it says the same thing as the session's target,
+       because it reads that target's own note rather than re-deriving it. */
+    ok('y coincide con lo que manda el objetivo de la semana', await page.evaluate(() => {
+      const block = getBlock(), day = block.days[0];
+      const est = targetEstimate(getProfile(), block, day, day.ex.find(e => e.id === 'chestpress'), 4);
+      return est.kind === 'hold' && est.note === 'topFailure';
+    }), JSON.stringify(held));
+    ok('y pide el RIR que prescribe la semana en curso', held.do.includes('1 RIR'), JSON.stringify(held));
+    await page.click('#diagClose');
+    await page.waitForTimeout(200);
+
+    /* The work axis. diagPoints() keeps the best set of a session and
+       nothing else, so 45×12/8/6 and 45×12/12/11 are the SAME point on the
+       chart — and the second one is nine more reps of work. */
+    const workCase = async weeks => {
+      await page.evaluate(weeks => {
+        const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+        const p = s.profiles.hombre;
+        const DAY = 86400000, start = Date.now() - weeks.length * 7 * DAY;
+        p.log['block-1'] = {};
+        p.rir['block-1'] = {};
+        weeks.forEach((sets, i) => {
+          const ts = start + i * 7 * DAY;
+          p.log['block-1']['w' + (i + 1) + '-d0'] = {
+            chestpress: sets.map(x => ({ w: String(x[0]), r: String(x[1]), done: true, ts: ts })) };
+        });
+        p.week = weeks.length + 1;
+        p.day = 0;
+        localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+      }, weeks);
+      await page.reload({ waitUntil: 'networkidle' });
+      await page.waitForTimeout(300);
+      await page.click('#diagBtn');
+      await page.waitForTimeout(300);
+      const out = await page.evaluate(() => {
+        const r = document.querySelector('#diagHost .diag-row[data-ex="chestpress"]');
+        const pts = diagPoints(getProfile(), 'chestpress', getBlock().id);
+        return { cls: r.className, read: r.querySelector('.diag-read').textContent,
+                 e1rm: diagSlope(pts), work: diagWorkSlope(pts), sets: pts.map(p => p.sets) };
+      });
+      await page.click('#diagClose');
+      await page.waitForTimeout(150);
+      return out;
+    };
+    const at45 = reps => reps.map(r => [45, r]);
+
+    let wk = await workCase([at45([12, 8, 6]), at45([12, 10, 8]), at45([12, 12, 11])]);
+    ok('la serie tope clavada sigue saliendo plana', wk.cls.includes('flat') && wk.e1rm === 0, JSON.stringify(wk));
+    ok('pero las series de después poniéndose al día ya no es "sin señal clara"',
+       wk.read.includes('el trabajo sube') && wk.read.includes('%'), JSON.stringify(wk));
+
+    /* The same axis pointing down, which the row below it needs said out
+       loud: "neither one is moving" is false when the kilos are falling. */
+    wk = await workCase([at45([12, 12, 12]), at45([12, 12, 11]), at45([12, 11, 10])]);
+    ok('y la serie tope aguantando mientras el trabajo cae también se ve',
+       wk.cls.includes('flat') && wk.work < 0 && wk.read.includes('el trabajo cae'), JSON.stringify(wk));
+    /* Within-session emptying out is the more immediate story and is
+       checked further up, so it wins when both fire. */
+    wk = await workCase([at45([12, 12, 11]), at45([12, 10, 9]), at45([12, 9, 8])]);
+    ok('pero la caída de reps dentro de la sesión sigue ganando',
+       wk.read.includes('Primera serie al fallo'), JSON.stringify(wk));
+
+    wk = await workCase([at45([10, 10, 10]), at45([10, 10, 10]), at45([10, 10, 10])]);
+    ok('y plano en los dos ejes se dice como lo que es',
+       wk.cls.includes('flat') && wk.work === 0 && wk.read.includes('Estancado de verdad'), JSON.stringify(wk));
+
+    /* Per-set takes the count out of the total but not out of the average:
+       a fourth set is a tired set, so adding one moves kilos/serie on its
+       own. The reading is withheld rather than reported wrong. */
+    wk = await workCase([at45([12, 8, 6]), at45([12, 10, 8]), at45([12, 12, 11, 10])]);
+    ok('un cambio en el número de series retira la lectura en vez de mentir',
+       wk.sets.join() === '3,3,4' && !wk.read.includes('el trabajo sube'), JSON.stringify(wk));
+
+    /* The case this must never flag: the weight went up and the reps reset
+       underneath it. That is double progression working, not a work drop. */
+    wk = await workCase([[[45, 10], [45, 10], [45, 10]], [[47.5, 7], [47.5, 7], [47.5, 7]],
+                         [[47.5, 10], [47.5, 10], [47.5, 10]]]);
+    ok('subir de peso con las reps reseteadas no dispara nada del eje de trabajo',
+       wk.cls.includes('up') && !wk.read.includes('trabajo'), JSON.stringify(wk));
+
+    /* The kilos come from setVolume(), the app's one definition of "kilos
+       movidos" — drops included, exactly as the volume strip counts them.
+       A second definition living here is how the two would drift apart. */
+    ok('el eje de trabajo cuenta los kilos con la misma regla que el resto de la app',
+       await page.evaluate(() => {
+         /* Read straight out of diagPoints() rather than through the
+            screen: the assertion is about the kilos, not about a verdict. */
+         const p = getProfile();
+         p.log['block-1'] = { 'w1-d0': { chestpress: [
+           { w: '45', r: '8', done: true, ts: Date.now(), dk: 'forced', d: [{ w: '30', r: '5' }] },
+           { w: '45', r: '6', done: true, ts: Date.now() },
+         ] } };
+         const pt = diagPoints(p, 'chestpress', 'block-1')[0];
+         return pt.sets === 2 && pt.vol === (45 * 8 + 30 * 5) + 45 * 6;
+       }));
     await ctx.close();
   }
 
