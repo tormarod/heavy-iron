@@ -2078,6 +2078,68 @@ const ok = (name, cond, extra) => {
     await ctx.close();
   }
 
+  // ---------- being told about a new version ----------
+  /* The prompt used to hang off updatefound alone, which never fires for a
+     worker that finished installing while nobody was looking — so the app
+     sat on the old code with the new one parked behind it and nothing on
+     screen to say so. Serving a second version from here would mean writing
+     to the files under test, so what is stubbed is the state the browser
+     hands the app (a registration with something waiting) and what is
+     asserted is what the app does about it. */
+  {
+    console.log('\n== aviso de versión nueva ==');
+    const ctx = await browser.newContext();
+
+    /* First visit: register, and become controlled. */
+    const first = await ctx.newPage();
+    await first.goto(BASE, { waitUntil: 'networkidle' });
+    await first.waitForTimeout(1200);
+    ok('the app takes control on the first visit',
+       await first.evaluate(() => !!navigator.serviceWorker.controller));
+    await first.close();
+
+    const page = await ctx.newPage();
+    await page.addInitScript(() => {
+      window.__skipped = null;
+      window.__updates = 0;
+      Object.defineProperty(ServiceWorkerRegistration.prototype, 'waiting', {
+        configurable: true,
+        get() { return { postMessage: m => { window.__skipped = m; } }; },
+      });
+      ServiceWorkerRegistration.prototype.update = function () {
+        window.__updates++;
+        return Promise.resolve();
+      };
+    });
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
+
+    ok('a version already waiting when the app opens is offered straight away',
+       await page.locator('#toast').isVisible());
+    ok('and says what it is', (await page.textContent('#toastMsg')).includes('versión nueva'),
+       await page.textContent('#toastMsg'));
+
+    await page.click('#toastAct');
+    await page.waitForTimeout(300);
+    ok('taking it up tells the waiting version to take over',
+       await page.evaluate(() => window.__skipped === 'skipWaiting'));
+
+    /* Coming back to an app that never navigates is the only chance the
+       browser gets to look for a new version — but not on every glance. */
+    ok('opening the app counts as having just checked',
+       await page.evaluate(() => window.__updates === 0));
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await page.waitForTimeout(300);
+    ok('coming straight back does not check again',
+       await page.evaluate(() => window.__updates === 0));
+
+    await page.evaluate(() => { lastUpdateCheck = 0; });
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await page.waitForTimeout(300);
+    ok('coming back much later does', await page.evaluate(() => window.__updates === 1));
+    await ctx.close();
+  }
+
   // ---------- installable as an app ----------
   /* Firefox on Android is the strict one: it only offers "Instalar" when the
      manifest names a raster icon of a size it can parse and that size is at
