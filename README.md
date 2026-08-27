@@ -339,6 +339,16 @@ Two smaller safeguards worth knowing about:
 
 ## Offline and installing
 
+The typefaces come from Google, and they are loaded so that they cannot
+hold the app up: the stylesheet is parked on `media="print"` — which is
+not render-blocking — and switched on once it has arrived. A stylesheet
+in front of the scripts holds them back until it resolves, so a slow font
+host, a captive portal or a dead connection used to mean a minute of
+"Cargando tu registro…" from an app that needs no network at all. Every
+rule that names `Archivo` names the fallback stack with it, so the first
+paint of a cold start is the right shape in the wrong face rather than
+somebody's default serif.
+
 The app registers a service worker that caches the page, styles, script
 and fonts, so after the first visit it opens with no connection at all —
 which is the normal state of a gym basement. Blocks published in `blocks/`
