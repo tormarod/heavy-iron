@@ -3367,18 +3367,45 @@ function maybeNagBackup() {
    the app installs itself and serves from cache. Updates are never applied
    under you mid-session: a new version waits until you say so, and the
    pending write is flushed before the reload that picks it up. */
+/* Not more often than this, however many times the app is brought back to
+   the foreground — a check between two sets is a wasted request. */
+const UPDATE_CHECK_MS = 15 * 60 * 1000;
+let lastUpdateCheck = 0;
+
 function registerServiceWorker() {
   if (!('serviceWorker' in navigator) || location.protocol.indexOf('http') !== 0) return;
 
+  const offerUpdate = sw => {
+    toast('Hay una versión nueva de la app.', 'Actualizar', () => sw.postMessage('skipWaiting'));
+  };
+
   navigator.serviceWorker.register('sw.js').then(reg => {
+    /* A version that finished installing while nobody was looking — the app
+       was closed, or the prompt was dismissed — is already *waiting* by the
+       time this runs, and updatefound never fires again for it. Without this
+       line the app sits on the old code with the new one parked behind it
+       and nothing on screen to say so: waiting workers only take over once
+       every window is closed, and an installed app that gets backgrounded
+       rather than quit never closes. */
+    if (reg.waiting && navigator.serviceWorker.controller) offerUpdate(reg.waiting);
+
     reg.addEventListener('updatefound', () => {
       const sw = reg.installing;
       if (!sw) return;
       sw.addEventListener('statechange', () => {
-        if (sw.state === 'installed' && navigator.serviceWorker.controller) {
-          toast('Hay una versión nueva de la app.', 'Actualizar', () => sw.postMessage('skipWaiting'));
-        }
+        if (sw.state === 'installed' && navigator.serviceWorker.controller) offerUpdate(sw);
       });
+    });
+
+    /* The browser looks for a new worker when the page is navigated to, and
+       an installed app coming back from the background never navigates: it
+       is the same page it was on Tuesday. So ask on the way back in. */
+    lastUpdateCheck = Date.now();
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - lastUpdateCheck < UPDATE_CHECK_MS) return;
+      lastUpdateCheck = Date.now();
+      reg.update().catch(() => { /* no signal — the basement case, and fine */ });
     });
   }).catch(() => { /* offline on first load, or opened from file:// — the app still runs */ });
 

@@ -352,7 +352,12 @@ only offers to install when the manifest points at a PNG whose size it can
 read, which is why `icon-192.png` and `icon-512.png` sit next to
 `icon.svg`. Updates never swap the code out from under a session: when a
 new version has been cached, a small **Actualizar** prompt appears and
-nothing changes until you tap it.
+nothing changes until you tap it. Ignore it and it comes back on the next
+launch, because a new version parked behind the running one only takes
+over once every window is closed — and an app you background rather than
+quit never closes one. Coming back to the app after a while also looks for
+a new version: an app that is resumed rather than relaunched never
+navigates, and navigating is the only time the browser checks by itself.
 
 ## During the session
 
