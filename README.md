@@ -747,6 +747,8 @@ already recording.
 - **The slope** is least squares over the last 6 sessions, expressed as a
   percentage of that exercise's own average e1RM, so a lateral raise and a
   leg press are comparable. Inside ±0,5 % per session is flat.
+- **A second slope, over kilos per set**, is fitted the same way — see
+  [the work axis](#the-work-axis) below.
 - **Fewer than 3 sessions gets no verdict at all** — two flat weeks is
   noise, not a stall.
 - **Sets above 15 reps are dropped**, not plotted: Epley drifts up there,
@@ -766,6 +768,9 @@ exactly why guessing at a stall goes wrong.
 | plano | RIR 0, o una bajada forzada | Fatiga, no falta de esfuerzo | Mismo peso, vuelve a 1–2 RIR. Apretar más es la palanca equivocada |
 | plano | caída de reps ≥3 | Primera serie al fallo | Empieza más ligero para que las series 2 y 3 sumen volumen |
 | plano | RIR 2+ repetido | Falta intensidad | Sube carga o reps: te dejas el estímulo sin usar |
+| plano | los kilos por serie suben | Las series de después se ponen al día | Déjalo correr — cuando dejen de sumar, entonces sí es un estancamiento |
+| plano | los kilos por serie bajan | Se vacían las series de después | Empieza más ligero, o quita una serie y haz enteras las que queden |
+| plano | los kilos por serie tampoco se mueven | Estancado de verdad | Haz lo que mande el objetivo de la semana; si lleva medio bloque igual, cambia el ejercicio |
 | plano | ninguna | Estancado sin señal clara | Marca el RIR unas semanas — sin eso no se distingue fatiga de falta de intensidad |
 | bajando | huecos >7 días de mediana | Asistencia, no programa | Nada que tocar en el plan |
 | bajando | sin huecos | Pierde fuerza de verdad | Si varios ejercicios bajan a la vez, mira el descanso y lo que comes — eso la app no lo ve |
@@ -793,6 +798,55 @@ doesn't relabel a perfectly attended exercise as an attendance problem.
 
 Two exercises can share a name — the same lateral raise on two different
 days — and they get one row each, computed separately.
+
+### The work axis
+
+The trend fits a line through the **best set** of each session and throws
+the rest away. That is the right number for "am I getting stronger", and it
+is blind to half of what a session is:
+
+```
+semana 1   45×12  45×8  45×6      e1RM 63,0    390 kg/serie
+semana 4   45×12  45×12 45×11     e1RM 63,0    525 kg/serie
+```
+
+Identical point on the chart. Nine more reps of work, 135 more kilos per
+set. Before this the screen called that `Estancado, sin una señal clara`
+and sent you to fix a lift that was fixing itself — sets 2 and 3 catching
+up is exactly what the weeks after a correct calibration are supposed to
+look like.
+
+So each session also carries the **kilos it moved**, and a second least
+squares runs over **kilos per set**:
+
+- **Per set, never raw tonnage.** A block that adds a fourth set has not
+  made the first three any harder, and raw kilos would report that as
+  progress.
+- **The reading is withheld unless the set count held still** across the
+  whole window. Per-set takes the count out of the total but not out of the
+  average — a fourth set is a tired set, so adding one lowers kilos/serie
+  and dropping one raises it. Refusing to read it then costs a true flag
+  rather than inventing a false one.
+- **Its own flat band, ±1,5 % per session**, not the trend's ±0,5 %. e1RM
+  moves in kilos; kilos per set move in *reps*, and one rep out of ten is a
+  10 % session all by itself.
+- **The rep ceiling does not apply.** `EST_MAX_REPS` is a statement about
+  Epley, not about kilos: a 20-rep set moved weight whether or not an
+  estimate can honestly be read off it.
+- **The kilos are `setVolume()`**, the same definition the volume strip
+  uses, drops and all. A forced drop therefore *adds* work — but the
+  `RIR 0 / bajada forzada` row is checked first and has already claimed
+  that session, which is why the work reading needs no special rule for it.
+
+It reads in both directions. A top set that holds while kilos/serie drain
+away is fatigue arriving *across* the session rather than within it — the
+`caída de reps ≥3` row is the within-session version of the same story, and
+it is checked first and wins when both fire.
+
+It only ever speaks in the `plano` half of the matrix. A weight that went
+up with the reps reset underneath it drops kilos/serie for a week, and that
+is double progression working exactly as designed — so `subiendo` never
+consults it.
 
 ### Frequency, from the timestamps you already have
 
@@ -1320,7 +1374,7 @@ fixing it quietly.
 | `css/style.css` | one stylesheet; all colours are tokens declared at the top, twice (light and dark) |
 | `js/data.js` | the default plans, used only on a device's first run |
 | `js/block-editor.js` | block CRUD/list, importing a block from JSON, and the plan editor |
-| `js/diagnostics.js` | the Diagnóstico screen: e1RM trend per exercise crossed with the log's own signals, real frequency per muscle from the row timestamps, and the indexed strength-per-muscle chart |
+| `js/diagnostics.js` | the Diagnóstico screen: e1RM trend per exercise crossed with the log's own signals and with a second slope over kilos per set, real frequency per muscle from the row timestamps, and the indexed strength-per-muscle chart |
 | `js/review.js` | the block review and the brief it exports for the next block |
 | `js/profile-transfer.js` | backup/restore and moving one profile between phones as a file |
 | `js/app.js` | everything else: state, rendering, QR transfer, calculator, volume dashboard |
