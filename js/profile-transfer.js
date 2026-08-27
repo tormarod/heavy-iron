@@ -162,11 +162,46 @@ async function loadProfileFromText(text) {
 }
 
 
+/* ---------- what this device is holding ----------
+   The sheet is where somebody comes when they are worried about losing the
+   log, so it is where the answer belongs: how big it is, and whether the
+   browser has promised to keep it. "Sin proteger" is not an error — it is
+   the default for every website — but it is the one thing here that a
+   single tap can fix. */
+function renderStorageState() {
+  const line = $('storageState');
+  const acts = $('storageActs');
+  const size = 'Tu registro ocupa ' + fmtBytes(logBytes()) + '.';
+
+  if (!canPersist()) {
+    line.textContent = size + ' Este navegador no sabe proteger el almacenamiento, así que descarga una copia de vez en cuando.';
+    acts.style.display = 'none';
+    return;
+  }
+
+  persisted().then(safe => {
+    line.textContent = safe
+      ? size + ' Está protegido: el navegador no lo borrará para hacer sitio, solo lo pierdes si borras los datos del sitio o desinstalas la app.'
+      : size + ' No está protegido: si al móvil le falta espacio, el navegador puede borrarlo para hacer sitio. Instalar la app y pulsar aquí lo evita.';
+    acts.style.display = safe ? 'none' : '';
+  });
+}
+
 function wireProfileTransfer() {
   $('backup').onclick = () => {
     $('blob').value = JSON.stringify({ app: STORAGE_KEY, v: 1, saved: new Date().toISOString(), data: state });
     renderProfileExports();
+    renderStorageState();
     openSheet('sheet');
+  };
+
+  $('storageProtect').onclick = () => {
+    askForPersistence().then(safe => {
+      renderStorageState();
+      mark(safe
+        ? 'Registro protegido en este móvil'
+        : 'El navegador no ha querido protegerlo — sigue descargando copias', !safe);
+    });
   };
 
   $('bClose').onclick = () => closeSheet('sheet');

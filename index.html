@@ -6,7 +6,7 @@
      for the typefaces and raw.githubusercontent.com for published blocks.
      Saying so here means an injected string can't turn into a script tag or
      phone your training log anywhere. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://raw.githubusercontent.com; manifest-src 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; media-src data:; connect-src 'self' https://raw.githubusercontent.com; manifest-src 'self'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#E4E2DA" media="(prefers-color-scheme: light)">
@@ -151,6 +151,15 @@
         <p class="setup-hint">El escalón más pequeño que puedes cargar, para los ejercicios que no traen el suyo. Se usa para redondear el objetivo de peso de cada semana. Cada ejercicio puede llevar el suyo propio en "Editar plan", y ese manda: solo ese cuenta al copiar los pesos de la semana anterior.</p>
       </div>
 
+      <div class="setup-field" id="setupBgField">
+        <span class="pe-field-lbl">Aviso con la pantalla apagada</span>
+        <div class="seg" id="setupBgAlarm" role="group" aria-label="Aviso con la pantalla apagada">
+          <button type="button" class="seg-btn" data-bg="off">No</button>
+          <button type="button" class="seg-btn" data-bg="on">Sí</button>
+        </div>
+        <p class="setup-hint" id="setupBgHint"></p>
+      </div>
+
       <div class="sheet-btns">
         <button class="sm key" id="setupSave">Empezar</button>
         <button class="sm" id="setupClose">Cancelar</button>
@@ -170,6 +179,14 @@
         <input type="file" id="bUpload" accept="application/json,.json" style="display:none">
       </div>
       <p class="sheet-d">El CSV es para mirar los números fuera de la app (hoja de cálculo): una fila por serie registrada. No se puede volver a importar — para eso está el .json.</p>
+
+      <div class="sheet-hr"></div>
+      <div class="sheet-d" style="font-weight:600;color:var(--ink);margin-bottom:6px;">Lo que guarda este móvil</div>
+      <p class="sheet-d" id="storageState">Comprobando…</p>
+      <div class="sheet-btns" id="storageActs" style="display:none;">
+        <button class="sm" id="storageProtect">Proteger el registro</button>
+      </div>
+
       <div class="sheet-hr"></div>
       <div class="sheet-d" style="font-weight:600;color:var(--ink);margin-bottom:6px;">Pasar un perfil a otro móvil</div>
       <p class="sheet-d">Cada móvil guarda su propio registro. Exporta el perfil de una persona y cárgalo en el otro móvil: sustituye solo a esa persona y deja el otro perfil exactamente como está.</p>

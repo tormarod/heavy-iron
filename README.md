@@ -323,6 +323,16 @@ Two smaller safeguards worth knowing about:
 - **Nothing is lost to a pocket.** Writes are batched while you type, and
   flushed the moment the tab is hidden or closed, so the last set of the
   session is saved even if the phone locks straight after it.
+- **The browser is asked not to bin it.** By default a site's storage is
+  "best effort": a phone short on space may evict it, and a year of
+  training is exactly the kind of small, rarely-read data that looks
+  disposable from outside. The app asks for persistent storage once, after
+  the first setup is saved — installing it is what makes that ask cheap,
+  since Chrome grants it to an installed app without asking anybody and
+  Firefox shows a single prompt. **Copia de seguridad** says what the log
+  weighs and whether the promise was given, and offers the ask again if it
+  wasn't. Persistent or not, it is still one device: the download is what
+  survives a lost phone.
 - **Two tabs don't fight.** If the log changes in another tab, this one
   picks it up; if you had unsaved edits here, it says so instead of
   silently overwriting them.
@@ -375,6 +385,19 @@ navigates, and navigating is the only time the browser checks by itself.
   wall-clock end time, so it stays correct through a locked screen, and
   while it runs it holds a screen wake lock (where the browser has one) so
   the phone doesn't sleep between sets.
+- **The alarm can follow the phone into your pocket.** Off by default,
+  switched on under **Ajustes → "Aviso con la pantalla apagada"**. A page
+  the phone has stopped running can't beep, and locking the screen or
+  switching to another app stops it running — so with the setting on, the
+  app plays a near-silent loop for the length of the rest, which is what
+  keeps a page from being frozen. That has a price, said plainly in the
+  setting itself: Android hands audio focus to whatever is playing, so on
+  some phones it pauses the music you are lifting to. It stops as soon as
+  the alarm has had its say, not at the end of the session. While it runs,
+  the rest shows up on the lock screen as a media card — what you are
+  resting for, when it ends, and the same **−30** / **+30** / skip — and
+  the end of the rest also posts a notification, but only when the app is
+  out of sight. Coming back to the app takes the notification down.
 - **RIR, once per exercise.** Three chips — `2+` / `1` / `0` — after the
   sets, for how the last one actually felt. Optional and empty by default,
   same as `share`/`ss`: skip it and nothing changes. It is the other half

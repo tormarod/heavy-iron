@@ -2078,6 +2078,140 @@ const ok = (name, cond, extra) => {
     await ctx.close();
   }
 
+  // ---------- keeping the log on the device ----------
+  {
+    console.log('\n== almacenamiento ==');
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await page.fill('#setupNames input >> nth=0', 'Ana');
+    await page.click('#setupSave');
+    await page.waitForTimeout(500);
+
+    ok('the browser is asked to protect the log once setup is saved',
+       await page.evaluate(() => state.prefs.persistAsked === true));
+
+    await page.click('#backup');
+    await page.waitForTimeout(400);
+    const line = await page.textContent('#storageState');
+    ok('the backup sheet says what the log weighs', /Tu registro ocupa \d+ (B|KB|MB)\./.test(line), line);
+    /* Headless Chrome refuses persistence (no install, no engagement), which
+       is exactly the state a first-time visitor is in: the sheet has to say
+       so and offer the one tap that fixes it. */
+    const safe = await page.evaluate(() => navigator.storage.persisted());
+    ok('and whether the browser has promised to keep it',
+       safe ? /Está protegido/.test(line) : /No está protegido/.test(line), line);
+    ok('the protect button appears exactly when it is needed',
+       await page.locator('#storageActs').isVisible() === !safe);
+
+    await page.click('#storageProtect');
+    await page.waitForTimeout(400);
+    ok('asking again reports back either way',
+       /proteg/.test(await page.textContent('#status')), await page.textContent('#status'));
+    ok('and asking never throws the log away',
+       (await page.textContent('#title')).includes('Ana'));
+    await ctx.close();
+  }
+
+  // ---------- the rest alarm with the phone in a pocket ----------
+  /* The alarm above only fires while the page is running. This is the part
+     that survives a locked screen: a near-silent loop that keeps the page
+     from being frozen, the lock-screen card that comes with it, and a
+     notification for when even that is not enough. Headless Chrome denies
+     notification permission outright, so the permission and the delivery are
+     stubbed and what is tested is the app's own decision: what it posts,
+     when, and when it stays quiet. */
+  {
+    console.log('\n== descanso con la pantalla apagada ==');
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await page.fill('#setupNames input >> nth=0', 'Ana');
+    await page.click('#setupSave');
+    await page.waitForTimeout(500);
+
+    ok('the setting is off until somebody turns it on',
+       await page.evaluate(() => state.prefs.bgAlarm === false));
+
+    await page.evaluate(() => {
+      window.__notes = [];
+      window.__closed = 0;
+      Object.defineProperty(Notification, 'permission', { get: () => 'granted', configurable: true });
+      ServiceWorkerRegistration.prototype.showNotification = function (title, opts) {
+        window.__notes.push({ title: title, opts: opts });
+        return Promise.resolve();
+      };
+      ServiceWorkerRegistration.prototype.getNotifications = function () {
+        return Promise.resolve(window.__notes.map(() => ({ close: () => { window.__closed++; } })));
+      };
+    });
+
+    /* Off: a rest is just a rest — nothing plays, and the phone is told
+       nothing, so whatever music is on keeps playing. */
+    await page.evaluate(() => startRest(1, 'Press banca'));
+    await page.waitForTimeout(300);
+    ok('with the setting off nothing is played to keep the page awake',
+       await page.evaluate(() => keepAlive === null || keepAlive.paused));
+    ok('and no lock-screen card is claimed',
+       await page.evaluate(() => !navigator.mediaSession.metadata));
+    await page.evaluate(() => stopRest());
+
+    await page.click('#settings');
+    await page.waitForTimeout(300);
+    ok('the setting is in Ajustes', await page.locator('#setupBgField').isVisible());
+    await page.click('#setupBgAlarm .seg-btn[data-bg="on"]');
+    ok('turning it on explains what it costs',
+       (await page.textContent('#setupBgHint')).includes('música'));
+    await page.click('#setupSave');
+    await page.waitForTimeout(400);
+    ok('and the choice is saved', await page.evaluate(() => state.prefs.bgAlarm === true));
+
+    await page.evaluate(() => { state.prefs.sound = true; });
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { get: () => 'hidden', configurable: true });
+    });
+    await page.evaluate(() => startRest(2, 'Press banca'));
+    await page.waitForTimeout(400);
+    ok('a rest now plays something, so the phone will not freeze the page',
+       await page.evaluate(() => !!keepAlive && !keepAlive.paused && keepAlive.loop));
+    const card = await page.evaluate(() => [navigator.mediaSession.metadata.title, navigator.mediaSession.metadata.artist]);
+    ok('the lock screen says what you are resting for', card[0] === 'Descanso · Press banca', card[0]);
+    ok('and when it ends', /^Termina a las /.test(card[1]), card[1]);
+
+    await page.waitForTimeout(2400);
+    ok('when it is over the card says so',
+       await page.evaluate(() => navigator.mediaSession.metadata.title) === 'Vamos — se acabó el descanso');
+    const posted = await page.evaluate(() => window.__notes.map(n => [n.title, n.opts.body, n.opts.tag]));
+    ok('and a notification goes out, since the app is out of sight',
+       posted.length === 1 && posted[0][0] === 'Se acabó el descanso', JSON.stringify(posted));
+    ok('it names the exercise', posted.length === 1 && posted[0][1].includes('Press banca'), JSON.stringify(posted));
+    ok('and replaces itself rather than stacking up', posted.length === 1 && posted[0][2] === 'heavy-iron-rest');
+    ok('the alarm still holds the audio while it is beeping',
+       await page.evaluate(() => !!keepAlive && !keepAlive.paused));
+
+    /* Skipping hands the phone back: the music this interrupted gets to
+       carry on, and the notification does not sit there over a rest you
+       have already got on with. */
+    await page.evaluate(() => stopRest());
+    await page.waitForTimeout(300);
+    ok('skipping stops playing and gives the audio back',
+       await page.evaluate(() => keepAlive.paused));
+    ok('and clears the card', await page.evaluate(() => !navigator.mediaSession.metadata));
+    ok('and takes the notification down', await page.evaluate(() => window.__closed > 0));
+
+    /* Watching the countdown is not a moment to be notified about it. */
+    await page.evaluate(() => {
+      window.__notes.length = 0;
+      Object.defineProperty(document, 'visibilityState', { get: () => 'visible', configurable: true });
+    });
+    await page.evaluate(() => startRest(1, 'Sentadilla'));
+    await page.waitForTimeout(1800);
+    ok('a rest that ends with the app on screen notifies nobody',
+       await page.evaluate(() => window.__notes.length === 0));
+    await page.evaluate(() => stopRest());
+    await ctx.close();
+  }
+
   // ---------- being told about a new version ----------
   /* The prompt used to hang off updatefound alone, which never fires for a
      worker that finished installing while nobody was looking — so the app

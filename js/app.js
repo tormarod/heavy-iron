@@ -295,6 +295,11 @@ function migrate() {
   if (!state.prefs || typeof state.prefs !== 'object') state.prefs = {};
   if (['auto', 'light', 'dark'].indexOf(state.prefs.theme) < 0) state.prefs.theme = 'auto';
   state.prefs.sound = !!state.prefs.sound;
+  /* Whether the rest alarm keeps working with the phone in a pocket, and
+     whether the browser has already been asked to protect the log — see
+     keepAliveStart() and askForPersistenceOnce(). */
+  state.prefs.bgAlarm = !!state.prefs.bgAlarm;
+  state.prefs.persistAsked = !!state.prefs.persistAsked;
   /* A label, never a conversion: you write down the number on the machine,
      and this is what the app calls it. */
   if (['kg', 'lb'].indexOf(state.prefs.units) < 0) state.prefs.units = 'kg';
@@ -394,6 +399,62 @@ window.addEventListener('storage', e => {
   render();
   mark('Actualizado desde otra pestaña');
 });
+
+/* ---------- keeping the log ----------
+   There is no server: the only copy of a year of training is the string in
+   localStorage. A browser is allowed to throw that away when the phone runs
+   short of space — "best effort" is the default for every site — and the
+   log is exactly the kind of small, rarely-read data that looks disposable
+   from the outside.
+
+   navigator.storage.persist() asks for the other bucket, the one the
+   browser evicts only when you clear the site yourself. Installing the app
+   is what makes the ask cheap: Chrome grants it to an installed app without
+   asking anybody, and Firefox shows one prompt. It is asked for once, after
+   the first setup is saved (there is finally something to lose), and can be
+   asked for again from the backup sheet if that was denied or dismissed. */
+
+const canPersist = () => !!(navigator.storage && navigator.storage.persist);
+
+function persisted() {
+  if (!canPersist()) return Promise.resolve(false);
+  return navigator.storage.persisted().catch(() => false);
+}
+
+/* Resolves to whether the log is protected *now* — false covers "asked and
+   denied" and "browser doesn't do this" alike, because the answer the caller
+   acts on is the same in both cases. */
+function askForPersistence() {
+  if (!canPersist()) return Promise.resolve(false);
+  return persisted().then(already => already || navigator.storage.persist().catch(() => false));
+}
+
+/* Asked once per device, and never again by itself: a permission prompt that
+   comes back every launch is a permission prompt that gets denied for good. */
+function askForPersistenceOnce() {
+  if (state.prefs.persistAsked) return;
+  state.prefs.persistAsked = true;
+  save();
+  askForPersistence();
+}
+
+/* What the log itself weighs. Deliberately not navigator.storage.estimate():
+   that reports the whole origin — caches, service worker, fonts — and next
+   to a quota measured in gigabytes it reads as "no problem" whether the log
+   is 40 KB or gone. This number is the one somebody worried about their
+   training history is actually asking about. */
+function logBytes() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? new Blob([raw]).size : 0;
+  } catch (e) { return 0; }
+}
+
+function fmtBytes(n) {
+  if (n >= 1048576) return (n / 1048576).toFixed(1).replace('.', ',') + ' MB';
+  if (n >= 1024) return Math.round(n / 1024) + ' KB';
+  return n + ' B';
+}
 
 function mark(msg, err) {
   const s = $('status');
@@ -588,6 +649,7 @@ function openSetup(firstRun) {
     barWeight: state.prefs.barWeight,
     platesText: state.prefs.plates.join(', '),
     inc: state.prefs.inc,
+    bgAlarm: !!state.prefs.bgAlarm,
     /* On a first run the name boxes start empty, so the placeholder invites
        you to type rather than making you clear somebody else's name out
        first. Left empty, the shipped label stands. */
@@ -607,6 +669,7 @@ function openSetup(firstRun) {
   $('setupPlanField').style.display = firstRun ? '' : 'none';
   $('setupCalcField').style.display = firstRun ? 'none' : '';
   $('setupIncField').style.display = firstRun ? 'none' : '';
+  $('setupBgField').style.display = firstRun ? 'none' : '';
   $('setupBarWeight').value = setupDraft.barWeight;
   $('setupPlates').value = setupDraft.platesText;
   $('setupInc').value = setupDraft.inc;
@@ -628,6 +691,14 @@ function renderSetup() {
     b.setAttribute('aria-pressed', b.dataset.units === setupDraft.units ? 'true' : 'false');
     b.onclick = () => { setupDraft.units = b.dataset.units; renderSetup(); };
   });
+  $('setupBgAlarm').querySelectorAll('.seg-btn').forEach(b => {
+    const on = b.dataset.bg === 'on';
+    b.setAttribute('aria-pressed', on === setupDraft.bgAlarm ? 'true' : 'false');
+    b.onclick = () => { setupDraft.bgAlarm = on; renderSetup(); };
+  });
+  $('setupBgHint').textContent = setupDraft.bgAlarm
+    ? 'El aviso suena aunque bloquees el móvil o te vayas a otra app, y el descanso aparece en la pantalla de bloqueo con −30 / +30 / saltar. Para conseguirlo la app reproduce un sonido inaudible mientras dura el descanso: en algunos móviles eso pausa la música que estés escuchando. Si el móvil lo permite, además te avisa con una notificación.'
+    : 'Con el móvil bloqueado o en otra app, el aviso llega cuando vuelves a mirar la pantalla. Actívalo si entrenas con el móvil en el bolsillo.';
   $('setupBarWeightU').textContent = setupDraft.units;
   $('setupIncU').textContent = setupDraft.units;
   $('setupPlan').querySelectorAll('.seg-btn').forEach(b => {
@@ -698,6 +769,9 @@ $('setupSave').onclick = () => {
   });
   state.mode = setupDraft.mode;
   state.prefs.units = setupDraft.units;
+  const bgAlarmTurnedOn = setupDraft.bgAlarm && !state.prefs.bgAlarm;
+  state.prefs.bgAlarm = setupDraft.bgAlarm;
+  if (!state.prefs.bgAlarm) keepAliveStop();
   /* The calculator fields are hidden on first run (there is nothing to edit
      yet — migrate() seeded them from the 'kg' fallback before the user ever
      chose a unit), so a first save has to reseed them from whichever unit
@@ -751,6 +825,13 @@ $('setupSave').onclick = () => {
   const wasFirstRun = setupFirstRun;
   setupDraft = null;
   save();
+  /* There is something worth keeping now, and this click is a user gesture,
+     which is the moment a browser is willing to hear the question. */
+  askForPersistenceOnce();
+  /* Only ever asked from this click, and only when the setting has just been
+     switched on — the notification is the half of it that survives the page
+     being frozen, and this is the one place the user asked for it. */
+  if (bgAlarmTurnedOn) askForNotifications();
   applyTheme();
   render();
   closeSheet('setupSheet');
@@ -1300,6 +1381,8 @@ function startRest(sec, label) {
   tId = setInterval(tick, 1000);
   requestWakeLock();
   primeAudio();  /* we are inside the tap that ticked the set — the one moment the browser lets us unlock sound */
+  keepAliveStart();
+  showMediaSession(label, tEndAt, sec);
 }
 
 function tick() {
@@ -1308,6 +1391,7 @@ function tick() {
   if (left > 0) {
     v.textContent = Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
     f.style.width = (left / tTotal * 100) + '%';
+    setMediaPosition(tTotal, tTotal - left);
   } else {
     if (!tOverNotified) {
       tOverNotified = true;
@@ -1315,6 +1399,11 @@ function tick() {
       $('tlbl').textContent = 'Vamos';
       $('tmsg').textContent = 'Se acabó el descanso. Siguiente serie.';
       f.style.width = '100%';
+      /* Both before the alarm: with the sound off, startAlarmLoop() has
+         nothing to play and hands the audio back immediately, which takes
+         the lock-screen card with it. */
+      mediaSessionOver();
+      notifyRestOver();
       startAlarmLoop();
     }
     const over = Math.abs(left);
@@ -1326,6 +1415,8 @@ function tick() {
 function stopRest() {
   clearInterval(tId); tId = null;
   stopAlarmLoop();
+  keepAliveStop();
+  clearRestNotification();
   $('timer').classList.remove('up', 'over');
   releaseWakeLock();
 }
@@ -1340,9 +1431,12 @@ function nudgeRest(delta) {
   const next = Math.max(5, left + delta);
   tEndAt = Date.now() + next * 1000;
   tTotal = Math.max(tTotal, next);
+  setMediaPosition(tTotal, tTotal - next);
   if (tOverNotified) {
     tOverNotified = false;
     stopAlarmLoop();
+    clearRestNotification();
+    keepAliveStart();
     $('timer').classList.remove('over');
     $('tlbl').textContent = 'Descanso · ' + tLabel;
     $('tmsg').textContent = 'Prueba de la frase: si puedes hablar sin quedarte sin aire, ya estás listo.';
@@ -1373,9 +1467,16 @@ function stopAlarmLoop() {
 
 function startAlarmLoop() {
   stopAlarmLoop();
+  primeAudio();  /* the context may have been suspended while the page was hidden */
   let count = 0;
   const fire = () => {
-    if (!state.prefs.sound || count >= ALARM_REPEATS) { stopAlarmLoop(); return; }
+    if (!state.prefs.sound || count >= ALARM_REPEATS) {
+      stopAlarmLoop();
+      /* Whatever music this interrupted can have the phone back: the rest is
+         over, and the counting-up display needs no audio. */
+      keepAliveStop();
+      return;
+    }
     beep();
     if (navigator.vibrate) navigator.vibrate([200, 80, 200]);
     count++;
@@ -1430,6 +1531,181 @@ $('tsound').onclick = () => {
   else { stopAlarmLoop(); }
 };
 
+/* ---------- the rest alarm with the phone in a pocket ----------
+   Everything above only fires while the page is running, and a phone that
+   locks or switches to WhatsApp mid-rest stops running it: timers throttle
+   to about once a minute and then the page freezes outright, so the klaxon
+   lands whenever you next look at the screen. The wake lock holds the screen
+   on, but it dies the moment you press the power button yourself.
+
+   A page that is playing audio is exempt from being frozen, so the fix is to
+   play something for the length of the rest. That is what this near-silent
+   loop is. It costs something real — Android hands audio focus to whatever
+   is playing, which can pause the music you are lifting to — so it is off
+   until you turn it on in Ajustes, and it stops the moment the alarm has
+   finished rather than running for the whole session.
+
+   With audio playing, the phone shows a media card on the lock screen, and
+   Media Session turns that into the rest timer: what you are resting for,
+   when it ends, and the same −30 / +30 / skip the app has. */
+let keepAlive = null;
+let silentTrack = '';
+
+/* Seven seconds of near-silence as a WAV, built here rather than shipped as
+   a file so it works offline like everything else. Two details matter: the
+   samples alternate ±1 instead of being zero, because an audio service that
+   reads the track as digital silence may not count it as playback at all;
+   and it is longer than five seconds, under which Chrome declines to show a
+   media card. */
+function silentWav() {
+  if (silentTrack) return silentTrack;
+  const rate = 8000, samples = rate * 7, bytes = 44 + samples * 2;
+  const view = new DataView(new ArrayBuffer(bytes));
+  const tag = (at, str) => { for (let i = 0; i < str.length; i++) view.setUint8(at + i, str.charCodeAt(i)); };
+  tag(0, 'RIFF'); view.setUint32(4, bytes - 8, true); tag(8, 'WAVE');
+  tag(12, 'fmt '); view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+  view.setUint32(24, rate, true); view.setUint32(28, rate * 2, true);
+  view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  tag(36, 'data'); view.setUint32(40, samples * 2, true);
+  for (let i = 0; i < samples; i++) view.setInt16(44 + i * 2, i % 2 ? 1 : -1, true);
+  let raw = '';
+  const bytesOut = new Uint8Array(view.buffer);
+  for (let i = 0; i < bytesOut.length; i++) raw += String.fromCharCode(bytesOut[i]);
+  silentTrack = 'data:audio/wav;base64,' + btoa(raw);
+  return silentTrack;
+}
+
+function keepAliveStart() {
+  if (!state.prefs.bgAlarm) return;
+  try {
+    if (!keepAlive) {
+      keepAlive = new Audio(silentWav());
+      keepAlive.loop = true;
+      keepAlive.setAttribute('aria-hidden', 'true');
+    }
+    /* Called from the tap that ticked the set, which is the only moment a
+       browser lets a page start playing anything. */
+    const started = keepAlive.play();
+    if (started && started.catch) started.catch(() => {});
+  } catch (e) { /* no audio here — the countdown and the notification stand */ }
+}
+
+function keepAliveStop() {
+  if (keepAlive) { try { keepAlive.pause(); } catch (e) { /* already gone */ } }
+  clearMediaSession();
+}
+
+/* The lock-screen card. Set once per rest rather than every tick: rewriting
+   the metadata each second makes the notification flicker, and the progress
+   bar is what shows the countdown anyway. */
+function showMediaSession(label, endsAt, seconds) {
+  const ms = navigator.mediaSession;
+  if (!ms || !state.prefs.bgAlarm) return;
+  try {
+    if (window.MediaMetadata) {
+      ms.metadata = new MediaMetadata({
+        title: 'Descanso · ' + label,
+        artist: 'Termina a las ' + new Date(endsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        album: 'Heavy Iron',
+        artwork: [
+          { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
+        ],
+      });
+    }
+    ms.playbackState = 'playing';
+    setMediaPosition(seconds, 0);
+    /* Whatever the phone decides to draw — a pause button, skip, seek — ends
+       up doing what the same control does in the app. */
+    const handlers = {
+      pause: stopRest,
+      stop: stopRest,
+      nexttrack: stopRest,
+      seekforward: () => nudgeRest(30),
+      seekbackward: () => nudgeRest(-30),
+      previoustrack: () => nudgeRest(-30),
+    };
+    Object.keys(handlers).forEach(action => {
+      try { ms.setActionHandler(action, handlers[action]); } catch (e) { /* not offered here */ }
+    });
+  } catch (e) { /* no media session — the notification still fires */ }
+}
+
+function setMediaPosition(duration, position) {
+  const ms = navigator.mediaSession;
+  if (!ms || !ms.setPositionState || !duration) return;
+  try {
+    ms.setPositionState({ duration, position: Math.min(Math.max(position, 0), duration), playbackRate: 1 });
+  } catch (e) { /* out-of-range position after a nudge — not worth reporting */ }
+}
+
+function clearMediaSession() {
+  const ms = navigator.mediaSession;
+  if (!ms) return;
+  try {
+    ms.playbackState = 'none';
+    ms.metadata = null;
+    ['pause', 'stop', 'nexttrack', 'seekforward', 'seekbackward', 'previoustrack']
+      .forEach(action => { try { ms.setActionHandler(action, null); } catch (e) { /* ignore */ } });
+  } catch (e) { /* ignore */ }
+}
+
+/* The card again, once the rest is over: same notification, new words. */
+function mediaSessionOver() {
+  const ms = navigator.mediaSession;
+  if (!ms || !ms.metadata || !window.MediaMetadata) return;
+  try {
+    ms.metadata = new MediaMetadata({
+      title: 'Vamos — se acabó el descanso',
+      artist: tLabel,
+      album: 'Heavy Iron',
+      artwork: [
+        { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
+        { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
+      ],
+    });
+  } catch (e) { /* ignore */ }
+}
+
+/* A notification is the one thing that still reaches you through a locked
+   screen from a page the phone has stopped running, so it is posted whenever
+   the rest ends with the app out of sight. Asked for only when the setting
+   is switched on: a permission prompt on somebody's first set is how an app
+   gets its notifications denied forever. */
+const REST_TAG = 'heavy-iron-rest';
+
+function askForNotifications() {
+  if (!('Notification' in window)) return Promise.resolve(false);
+  if (Notification.permission === 'granted') return Promise.resolve(true);
+  if (Notification.permission === 'denied') return Promise.resolve(false);
+  return Notification.requestPermission().then(p => p === 'granted').catch(() => false);
+}
+
+function notifyRestOver() {
+  if (document.visibilityState === 'visible') return;
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (!navigator.serviceWorker) return;
+  navigator.serviceWorker.ready
+    .then(reg => reg.showNotification('Se acabó el descanso', {
+      body: tLabel ? 'Siguiente serie · ' + tLabel : 'Siguiente serie',
+      tag: REST_TAG,
+      icon: 'icon-192.png',
+      badge: 'icon-192.png',
+    }))
+    .catch(() => { /* the phone said no — the klaxon is still trying */ });
+}
+
+/* Coming back to the app answers the notification, so it does not sit in the
+   shade over a rest you have already got on with. */
+function clearRestNotification() {
+  if (!navigator.serviceWorker || !('Notification' in window) || Notification.permission !== 'granted') return;
+  navigator.serviceWorker.ready
+    .then(reg => reg.getNotifications({ tag: REST_TAG }))
+    .then(list => list.forEach(n => n.close()))
+    .catch(() => { /* ignore */ });
+}
+
 async function requestWakeLock() {
   try {
     if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
@@ -1447,6 +1723,7 @@ document.addEventListener('visibilitychange', () => {
     flushSave();
     return;
   }
+  clearRestNotification();
   if (tId) {
     tick();
     requestWakeLock();
