@@ -16,7 +16,7 @@
    are deleted on activate, and the app shows an "Actualizar" prompt rather
    than swapping the code under a session in progress. */
 
-const CACHE_VERSION = 'v33';
+const CACHE_VERSION = 'v34';
 const SHELL_CACHE = 'heavy-iron-shell-' + CACHE_VERSION;
 const RUNTIME_CACHE = 'heavy-iron-runtime-' + CACHE_VERSION;
 
@@ -66,6 +66,22 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('message', event => {
   if (event.data === 'skipWaiting') self.skipWaiting();
+});
+
+/* The rest-over notification is posted by the page (see notifyRestOver) but
+   it outlives the page that posted it, so answering the tap is the worker's
+   job: raise the session that is already open rather than starting a second
+   copy of the app on top of it. */
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+      for (const client of list) {
+        if (client.url.indexOf(self.registration.scope) === 0 && 'focus' in client) return client.focus();
+      }
+      return self.clients.openWindow ? self.clients.openWindow('./') : null;
+    })
+  );
 });
 
 function networkFirst(request, cacheName) {
