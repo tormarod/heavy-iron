@@ -3380,6 +3380,32 @@ function enableWebfont() {
    the app installs itself and serves from cache. Updates are never applied
    under you mid-session: a new version waits until you say so, and the
    pending write is flushed before the reload that picks it up. */
+/* ---------- which version is this? ----------
+   "Did it update?" was, until this line existed, a question you could only
+   answer by reasoning about service workers. The number comes from the
+   worker currently serving the page, because that is the thing that decides
+   which copy of the app you got — a constant compiled into this file would
+   only ever tell you what this file thinks it is.
+
+   Nothing is shown when there is no answer: no worker yet (a first visit,
+   or file://), or one too old to know the question. It appears by itself
+   once a worker that does answer takes over. */
+function renderVersion() {
+  const el = $('version');
+  if (!el) return;
+  const worker = navigator.serviceWorker && navigator.serviceWorker.controller;
+  if (!worker) return;
+  try {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = e => {
+      if (!e.data) return;
+      el.textContent = 'Heavy Iron ' + e.data;
+      el.hidden = false;
+    };
+    worker.postMessage('version', [channel.port2]);
+  } catch (e) { /* no channel here — the line just stays hidden */ }
+}
+
 /* Not more often than this, however many times the app is brought back to
    the foreground — a check between two sets is a wasted request. */
 const UPDATE_CHECK_MS = 15 * 60 * 1000;
@@ -3413,6 +3439,8 @@ function registerServiceWorker() {
     /* The browser looks for a new worker when the page is navigated to, and
        an installed app coming back from the background never navigates: it
        is the same page it was on Tuesday. So ask on the way back in. */
+    renderVersion();
+
     lastUpdateCheck = Date.now();
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'visible') return;

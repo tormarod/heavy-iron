@@ -368,6 +368,11 @@ over once every window is closed — and an app you background rather than
 quit never closes one. Coming back to the app after a while also looks for
 a new version: an app that is resumed rather than relaunched never
 navigates, and navigating is the only time the browser checks by itself.
+The version running is printed at the bottom of the page, under the
+buttons — asked of the worker serving the page rather than read from a
+constant, so it says what is actually installed rather than what the code
+thinks it is. On a browser too old to answer, or before any worker is in
+charge, the line simply isn't there.
 
 ## During the session
 

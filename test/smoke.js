@@ -2274,6 +2274,52 @@ const ok = (name, cond, extra) => {
     await ctx.close();
   }
 
+  // ---------- which version is running ----------
+  /* "Did it update?" used to be answerable only by reasoning about service
+     workers. The footer line answers it, and it has to come from the worker
+     serving the page rather than a constant in this file, or it would report
+     what the code wishes it were rather than what is installed. */
+  {
+    console.log('\n== versión en el pie ==');
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await dismissSetup(page);
+
+    /* The worker claims the first uncontrolled page and the app reloads, so
+       wait for a controlled page rather than for a fixed delay. */
+    await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 20000 });
+    await page.waitForTimeout(800);
+
+    const shown = await page.textContent('#version');
+    ok('the footer names the running version', /^Heavy Iron v\d+$/.test(shown.trim()), shown);
+    ok('and it is the version the worker actually is',
+       shown.trim() === 'Heavy Iron ' + await page.evaluate(() => new Promise(res => {
+         const ch = new MessageChannel();
+         ch.port1.onmessage = e => res(e.data);
+         navigator.serviceWorker.controller.postMessage('version', [ch.port2]);
+       })), shown);
+    ok('it is visible', await page.locator('#version').isVisible());
+
+    /* A worker too old to know the question leaves the line alone rather
+       than printing a guess — the same as before this line existed. */
+    const quiet = await page.evaluate(async () => {
+      const el = document.getElementById('version');
+      el.hidden = true;
+      el.textContent = '';
+      const real = navigator.serviceWorker.controller.postMessage;
+      navigator.serviceWorker.controller.postMessage = () => {};   // an older worker: no reply
+      renderVersion();
+      await new Promise(r => setTimeout(r, 400));
+      const state = { hidden: el.hidden, text: el.textContent };
+      navigator.serviceWorker.controller.postMessage = real;
+      return state;
+    });
+    ok('a worker that does not answer leaves the line hidden',
+       quiet.hidden === true && quiet.text === '', JSON.stringify(quiet));
+    await ctx.close();
+  }
+
   // ---------- the app starts without the font host ----------
   /* The webfont sat in front of the scripts, so a font host that was slow to
      answer held the whole app at "Cargando tu registro…" — on an app that
