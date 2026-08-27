@@ -1,6 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Heavy Iron">
-  <!-- Maskable: everything that matters sits inside the middle 80%, so a
-       round or squircle mask on a phone home screen never clips the bar. -->
+  <!-- The scalable "any" icon: full bleed, used by browsers that take an SVG.
+       The masked home screen icon is icon-maskable-512.png, which is this
+       artwork shrunk to 80% so a round or squircle mask cannot clip a plate. -->
   <rect width="512" height="512" fill="#17191C"/>
   <g fill="#E4E2DA">
     <!-- outer plates -->

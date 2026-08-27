@@ -2078,6 +2078,73 @@ const ok = (name, cond, extra) => {
     await ctx.close();
   }
 
+  // ---------- installable as an app ----------
+  /* Firefox on Android is the strict one: it only offers "Instalar" when the
+     manifest names a raster icon of a size it can parse and that size is at
+     least 192. An SVG with sizes:"any" — which Chrome and Safari are happy
+     with — is invisible to it, so these cases pin the PNGs down. */
+  {
+    console.log('\n== installable ==');
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+
+    const m = await page.evaluate(async () => {
+      const href = document.querySelector('link[rel="manifest"]').getAttribute('href');
+      const manifest = await (await fetch(href)).json();
+      /* PNG dimensions straight out of the IHDR chunk: bytes 16-23 of the
+         file are width and height, big-endian. No decoding, no CSP. */
+      const files = {};
+      for (const icon of manifest.icons) {
+        const res = await fetch(icon.src);
+        if (!res.ok) { files[icon.src] = { status: res.status }; continue; }
+        const buf = new Uint8Array(await res.arrayBuffer());
+        const view = new DataView(buf.buffer);
+        const png = buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
+        files[icon.src] = {
+          status: res.status,
+          type: res.headers.get('content-type') || '',
+          px: png ? [view.getUint32(16), view.getUint32(20)] : null,
+        };
+      }
+      return { manifest, files };
+    });
+
+    ok('the manifest asks for its own window', m.manifest.display === 'standalone', m.manifest.display);
+    ok('the manifest has a name and a short name', !!m.manifest.name && !!m.manifest.short_name);
+    ok('the manifest has a start_url', !!m.manifest.start_url, m.manifest.start_url);
+
+    const raster = m.manifest.icons.filter(i => /^\d+x\d+$/.test(i.sizes || ''));
+    const big = raster.filter(i => parseInt(i.sizes, 10) >= 192);
+    ok('at least one icon declares a numeric size of 192 or more (Firefox Android)',
+       big.length > 0, JSON.stringify(m.manifest.icons.map(i => i.sizes)));
+    ok('one of those is a PNG', big.some(i => i.type === 'image/png'));
+    ok('there is a maskable icon for the home screen',
+       m.manifest.icons.some(i => (i.purpose || '').split(/\s+/).includes('maskable')));
+
+    for (const icon of m.manifest.icons) {
+      const f = m.files[icon.src];
+      ok('the manifest icon ' + icon.src + ' exists', f && f.status === 200, JSON.stringify(f));
+      if (f && f.px) {
+        const [w, h] = icon.sizes.split('x').map(Number);
+        ok(icon.src + ' really is ' + icon.sizes,
+           f.px[0] === w && f.px[1] === h, f.px.join('x'));
+      }
+    }
+
+    /* An icon the install prompt cannot fetch offline is an icon the phone
+       may draw as a blank square, so the shell precaches every one of them. */
+    const sw = await (await page.request.get(BASE + '/sw.js')).text();
+    for (const icon of m.manifest.icons) {
+      ok('the service worker precaches ' + icon.src, sw.includes("'" + icon.src + "'"));
+    }
+
+    const touch = await page.getAttribute('link[rel="apple-touch-icon"]', 'href');
+    ok('the apple-touch-icon is a PNG (iOS ignores an SVG here)',
+       /\.png$/.test(touch || ''), touch);
+    await ctx.close();
+  }
+
   // ---------- layout on real phone widths ----------
   {
     console.log('\n== layout ==');

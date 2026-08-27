@@ -335,10 +335,14 @@ which is the normal state of a gym basement. Blocks published in `blocks/`
 are fetched from the network first and fall back to the cached copy, so
 the list is fresh when you have signal and still works when you don't.
 
-On a phone, **Add to home screen** (Safari) or **Install app** (Chrome)
-gives it its own icon and no browser chrome. Updates never swap the code
-out from under a session: when a new version has been cached, a small
-**Actualizar** prompt appears and nothing changes until you tap it.
+On a phone, **Add to home screen** (Safari), **Install app** (Chrome) or
+**Instalar** in the ⋮ menu (Firefox for Android) gives it its own icon and
+no browser chrome. Firefox is the fussy one: it ignores the SVG icon and
+only offers to install when the manifest points at a PNG whose size it can
+read, which is why `icon-192.png` and `icon-512.png` sit next to
+`icon.svg`. Updates never swap the code out from under a session: when a
+new version has been cached, a small **Actualizar** prompt appears and
+nothing changes until you tap it.
 
 ## During the session
 
@@ -1380,7 +1384,8 @@ fixing it quietly.
 | `js/app.js` | everything else: state, rendering, QR transfer, calculator, volume dashboard |
 | `js/vendor/` | the two QR libraries, verbatim from npm — see the README in there |
 | `sw.js` | offline caching; bump `CACHE_VERSION` when releasing |
-| `manifest.webmanifest`, `icon.svg` | what makes it installable |
+| `manifest.webmanifest`, `icon.svg`, `icon-*.png` | what makes it installable |
+| `tools/render-icons.mjs` | re-exports the PNGs from `icon.svg` — run it after editing the artwork |
 | `blocks/` | blocks published for one-click import |
 | `test/smoke.js` | browser-driven smoke tests |
 

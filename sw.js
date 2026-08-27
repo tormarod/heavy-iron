@@ -16,7 +16,7 @@
    are deleted on activate, and the app shows an "Actualizar" prompt rather
    than swapping the code under a session in progress. */
 
-const CACHE_VERSION = 'v32';
+const CACHE_VERSION = 'v33';
 const SHELL_CACHE = 'heavy-iron-shell-' + CACHE_VERSION;
 const RUNTIME_CACHE = 'heavy-iron-runtime-' + CACHE_VERSION;
 
@@ -32,6 +32,12 @@ const SHELL = [
   'js/data.js',
   'manifest.webmanifest',
   'icon.svg',
+  /* The PNGs the install prompt reads: Firefox on Android picks its home
+     screen icon from the manifest, so they belong in the shell too. */
+  'icon-192.png',
+  'icon-512.png',
+  'icon-maskable-512.png',
+  'icon-180.png',
   /* Only pulled in when you open "Compartir por QR", but precached here: the
      whole point of that screen is working in a basement, and a lazy <script>
      that 404s offline would break the feature exactly where it is needed. */
