@@ -3362,6 +3362,19 @@ function maybeNagBackup() {
   }
 }
 
+/* The webfont is parked on media="print" so it cannot hold up the app (see
+   index.html). Once it has loaded there is nothing left to wait for, so it
+   is switched on for real. Never switched on while it is still pending:
+   that would hand back the render-blocking this exists to avoid. */
+function enableWebfont() {
+  const link = document.getElementById('webfont');
+  if (!link || link.media === 'all') return;
+  /* link.sheet is set once the stylesheet has parsed — on a repeat visit the
+     worker serves it from cache and it is already there by now. */
+  if (link.sheet) { link.media = 'all'; return; }
+  link.addEventListener('load', () => { link.media = 'all'; }, { once: true });
+}
+
 /* ---------- offline ----------
    A gym basement with no signal is the normal case, not the edge case, so
    the app installs itself and serves from cache. Updates are never applied
@@ -4350,4 +4363,5 @@ if (typeof wireReview === 'function') wireReview();
 wireProfileTransfer();
 
 load();
+enableWebfont();
 registerServiceWorker();

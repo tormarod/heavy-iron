@@ -2320,6 +2320,81 @@ const ok = (name, cond, extra) => {
     await ctx.close();
   }
 
+  // ---------- the app starts without the font host ----------
+  /* The webfont sat in front of the scripts, so a font host that was slow to
+     answer held the whole app at "Cargando tu registro…" — on an app that
+     otherwise needs no network at all. It is parked on media="print" now and
+     switched on once it lands. The service worker is blocked in these cases
+     so that the font request is the page's own, and therefore routable. */
+  {
+    console.log('\n== arranque sin la tipografía ==');
+
+    const startsWith = async (label, routeFn) => {
+      const ctx = await browser.newContext({ serviceWorkers: 'block' });
+      await routeFn(ctx);
+      const page = await ctx.newPage();
+      const t0 = Date.now();
+      await page.goto(BASE, { waitUntil: 'domcontentloaded' });
+      let ms = null;
+      for (let i = 0; i < 40; i++) {
+        if (await page.evaluate(() => typeof startRest === 'function').catch(() => false)) { ms = Date.now() - t0; break; }
+        await page.waitForTimeout(250);
+      }
+      ok(label, ms !== null && ms < 5000, ms === null ? 'never started' : ms + 'ms');
+      return { ctx, page };
+    };
+
+    /* The gym-basement case: the connection is accepted and then nothing. */
+    const dead = await startsWith('the app starts even when the font host never answers',
+      ctx => ctx.route('https://fonts.googleapis.com/**', () => { /* hang */ }));
+    ok('and it has drawn something rather than sitting on the skeleton',
+       await dead.page.locator('.ex, .skel').count() > 0);
+    ok('the webfont stays parked while it has not arrived',
+       await dead.page.evaluate(() => document.getElementById('webfont').media) === 'print');
+    await dead.ctx.close();
+
+    const refused = await startsWith('and when the font host refuses outright',
+      ctx => ctx.route('https://fonts.googleapis.com/**', r => r.abort()));
+    await refused.ctx.close();
+
+    /* ...and when it does arrive, it is switched on for real. */
+    const fine = await startsWith('and when the font host is healthy',
+      ctx => ctx.route('https://fonts.googleapis.com/**', r => r.fulfill({
+        status: 200, contentType: 'text/css',
+        body: "@font-face{font-family:'Archivo';src:local('Arial');}",
+      })));
+    await fine.page.waitForTimeout(800);
+    ok('a webfont that arrives is switched on',
+       await fine.page.evaluate(() => document.getElementById('webfont').media) === 'all');
+    ok('and the stylesheet is really applied',
+       await fine.page.evaluate(() => !!document.getElementById('webfont').sheet));
+    await fine.ctx.close();
+
+    /* Every element that names the webfont has to name the fallback too, or
+       it drops to the browser's serif for the first moments of every start. */
+    const ctx = await browser.newContext({ serviceWorkers: 'block' });
+    await ctx.route('https://fonts.googleapis.com/**', r => r.abort());
+    const page = await ctx.newPage();
+    await page.goto(BASE, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => typeof startRest === 'function');
+    await dismissSetup(page);
+    /* Anything that asks for Archivo must say what to use instead of it.
+       (Elements that never asked for it — the day and energy buttons take the
+       browser's own control font — are a separate question, and not one this
+       change touches.) */
+    const orphaned = await page.evaluate(() => {
+      const bad = [];
+      document.querySelectorAll('*').forEach(el => {
+        const f = getComputedStyle(el).fontFamily;
+        if (/Archivo/.test(f) && !/sans-serif/.test(f)) bad.push((el.className || el.tagName) + ' :: ' + f);
+      });
+      return bad.slice(0, 5);
+    });
+    ok('every element that asks for the webfont also names a fallback',
+       orphaned.length === 0, JSON.stringify(orphaned));
+    await ctx.close();
+  }
+
   // ---------- installable as an app ----------
   /* Firefox on Android is the strict one: it only offers "Instalar" when the
      manifest names a raster icon of a size it can parse and that size is at
