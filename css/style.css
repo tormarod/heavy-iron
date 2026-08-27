@@ -517,6 +517,7 @@ body {
 
 .status { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--soft); text-align: right; padding: 8px 0 0; }
 .status.err { color: var(--danger); }
+.version { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--soft); text-align: right; padding: 3px 0 0; opacity: .7; }
 
 .skel { padding: 40px 0; text-align: center; color: var(--soft); font-size: 13px; }
 

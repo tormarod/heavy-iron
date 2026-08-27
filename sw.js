@@ -16,7 +16,7 @@
    are deleted on activate, and the app shows an "Actualizar" prompt rather
    than swapping the code under a session in progress. */
 
-const CACHE_VERSION = 'v35';
+const CACHE_VERSION = 'v36';
 const SHELL_CACHE = 'heavy-iron-shell-' + CACHE_VERSION;
 const RUNTIME_CACHE = 'heavy-iron-runtime-' + CACHE_VERSION;
 
@@ -65,7 +65,14 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('message', event => {
-  if (event.data === 'skipWaiting') self.skipWaiting();
+  if (event.data === 'skipWaiting') { self.skipWaiting(); return; }
+  /* "Which version am I running?" is a question about this worker, not about
+     the page asking: the page is running whichever copy of the app this
+     worker served it. An older worker simply never answers, and the footer
+     line stays hidden until one that does is in charge. */
+  if (event.data === 'version' && event.ports && event.ports[0]) {
+    event.ports[0].postMessage(CACHE_VERSION);
+  }
 });
 
 /* The rest-over notification is posted by the page (see notifyRestOver) but
