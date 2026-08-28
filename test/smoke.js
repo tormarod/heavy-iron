@@ -1864,6 +1864,128 @@ const ok = (name, cond, extra) => {
     await ctx.close();
   }
 
+  // ---------- the order the session was actually done in ----------
+  {
+    console.log('\n== orden real de la sesión ==');
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await dismissSetup(page);
+    await page.waitForTimeout(700);
+
+    const names = () => page.$$eval('.ex-name', els => els.map(e => e.childNodes[0].textContent.trim()));
+    const planned = await names();
+    ok('the session starts in the order the plan asks for', planned[0].startsWith('Press de pecho'), planned[0]);
+    ok('and says nothing about the order until it changes',
+       await page.locator('#ordNote').isVisible() === false);
+    ok('nothing is stored for a session done in the planned order',
+       await page.evaluate(() => {
+         const o = JSON.parse(localStorage.getItem('heavy-iron-v1')).profiles.hombre.order;
+         return !o || !o['block-1'] || o['block-1']['w1-d0'] === undefined;
+       }));
+
+    /* The bench is taken, so the second exercise gets done first. */
+    await page.click('.ex:nth-of-type(2) .ex-ord.up');
+    await page.waitForTimeout(400);
+    const swapped = await names();
+    ok('moving an exercise up puts it first in the session',
+       swapped[0] === planned[1] && swapped[1] === planned[0], swapped.slice(0, 2).join(' | '));
+    ok('the whole sequence is recorded, not just the pair that moved',
+       await page.evaluate(() => {
+         const ids = JSON.parse(localStorage.getItem('heavy-iron-v1'))
+           .profiles.hombre.order['block-1']['w1-d0'];
+         return ids.length === 7 && ids[0] === 'lat1' && ids[1] === 'chestpress';
+       }));
+    ok('and the session says so', (await page.locator('#ordNote').textContent()).includes('Elevaciones laterales'));
+
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(600);
+    ok('the order survives a reload', (await names())[0] === planned[1]);
+
+    /* Sets stay filed under the exercise, never under a position: the
+       whole point of keying the order separately from the log. */
+    await page.fill('.ex:nth-of-type(1) .set-row:nth-of-type(1) .fld:nth-of-type(1) input', '12');
+    await page.waitForTimeout(400);
+    await page.click('.ex:nth-of-type(1) .ex-ord.down');
+    await page.waitForTimeout(400);
+    ok('moving an exercise carries its sets with it',
+       await page.inputValue('.ex:nth-of-type(2) .set-row:nth-of-type(1) .fld:nth-of-type(1) input') === '12');
+    ok('and landing back on the plan order forgets the record rather than storing a copy of it',
+       await page.evaluate(() => {
+         const o = JSON.parse(localStorage.getItem('heavy-iron-v1')).profiles.hombre.order['block-1'];
+         return !o || o['w1-d0'] === undefined;
+       }));
+    ok('so the line about the order goes away too',
+       await page.locator('#ordNote').isVisible() === false);
+
+    ok('the first exercise cannot be moved up and the last cannot be moved down',
+       await page.locator('.ex:nth-of-type(1) .ex-ord.up[disabled]').count() === 1 &&
+       await page.locator('.ex:last-of-type .ex-ord.down[disabled]').count() === 1);
+
+    /* Four swaps are not four taps to undo, which is what the reset is for. */
+    await page.click('.ex:nth-of-type(5) .ex-ord.up');
+    await page.waitForTimeout(300);
+    await page.click('.ex:nth-of-type(4) .ex-ord.up');
+    await page.waitForTimeout(300);
+    await page.click('.ord-reset');
+    await page.waitForTimeout(400);
+    ok('the reset puts the session back in the plan order', (await names())[0] === planned[0]);
+
+    /* An order left pointing at exercises the plan no longer has must not
+       strand the session on a sequence that stopped describing it. */
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      s.profiles.hombre.order['block-1'] = { 'w1-d0': ['no-existe', 'pushdown', 'chestpress'] };
+      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+    });
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(600);
+    const patched = await names();
+    ok('ids the plan no longer has are dropped, and the rest keep their order',
+       patched[0].startsWith('Extensiones de tríceps') && patched[1].startsWith('Press de pecho'),
+       patched.slice(0, 2).join(' | '));
+    ok('exercises the stored order never mentioned come after it, not instead of it',
+       patched.length === 7 && patched[2].startsWith('Elevaciones laterales'), patched.join(' | '));
+
+    /* Same rule as the note and the energy chips: keyed by slot with no
+       exercise under it, so it would still be sitting there when the day
+       came back. */
+    await page.click('#clearDay');
+    await answerDialog(page, true);
+    await page.waitForTimeout(400);
+    ok('clearing the day clears its order too', (await names())[0] === planned[0]);
+    ok('and nothing is left on disk',
+       await page.evaluate(() => {
+         const o = JSON.parse(localStorage.getItem('heavy-iron-v1')).profiles.hombre.order['block-1'];
+         return !o || o['w1-d0'] === undefined;
+       }));
+
+    /* The CSV is where this leaves the app, so it has to carry the number
+       for every set — including the sessions nobody reordered. */
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      const pr = s.profiles.hombre;
+      pr.log['block-1'] = { 'w1-d0': {
+        chestpress: [{ w: '60', r: '8', done: true }],
+        lat1: [{ w: '10', r: '15', done: true }],
+      } };
+      pr.order['block-1'] = { 'w1-d0': ['lat1', 'chestpress'] };
+      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+    });
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(600);
+    const csv = await page.evaluate(() => buildCsv());
+    const head = csv.split('\r\n')[0].replace('\ufeff', '').split(',');
+    ok('the CSV has a column for it', head[5] === 'orden', head.join(','));
+    const csvRow = n => (csv.split('\r\n').find(l => l.indexOf(n) >= 0) || '').split(',');
+    ok('an exercise done first is a 1 in the CSV whatever the plan said',
+       csvRow('Elevaciones laterales en polea')[5] === '1', csvRow('Elevaciones laterales en polea').join(','));
+    ok('and the one that was bumped is a 2', csvRow('Press de pecho')[5] === '2',
+       csvRow('Press de pecho').join(','));
+
+    await ctx.close();
+  }
+
   // ---------- session note, energy, deload check ----------
   {
     console.log('\n== nota, energía y control de descarga ==');
@@ -1908,6 +2030,7 @@ const ok = (name, cond, extra) => {
       pr.rir['block-1'] = { 'w1-d0': { chestpress: '1' } };
       pr.notes['block-1'] = { 'w1-d0': 'algo' };
       pr.energy['block-1'] = { 'w1-d0': 'alta' };
+      pr.order['block-1'] = { 'w1-d0': ['lat1', 'chestpress'] };
       localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
     });
     await page.reload({ waitUntil: 'networkidle' });
@@ -1915,10 +2038,11 @@ const ok = (name, cond, extra) => {
     await page.click('#wipe');
     await answerDialog(page, true);
     await page.waitForTimeout(500);
-    ok('wiping the log wipes the RIR, notes and energy with it',
+    ok('wiping the log wipes the RIR, notes, energy and session order with it',
        await page.evaluate(() => {
          const pr = JSON.parse(localStorage.getItem('heavy-iron-v1')).profiles.hombre;
-         return !Object.keys(pr.rir).length && !Object.keys(pr.notes).length && !Object.keys(pr.energy).length;
+         return !Object.keys(pr.rir).length && !Object.keys(pr.notes).length &&
+                !Object.keys(pr.energy).length && !Object.keys(pr.order).length;
        }));
 
     /* Deload on week 4, with weeks 3 and 5 logged: the only evidence there
