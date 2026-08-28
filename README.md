@@ -72,6 +72,9 @@ from a copy of the plan and leaves this one's history where it is.
 - **A target weight for every exercise, every week**, read off last week's
   reps and RIR rather than guessed — see
   [The weekly objetivo](#the-weekly-objetivo).
+- **The order the session was actually done in**, corrected with two arrows
+  when the machine you wanted was taken — see
+  [During the session](#during-the-session).
 - **Diagnóstico**: every exercise's strength trend at once, ranked worst
   first and crossed with the signals already in your log, so a stall comes
   with a reason and something to change; how often you actually trained
@@ -376,6 +379,19 @@ charge, the line simply isn't there.
 
 ## During the session
 
+- **The order you actually did them in.** The plan is a prescription, not a
+  record: the bench is taken, so you do the lateral raises first and come
+  back to it. The **↑ / ↓** arrows beside each exercise's number move it up
+  or down the session, and the number is the position it was actually done
+  in. It is recorded per session, so the same day next week starts from the
+  plan again, and only when the sequence differs from the plan's — an
+  untouched session stores nothing at all. A line above the list confirms
+  the change and offers **Volver al orden del plan**, since undoing four
+  swaps one arrow at a time is not a way back. Sets stay filed under the
+  exercise and not under a position, so moving a card carries its numbers,
+  its RIR chip and its history with it, and the CSV gains an `orden` column
+  so you can ask a spreadsheet whether the exercises you do last are the
+  ones going nowhere.
 - **The weight box already knows what you did last time.** The greyed
   number in it is what you lifted on that same set the last week you
   logged it. Tick a set without typing anything and it takes that number,

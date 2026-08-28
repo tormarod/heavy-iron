@@ -305,10 +305,10 @@ function blockFromNormalized(normalized) {
    the sheet below it because a block can now also arrive from a camera (see
    the QR section), and both routes have to land it identically: as a *new*
    block, never on top of an existing one, so an import can't cost you a log.
-   `log`/`rir` are optional and already normalized — a QR that carried
-   progress with the plan hands them in here, keyed by this block's own
-   ids. */
-function installImportedBlock(normalized, log, rir) {
+   `log`/`rir`/`order` are optional and already normalized — a QR that
+   carried progress with the plan hands them in here, keyed by this block's
+   own ids. */
+function installImportedBlock(normalized, log, rir, order) {
   const profile = getProfile();
   const block = blockFromNormalized(normalized);
   profile.blocks[block.id] = block;
@@ -317,6 +317,7 @@ function installImportedBlock(normalized, log, rir) {
   profile.week = 1; profile.day = 0;
   if (log) profile.log[block.id] = log;
   if (rir) profile.rir[block.id] = rir;
+  if (order) profile.order[block.id] = order;
   save(); render();
   return block.id;
 }

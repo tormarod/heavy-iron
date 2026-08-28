@@ -215,6 +215,22 @@ function migrate() {
        alone with no exercise under them. */
     if (!profile.notes || typeof profile.notes !== 'object') profile.notes = {};
     if (!profile.energy || typeof profile.energy !== 'object') profile.energy = {};
+    /* A third one with the same shape, holding an array of exercise ids
+       rather than a string — the order the session was actually done in.
+       See getOrder/setOrder: absent means "in the order the plan asks
+       for", which is the overwhelming majority of sessions. */
+    if (!profile.order || typeof profile.order !== 'object') profile.order = {};
+    Object.keys(profile.order).forEach(bk => {
+      const blk = profile.order[bk];
+      if (!blk || typeof blk !== 'object' || Array.isArray(blk)) { delete profile.order[bk]; return; }
+      Object.keys(blk).forEach(k => {
+        const ids = blk[k];
+        if (!Array.isArray(ids)) { delete blk[k]; return; }
+        const seen = new Set();
+        blk[k] = ids.filter(id => typeof id === 'string' && id && !seen.has(id) && seen.add(id)).slice(0, ORDER_LIMIT);
+        if (!blk[k].length) delete blk[k];
+      });
+    });
     if (!profile.blocks || typeof profile.blocks !== 'object' || !Object.keys(profile.blocks).length) {
       profile.blocks = seed.blocks;
       profile.blockOrder = seed.blockOrder.slice();
@@ -1161,6 +1177,90 @@ function setEnergy(profile, blockId, w, dayId, val) {
   }
 }
 
+/* ---------- the order the session was actually done in ----------
+   The plan is a prescription, not a record. The bench is taken, so you do
+   the lateral raises first and come back to it — and by the next week
+   nothing anywhere says that happened, even though it is the single most
+   likely explanation for why the bench moved less weight that day. An
+   exercise done fifth is not the same exercise done first.
+
+   Stored per session, like the note and the energy chips, and for the same
+   reason: the order is a property of the day, not of any one set. What it
+   holds is the exercise ids in the sequence they were done — a permutation
+   of the day's plan, never a subset with meaning of its own. And it is only
+   stored when it *differs* from the plan: an absent entry means "in the
+   order the plan asks for", which is what the great majority of sessions
+   are, so the common case costs nothing on disk and needs no backfill for
+   every session logged before this existed.
+
+   Deliberately not a per-exercise number you type in. Numbering by hand is
+   the version of this that gets half-filled — you stamp 1 and 2, get
+   distracted at the third machine, and the log is left claiming things that
+   are not true. Two arrows that move a card past its neighbour can only
+   ever describe a complete order, because they start from the plan's. */
+const ORDER_LIMIT = 60;
+
+function getOrder(profile, blockId, w, dayId) {
+  const blk = profile.order[blockId];
+  const ids = blk && blk[slot(w, dayId)];
+  return Array.isArray(ids) ? ids : null;
+}
+
+function setOrder(profile, blockId, w, dayId, ids) {
+  const k = slot(w, dayId);
+  if (ids && ids.length) {
+    if (!profile.order[blockId]) profile.order[blockId] = {};
+    profile.order[blockId][k] = ids.slice(0, ORDER_LIMIT);
+  } else if (profile.order[blockId]) {
+    delete profile.order[blockId][k];
+  }
+}
+
+/* The day's live exercises in the sequence they were actually done.
+
+   The stored ids are resolved against the plan rather than trusted: an
+   exercise that has since been retired, deleted or sent to another day
+   simply drops out, and one added to the plan afterwards lands at the end
+   rather than silently claiming a position nobody put it in. So a plan
+   edit can never strand a session on an order that no longer describes it —
+   worst case the recorded sequence degrades back towards the plan's. */
+function orderedEx(profile, block, w, day) {
+  const plan = exList(day);
+  const ids = getOrder(profile, block.id, w, day.id);
+  if (!ids) return plan;
+  const byId = {};
+  plan.forEach(ex => { byId[ex.id] = ex; });
+  const out = [];
+  ids.forEach(id => { const ex = byId[id]; if (ex && out.indexOf(ex) < 0) out.push(ex); });
+  plan.forEach(ex => { if (out.indexOf(ex) < 0) out.push(ex); });
+  return out;
+}
+
+const sameIds = (a, b) => a.length === b.length && a.every((id, i) => id === b[i]);
+
+/* True when this session was done in some order other than the plan's —
+   which is not the same question as "is anything stored", once a plan edit
+   has had its say through orderedEx above. */
+function reorderedDay(profile, block, w, day) {
+  return !sameIds(orderedEx(profile, block, w, day).map(e => e.id), exList(day).map(e => e.id));
+}
+
+/* Swap an exercise with its neighbour in the actual order. Writing back the
+   whole sequence rather than a position keeps the stored value a complete
+   permutation at every step; landing back on the plan's own order deletes
+   the record instead of storing a copy of it, so "no entry" keeps meaning
+   exactly one thing. */
+function moveSessionEx(profile, block, w, day, exId, dir) {
+  const cur = orderedEx(profile, block, w, day);
+  const i = cur.findIndex(e => e.id === exId);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= cur.length) return false;
+  const tmp = cur[i]; cur[i] = cur[j]; cur[j] = tmp;
+  const ids = cur.map(e => e.id);
+  setOrder(profile, block.id, w, day.id, sameIds(ids, exList(day).map(e => e.id)) ? null : ids);
+  return true;
+}
+
 function setRir(profile, blockId, w, dayId, exId, val) {
   if (!profile.rir[blockId]) profile.rir[blockId] = {};
   const k = slot(w, dayId);
@@ -1304,10 +1404,11 @@ function purgeDayLog(profile, blockId, dayId) {
 
 /* The session-level maps are keyed by slot alone, with no exercise under
    them, so unlike `rir` they do not quietly become unreadable when the
-   sets they belonged to go: a note would still be sitting there when the
-   day came back. Whatever clears a session's sets clears these too. */
+   sets they belonged to go: a note — or an order that says you started with
+   the third exercise — would still be sitting there when the day came back.
+   Whatever clears a session's sets clears these too. */
 function purgeSessionMeta(profile, blockId, dayId, onlyWeek) {
-  [profile.notes, profile.energy].forEach(map => {
+  [profile.notes, profile.energy, profile.order].forEach(map => {
     const blk = map && map[blockId];
     if (!blk) return;
     if (onlyWeek) { delete blk[slot(onlyWeek, dayId)]; return; }
@@ -2000,7 +2101,14 @@ function drawApp() {
      became fully done (see maybeNagBackup). */
   const dayRowSets = [];
 
-  exList(day).forEach((ex, i) => {
+  /* Drawn in the order the session was actually done, which is the plan's
+     until somebody says otherwise — see orderedEx and the ↑/↓ buttons on
+     each card. Everything downstream still keys off ex.id, so nothing but
+     the sequence of the cards changes. */
+  const sessionEx = orderedEx(profile, block, profile.week, day);
+  drawOrderNote(profile, block, day, sessionEx);
+
+  sessionEx.forEach((ex, i) => {
     const n = setsFor(ex, profile.week, block);
     const rows = entry(profile, block.id, profile.week, day.id, ex.id, n);
     dayRowSets.push(rows);
@@ -2029,7 +2137,11 @@ function drawApp() {
 
     card.innerHTML =
       '<div class="ex-head">' +
-        '<div class="ex-num">' + (i + 1) + '</div>' +
+        '<div class="ex-num">' +
+          '<button type="button" class="ex-ord up"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
+          '<span class="ex-ord-n">' + (i + 1) + '</span>' +
+          '<button type="button" class="ex-ord down"' + (i === sessionEx.length - 1 ? ' disabled' : '') + '>↓</button>' +
+        '</div>' +
         '<div class="ex-body">' +
           '<div class="ex-name"></div>' +
           (ex.alt ? '<div class="ex-alt"></div>' : '') +
@@ -2080,6 +2192,23 @@ function drawApp() {
     if (ex.cue) card.querySelector('.ex-cue').textContent = ex.cue;
 
     card.querySelector('.ex-chart-btn').onclick = () => openChart(ex, day.id);
+
+    /* The number is the position this exercise was done in, and the two
+       arrows are how you correct it — the machine was taken, you did the
+       next one first, two taps and the card is where it belongs. Ends stay
+       rendered but disabled rather than hidden, so the column keeps its
+       width and the numbers do not shuffle sideways card to card. */
+    card.querySelectorAll('.ex-ord').forEach(btn => {
+      const dir = btn.classList.contains('up') ? -1 : 1;
+      const label = 'Hiciste ' + ex.n + (dir < 0 ? ' antes' : ' después') +
+        ': moverlo al puesto ' + (i + 1 + dir) + ' de la sesión';
+      btn.setAttribute('aria-label', label);
+      btn.title = label;
+      btn.onclick = () => {
+        if (!moveSessionEx(profile, block, profile.week, day, ex.id, dir)) return;
+        save(); render();
+      };
+    });
 
     /* `ex.setup` — seat height, pin position: a plan field, not a log field,
        so editing it here writes straight to the live exercise, the same way
@@ -2283,6 +2412,40 @@ function drawApp() {
   $('note').textContent = head + (extra.length ? ' · ' + extra.join(' · ') + '.' : '');
 }
 
+/* Silent while the session is running in the order the plan asks for —
+   which is most of them, and a line saying "you did this in the planned
+   order" is noise on every one of them. It appears the moment the sequence
+   stops matching the plan, both to confirm the change was recorded and to
+   offer the way back, since undoing four swaps one arrow at a time is not
+   a way back. */
+function drawOrderNote(profile, block, day, sessionEx) {
+  /* Guarded for the same reason wireDiagnostics/wireReview are at the foot
+     of this file: a returning user's service worker can still be holding
+     the previous index.html, which has no #ordNote in it. Losing the reset
+     line until the worker updates is fine; throwing here would take the
+     whole session render down with it, and the arrows on the cards work
+     either way. */
+  const host = $('ordNote');
+  if (!host) return;
+  const changed = !sameIds(sessionEx.map(e => e.id), exList(day).map(e => e.id));
+  host.innerHTML = '';
+  host.style.display = changed ? 'flex' : 'none';
+  if (!changed) return;
+  const txtEl = document.createElement('span');
+  txtEl.textContent = 'Orden cambiado: empezaste por ' + sessionEx[0].n + '.';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'ord-reset';
+  btn.textContent = 'Volver al orden del plan';
+  btn.onclick = () => {
+    setOrder(profile, block.id, profile.week, day.id, null);
+    save(); render();
+    mark('Orden del plan restablecido');
+  };
+  host.appendChild(txtEl);
+  host.appendChild(btn);
+}
+
 /* Three chips before the sets rather than after them: this is how you
    arrived, and answering it once you have finished is answering a
    different question. */
@@ -2426,6 +2589,7 @@ $('wipe').onclick = async () => {
   profile.rir = {};
   profile.notes = {};
   profile.energy = {};
+  profile.order = {};
   save(); render();
   mark('Registro de ' + profile.label + ' borrado');
 };
@@ -3828,6 +3992,30 @@ function blockShareRir(profile, block) {
   return out;
 }
 
+/* The session orders logged against one block, keyed by slot like the maps
+   above, each one an array of the block's own exercise ids. Retired and
+   deleted exercises are stripped here rather than sent — the receiver's
+   orderedEx would drop them anyway, and the sequence that survives is
+   still the sequence they were done in. A slot left holding fewer than two
+   is not an order at all and does not travel. */
+function blockShareOrder(profile, block) {
+  const src = profile.order[block.id];
+  if (!src) return {};
+  const liveDays = dayList(block);
+  const out = {};
+  liveDays.forEach(day => {
+    const liveEx = new Set(exList(day).map(e => e.id));
+    for (let w = 1; w <= MAX_WEEKS; w++) {
+      const key = slot(w, day.id);
+      const ids = src[key];
+      if (!Array.isArray(ids)) continue;
+      const kept = ids.filter(id => liveEx.has(id));
+      if (kept.length > 1) out[key] = kept;
+    }
+  });
+  return out;
+}
+
 /* Two different numbers, and the difference is the whole point of showing
    them. A row counts as "registrada" the moment it holds anything at all —
    including a weight typed into the box and then never ticked. Only a row
@@ -3963,6 +4151,34 @@ function normalizeImportedRir(rawRir, rawBlock, normalized) {
       if (exId && RIR_OPTIONS.indexOf(slotRir[rawExId]) >= 0) kept[exId] = slotRir[rawExId];
     });
     if (Object.keys(kept).length) out[slot(w, dayId)] = kept;
+  });
+  return out;
+}
+
+/* The session-order twin, re-keyed the same way. Ids the sender's block
+   does not account for are dropped rather than carried through as strings
+   that would never resolve on this phone. */
+function normalizeImportedOrder(rawOrder, rawBlock, normalized) {
+  if (!rawOrder || typeof rawOrder !== 'object' || Array.isArray(rawOrder)) return {};
+  const { dayMap, exMap } = importIdMaps(rawBlock, normalized);
+
+  const out = {};
+  Object.keys(rawOrder).slice(0, LOG_LIMITS.slots).forEach(key => {
+    const m = /^w(\d+)-(.+)$/.exec(key);
+    if (!m) return;
+    const w = +m[1];
+    if (!Number.isInteger(w) || w < 1 || w > MAX_WEEKS) return;
+    const dayId = dayMap[m[2]];
+    if (!dayId) return;
+    const ids = rawOrder[key];
+    if (!Array.isArray(ids)) return;
+    const seen = new Set();
+    const kept = [];
+    ids.slice(0, ORDER_LIMIT).forEach(rawExId => {
+      const exId = exMap[rawExId];
+      if (exId && !seen.has(exId)) { seen.add(exId); kept.push(exId); }
+    });
+    if (kept.length > 1) out[slot(w, dayId)] = kept;
   });
   return out;
 }
@@ -4145,7 +4361,8 @@ async function buildQrPayload(kind, profile, block) {
   }
   const plan = blockSharePlan(block);
   if (kind === 'block') return Object.assign(base, { kind: 'block', from: profile.label, block: plan });
-  return Object.assign(base, { kind: 'blocklog', from: profile.label, block: plan, log: blockShareLog(profile, block), rir: blockShareRir(profile, block) });
+  return Object.assign(base, { kind: 'blocklog', from: profile.label, block: plan,
+    log: blockShareLog(profile, block), rir: blockShareRir(profile, block), order: blockShareOrder(profile, block) });
 }
 
 function renderQrFrame() {
@@ -4254,6 +4471,7 @@ async function applyQrPayload(payload) {
     }
     const log = payload.kind === 'blocklog' ? normalizeImportedLog(payload.log, payload.block, normalized) : null;
     const rir = payload.kind === 'blocklog' ? normalizeImportedRir(payload.rir, payload.block, normalized) : null;
+    const order = payload.kind === 'blocklog' ? normalizeImportedOrder(payload.order, payload.block, normalized) : null;
     const sets = log ? countShareLog(log) : 0;
     const doneSets = log ? countShareLog(log, true) : 0;
     const profile = getProfile();
@@ -4275,7 +4493,7 @@ async function applyQrPayload(payload) {
     if (!okd) return;
 
     closeQr();
-    installImportedBlock(normalized, log, rir);
+    installImportedBlock(normalized, log, rir, order);
     flushSave();
     mark('Bloque "' + normalized.name + '" añadido' + (log && sets ? ' con ' + setsWithDoneLabel(sets, doneSets) : '') + ' en ' + profile.label);
     return;
@@ -4299,12 +4517,24 @@ function csvCell(v) {
 }
 
 function buildCsv() {
-  const rows = [['perfil', 'bloque', 'semana', 'dia', 'ejercicio', 'serie', units(), 'reps', 'hecha', 'fecha', 'rir', 'bajadas', 'tipo_bajada']];
+  const rows = [['perfil', 'bloque', 'semana', 'dia', 'ejercicio', 'orden', 'serie', units(), 'reps', 'hecha', 'fecha', 'rir', 'bajadas', 'tipo_bajada']];
   Object.keys(state.profiles).forEach(pk => {
     const profile = state.profiles[pk];
     profile.blockOrder.forEach(bId => {
       const block = profile.blocks[bId];
       block.days.forEach(day => {
+        /* The position each exercise was actually done in, per week. It
+           falls back to the plan's own order for every session nobody
+           reordered — which is most of them — so the column is filled in
+           for every live exercise and sorting a spreadsheet by it always
+           works. A retired exercise is not in any session's order and
+           leaves the cell empty rather than borrowing a number off one
+           that was actually done. */
+        const ordAt = {};
+        for (let w = 1; w <= blockWeeks(block); w++) {
+          ordAt[w] = {};
+          orderedEx(profile, block, w, day).forEach((e, i) => { ordAt[w][e.id] = i + 1; });
+        }
         day.ex.forEach(ex => {
           for (let w = 1; w <= blockWeeks(block); w++) {
             const s = profile.log[bId] && profile.log[bId][slot(w, day.id)];
@@ -4322,7 +4552,7 @@ function buildCsv() {
                  taken off this file stops matching the app's. */
               const used = dropsOf(r).filter(dropUsed);
               const drops = used.map(d => (d.w == null ? '' : d.w) + 'x' + (d.r == null ? '' : d.r)).join(' ');
-              rows.push([profile.label, block.name, w, day.name, ex.n, i + 1, r.w, r.r,
+              rows.push([profile.label, block.name, w, day.name, ex.n, ordAt[w][ex.id] || '', i + 1, r.w, r.r,
                          r.done ? 'si' : 'no', r.ts ? new Date(r.ts).toISOString().slice(0, 10) : '', rir,
                          drops, used.length ? DROP_LABEL[dropKind(r)] : '']);
             });
