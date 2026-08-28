@@ -1885,7 +1885,7 @@ const ok = (name, cond, extra) => {
        }));
 
     /* The bench is taken, so the second exercise gets done first. */
-    await page.click('.ex:nth-of-type(2) .ex-ord.up');
+    await page.locator('.ex').nth(1).locator('.ex-ord.up').click();
     await page.waitForTimeout(400);
     const swapped = await names();
     ok('moving an exercise up puts it first in the session',
@@ -1904,12 +1904,12 @@ const ok = (name, cond, extra) => {
 
     /* Sets stay filed under the exercise, never under a position: the
        whole point of keying the order separately from the log. */
-    await page.fill('.ex:nth-of-type(1) .set-row:nth-of-type(1) .fld:nth-of-type(1) input', '12');
+    await page.locator('.ex').first().locator('.set-row').first().locator('input').first().fill('12');
     await page.waitForTimeout(400);
-    await page.click('.ex:nth-of-type(1) .ex-ord.down');
+    await page.locator('.ex').first().locator('.ex-ord.down').click();
     await page.waitForTimeout(400);
     ok('moving an exercise carries its sets with it',
-       await page.inputValue('.ex:nth-of-type(2) .set-row:nth-of-type(1) .fld:nth-of-type(1) input') === '12');
+       await page.locator('.ex').nth(1).locator('.set-row').first().locator('input').first().inputValue() === '12');
     ok('and landing back on the plan order forgets the record rather than storing a copy of it',
        await page.evaluate(() => {
          const o = JSON.parse(localStorage.getItem('heavy-iron-v1')).profiles.hombre.order['block-1'];
@@ -1919,13 +1919,13 @@ const ok = (name, cond, extra) => {
        await page.locator('#ordNote').isVisible() === false);
 
     ok('the first exercise cannot be moved up and the last cannot be moved down',
-       await page.locator('.ex:nth-of-type(1) .ex-ord.up[disabled]').count() === 1 &&
-       await page.locator('.ex:last-of-type .ex-ord.down[disabled]').count() === 1);
+       await page.locator('.ex').first().locator('.ex-ord.up').isDisabled() &&
+       await page.locator('.ex').last().locator('.ex-ord.down').isDisabled());
 
     /* Four swaps are not four taps to undo, which is what the reset is for. */
-    await page.click('.ex:nth-of-type(5) .ex-ord.up');
+    await page.locator('.ex').nth(4).locator('.ex-ord.up').click();
     await page.waitForTimeout(300);
-    await page.click('.ex:nth-of-type(4) .ex-ord.up');
+    await page.locator('.ex').nth(3).locator('.ex-ord.up').click();
     await page.waitForTimeout(300);
     await page.click('.ord-reset');
     await page.waitForTimeout(400);
