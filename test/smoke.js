@@ -1986,6 +1986,157 @@ const ok = (name, cond, extra) => {
     await ctx.close();
   }
 
+  // ---------- the same lift on two days of the block ----------
+  {
+    console.log('\n== el mismo ejercicio en dos sesiones ==');
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await dismissSetup(page);
+    await page.waitForTimeout(400);
+
+    /* Not a hypothetical: the block that ships with the app already plans
+       lateral raises twice — `lat1` on the push day and `lat2` on the third
+       — under one name and two ids. Anyone running it has had two separate
+       histories for one lift since the day they installed. */
+    ok('the shipped block already has one lift on two days',
+       await page.evaluate(() => {
+         const b = getBlock();
+         const slots = liftSlots(b, b.days[0].ex.find(e => e.id === 'lat1'));
+         return slots.length === 2 && slots[1].exId === 'lat2';
+       }));
+
+    /* The case this is all about: the same machine planned twice in one
+       block. The twin is added the way the plan editor adds one — a fresh
+       uid, so the only thing it shares with the original is its name. If
+       the match were on id alone this whole section would find nothing. */
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      const p = s.profiles.hombre;
+      const b = p.blocks['block-1'];
+      const src = b.days[0].ex.find(e => e.id === 'chestpress');
+      b.days[2].ex.unshift({ id: 'ex-twin-1', n: src.n, sets: 2, reps: src.reps, rest: 90 });
+      const set = (w, r) => ({ w: String(w), r: String(r), done: true });
+      p.log['block-1'] = {
+        'w1-d0': { chestpress: [set(40, 12), set(40, 11)], pecdeck: [set(25, 14), set(25, 13)] },
+        'w1-d2': { 'ex-twin-1': [set(45, 10), set(45, 9)] },
+      };
+      p.week = 2;
+      p.day = 0;
+      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+    });
+    await page.reload({ waitUntil: 'networkidle' });
+    await dismissSetup(page);
+    await page.waitForTimeout(400);
+
+    ok('two rows with the same name are the same lift even with different ids',
+       await page.evaluate(() => {
+         const b = getBlock();
+         return sameLift(b.days[0].ex.find(e => e.id === 'chestpress'), b.days[2].ex[0])
+           && !sameLift(b.days[0].ex[0], b.days[0].ex[1]);
+       }));
+
+    ok('and the plan knows both places it is trained',
+       await page.evaluate(() => {
+         const b = getBlock();
+         const slots = liftSlots(b, b.days[0].ex.find(e => e.id === 'chestpress'));
+         return slots.length === 2 && slots[0].dayId === 'd0' && slots[1].dayId === 'd2';
+       }));
+
+    /* The card: this session's own history first, the other day under it. */
+    const bands = await page.evaluate(() => {
+      const card = [...document.querySelectorAll('.ex')]
+        .find(c => c.querySelector('.ex-name').childNodes[0].textContent.includes('Press de pecho'));
+      return [...card.querySelectorAll('.last')].map(b => ({
+        other: b.classList.contains('other'),
+        tag: b.querySelector('.tag').textContent,
+        sets: b.querySelector('span:last-child').textContent,
+      }));
+    });
+    ok('the card shows this session\'s last time first', bands.length === 2 &&
+       !bands[0].other && bands[0].tag === 'Sem. 1' && bands[0].sets.includes('40'), JSON.stringify(bands));
+    ok('and the other session under it, named by its day', bands.length === 2 &&
+       bands[1].other && bands[1].tag === 'Sem. 1 · Pecho/Brazo…' && bands[1].sets.includes('45'),
+       JSON.stringify(bands));
+
+    /* The whole point of keeping them as two bands. The other day was
+       heavier, and the target must not have moved because of it: a machine
+       pressed first on Monday and fourth on Thursday is not the same set,
+       so the estimate reads this session's own history and nothing else. */
+    ok('but the target still comes from this session alone',
+       await page.evaluate(() => {
+         const b = getBlock(), day = b.days[0];
+         const est = targetEstimate(getProfile(), b, day, day.ex.find(e => e.id === 'chestpress'), 2);
+         return est && est.from === 40;
+       }), await page.evaluate(() => {
+         const b = getBlock(), day = b.days[0];
+         return JSON.stringify(targetEstimate(getProfile(), b, day, day.ex.find(e => e.id === 'chestpress'), 2));
+       }));
+
+    /* The chart is where the two sessions do meet. */
+    ok('the block chart collects both sessions, in the order they were done',
+       await page.evaluate(() => {
+         const b = getBlock();
+         const pts = collectHistoryDays(getProfile(), b, b.days[0].ex.find(e => e.id === 'chestpress'), 8, 'weight');
+         return pts.length === 2 && pts[0].dayId === 'd0' && pts[0].weight === 40
+           && pts[1].dayId === 'd2' && pts[1].weight === 45;
+       }));
+
+    await page.evaluate(() => {
+      const card = [...document.querySelectorAll('.ex')]
+        .find(c => c.querySelector('.ex-name').childNodes[0].textContent.includes('Press de pecho'));
+      card.querySelector('.ex-chart-btn').click();
+    });
+    await page.waitForTimeout(400);
+    const chart = await page.evaluate(() => ({
+      head: document.querySelector('#chartHost .chart-table th').textContent,
+      rows: [...document.querySelectorAll('#chartHost .chart-table tbody tr')].map(r => r.cells[0].textContent),
+      sub: document.getElementById('chartSub').textContent,
+    }));
+    ok('a week now holds two points, so the axis counts sessions not weeks',
+       chart.head === 'Sesión' && chart.rows.length === 2 &&
+       chart.rows[0] === 'S1 · Empuje' && chart.rows[1] === 'S1 · Pecho/Brazo…', JSON.stringify(chart));
+    ok('and the chart says so rather than still claiming one point per week',
+       chart.sub.includes('de cada sesión registrada'), chart.sub);
+    await page.click('#chartClose');
+    await page.waitForTimeout(250);
+
+    /* A lift planned on one day only must be exactly as it was: the week
+       axis is the better one whenever it still fits. */
+    await page.evaluate(() => {
+      const card = [...document.querySelectorAll('.ex')]
+        .find(c => c.querySelector('.ex-name').childNodes[0].textContent.includes('Contractora'));
+      card.querySelector('.ex-chart-btn').click();
+    });
+    await page.waitForTimeout(400);
+    ok('a lift on one day only keeps the week axis',
+       await page.evaluate(() => {
+         const th = document.querySelector('#chartHost .chart-table th');
+         const rows = document.querySelectorAll('#chartHost .chart-table tbody tr');
+         return th && th.textContent === 'Semana' && rows.length === 1 && rows[0].cells[0].textContent === 'Semana 1';
+       }));
+    await page.click('#chartClose');
+    await page.waitForTimeout(200);
+
+    /* Renaming one of them is how you say they were never the same lift. */
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      s.profiles.hombre.blocks['block-1'].days[2].ex[0].n = 'Press de pecho inclinado en máquina';
+      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+    });
+    await page.reload({ waitUntil: 'networkidle' });
+    await dismissSetup(page);
+    await page.waitForTimeout(400);
+    ok('renaming one of them splits the history again',
+       await page.evaluate(() => {
+         const card = [...document.querySelectorAll('.ex')]
+           .find(c => c.querySelector('.ex-name').childNodes[0].textContent.includes('Press de pecho'));
+         return card.querySelectorAll('.last').length === 1;
+       }));
+
+    await ctx.close();
+  }
+
   // ---------- session note, energy, deload check ----------
   {
     console.log('\n== nota, energía y control de descarga ==');

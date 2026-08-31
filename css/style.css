@@ -315,7 +315,16 @@ body {
   color: var(--soft); display: flex; gap: 7px; align-items: baseline;
 }
 .last b { color: var(--ink); font-weight: 600; }
-.last .tag { font-family: var(--font-sans); font-size: 9px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
+.last .tag { font-family: var(--font-sans); font-size: 9px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap; }
+
+/* The same lift on another day of the block, stacked under this session's
+   own history. The numbers stay legible — they are the reason the band is
+   there — but the tag is dimmed and the shared border is dropped, so the
+   two read as one panel with a clear first line rather than two bands of
+   equal weight. The first line is the one the estimate below was built
+   from, and it should stay the one the eye lands on. */
+.last + .last { border-top: 0; padding-top: 0; }
+.last.other .tag { color: var(--soft); font-weight: 700; }
 
 .sets { padding: 4px 13px 12px; }
 
