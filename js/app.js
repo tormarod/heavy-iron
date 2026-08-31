@@ -1458,6 +1458,87 @@ function lastTime(profile, blockId, dayId, exId, beforeWeek) {
   return null;
 }
 
+/* ---------- the same lift on more than one day ----------
+   A plan can put the same exercise in two sessions — chest press on the
+   push day and again on the arm day — and until now each of those lived in
+   its own history. The log is keyed blockId → w{week}-{dayId} → exId, so
+   the dayId in the slot walls them off: you pressed 22,5 on Monday and
+   Thursday's card still said the last time was 20.
+
+   What makes two rows the same lift is the plan, not the log. A block
+   written as JSON gives its exercises readable ids (`chestpress`), so both
+   rows carry the same one; rows added in the plan editor get a fresh uid()
+   each and share nothing but the name. Hence both keys — the id when it
+   matches, the name when it does not. The name is what you read on the card
+   and what you would change if you meant them to be two different lifts,
+   so it is the right thing to trust.
+
+   Deliberately read for DISPLAY only. targetEstimate and copyPrev still
+   work from one session's own history, because the two slots are not
+   interchangeable: the same machine done first on Monday and fourth on
+   Thursday, after everything that came before it, is not the same set.
+   Folding them into one target would prescribe a weight set on the fresher
+   day and then read the fatigued one as a regression. Showing them next to
+   each other says what happened and leaves the judgement where it belongs. */
+function sameLift(a, b) {
+  if (!a || !b) return false;
+  if (a.id && a.id === b.id) return true;
+  const an = slugify(a.n), bn = slugify(b.n);
+  return !!an && an === bn;
+}
+
+/* Every place in the block this lift is planned, in day order, as the
+   { dayId, exId } pairs the log is keyed by. Retired rows (`off`) count:
+   whatever was logged under them still happened. */
+function liftSlots(block, ex) {
+  const out = [];
+  (block.days || []).forEach((day, i) => {
+    (day.ex || []).forEach(e => {
+      if (sameLift(e, ex)) out.push({ dayId: day.id, dayIdx: i, exId: e.id });
+    });
+  });
+  return out;
+}
+
+/* 'Empuje', not 'D1': the day's own name is what you would say out loud,
+   and the tag has room for it. A long one is cut rather than left to
+   squeeze the numbers it sits beside. */
+function dayTag(block, dayId) {
+  const days = block.days || [];
+  const i = days.findIndex(d => d.id === dayId);
+  /* Normalisation always names a day, so the positional fallback is only
+     for a dayId the plan no longer has — and 'D2' still beats a tag that
+     trails off into a dangling separator. */
+  const name = (i >= 0 && days[i].name) || (i >= 0 ? 'D' + (i + 1) : '');
+  /* Trailing punctuation left by the cut reads as a typo — 'Pecho/Brazo +…'
+     — so it goes with the rest of the tail. */
+  return name.length > 14 ? name.slice(0, 13).replace(/[\s+/-]+$/, '') + '…' : name;
+}
+
+/* The most recent session of this lift on some OTHER day of the block —
+   what the card shows underneath its own history rather than in place of
+   it. Walks weeks back from the current one, and inside the current week
+   counts every other day: which of them you actually trained first is not
+   recorded, and a set logged this week is this week's news either way. */
+function lastTimeOtherDay(profile, block, day, ex, week) {
+  const slots = liftSlots(block, ex).filter(s => s.dayId !== day.id);
+  const blk = slots.length && profile.log[block.id];
+  if (!blk) return null;
+  for (let w = week; w >= 1; w--) {
+    let best = null;
+    slots.forEach(s => {
+      const bucket = blk[slot(w, s.dayId)];
+      const rows = bucket && bucket[s.exId];
+      if (!Array.isArray(rows)) return;
+      const done = rows.filter(x => x.done && x.w !== '');
+      if (!done.length) return;
+      if (!best || s.dayIdx > best.dayIdx) best = { week: w, dayId: s.dayId, dayIdx: s.dayIdx, sets: done };
+    });
+    if (best) return best;
+  }
+  return null;
+}
+
 /* ---------- rest timer ----------
    The countdown is driven off a wall-clock end time (tEndAt), not a
    decrementing counter, so it self-corrects instantly when the phone
@@ -2124,10 +2205,17 @@ function drawApp() {
     card.className = 'ex' + (allDone ? ' complete' : '') + (ex.share && !soloMode() ? ' shared' : '');
 
     const prev = lastTime(profile, block.id, day.id, ex.id, profile.week);
-    const prevTxt = prev
-      ? '<div class="last"><span class="tag">Sem. ' + prev.week + '</span><span><b>' +
-        prev.sets.map(s => esc(setSummary(s))).join('</b> · <b>') + '</b></span></div>'
-      : '';
+    /* The same lift on another day of the block, shown UNDER this session's
+       own history rather than instead of it: the first band is what the
+       estimate further down was built from, and quietly swapping in another
+       session's numbers would leave that target looking like it came from
+       nowhere. Two bands, no comparison drawn — the reading is yours. */
+    const other = lastTimeOtherDay(profile, block, day, ex, profile.week);
+    const band = (cls, tag, sets) => '<div class="last' + cls + '"><span class="tag">' + esc(tag) +
+      '</span><span><b>' + sets.map(s => esc(setSummary(s))).join('</b> · <b>') + '</b></span></div>';
+    const prevTxt =
+      (prev ? band('', 'Sem. ' + prev.week, prev.sets) : '') +
+      (other ? band(' other', 'Sem. ' + other.week + ' · ' + dayTag(block, other.dayId), other.sets) : '');
 
     const decay = repDecay(rows);
     /* Read off the previous session, so it is the same number all week and
@@ -2847,6 +2935,30 @@ function collectHistory(profile, blockId, dayId, exId, weeks, metric) {
   return points;
 }
 
+/* The same lift wherever the block plans it, in the order it was trained:
+   week by week, and inside a week in day order. The same points
+   collectHistory returns plus the day each came from — which the chart
+   needs for its labels now that one week can hold more than one. */
+function collectHistoryDays(profile, block, ex, weeks, metric) {
+  const points = [];
+  const blk = profile.log[block.id];
+  if (!blk) return points;
+  const slots = liftSlots(block, ex);
+  for (let w = 1; w <= (weeks || MAX_WEEKS); w++) {
+    slots.forEach(s => {
+      const bucket = blk[slot(w, s.dayId)];
+      const rows = bucket && bucket[s.exId];
+      if (!Array.isArray(rows)) return;
+      const done = rows.filter(r => r.done && r.w !== '' && r.w != null && !isNaN(num(r.w)));
+      if (!done.length) return;
+      const best = bestSet(done, metric);
+      if (!best) return;
+      points.push({ week: w, dayId: s.dayId, weight: num(best.w), reps: best.r });
+    });
+  }
+  return points;
+}
+
 /* The same exercise across every block the profile has ever run, oldest
    first. Blocks key their logs separately, so this walks each block's slots
    looking for the exercise id rather than a day — the same exercise can sit
@@ -2993,21 +3105,33 @@ function drawChart() {
   }
 
   const weeks = blockWeeks(block);
-  const points = collectHistory(profile, block.id, dayId, ex.id, weeks, chartMetric);
-  $('chartSub').textContent = block.name + ' — ' + (isE1rm ? '1RM estimado (Epley) por semana, en ' + units() + '.' :
-    'mejor peso registrado por semana, en ' + units() + ' (× repeticiones de esa serie).');
+  /* One point per week is the right axis for a lift that lives on one day.
+     Plan the same lift on two days and a week holds two sessions, which a
+     week axis has nowhere to put — so it becomes one point per session,
+     the shape the "todos los bloques" view has always used. Both sessions
+     on one line is the whole point: this is where you see that Thursday
+     has been trailing Monday for a month. */
+  const multi = liftSlots(block, ex).length > 1;
+  const points = multi
+    ? collectHistoryDays(profile, block, ex, weeks, chartMetric)
+    : collectHistory(profile, block.id, dayId, ex.id, weeks, chartMetric);
+  const per = multi ? 'de cada sesión registrada' : 'por semana';
+  $('chartSub').textContent = block.name + ' — ' + (isE1rm ? '1RM estimado (Epley) ' + per + ', en ' + units() + '.' :
+    'mejor peso registrado ' + per + ', en ' + units() + ' (× repeticiones de esa serie).');
   if (!points.length) {
     host.innerHTML = '<p class="chart-empty">Aún no hay series completadas con peso para este ejercicio en este bloque.</p>';
     return;
   }
+  const label = p => multi ? 'S' + p.week + ' · ' + dayTag(block, p.dayId) : 'Semana ' + p.week;
   const ticks = [];
-  for (let w = 1; w <= weeks; w++) ticks.push('S' + w);
-  const series = points.map(p => Object.assign({ i: p.week, reps: p.reps }, toSeriesPoint(p)));
+  if (multi) points.forEach(p => ticks.push(label(p)));
+  else for (let w = 1; w <= weeks; w++) ticks.push('S' + w);
+  const series = points.map((p, i) => Object.assign({ i: multi ? i + 1 : p.week, reps: p.reps }, toSeriesPoint(p)));
   let html = buildChartSVG(series, ticks);
-  html += '<table class="chart-table"><thead><tr><th>Semana</th><th>' + valueCol + '</th><th>Reps</th></tr></thead><tbody>';
+  html += '<table class="chart-table"><thead><tr><th>' + (multi ? 'Sesión' : 'Semana') + '</th><th>' + valueCol + '</th><th>Reps</th></tr></thead><tbody>';
   points.forEach((p, i) => {
     const sp = series[i];
-    html += '<tr' + (sp.reliable ? '' : ' class="unreliable"') + '><td>Semana ' + p.week + '</td><td>' + rowCell(p, sp) + '</td><td>' + esc(p.reps || '—') + '</td></tr>';
+    html += '<tr' + (sp.reliable ? '' : ' class="unreliable"') + '><td>' + esc(label(p)) + '</td><td>' + rowCell(p, sp) + '</td><td>' + esc(p.reps || '—') + '</td></tr>';
   });
   html += '</tbody></table>';
   host.innerHTML = html;

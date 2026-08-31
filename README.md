@@ -24,7 +24,7 @@ row per set:
 | **✓** | marks the set done, and starts the rest timer. This is the control that counts: only ticked sets feed the chart, the **RÉCORD** badge and the totals. |
 | **⚙** | machine settings for that exercise — seat height, pin position. Saved to the plan, not to the log. |
 | **RIR último set** — `2+` `1` `0` | how the last set actually felt. Optional; tap the same chip again to clear it. |
-| **Progreso ↗** | that exercise's weight, or estimated 1RM, over time. |
+| **Progreso ↗** | that exercise's weight, or estimated 1RM, over time — across every day of the block that plans it. See [The same lift on two days](#the-same-lift-on-two-days). |
 
 The rest timer runs along the bottom once a set is ticked: **−30**/**+30**
 move the finish line, **Son.** turns the alarm on, **Saltar** ends it.
@@ -487,6 +487,51 @@ charge, the line simply isn't there.
 Everything above is keyboard reachable, the set ticks are real buttons
 with pressed state, dialogs close with `Escape`, and pinch-zoom is no
 longer blocked.
+
+## The same lift on two days
+
+A plan can put the same exercise in two sessions — the block that ships
+with the app does exactly that, with lateral raises on the push day and
+again on the third. Until now each of those had its own history and
+neither could see the other: the log is keyed
+`blockId → w{week}-{dayId} → exId`, so the `dayId` in the slot walls them
+apart. You pressed 22,5 on Monday and Thursday's card still said the last
+time was 20.
+
+**What makes two rows the same lift is the plan, not the log.** A block
+written as JSON gives its exercises readable ids (`chestpress`), so both
+rows carry the same one. Rows added in the plan editor get a fresh `uid()`
+each and share nothing but the name — which is why the shipped block has
+`lat1` and `lat2` under one name. So both are matched: the id when it
+matches, the name when it does not. Renaming one of them is how you say
+they were never the same lift.
+
+**The history merges. The target does not.** Two things change:
+
+- The card shows a **second history band** under the first, tagged with
+  the other session's day (`SEM. 2 · PECHO/BRAZO…`). The first band is
+  still this session's own last time.
+- **Progreso ↗** plots every session of that lift in the block on one
+  line. A week can now hold two points, which a week axis has nowhere to
+  put, so for these lifts the axis counts sessions and the labels name the
+  day (`S3 · Empuje`). A lift planned on one day only keeps the week axis
+  exactly as before.
+
+`targetEstimate` and **Copiar pesos de la semana anterior** still read one
+session's own history and nothing else. This is deliberate, and it is the
+whole reason the card keeps two bands instead of merging them into one.
+The same machine done first on Monday and fourth on Thursday, after
+everything that came before it, is not the same set: pre-fatigue on a
+machine press is worth 10–20 %, and the two slots are often prescribed
+different rep ranges for different jobs. Feed the fresher day's numbers
+into the tired day's target and the app prescribes a weight you cannot
+hit, then reads the miss as a regression — the failure mode the `rirDrop`
+note already exists to explain, made routine.
+
+So the app puts both sessions in front of you and draws no conclusion from
+the comparison. Whether Thursday should chase Monday is a judgement about
+fatigue and exercise order that the log does not contain, and it stays
+yours.
 
 ## The weekly objetivo
 
