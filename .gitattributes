@@ -1,0 +1,7 @@
+# Line endings are LF everywhere: in the repository and in the working tree,
+# on every platform. Without this, Git for Windows checks files out as CRLF
+# and warns on every add ("LF will be replaced by CRLF").
+* text=auto eol=lf
+
+# Images are binary, never converted.
+*.png binary
