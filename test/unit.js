@@ -288,6 +288,38 @@ ok('log entries for a block id not in blocks are dropped',
    survivingLogKeys.indexOf('ghost') < 0 && survivingLogKeys.indexOf('b1') >= 0,
    JSON.stringify(survivingLogKeys));
 
+console.log('\n== render cache ==');
+const renderCacheProbe = `
+  (function() {
+    const profile = defaultState().profiles.hombre;
+    const blockId = profile.blockOrder[0];
+    const day = profile.blocks[blockId].days[0];
+    const exId = day.ex[0].id;
+    profile.log[blockId] = {};
+    profile.log[blockId][slot(1, day.id)] = {};
+    profile.log[blockId][slot(1, day.id)][exId] = [{ done: true, w: '50', r: '5' }];
+
+    resetRenderCache();
+    const a = lastTimeCached(profile, blockId, day.id, exId, 2);
+    const b = lastTimeCached(profile, blockId, day.id, exId, 2);
+    const sameRef = a === b;
+
+    resetRenderCache();
+    const c = lastTimeCached(profile, blockId, day.id, exId, 2);
+    return { sameRef, differentAfterReset: a !== c };
+  })()
+`;
+const renderCacheResult = call(renderCacheProbe);
+ok('lastTimeCached returns the same object reference on a second identical call',
+   renderCacheResult.sameRef);
+ok('lastTimeCached returns a different reference after resetRenderCache() in between',
+   renderCacheResult.differentAfterReset);
+ok('slugifyCached("constructor") returns the slug of the string, not an inherited property',
+   call('slugifyCached("constructor")') === 'constructor');
+ok('slugifyCached agrees with slugify for accented Spanish text',
+   call('slugifyCached("Press militar")') === call('slugify("Press militar")') &&
+   call('slugifyCached("Extensión de tríceps")') === call('slugify("Extensión de tríceps")'));
+
 console.log('\n== diagnostics statistics ==');
 ok('fitSlope is positive for a clean upward series', call('fitSlope([1,2,3])') > 0);
 ok('fitSlope is 0 for a flat series', call('fitSlope([5,5,5])') === 0);

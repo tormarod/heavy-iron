@@ -1515,7 +1515,7 @@ function lastTime(profile, blockId, dayId, exId, beforeWeek) {
 function sameLift(a, b) {
   if (!a || !b) return false;
   if (a.id && a.id === b.id) return true;
-  const an = slugify(a.n), bn = slugify(b.n);
+  const an = slugifyCached(a.n), bn = slugifyCached(b.n);
   return !!an && an === bn;
 }
 
@@ -1553,7 +1553,7 @@ function dayTag(block, dayId) {
    counts every other day: which of them you actually trained first is not
    recorded, and a set logged this week is this week's news either way. */
 function lastTimeOtherDay(profile, block, day, ex, week) {
-  const slots = liftSlots(block, ex).filter(s => s.dayId !== day.id);
+  const slots = liftSlotsCached(block, ex).filter(s => s.dayId !== day.id);
   const blk = slots.length && profile.log[block.id];
   if (!blk) return null;
   for (let w = week; w >= 1; w--) {
@@ -2167,7 +2167,47 @@ function priorWeight(profile, blockId, w, dayId, exId, idx) {
   return '';
 }
 
+/* Everything below is a pure function of (profile, block, week, day) and is
+   asked for the same answer several times inside one render — lastTime twice
+   per card, liftSlots once per card over every card. Held for the duration of
+   one draw and dropped at the start of the next, so nothing can go stale:
+   every path that changes the log already ends in render(). */
+let renderCache = null;
+
+function resetRenderCache() {
+  renderCache = { lastTime: Object.create(null), liftSlots: Object.create(null), slug: Object.create(null) };
+}
+
+/* Same five arguments, same answer — and the card loop asks twice: once
+   directly for the previous-week band, once inside targetEstimate. */
+function lastTimeCached(profile, blockId, dayId, exId, beforeWeek) {
+  if (!renderCache) return lastTime(profile, blockId, dayId, exId, beforeWeek);
+  const k = blockId + '|' + dayId + '|' + exId + '|' + beforeWeek;
+  if (!(k in renderCache.lastTime)) {
+    renderCache.lastTime[k] = lastTime(profile, blockId, dayId, exId, beforeWeek);
+  }
+  return renderCache.lastTime[k];
+}
+
+/* O(days × exercises) per call, and the card loop calls it once per card —
+   so this is the difference between O(exercises) and O(exercises²) work on
+   every tick. */
+function liftSlotsCached(block, ex) {
+  if (!renderCache) return liftSlots(block, ex);
+  const k = block.id + '|' + ex.id;
+  if (!(k in renderCache.liftSlots)) renderCache.liftSlots[k] = liftSlots(block, ex);
+  return renderCache.liftSlots[k];
+}
+
+function slugifyCached(s) {
+  if (!renderCache) return slugify(s);
+  const k = String(s == null ? '' : s);
+  if (!(k in renderCache.slug)) renderCache.slug[k] = slugify(k);
+  return renderCache.slug[k];
+}
+
 function drawApp() {
+  resetRenderCache();
   const profile = getProfile();
   const block = getBlock();
 
@@ -2236,7 +2276,7 @@ function drawApp() {
     const card = document.createElement('div');
     card.className = 'ex' + (allDone ? ' complete' : '') + (ex.share && !soloMode() ? ' shared' : '');
 
-    const prev = lastTime(profile, block.id, day.id, ex.id, profile.week);
+    const prev = lastTimeCached(profile, block.id, day.id, ex.id, profile.week);
     /* The same lift on another day of the block, shown UNDER this session's
        own history rather than instead of it: the first band is what the
        estimate further down was built from, and quietly swapping in another
@@ -2780,7 +2820,7 @@ function bestSet(done, metric) {
 const EST_MAX_REPS = 15;
 
 function targetEstimate(profile, block, day, ex, week) {
-  const prev = lastTime(profile, block.id, day.id, ex.id, week);
+  const prev = lastTimeCached(profile, block.id, day.id, ex.id, week);
   if (!prev) return null;
 
   const rows = prev.sets.filter(hasReps);
