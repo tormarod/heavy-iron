@@ -73,7 +73,16 @@ function deleteBlocks(profile, ids) {
 
   snapshotForUndo(drop.size === 1 ? 'Bloque eliminado.' : drop.size + ' bloques eliminados.');
 
-  drop.forEach(id => { delete profile.blocks[id]; delete profile.log[id]; });
+  /* The log is not the only thing filed under a block id: rir, notes, energy
+     and order are four parallel maps with the same blockId key, and nothing
+     reads one without the block it belonged to. Leaving them behind grows the
+     log forever with data no screen can ever show — on a storage backend the
+     browser may evict when the phone fills up. */
+  drop.forEach(id => {
+    delete profile.blocks[id];
+    [profile.log, profile.rir, profile.notes, profile.energy, profile.order]
+      .forEach(map => { if (map) delete map[id]; });
+  });
   profile.blockOrder = keep;
   if (drop.has(profile.activeBlock)) {
     profile.activeBlock = keep[keep.length - 1];
