@@ -915,6 +915,20 @@ const ok = (name, cond, extra) => {
     const base = await page.evaluate(() => blocksBase());
     ok('a local server falls back to the original repo', base.includes('tormarod/heavy-iron'), base);
 
+    console.log('\n== week switch persists on its own ==');
+    // A week/day switch must reach localStorage on its own: nothing else is
+    // going to write it if the phone goes into a pocket straight after.
+    await page.locator('.wk').nth(0).click();
+    await page.waitForTimeout(600);
+    ok('switching week is saved without any other edit',
+       await page.evaluate(() => JSON.parse(localStorage.getItem('heavy-iron-v1')).profiles.hombre.week) === 1,
+       String(await page.evaluate(() => JSON.parse(localStorage.getItem('heavy-iron-v1')).profiles.hombre.week)));
+
+    console.log('\n== exported review follows the unit setting ==');
+    const unitReviewText = await page.evaluate(() => reviewText(buildBlockReview(getProfile(), getBlock())));
+    ok('the exported review uses the lb unit label', unitReviewText.includes(' lb'), unitReviewText.slice(0, 200));
+    ok('the exported review never hardcodes kg', !unitReviewText.includes(' kg'), unitReviewText.slice(0, 200));
+
     console.log('\n== service worker ==');
     const swOk = await page.evaluate(async () => {
       const reg = await navigator.serviceWorker.ready.catch(() => null);

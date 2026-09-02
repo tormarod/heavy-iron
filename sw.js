@@ -16,7 +16,7 @@
    are deleted on activate, and the app shows an "Actualizar" prompt rather
    than swapping the code under a session in progress. */
 
-const CACHE_VERSION = 'v43';
+const CACHE_VERSION = 'v44';
 const SHELL_CACHE = 'heavy-iron-shell-' + CACHE_VERSION;
 const RUNTIME_CACHE = 'heavy-iron-runtime-' + CACHE_VERSION;
 
@@ -107,7 +107,13 @@ function cacheFirst(request, cacheName) {
   return caches.match(request).then(hit => {
     if (hit) return hit;
     return fetch(request).then(response => {
-      if (response && (response.ok || response.type === 'opaque')) {
+      /* Only responses we can actually read the status of. An opaque response
+         reports status 0 whether it is a real font or a captive portal's
+         interception page, and this cache is served first on every later
+         launch — so caching one would pin whatever the network handed back
+         until CACHE_VERSION moves. A font re-fetched on each cold load costs
+         a request; the webfont is already non-blocking (see index.html). */
+      if (response && response.ok) {
         const copy = response.clone();
         caches.open(cacheName).then(cache => cache.put(request, copy));
       }

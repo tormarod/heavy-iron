@@ -1651,6 +1651,11 @@ function nudgeRest(delta) {
     stopAlarmLoop();
     clearRestNotification();
     keepAliveStart();
+    /* The card and its controls were torn down when the alarm gave the audio
+       back (see keepAliveStop). Restarting the keep-alive without them would
+       take the phone's audio focus — pausing whatever music is playing —
+       and give nothing back on the lock screen for it. */
+    showMediaSession(tLabel, tEndAt, tTotal);
     $('timer').classList.remove('over');
     $('tlbl').textContent = 'Descanso · ' + tLabel;
     $('tmsg').textContent = 'Prueba de la frase: si puedes hablar sin quedarte sin aire, ya estás listo.';
@@ -1995,7 +2000,7 @@ function renderProfiles() {
     b.className = 'profile-btn' + (key === state.activeProfile ? ' on' : '');
     b.textContent = p.label;
     b.setAttribute('aria-pressed', key === state.activeProfile ? 'true' : 'false');
-    b.onclick = () => { state.activeProfile = key; stopRest(); render(); };
+    b.onclick = () => { state.activeProfile = key; stopRest(); save(); render(); };
     host.appendChild(b);
   });
   $('app').className = 'profile-' + accentOf(getProfile()) + (soloMode() ? ' solo' : '');
@@ -2094,7 +2099,7 @@ function renderNav() {
       return s && Object.values(s).some(a => a.some(x => x.done));
     });
     if (has) { const dot = document.createElement('span'); dot.className = 'dot'; b.appendChild(dot); }
-    b.onclick = () => { profile.week = w; stopRest(); render(); };
+    b.onclick = () => { profile.week = w; stopRest(); save(); render(); };
     $('weeks').appendChild(b);
   }
 
@@ -2108,7 +2113,7 @@ function renderNav() {
     b.setAttribute('role', 'tab');
     b.setAttribute('aria-selected', i === profile.day ? 'true' : 'false');
     b.setAttribute('aria-label', 'Día ' + (i + 1) + ': ' + d.name);
-    b.onclick = () => { profile.day = i; stopRest(); render(); };
+    b.onclick = () => { profile.day = i; stopRest(); save(); render(); };
     $('days').appendChild(b);
   });
 }
