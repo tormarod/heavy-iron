@@ -103,13 +103,28 @@ function readRaw() {
 function load() {
   const raw = readRaw();
   const firstRun = raw == null;
-  try {
-    state = raw ? JSON.parse(raw) : defaultState();
-  } catch (e) {
+  if (firstRun) {
     state = defaultState();
+    state.setupDone = false;
+  } else {
+    /* Anything that is on disk but unreadable goes to the recovery screen
+       rather than being replaced: the seed plan written back over it would
+       be the last thing that ever happened to a training history nobody
+       else has a copy of. Repairable damage is migrate()'s job, below —
+       this is only for bytes we cannot get a state object out of at all. */
+    let parsed = null;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      showRecovery(e, raw);
+      return;
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !parsed.profiles) {
+      showRecovery(new Error('Los datos guardados no tienen la forma que la app espera.'), raw);
+      return;
+    }
+    state = parsed;
   }
-  if (!state || typeof state !== 'object' || Array.isArray(state) || !state.profiles) state = defaultState();
-  if (firstRun) state.setupDone = false;
   migrate();
   ready = true;
   applyTheme();
