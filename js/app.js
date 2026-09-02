@@ -221,7 +221,7 @@ function migrate() {
     const seed = fallback.profiles[pk] || fallback.profiles[Object.keys(fallback.profiles)[i]] || fallback.profiles.hombre;
 
     if (!profile.label) profile.label = seed.label;
-    if (!profile.theme) profile.theme = seed.theme;
+    if (ACCENTS.indexOf(profile.theme) < 0 && !LEGACY_ACCENT[profile.theme]) profile.theme = seed.theme;
     if (!profile.log || typeof profile.log !== 'object') profile.log = {};
     if (!profile.rir || typeof profile.rir !== 'object') profile.rir = {};
     /* Two more parallel maps with the same blockId → slot shape as `rir`,
@@ -1998,7 +1998,7 @@ function renderProfiles() {
     b.onclick = () => { state.activeProfile = key; stopRest(); render(); };
     host.appendChild(b);
   });
-  $('app').className = 'profile-' + getProfile().theme + (soloMode() ? ' solo' : '');
+  $('app').className = 'profile-' + accentOf(getProfile()) + (soloMode() ? ' solo' : '');
 }
 
 /* ---------- shared block-config helpers ----------

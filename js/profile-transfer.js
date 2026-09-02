@@ -38,6 +38,76 @@ function describeProfileProblem(p, pk) {
   return null;
 }
 
+/* Blocks get this treatment already, from normalizeImportedBlock
+   (js/block-editor.js:198): every string length-capped, every number
+   clamped, day/exercise counts ceilinged, ids deduplicated. A profile or a
+   full backup — a file a partner sent, or a QR scan of someone's screen —
+   carries the same untrusted shape one level up, but describeProfileProblem
+   above only checks that it *looks* like a profile. A profile with ten
+   thousand exercises hangs the phone exactly like an oversized block does;
+   it just arrives through a different door. This meets it with the same
+   standard: reuse the audited block normalizer for every block, cap the one
+   thing it doesn't bound (how many blocks there are), and validate the two
+   fields (label, theme) that reach the screen unescaped otherwise.
+
+   Mutates and returns `p`. Throws only when a count is so far beyond a real
+   training history that the data cannot be saved — never for anything the
+   app itself could have written. */
+const PROFILE_LIMITS = { blocks: 40 };
+
+function normalizeImportedProfile(p) {
+  const rawIds = Object.keys(p.blocks);
+  if (rawIds.length > PROFILE_LIMITS.blocks) {
+    throw new Error('tiene ' + rawIds.length + ' bloques: el máximo es ' + PROFILE_LIMITS.blocks + '.');
+  }
+
+  const blocks = {};
+  rawIds.forEach(bk => {
+    const raw = p.blocks[bk];
+    let normalized;
+    try {
+      normalized = normalizeImportedBlock(raw);
+    } catch (e) {
+      throw new Error('el bloque "' + (raw && raw.name || bk) + '": ' + e.message);
+    }
+    /* Not part of normalizeImportedBlock's own return — it has no concept
+       of the key it will be filed under. blockId is the profile.blocks key
+       everywhere else in the app (log/rir/notes/energy/order are all keyed
+       by it too), so that is the id kept here, not whatever raw.id says. */
+    normalized.id = bk;
+    normalized.createdAt = (raw && raw.createdAt) || new Date().toISOString();
+    blocks[bk] = normalized;
+  });
+  p.blocks = blocks;
+
+  /* Same dedupe-and-append shape migrate() uses on blockOrder: keep the
+     order the file gave, once per id, drop anything that didn't survive
+     normalization, then file in any block the order was missing. */
+  const rawOrder = Array.isArray(p.blockOrder) ? p.blockOrder : rawIds;
+  const seen = new Set();
+  const order = rawOrder.filter(id => blocks[id] && !seen.has(id) && seen.add(id));
+  rawIds.forEach(id => { if (blocks[id] && order.indexOf(id) < 0) order.push(id); });
+  p.blockOrder = order;
+  if (!blocks[p.activeBlock]) p.activeBlock = order[order.length - 1];
+
+  p.label = txt(p.label, 80);
+  /* accentOf already encodes "in ACCENTS, or a known legacy value, or the
+     default" — the same rule migrate() applies to a stored profile's theme. */
+  p.theme = accentOf(p);
+
+  /* Whatever a block-id-keyed map points at has to still exist: an entry
+     left behind for a block that got rejected or renumbered above is an
+     orphan by construction, the same invariant deleteBlocks maintains on
+     purpose (see plans/002-purge-parallel-maps.md). */
+  ['log', 'rir', 'notes', 'energy', 'order'].forEach(key => {
+    const map = p[key];
+    if (!map || typeof map !== 'object') return;
+    Object.keys(map).forEach(id => { if (!blocks[id]) delete map[id]; });
+  });
+
+  return p;
+}
+
 function countProfileSets(p) {
   let n = 0;
   const log = p && p.log;
@@ -82,6 +152,15 @@ async function restoreFromText(text) {
   const problem = describeBackupProblem(data);
   if (problem) { mark('Esa copia no se puede usar: ' + problem, true); return; }
 
+  for (const pk of Object.keys(data.profiles)) {
+    try {
+      normalizeImportedProfile(data.profiles[pk]);
+    } catch (e) {
+      mark('Esa copia no se puede usar: el perfil "' + pk + '" ' + e.message, true);
+      return;
+    }
+  }
+
   const mine = countBackupSets(state);
   const theirs = countBackupSets(data);
   const when = parsed && parsed.saved ? new Date(parsed.saved) : null;
@@ -97,6 +176,14 @@ async function restoreFromText(text) {
   });
   if (!okd) return;
 
+  /* The one destructive path that had no way back. Its sibling
+     loadProfileFromText has taken a snapshot since it was written, and
+     "Borrar todo el registro" takes one too — restoring a copy is at least as
+     final as either, and is the operation the README tells people to rely on.
+     Undo is one level deep and does not survive a reload, which is exactly
+     the window this covers: realising within seconds that it was the wrong
+     file. */
+  snapshotForUndo('Registro restaurado desde una copia.');
   state = data;
   if (!state.activeProfile) state.activeProfile = 'hombre';
   migrate();
@@ -126,6 +213,16 @@ async function loadProfileFromText(text) {
   const problem = describeProfileProblem(incoming, parsed.key);
   if (problem) { mark('Ese perfil no se puede usar: ' + problem, true); return; }
 
+  /* Before the dialog is built, not after: the dialog quotes the set count
+     and the label, so the user has to be shown numbers from the data that
+     will actually be installed, not the raw file. */
+  try {
+    normalizeImportedProfile(incoming);
+  } catch (e) {
+    mark('Ese perfil no se puede usar: ' + e.message, true);
+    return;
+  }
+
   /* Land it on the slot it came from. The keys are internal and never
      renamed, so this matches whoever exported it; a file from somewhere
      stranger falls back to the profile you are looking at. */
@@ -136,10 +233,16 @@ async function loadProfileFromText(text) {
   const when = parsed.saved ? new Date(parsed.saved) : null;
   const stamp = when && !isNaN(when.getTime()) ? when.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) : null;
   const others = profileKeys().filter(k => k !== target).map(k => state.profiles[k].label);
+  /* Whatever the payload says its label is, it must not be able to
+     restructure this dialog: the body renders with white-space: pre-line
+     (css/style.css:836), so an unsanitised newline becomes a line break in
+     the one confirmation that irreversibly replaces a training history.
+     Same treatment js/app.js:4602 gives an imported block's "from" field. */
+  const incomingLabel = txt(incoming.label, 80) || target;
 
   const okd = await ask({
     title: '¿Sustituir el perfil de ' + local.label + '?',
-    body: 'Entra "' + (incoming.label || target) + '"' + (stamp ? ' del ' + stamp : '') + ': ' + setsLabel(theirs) + '.\n' +
+    body: 'Entra "' + incomingLabel + '"' + (stamp ? ' del ' + stamp : '') + ': ' + setsLabel(theirs) + '.\n' +
       'Se reemplaza ' + local.label + ', que tiene ahora ' + setsLabel(mine) + '.\n\n' +
       (others.length ? others.join(' y ') + ' no se toca' + (others.length > 1 ? 'n' : '') + '. ' : '') +
       'No se puede deshacer.',

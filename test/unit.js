@@ -229,6 +229,65 @@ const badThemeProfile = { profiles: { hombre: { blocks: {}, blockOrder: [], log:
 const migratedTheme = call('state = ' + JSON.stringify(badThemeProfile) + '; migrate(); JSON.parse(JSON.stringify(state));');
 ok('an unknown theme falls back to auto', migratedTheme.prefs.theme === 'auto', migratedTheme.prefs.theme);
 
+console.log('\n== normalizeImportedProfile ==');
+
+/* The most important assertion in this section: a profile the app itself
+   exported must come back with every meaningful field intact. Built from
+   defaultState(), not by hand, so this tracks whatever the app actually
+   produces rather than what a test author assumed it produces. */
+const roundTrip = call(`
+  (function() {
+    const original = JSON.parse(JSON.stringify(defaultState().profiles.hombre));
+    const copy = JSON.parse(JSON.stringify(original));
+    const normalized = normalizeImportedProfile(copy);
+    return {
+      sameBlockCount: Object.keys(normalized.blocks).length === Object.keys(original.blocks).length,
+      sameBlockOrder: JSON.stringify(normalized.blockOrder) === JSON.stringify(original.blockOrder),
+      sameExerciseNames: JSON.stringify(normalized.blocks[normalized.blockOrder[0]].days.map(d => d.ex.map(e => e.n)))
+                       === JSON.stringify(original.blocks[original.blockOrder[0]].days.map(d => d.ex.map(e => e.n))),
+      sameExerciseIds: JSON.stringify(normalized.blocks[normalized.blockOrder[0]].days.map(d => d.ex.map(e => e.id)))
+                     === JSON.stringify(original.blocks[original.blockOrder[0]].days.map(d => d.ex.map(e => e.id))),
+      sameAccent: accentOf(normalized) === accentOf(original),
+    };
+  })()
+`);
+ok('a profile the app itself exported keeps the same blocks', roundTrip.sameBlockCount);
+ok('...in the same order', roundTrip.sameBlockOrder);
+ok('...with every exercise name intact', roundTrip.sameExerciseNames);
+ok('...and every exercise id intact', roundTrip.sameExerciseIds);
+ok('...and resolves to the same rendered accent', roundTrip.sameAccent);
+
+const validBlock = { name: 'B', weeks: 8, deload: 8, days: [{ name: 'D', ex: [{ n: 'Ex', sets: 3, reps: '10-15' }] }] };
+const tooManyBlocksProfile = { blocks: {}, blockOrder: [], log: {} };
+for (let i = 0; i < 41; i++) { tooManyBlocksProfile.blocks['b' + i] = validBlock; tooManyBlocksProfile.blockOrder.push('b' + i); }
+ok('a profile with more than PROFILE_LIMITS.blocks blocks throws',
+   throws('normalizeImportedProfile(' + JSON.stringify(tooManyBlocksProfile) + ')'));
+
+const badBlockProfile = { blocks: { orphan: { name: 'Bloque roto', weeks: 8, deload: 8, days: [] } }, blockOrder: ['orphan'], log: {} };
+const badBlockMessage = (() => {
+  try { call('normalizeImportedProfile(' + JSON.stringify(badBlockProfile) + ')'); return null; }
+  catch (e) { return e.message; }
+})();
+ok('a block inside a profile that violates IMPORT_LIMITS throws', badBlockMessage !== null);
+ok('...and the message names the block', !!badBlockMessage && badBlockMessage.indexOf('Bloque roto') >= 0, badBlockMessage);
+
+const longLabelProfile = { blocks: { b1: validBlock }, blockOrder: ['b1'], log: {}, label: 'x'.repeat(200) };
+ok('an over-long label is truncated, not rejected', !throws('normalizeImportedProfile(' + JSON.stringify(longLabelProfile) + ')'));
+ok('...to 80 characters', call('normalizeImportedProfile(' + JSON.stringify(longLabelProfile) + ').label.length') === 80);
+
+const weirdThemeProfile = { blocks: { b1: validBlock }, blockOrder: ['b1'], log: {}, theme: 'azul solo' };
+ok('an invalid theme comes back as a value in ACCENTS',
+   call('ACCENTS.indexOf(normalizeImportedProfile(' + JSON.stringify(weirdThemeProfile) + ').theme) >= 0'));
+
+const orphanMapProfile = {
+  blocks: { b1: validBlock }, blockOrder: ['b1'],
+  log: { b1: { 'w1-d0': {} }, ghost: { 'w1-d0': {} } },
+};
+const survivingLogKeys = call('Object.keys(normalizeImportedProfile(' + JSON.stringify(orphanMapProfile) + ').log)');
+ok('log entries for a block id not in blocks are dropped',
+   survivingLogKeys.indexOf('ghost') < 0 && survivingLogKeys.indexOf('b1') >= 0,
+   JSON.stringify(survivingLogKeys));
+
 console.log('\n== diagnostics statistics ==');
 ok('fitSlope is positive for a clean upward series', call('fitSlope([1,2,3])') > 0);
 ok('fitSlope is 0 for a flat series', call('fitSlope([5,5,5])') === 0);
