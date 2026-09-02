@@ -24,7 +24,7 @@ below so it is not lost or re-audited.
 |------|-------|----------|--------|------|------------|--------|
 | 001 | [Send unreadable saved data to the recovery screen](001-recovery-on-unreadable-data.md) | P1 | S | MED | — | DONE |
 | 002 | [Clear the parallel RIR/notes/energy/order maps on delete](002-purge-parallel-maps.md) | P1 | S | LOW | — | DONE |
-| 003 | [Add a headless assertion layer under `test/`](003-headless-assertion-layer.md) | P1 | M | LOW | — | TODO |
+| 003 | [Add a headless assertion layer under `test/`](003-headless-assertion-layer.md) | P1 | M | LOW | — | DONE |
 | 004 | [Give imported profiles the validation blocks already get](004-harden-profile-import.md) | P1 | M | MED | 003 (soft) | TODO |
 | 005 | [Stop re-walking the whole log several times per render](005-memoize-render-scans.md) | P2 | S | LOW | — | TODO |
 | 006 | [Four small correctness fixes](006-four-small-correctness-fixes.md) | P2 | S | LOW | — | TODO |
