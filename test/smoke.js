@@ -1132,10 +1132,23 @@ const ok = (name, cond, extra) => {
     ok('no recovery screen needed', await page.locator('.recovery').count() === 0);
     ok('blockOrder deduped', await page.evaluate(() => JSON.parse(localStorage.getItem('heavy-iron-v1')).profiles.hombre.blockOrder.length) === 1);
 
-    // truly broken JSON
+    // truly broken JSON: unreadable, so it must reach the recovery screen
+    // rather than being replaced by a fresh plan and written back over.
     await page.evaluate(() => localStorage.setItem('heavy-iron-v1', '{not json'));
     await page.reload({ waitUntil: 'networkidle' });
-    ok('unparseable data falls back to a fresh plan', await page.locator('.ex').count() > 0);
+    await page.waitForTimeout(600);
+    ok('unreadable data lands on the recovery screen',
+       await page.locator('.recovery').count() === 1);
+    ok('the damaged bytes are left on disk, not overwritten',
+       await page.evaluate(() => localStorage.getItem('heavy-iron-v1')) === '{not json',
+       await page.evaluate(() => localStorage.getItem('heavy-iron-v1')));
+
+    /* Back to a readable log, so the next case starts from a page that
+       actually booted rather than from the recovery screen. */
+    await page.evaluate(() => localStorage.removeItem('heavy-iron-v1'));
+    await page.reload({ waitUntil: 'networkidle' });
+    await dismissSetup(page);
+    await page.waitForTimeout(300);
 
     // unrenderable: force render to throw
     await page.evaluate(() => {
