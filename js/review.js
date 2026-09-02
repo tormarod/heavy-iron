@@ -131,7 +131,7 @@ function reviewText(r) {
   L.push('## Cómo fue el bloque anterior ("' + r.name + '")');
   L.push('');
   L.push('- Semanas del bloque: ' + r.weeks + '. Registradas: ' + r.weeksLogged + '. Llegué hasta la semana ' + r.upTo + '.');
-  L.push('- Series marcadas como hechas: ' + r.sets + '. Kilos movidos: ' + Math.round(r.tonnage) + '.');
+  L.push('- Series marcadas como hechas: ' + r.sets + '. Peso movido: ' + Math.round(r.tonnage) + ' ' + units() + '.');
   if (r.priority.length) L.push('- Músculos que marqué como prioritarios: ' + r.priority.join(', ') + '.');
   if (r.deload) {
     L.push('- Descarga en la semana ' + r.deload.deload + ': la semana ' + r.deload.after +
@@ -164,7 +164,7 @@ function reviewText(r) {
     ENERGY_OPTIONS.forEach(k => {
       if (!e[k].n) return;
       L.push('- ' + k + ': ' + e[k].n + (e[k].n === 1 ? ' sesión' : ' sesiones') +
-        ', media de ' + Math.round(e[k].kg) + ' kg movidos.');
+        ', media de ' + Math.round(e[k].kg) + ' ' + units() + ' movidos.');
     });
   }
   if (r.notes.length) {
