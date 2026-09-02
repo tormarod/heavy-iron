@@ -1189,6 +1189,55 @@ const ok = (name, cond, extra) => {
     await ctx.close();
   }
 
+  // ---------- deleting a block takes its parallel maps with it ----------
+  {
+    console.log('\n== block delete purges rir/notes/energy/order ==');
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await dismissSetup(page);
+    await page.waitForTimeout(400);
+
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      const p = s.profiles.hombre;
+      const id = 'block-orphan-test';
+      p.blocks[id] = {
+        id, name: 'Bloque huérfano', createdAt: new Date().toISOString(),
+        weeks: 8, deload: 8,
+        days: [{ id: 'd0', name: 'Día 1', ex: [{ id: 'e0', n: 'x', alt: '', cue: '', sets: 3, reps: '10–15', rest: 90, share: 0, ss: 0 }] }],
+        phase: {},
+      };
+      p.blockOrder.push(id);
+      p.log[id] = { 'w1-d0': { e0: [{ done: true, w: '10', r: '10' }] } };
+      p.rir[id] = { 'w1-d0': { e0: '2+' } };
+      p.notes[id] = { 'w1-d0': 'nota' };
+      p.energy[id] = { 'w1-d0': '7' };
+      p.order[id] = { 'w1-d0': ['e0'] };
+      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+    });
+    await page.reload({ waitUntil: 'networkidle' });
+    await dismissSetup(page);
+    await page.waitForTimeout(300);
+
+    await page.click('#blockbar >> text=Gestionar');
+    await page.waitForTimeout(200);
+    ok('the block manager sheet opens', await page.locator('#blocksSheet.up').count() === 1);
+    await page.locator('.blk-row', { hasText: 'Bloque huérfano' }).locator('.blk-del').click();
+    await answerDialog(page, true);
+    await page.waitForTimeout(200);
+
+    const leftovers = await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      const p = s.profiles[s.activeProfile];
+      return ['log', 'rir', 'notes', 'energy', 'order']
+        .filter(m => p[m] && Object.prototype.hasOwnProperty.call(p[m], 'block-orphan-test'));
+    });
+    ok('deleting a block takes its rir/notes/energy/order with it',
+       leftovers.length === 0, 'still present in: ' + leftovers.join(', '));
+    await ctx.close();
+  }
+
   // ---------- target weight + diagnóstico ----------
   {
     console.log('\n== objetivo de peso y diagnóstico ==');

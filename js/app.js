@@ -1405,16 +1405,18 @@ function weeksBeyondEnd(profile, block) {
    shortened from 12 weeks to 6 still has rows filed under weeks 7-12, and
    "borrar registro" has to mean all of it. */
 function purgeExLog(profile, blockId, dayId, exId) {
+  purgeRir(profile, blockId, dayId, exId);
   const blk = profile.log[blockId];
   if (!blk) return;
   for (let w = 1; w <= MAX_WEEKS; w++) { const s = blk[slot(w, dayId)]; if (s) delete s[exId]; }
 }
 
 function purgeDayLog(profile, blockId, dayId) {
+  purgeRir(profile, blockId, dayId);
+  purgeSessionMeta(profile, blockId, dayId);
   const blk = profile.log[blockId];
   if (!blk) return;
   for (let w = 1; w <= MAX_WEEKS; w++) delete blk[slot(w, dayId)];
-  purgeSessionMeta(profile, blockId, dayId);
 }
 
 /* The session-level maps are keyed by slot alone, with no exercise under
@@ -1429,6 +1431,21 @@ function purgeSessionMeta(profile, blockId, dayId, onlyWeek) {
     if (onlyWeek) { delete blk[slot(onlyWeek, dayId)]; return; }
     for (let w = 1; w <= MAX_WEEKS; w++) delete blk[slot(w, dayId)];
   });
+}
+
+/* `rir` is the one parallel map keyed by exercise under the slot, so it needs
+   its own sweep: purgeSessionMeta cannot reach into it, and a chip left
+   behind with no set under it is invisible until the day comes back and
+   shows a RIR nobody recorded. */
+function purgeRir(profile, blockId, dayId, exId) {
+  const blk = profile.rir && profile.rir[blockId];
+  if (!blk) return;
+  for (let w = 1; w <= MAX_WEEKS; w++) {
+    const k = slot(w, dayId);
+    if (!blk[k]) continue;
+    if (exId) delete blk[k][exId];
+    else delete blk[k];
+  }
 }
 
 /* "Send to another session" in the plan editor: the exercise moves between
