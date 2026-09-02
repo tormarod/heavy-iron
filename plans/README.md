@@ -28,7 +28,7 @@ below so it is not lost or re-audited.
 | 004 | [Give imported profiles the validation blocks already get](004-harden-profile-import.md) | P1 | M | MED | 003 (soft) | DONE |
 | 005 | [Stop re-walking the whole log several times per render](005-memoize-render-scans.md) | P2 | S | LOW | — | DONE |
 | 006 | [Four small correctness fixes](006-four-small-correctness-fixes.md) | P2 | S | LOW | — | DONE |
-| 007 | [Write `AGENTS.md`](007-agents-md.md) | P2 | S | LOW | — | TODO |
+| 007 | [Write `AGENTS.md`](007-agents-md.md) | P2 | S | LOW | — | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
