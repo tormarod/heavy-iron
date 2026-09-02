@@ -928,6 +928,63 @@ const ok = (name, cond, extra) => {
     await ctx.close();
   }
 
+  // ---------- profile import hardening + happy-path restore ----------
+  {
+    console.log('\n== profile import hardening ==');
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await dismissSetup(page);
+    await page.waitForTimeout(400);
+
+    // log a set: something a bad restore could destroy, and a good one should bring back
+    await page.locator('.ex').first().locator('.set-row').first().locator('input').first().fill('40');
+    await page.locator('.ex').first().locator('.set-row').first().locator('input').nth(1).fill('8');
+    await page.locator('.ex').first().locator('.set-row').first().locator('.tick').click();
+    await page.waitForTimeout(200);
+    await page.click('#tskip'); // clear the rest timer overlay so it doesn't block later clicks
+    const setsBefore = await page.locator('.set-row.done').count();
+    ok('a set was logged, to restore later', setsBefore > 0);
+
+    await page.click('#backup');
+    const goodBlob = await page.evaluate(() => document.getElementById('blob').value);
+
+    // an oversized profile: more blocks than PROFILE_LIMITS.blocks allows
+    const oversized = await page.evaluate(() => JSON.stringify({
+      app: STORAGE_KEY, v: 1, saved: new Date().toISOString(),
+      data: { activeProfile: 'hombre', profiles: { hombre: (() => {
+        const validBlock = { name: 'B', weeks: 8, deload: 8, days: [{ name: 'D', ex: [{ n: 'Ex', sets: 3, reps: '10-15' }] }] };
+        const blocks = {}, blockOrder = [];
+        for (let i = 0; i < 41; i++) { blocks['b' + i] = validBlock; blockOrder.push('b' + i); }
+        return { label: 'Hombre', theme: 'azul', blocks, blockOrder, log: {} };
+      })() } },
+    }));
+    await page.fill('#blob', oversized);
+    await page.click('#bRestore');
+    await page.waitForTimeout(200);
+    ok('an oversized profile is rejected with a reason',
+       (await page.textContent('#status')).includes('bloques'), await page.textContent('#status'));
+    ok('the existing log is untouched by the rejected restore',
+       await page.locator('.set-row.done').count() === setsBefore);
+
+    // happy path: wipe, reload, restore the good blob taken earlier, get it all back
+    await page.evaluate(() => localStorage.removeItem('heavy-iron-v1'));
+    await page.reload({ waitUntil: 'networkidle' });
+    await dismissSetup(page);
+    await page.waitForTimeout(300);
+    ok('the wipe actually took effect', await page.locator('.set-row.done').count() === 0);
+
+    await page.click('#backup');
+    await page.fill('#blob', goodBlob);
+    await page.click('#bRestore');
+    await answerDialog(page, true);
+    await page.waitForTimeout(300);
+    ok('a normal backup restores successfully', await page.locator('.set-row.done').count() === setsBefore);
+    ok('the undo toast is offered after a restore', (await page.textContent('#toastAct')) === 'Deshacer');
+
+    await ctx.close();
+  }
+
   // ---------- weight drops ----------
   {
     console.log('\n== weight drops ==');
