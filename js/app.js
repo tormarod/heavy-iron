@@ -1651,6 +1651,11 @@ function nudgeRest(delta) {
     stopAlarmLoop();
     clearRestNotification();
     keepAliveStart();
+    /* The card and its controls were torn down when the alarm gave the audio
+       back (see keepAliveStop). Restarting the keep-alive without them would
+       take the phone's audio focus — pausing whatever music is playing —
+       and give nothing back on the lock screen for it. */
+    showMediaSession(tLabel, tEndAt, tTotal);
     $('timer').classList.remove('over');
     $('tlbl').textContent = 'Descanso · ' + tLabel;
     $('tmsg').textContent = 'Prueba de la frase: si puedes hablar sin quedarte sin aire, ya estás listo.';
