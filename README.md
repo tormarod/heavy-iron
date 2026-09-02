@@ -1485,6 +1485,10 @@ turns out to have been invisible from the outside, add a case to
 `test/smoke.js` rather than fixing it quietly; when it's arithmetic or data
 repair, add it to `test/unit.js` instead.
 
+Working on this with an AI agent? `AGENTS.md` has the invariants that are
+easy to break and hard to see — the script load order, the `CACHE_VERSION`
+rule, and which of this project's absences are deliberate.
+
 ## Project layout
 
 | File | What it is |
