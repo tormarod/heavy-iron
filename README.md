@@ -1456,12 +1456,23 @@ when the shell changes and `CACHE_VERSION` doesn't.
 
 ## Tests
 
-There is no build step and no framework, so the tests drive the real app
-in a real browser and assert the things a person would notice: that it
-boots, that a set can be logged and survives a reload, that a hostile
-block renders as text instead of running, that broken data lands on the
-recovery screen instead of a blank page, and that the rest timer's
-controls fit on a 375px phone.
+There is no build step and no framework, so there are two suites, split by
+what they need to run.
+
+The fast half needs nothing at all:
+
+    node test/unit.js
+
+It loads the six source files into one Node context — the same shared scope
+the `<script>` tags create — and asserts the parts that are arithmetic rather
+than interface: the schema repair in `migrate()`, the import validators, the
+statistics behind Diagnóstico.
+
+The other half drives the real app in a real browser and asserts the things
+a person would notice: that it boots, that a set can be logged and survives
+a reload, that a hostile block renders as text instead of running, that
+broken data lands on the recovery screen instead of a blank page, and that
+the rest timer's controls fit on a 375px phone.
 
 ```
 npx playwright install chromium     # once
@@ -1469,10 +1480,10 @@ python3 -m http.server 8765 &
 node test/smoke.js
 ```
 
-They also run on every push and pull request
-(`.github/workflows/test.yml`). When a bug turns out to have been
-invisible from the outside, add a case to `test/smoke.js` rather than
-fixing it quietly.
+Both run on every pull request (`.github/workflows/test.yml`). When a bug
+turns out to have been invisible from the outside, add a case to
+`test/smoke.js` rather than fixing it quietly; when it's arithmetic or data
+repair, add it to `test/unit.js` instead.
 
 ## Project layout
 
@@ -1491,6 +1502,7 @@ fixing it quietly.
 | `manifest.webmanifest`, `icon.svg`, `icon-*.png` | what makes it installable |
 | `tools/render-icons.mjs` | re-exports the PNGs from `icon.svg` — run it after editing the artwork |
 | `blocks/` | blocks published for one-click import |
+| `test/unit.js` | headless assertions for pure logic — no server, no browser |
 | `test/smoke.js` | browser-driven smoke tests |
 
 ## Known limits
