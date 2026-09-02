@@ -1313,6 +1313,12 @@ const ok = (name, cond, extra) => {
         days: [{ id: 'D', name: 'D', ex: [{ id: 'E', n: 'x', sets: sets.length, reps: '10–15', inc: inc }] }] };
       const profile = { log: { B: { 'w1-D': { E: sets.map(r => ({ w: '32', r: String(r), done: true })) } } },
         rir: rir ? { B: { 'w1-D': { E: rir } } } : {} };
+      /* This helper builds a fresh synthetic profile every call but reuses
+         the same block/day/ex ids, so the render-scoped cache (keyed on
+         those ids, not the profile) would otherwise serve the first call's
+         stale answer to every call after it — there is no real drawApp()
+         render in between to reset it for us. */
+      resetRenderCache();
       const e = targetEstimate(profile, block, block.days[0], block.days[0].ex[0], 2);
       return { kind: e && e.kind, line: e ? targetLine(e) : null, note: e ? targetNotes(e).join(' | ') : '' };
     }, [sets, rir, inc]);
@@ -1370,6 +1376,7 @@ const ok = (name, cond, extra) => {
         days: [{ id: 'D', ex: [{ id: 'E', n: 'x', sets: rows.length, reps: '10–15', inc: 1 }] }] };
       const profile = { log: { B: { 'w1-D': { E: rows.map(x => ({ w: x[0], r: x[1], done: true })) } } },
         rir: rir ? { B: { 'w1-D': { E: rir } } } : {} };
+      resetRenderCache();
       const e = targetEstimate(profile, block, block.days[0], block.days[0].ex[0], 2);
       return { line: targetLine(e), from: e.from, sets: e.sets, notes: targetNotes(e) };
     }, [rows, rir]);
@@ -1413,6 +1420,7 @@ const ok = (name, cond, extra) => {
         phase: { 1: { r: '2 RIR' }, 2: { r: 'Descarga' } },
         days: [{ id: 'D', ex: [{ id: 'E', n: 'x', sets: 1, reps: '10–15', inc: 2 }] }] };
       const profile = { log: { B: { 'w1-D': { E: [{ w: '32', r: '12', done: true }] } } }, rir: {} };
+      resetRenderCache();
       return targetEstimate(profile, block, block.days[0], block.days[0].ex[0], 2);
     }) === null);
 
@@ -1432,6 +1440,7 @@ const ok = (name, cond, extra) => {
         days: [{ id: 'D', ex: [{ id: 'E', n: 'x', sets: sets.length, reps: '12–20', inc: 1 }] }] };
       const profile = { log: { B: { 'w1-D': { E: sets.map(r => ({ w: '12', r: String(r), done: true })) } } },
         rir: all ? { B: { 'w1-D': { E: '2+' } } } : {} };
+      resetRenderCache();
       const e = targetEstimate(profile, block, block.days[0], block.days[0].ex[0], 2);
       return { kind: e.kind, line: targetLine(e) };
     }, [sets, all]);
