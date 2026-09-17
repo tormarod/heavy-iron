@@ -1545,10 +1545,18 @@ python3 -m http.server 8765 &
 node test/smoke.js
 ```
 
-Both run on every pull request (`.github/workflows/test.yml`). When a bug
-turns out to have been invisible from the outside, add a case to
-`test/smoke.js` rather than fixing it quietly; when it's arithmetic or data
-repair, add it to `test/unit.js` instead.
+Or let `tools/smoke-gate.sh` do all of that: it installs Playwright if it
+is missing, serves the repo on a free port, runs both suites and stops the
+server. It is the same script the Claude Code hook in
+`.claude/settings.json` runs before a pull request is opened, and it blocks
+the PR when anything fails.
+
+Only the headless half runs on GitHub (`.github/workflows/test.yml`); the
+browser suite needs a Chromium download on every run, so it runs on the
+machine the pull request comes from instead. When a bug turns out to have
+been invisible from the outside, add a case to `test/smoke.js` rather than
+fixing it quietly; when it's arithmetic or data repair, add it to
+`test/unit.js` instead.
 
 Working on this with an AI agent? `AGENTS.md` has the invariants that are
 easy to break and hard to see — the script load order, the `CACHE_VERSION`

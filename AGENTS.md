@@ -71,11 +71,16 @@ npm install --no-save playwright@1.56.1  # once — the README omits this
 npx playwright install chromium          # once
 python3 -m http.server 8765 &
 node test/smoke.js                       # drives the real app in a browser
+tools/smoke-gate.sh                      # all of the above, in one go
 ```
 
-Both suites run on every pull request. `test/unit.js` loads the six source
-files into one shared Node context — the same global scope the `<script>`
-tags create — and is the fastest full check.
+Only `test/unit.js` runs on GitHub. The browser suite runs on the machine
+the pull request is opened from: `tools/smoke-gate.sh` is wired as a
+PreToolUse hook in `.claude/settings.json` on `mcp__github__create_pull_request`
+and `gh pr create`, and a failure blocks the PR. Run it yourself before
+pushing if you are not going through that tool. `test/unit.js` loads the
+six source files into one shared Node context — the same global scope the
+`<script>` tags create — and is the fastest full check.
 
 **Testing policy** (`test/smoke.js:9-10`): *"Add a case here whenever a bug
 turns out to have been invisible from the outside."* Arithmetic and data
