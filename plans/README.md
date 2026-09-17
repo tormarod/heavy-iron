@@ -63,7 +63,7 @@ repeated here because it is the single easiest thing to forget.
 
 A second pass at commit `1f559ee`, after plans 001–007 landed, is in
 [008-audit-2026-09-17.md](008-audit-2026-09-17.md). It is one ranked
-document rather than one file per finding: nineteen items, most critical
+document rather than one file per finding: twenty-three items, most critical
 first, each with `file:line` evidence, a failure scenario and a plan. Its
 last section re-checks every entry in "Worth doing, not yet planned" below
 and says which are still present, so treat that list as superseded by 008.
