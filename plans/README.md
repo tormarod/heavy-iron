@@ -29,6 +29,7 @@ below so it is not lost or re-audited.
 | 005 | [Stop re-walking the whole log several times per render](005-memoize-render-scans.md) | P2 | S | LOW | — | DONE |
 | 006 | [Four small correctness fixes](006-four-small-correctness-fixes.md) | P2 | S | LOW | — | DONE |
 | 007 | [Write `AGENTS.md`](007-agents-md.md) | P2 | S | LOW | — | DONE |
+| 008 | [Second audit: ranked findings and plan](008-audit-2026-09-17.md) | P1 | — | — | — | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
@@ -57,6 +58,15 @@ REJECTED (with one-line rationale)
 Returning users are served the app shell cache-first, so an unbumped version
 leaves them on the old code indefinitely. Each plan restates this; it is
 repeated here because it is the single easiest thing to forget.
+
+## Second audit (2026-09-17)
+
+A second pass at commit `1f559ee`, after plans 001–007 landed, is in
+[008-audit-2026-09-17.md](008-audit-2026-09-17.md). It is one ranked
+document rather than one file per finding: twenty-three items, most critical
+first, each with `file:line` evidence, a failure scenario and a plan. Its
+last section re-checks every entry in "Worth doing, not yet planned" below
+and says which are still present, so treat that list as superseded by 008.
 
 ## Worth doing, not yet planned
 

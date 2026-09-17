@@ -1,4 +1,4 @@
-name: Smoke tests
+name: Tests
 
 # The app has no build step and no dependencies, so this is the only thing
 # standing between a one-line edit and a broken log on somebody's phone.
@@ -6,12 +6,20 @@ name: Smoke tests
 # Pull requests only, not push-to-main: a merge lands the exact ref the PR
 # already tested (GitHub runs pull_request against the merge result), so a
 # second run on push would just repeat it.
+#
+# Only the headless half runs here. The browser smoke suite (test/smoke.js)
+# needs a Chromium download on every run, so it moved to the machine the
+# pull request is opened from: tools/smoke-gate.sh, wired as a Claude Code
+# hook in .claude/settings.json that blocks the PR when it fails.
 on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  smoke:
+  unit:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -22,23 +30,11 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Syntax-check every script
+        run: for f in js/*.js sw.js test/*.js; do node --check "$f"; done
+
       - name: Run headless unit tests
         run: node test/unit.js
-
-      - name: Install Playwright + Chromium
-        run: npm install --no-save playwright@1.56.1 && npx playwright install --with-deps chromium
-
-      - name: Serve the site
-        run: |
-          python3 -m http.server 8765 --bind 127.0.0.1 &
-          # the service worker only registers over http, so wait for a real response
-          for i in $(seq 1 20); do
-            curl -sf http://127.0.0.1:8765/index.html >/dev/null && break
-            sleep 0.5
-          done
-
-      - name: Run smoke tests
-        run: node test/smoke.js
 
   # Shipping a new app.js while sw.js stays byte-identical means returning
   # users keep the old cached script forever: the browser only looks for a
@@ -55,8 +51,10 @@ jobs:
           fetch-depth: 0
 
       - name: Require a CACHE_VERSION bump when the app shell changes
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          base="origin/${{ github.base_ref }}"
+          base="origin/$BASE_REF"
           changed=$(git diff --name-only "$base"...HEAD)
           echo "Changed files:"; echo "$changed"
 

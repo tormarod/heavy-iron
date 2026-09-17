@@ -1,5 +1,29 @@
 {
   "hooks": {
-    "PreToolUse": []
+    "PreToolUse": [
+      {
+        "matcher": "mcp__github__create_pull_request",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PROJECT_DIR:-.}\"/tools/smoke-gate.sh",
+            "timeout": 900,
+            "statusMessage": "Running the smoke suite before opening the pull request…"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(gh pr create *)",
+            "command": "\"${CLAUDE_PROJECT_DIR:-.}\"/tools/smoke-gate.sh",
+            "timeout": 900,
+            "statusMessage": "Running the smoke suite before opening the pull request…"
+          }
+        ]
+      }
+    ]
   }
 }
