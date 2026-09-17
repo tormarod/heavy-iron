@@ -16,9 +16,16 @@
    are deleted on activate, and the app shows an "Actualizar" prompt rather
    than swapping the code under a session in progress. */
 
-const CACHE_VERSION = 'v47';
+const CACHE_VERSION = 'v48';
 const SHELL_CACHE = 'heavy-iron-shell-' + CACHE_VERSION;
 const RUNTIME_CACHE = 'heavy-iron-runtime-' + CACHE_VERSION;
+/* Bumped only when js/vendor/ itself changes (see js/vendor/README.md's
+   refresh recipe), not on every CACHE_VERSION release: these 318 KB of QR
+   libraries do not change between releases, and re-fetching them on each of
+   the ~45 bumps so far cost every phone that opened "Compartir por QR" a
+   redownload of bytes it already had. */
+const VENDOR_VERSION = 'v1';
+const VENDOR_CACHE = 'heavy-iron-vendor-' + VENDOR_VERSION;
 
 const SHELL = [
   './',
@@ -38,28 +45,53 @@ const SHELL = [
   'icon-512.png',
   'icon-maskable-512.png',
   'icon-180.png',
-  /* Only pulled in when you open "Compartir por QR", but precached here: the
-     whole point of that screen is working in a basement, and a lazy <script>
-     that 404s offline would break the feature exactly where it is needed. */
+];
+
+/* Only pulled in when you open "Compartir por QR", but precached here: the
+   whole point of that screen is working in a basement, and a lazy <script>
+   that 404s offline would break the feature exactly where it is needed. Kept
+   out of SHELL/SHELL_CACHE so a release that touches nothing under
+   js/vendor/ does not re-fetch them — see VENDOR_VERSION above. */
+const VENDOR = [
   'js/vendor/qrcode.js',
   'js/vendor/jsQR.js',
 ];
 
+/* A renamed file or a flaky connection during install must not fail the
+   whole install and leave the app with no worker at all — but a miss here is
+   silent, so a device that hit one activates believing itself fully
+   offline-ready with a hole in the cache. repairCache re-`add`s anything
+   `cache.match` cannot find, on activate and whenever the page asks
+   (see the 'checkShell' message below), so a hole left by a bad first
+   install heals itself the next time there is a connection, rather than
+   sitting there until the next CACHE_VERSION bump. */
+function precache(cacheName, urls) {
+  return caches.open(cacheName)
+    .then(cache => Promise.all(urls.map(url => cache.add(url).catch(() => null))));
+}
+
+function repairCache(cacheName, urls) {
+  return caches.open(cacheName).then(cache => Promise.all(urls.map(url =>
+    cache.match(url).then(hit => (hit ? null : cache.add(url).catch(() => null)))
+  )));
+}
+
+function repairAll() {
+  return Promise.all([repairCache(SHELL_CACHE, SHELL), repairCache(VENDOR_CACHE, VENDOR)]);
+}
+
 self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(SHELL_CACHE)
-      /* One miss (a renamed file, a flaky connection) must not fail the whole
-         install and leave the app with no worker at all. */
-      .then(cache => Promise.all(SHELL.map(url => cache.add(url).catch(() => null))))
-  );
+  event.waitUntil(Promise.all([precache(SHELL_CACHE, SHELL), precache(VENDOR_CACHE, VENDOR)]));
 });
 
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys()
       .then(keys => Promise.all(
-        keys.filter(k => k !== SHELL_CACHE && k !== RUNTIME_CACHE).map(k => caches.delete(k))
+        keys.filter(k => k !== SHELL_CACHE && k !== RUNTIME_CACHE && k !== VENDOR_CACHE)
+          .map(k => caches.delete(k))
       ))
+      .then(repairAll)
       .then(() => self.clients.claim())
   );
 });
@@ -73,6 +105,11 @@ self.addEventListener('message', event => {
   if (event.data === 'version' && event.ports && event.ports[0]) {
     event.ports[0].postMessage(CACHE_VERSION);
   }
+  /* Sent alongside the page's own periodic update check (see
+     registerServiceWorker's visibilitychange handler) so a hole left by a
+     flaky first install gets a chance to heal on any later visit that has a
+     connection, not only on the next release. */
+  if (event.data === 'checkShell') { repairAll(); }
 });
 
 /* The rest-over notification is posted by the page (see notifyRestOver) but
@@ -140,6 +177,11 @@ self.addEventListener('fetch', event => {
 
   if (sameOrigin && url.pathname.indexOf('/blocks/') >= 0) {
     event.respondWith(networkFirst(request, RUNTIME_CACHE));
+    return;
+  }
+
+  if (sameOrigin && url.pathname.indexOf('/js/vendor/') >= 0) {
+    event.respondWith(cacheFirst(request, VENDOR_CACHE));
     return;
   }
 
