@@ -735,5 +735,84 @@ ok('...and day B\'s — the id-only map used to erase one of them',
    peSaveProbe['w1-d1'] && peSaveProbe['w1-d1'].e1 && peSaveProbe['w1-d1'].e1.length === 1 && peSaveProbe['w1-d1'].e1[0].w === '60',
    JSON.stringify(peSaveProbe));
 
+console.log('\n== setup: the active profile is always people[0] (plans/008 item 5) ==');
+const setupOrderProbe = call(`
+  (function() {
+    const before = state.activeProfile;
+    state.activeProfile = 'mujer';
+    openSetup(false);
+    const keys = setupDraft.people.map(p => p.key);
+    state.activeProfile = before;
+    return keys;
+  })()
+`);
+ok('the second profile, when active, is people[0] — insertion order alone used to put the first profile there, ' +
+   'so turning on "Solo yo" while active as the second profile silently renamed and switched onto the first',
+   setupOrderProbe[0] === 'mujer' && setupOrderProbe.indexOf('hombre') > 0,
+   JSON.stringify(setupOrderProbe));
+
+console.log('\n== plate bounds and fitPlates hard cap (plans/008 item 6) ==');
+const platesProfile = {
+  profiles: { hombre: { blocks: {}, blockOrder: [], log: {} } },
+  activeProfile: 'hombre',
+  prefs: { units: 'kg', plates: [0.0001, 20, 10] },
+};
+const migratedPlates = call('state = ' + JSON.stringify(platesProfile) + '; migrate(); JSON.parse(JSON.stringify(state));');
+ok('a near-zero plate is filtered out by the PLATE_MIN/MAX bounds, not just p > 0',
+   migratedPlates.prefs.plates.indexOf(0.0001) < 0 && migratedPlates.prefs.plates.indexOf(20) >= 0,
+   JSON.stringify(migratedPlates.prefs.plates));
+ok('fitPlates never grows past FIT_PLATES_MAX even fed a plate size migrate() would already reject',
+   call('fitPlates(1000000, [0.0001]).plates.length') <= call('FIT_PLATES_MAX'));
+
+console.log('\n== unit-stamped rows: diagnostics and the review convert instead of blending kg/lb (plans/008 item 9) ==');
+ok('convertWeight round-trips kg -> lb -> kg',
+   Math.abs(call('convertWeight(convertWeight(100, "kg", "lb"), "lb", "kg")') - 100) < 1e-9);
+ok('convertWeight is a no-op within the same unit', call('convertWeight(100, "kg", "kg")') === 100);
+ok('rowWeight reads an unstamped row as kg', call('rowWeight({ w: "100" }, "kg")') === 100);
+ok('rowWeight converts a row stamped lb when read as kg',
+   Math.abs(call('rowWeight({ w: "220.462262185", u: "lb" }, "kg")') - 100) < 1e-6);
+const diagUnitProbe = call(`
+  (function() {
+    const profile = defaultState().profiles.hombre;
+    const blockId = profile.blockOrder[0];
+    const block = profile.blocks[blockId];
+    const day = block.days[0];
+    const exId = day.ex[0].id;
+    profile.log[blockId] = {};
+    profile.rir = { [blockId]: {} };
+    /* Week 1 logged in kg, week 2 in lb (a mid-block unit switch) — same
+       real weight both times, 100 kg == 220.462... lb. */
+    profile.log[blockId][slot(1, day.id)] = { [exId]: [{ w: '100', r: '5', done: true }] };
+    profile.log[blockId][slot(2, day.id)] = { [exId]: [{ w: '220.462262185', r: '5', done: true, u: 'lb' }] };
+    state.prefs.units = 'kg';
+    const points = diagPoints(profile, exId, blockId);
+    state.prefs.units = 'kg';
+    return points.map(p => Math.round(p.weight * 100) / 100);
+  })()
+`);
+ok('diagPoints converts a lb-stamped week back to kg instead of reading 220 kg on the trend line',
+   JSON.stringify(diagUnitProbe) === JSON.stringify([100, 100]), JSON.stringify(diagUnitProbe));
+const reviewUnitProbe = call(`
+  (function() {
+    const profile = defaultState().profiles.hombre;
+    const blockId = profile.blockOrder[0];
+    const block = profile.blocks[blockId];
+    const day = block.days[0];
+    const exId = day.ex[0].id;
+    profile.log[blockId] = {};
+    profile.log[blockId][slot(1, day.id)] = { [exId]: [{ w: '100', r: '5', done: true }] };
+    profile.log[blockId][slot(2, day.id)] = { [exId]: [{ w: '220.462262185', r: '5', done: true, u: 'lb' }] };
+    state.prefs.units = 'kg';
+    const byWeekRaw = blockTonnageByWeek(profile, block);
+    const byWeekConverted = blockTonnageByWeek(profile, block, reviewSetVolume);
+    state.prefs.units = 'kg';
+    return { raw: byWeekRaw.slice(0, 2), converted: byWeekConverted.slice(0, 2) };
+  })()
+`);
+ok('the raw setVolume() the session view uses is untouched — still blends the lb number in as if it were kg',
+   Math.round(reviewUnitProbe.raw[1]) === Math.round(220.462262185 * 5), JSON.stringify(reviewUnitProbe));
+ok('reviewSetVolume converts that same week to kg instead, so both weeks read as the same tonnage',
+   Math.round(reviewUnitProbe.converted[0]) === Math.round(reviewUnitProbe.converted[1]), JSON.stringify(reviewUnitProbe));
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

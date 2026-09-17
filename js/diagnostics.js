@@ -57,6 +57,22 @@ const DIAG_TRENDS = {
 let diagScope = 'block';  /* 'block' | 'all' */
 let diagView = 'trend';   /* 'trend' per exercise | 'freq' | 'index' per muscle */
 
+/* Mirrors setVolume() (app.js) exactly, except every weight is read through
+   rowWeight() rather than num(r.w) — a drop shares its row's stamp (drops
+   have no unit of their own; see stampRowUnit in app.js), so it converts
+   with the same fromUnit as the set it belongs to. */
+function diagSetVolume(r) {
+  if (!r || !r.done) return 0;
+  const toUnit = units();
+  const from = rowUnit(r);
+  const w = convertWeight(num(r.w), from, toUnit), reps = num(r.r);
+  const dropsVol = dropsOf(r).filter(dropUsed).reduce((t, d) => {
+    const dw = convertWeight(num(d.w), from, toUnit), dr = num(d.r);
+    return t + ((isNaN(dw) || isNaN(dr)) ? 0 : dw * dr);
+  }, 0);
+  return ((isNaN(w) || isNaN(reps)) ? 0 : w * reps) + dropsVol;
+}
+
 /* Every session this exercise was logged in, oldest first, as one e1RM
    point each. Modelled on collectHistoryAll(), but it keeps what the charts
    have no use for and the diagnosis does: which rows the point came from
@@ -84,23 +100,29 @@ function diagPoints(profile, exId, onlyBlockId) {
         if (!m || +m[1] !== w) return;
         const rows = blk[k][exId];
         if (!Array.isArray(rows)) return;
-        const done = rows.filter(r => r && r.done && hasReps(r) && num(r.w) > 0 && num(r.r) <= EST_MAX_REPS);
+        /* rowWeight() rather than num(r.w): converts a row logged in the
+           other unit instead of blending it into this line raw — see the
+           comment by rowWeight() in app.js. The session view stays exempt
+           on purpose; this is a screen that fits one line through many of
+           them, which the session view is not. */
+        const done = rows.filter(r => r && r.done && hasReps(r) && rowWeight(r) > 0 && num(r.r) <= EST_MAX_REPS);
         if (!done.length) return;
         let best = done[0];
-        done.forEach(r => { if (est1RM(num(r.w), num(r.r)) > est1RM(num(best.w), num(best.r))) best = r; });
+        done.forEach(r => { if (est1RM(rowWeight(r), num(r.r)) > est1RM(rowWeight(best), num(best.r))) best = r; });
         /* The work side of the same session, and it counts every ticked
            set — EST_MAX_REPS and all. That ceiling is a statement about
            Epley, not about kilos: a 20-rep set moved weight whether or not
-           an estimate can honestly be read off it. setVolume() rather than
-           w × r so there is still exactly one definition of "kilos moved"
-           in the app, drops included, same as the volume strip. */
-        const worked = rows.filter(r => r && r.done && hasReps(r) && num(r.w) > 0);
+           an estimate can honestly be read off it. diagSetVolume() mirrors
+           setVolume() (app.js) — "one definition of kilos moved" still
+           holds for the session view; this is the unit-converted read of
+           the same rule, for a screen that spans sessions. */
+        const worked = rows.filter(r => r && r.done && hasReps(r) && rowWeight(r) > 0);
         out.push({
           label: block.name + ' · S' + w,
-          e1rm: est1RM(num(best.w), num(best.r)),
-          weight: num(best.w),
+          e1rm: est1RM(rowWeight(best), num(best.r)),
+          weight: rowWeight(best),
           reps: num(best.r),
-          vol: worked.reduce((t, r) => t + setVolume(r), 0),
+          vol: worked.reduce((t, r) => t + diagSetVolume(r), 0),
           sets: worked.length,
           ts: rows.reduce((t, r) => (r && r.done && r.ts > t ? r.ts : t), 0),
           rir: getRir(profile, bId, w, m[2], exId),
@@ -340,11 +362,12 @@ function strengthByExercise(profile, block) {
       if (!Array.isArray(rows)) return;
       /* Same rep ceiling as the trend: past it Epley is inventing a number
          rather than reading one, and one 20-rep back-off set would move a
-         muscle's whole index. */
-      const done = rows.filter(r => r && r.done && hasReps(r) && num(r.w) > 0 && num(r.r) <= EST_MAX_REPS);
+         muscle's whole index. rowWeight() converts a row logged in the
+         other unit instead of blending it in raw — see app.js. */
+      const done = rows.filter(r => r && r.done && hasReps(r) && rowWeight(r) > 0 && num(r.r) <= EST_MAX_REPS);
       if (!done.length) return;
       let best = 0;
-      done.forEach(r => { const v = est1RM(num(r.w), num(r.r)); if (v > best) best = v; });
+      done.forEach(r => { const v = est1RM(rowWeight(r), num(r.r)); if (v > best) best = v; });
       if (!out[exId]) out[exId] = new Array(weeks).fill(null);
       if (out[exId][w - 1] == null || best > out[exId][w - 1]) out[exId][w - 1] = best;
     });

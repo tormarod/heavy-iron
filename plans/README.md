@@ -22,14 +22,14 @@ below so it is not lost or re-audited.
 
 | Plan | Title | Priority | Effort | Risk | Depends on | Status |
 |------|-------|----------|--------|------|------------|--------|
-| 001 | [Send unreadable saved data to the recovery screen](001-recovery-on-unreadable-data.md) | P1 | S | MED | — | DONE |
-| 002 | [Clear the parallel RIR/notes/energy/order maps on delete](002-purge-parallel-maps.md) | P1 | S | LOW | — | DONE |
-| 003 | [Add a headless assertion layer under `test/`](003-headless-assertion-layer.md) | P1 | M | LOW | — | DONE |
-| 004 | [Give imported profiles the validation blocks already get](004-harden-profile-import.md) | P1 | M | MED | 003 (soft) | DONE |
-| 005 | [Stop re-walking the whole log several times per render](005-memoize-render-scans.md) | P2 | S | LOW | — | DONE |
-| 006 | [Four small correctness fixes](006-four-small-correctness-fixes.md) | P2 | S | LOW | — | DONE |
-| 007 | [Write `AGENTS.md`](007-agents-md.md) | P2 | S | LOW | — | DONE |
-| 008 | [Second audit: ranked findings and plan](008-audit-2026-09-17.md) | P1 | — | — | — | IN PROGRESS (items 1–4 done, 5–23 remain) |
+| 001 | [Send unreadable saved data to the recovery screen](done/001-recovery-on-unreadable-data.md) | P1 | S | MED | — | DONE |
+| 002 | [Clear the parallel RIR/notes/energy/order maps on delete](done/002-purge-parallel-maps.md) | P1 | S | LOW | — | DONE |
+| 003 | [Add a headless assertion layer under `test/`](done/003-headless-assertion-layer.md) | P1 | M | LOW | — | DONE |
+| 004 | [Give imported profiles the validation blocks already get](done/004-harden-profile-import.md) | P1 | M | MED | 003 (soft) | DONE |
+| 005 | [Stop re-walking the whole log several times per render](done/005-memoize-render-scans.md) | P2 | S | LOW | — | DONE |
+| 006 | [Four small correctness fixes](done/006-four-small-correctness-fixes.md) | P2 | S | LOW | — | DONE |
+| 007 | [Write `AGENTS.md`](done/007-agents-md.md) | P2 | S | LOW | — | DONE |
+| 008 | [Second audit: ranked findings and plan](008-audit-2026-09-17.md) | P1 | — | — | — | IN PROGRESS (items 1–9 done, 10–23 remain) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)

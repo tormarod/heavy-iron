@@ -56,6 +56,12 @@ const clampNum = (v, lo, hi, dflt, step) => {
    a plate change and nothing past a round-trip's worth of iron. */
 const INC_MIN = 0.25, INC_MAX = 50, INC_STEP = 0.25;
 
+/* Plate bounds. The only filter used to be `p > 0`, so a near-zero plate
+   typed into Ajustes (or sitting in a hand-edited or restored backup) made
+   fitPlates() below loop on the order of target/p times, growing an array,
+   on every Calculadora open — a same-device hang from a single bad number. */
+const PLATE_MIN = { kg: 0.25, lb: 0.5 }, PLATE_MAX = { kg: 50, lb: 100 };
+
 /* The step to fall back on when an exercise declares no `inc` of its own —
    and most don't, since it is an optional field. Something has to round the
    target weight below to a number you can actually load, so the chain runs
@@ -347,7 +353,8 @@ function migrate() {
   if (!Array.isArray(state.prefs.plates) || !state.prefs.plates.length) {
     state.prefs.plates = DEFAULT_PLATES[state.prefs.units].slice();
   } else {
-    state.prefs.plates = state.prefs.plates.map(num).filter(p => p > 0);
+    state.prefs.plates = state.prefs.plates.map(num)
+      .filter(p => p >= PLATE_MIN[state.prefs.units] && p <= PLATE_MAX[state.prefs.units]);
     if (!state.prefs.plates.length) state.prefs.plates = DEFAULT_PLATES[state.prefs.units].slice();
   }
   if (['pair', 'solo'].indexOf(state.mode) < 0) state.mode = 'pair';
@@ -378,6 +385,30 @@ const deloadWeek = block => {
 const soloMode = () => state.mode === 'solo';
 const visibleProfileKeys = () => (soloMode() ? [state.activeProfile] : profileKeys());
 const units = () => state.prefs.units;
+
+/* A row's weight is a label, never a conversion (see migrate(), above) —
+   the session view shows every number exactly as typed, in whatever unit
+   was active that day, and that choice stays untouched here. But a screen
+   that fits one line through many sessions (diagnostics, the block review)
+   cannot read two unit's numbers as one series without a real conversion,
+   so writes stamp which unit the row is in and those screens convert on
+   the way out. `u` is stamped only when it differs from kg — the same
+   convention as `share`/`ss`, stored only when true — so a row with no `u`
+   is read as kg whether that is because it predates this stamp or because
+   it really was written in kg; the two are indistinguishable and both are
+   correctly read the same way. */
+const LB_PER_KG = 1 / 0.45359237;  /* exact: the international pound */
+function convertWeight(v, fromUnit, toUnit) {
+  if (!isFinite(v) || fromUnit === toUnit) return v;
+  return fromUnit === 'kg' ? v * LB_PER_KG : v / LB_PER_KG;
+}
+const rowUnit = r => (r && r.u === 'lb') ? 'lb' : 'kg';
+function rowWeight(r, toUnit) {
+  return convertWeight(num(r && r.w), rowUnit(r), toUnit || units());
+}
+function stampRowUnit(r) {
+  if (units() === 'lb') r.u = 'lb'; else delete r.u;
+}
 
 /* Writes are debounced so typing a weight doesn't serialise the whole log on
    every keystroke — but a debounce you never flush is a debounce that loses
@@ -684,7 +715,12 @@ function openSetup(firstRun) {
     /* On a first run the name boxes start empty, so the placeholder invites
        you to type rather than making you clear somebody else's name out
        first. Left empty, the shipped label stands. */
-    people: profileKeys().map(key => ({
+    /* Active profile first, always — not just insertion order. Solo mode
+       only shows/asks for people[0] and saves activeProfile as its key
+       (below), so if the second profile were active and this stayed in
+       insertion order, turning on "Solo yo" would silently rename the
+       *first* profile and switch onto their log instead. */
+    people: [state.activeProfile, ...profileKeys().filter(k => k !== state.activeProfile)].map(key => ({
       key,
       label: firstRun ? '' : state.profiles[key].label,
       accent: accentOf(state.profiles[key]),
@@ -817,7 +853,8 @@ $('setupSave').onclick = () => {
   } else {
     const bw = num(setupDraft.barWeight);
     if (bw > 0) state.prefs.barWeight = bw;
-    const plates = String(setupDraft.platesText || '').split(',').map(num).filter(p => p > 0);
+    const plates = String(setupDraft.platesText || '').split(',').map(num)
+      .filter(p => p >= PLATE_MIN[state.prefs.units] && p <= PLATE_MAX[state.prefs.units]);
     if (plates.length) state.prefs.plates = plates;
     const inc = clampNum(setupDraft.inc, INC_MIN, INC_MAX, 0, INC_STEP);
     if (inc > 0) state.prefs.inc = inc;
@@ -935,8 +972,34 @@ function showRecovery(err, raw) {
   };
 }
 
-function downloadFile(name, text, mime) {
+/* Used to be a plain <a download> click. On an iOS home-screen PWA
+   (apple-mobile-web-app-capable, index.html) that path is unreliable —
+   there is no browser chrome to complete a download, and depending on the
+   iOS version the tap does nothing or opens the blob in place with no way
+   to save it. This is the backup path the app nags about after ten
+   sessions, on the exact platform the icons were added for. The Web Share
+   API with a file reaches the share sheet's own "Guardar en Archivos"
+   there, so it is tried first; the anchor is the fallback for every
+   browser that either lacks it or declines the file — which is everywhere
+   else, so this one change also covers the CSV and profile-file exports
+   that call downloadFile the same way. */
+async function downloadFile(name, text, mime) {
   const blob = new Blob([text], { type: mime });
+  if (navigator.canShare && navigator.share) {
+    try {
+      const file = new File([blob], name, { type: mime });
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file] });
+        return;
+      }
+    } catch (e) {
+      /* AbortError: the person saw the share sheet and closed it without
+         picking anything — a choice, not a failure, so falling through to
+         a second download here would be more surprising than doing
+         nothing. Any other error falls through to the anchor below. */
+      if (e && e.name === 'AbortError') return;
+    }
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -2068,18 +2131,17 @@ function renderProfiles() {
    than moved out with the rest of the import-block code, since app.js
    loads after block-editor.js/profile-transfer.js, calling these from
    either file at call-time (never at parse-time) is safe either way. */
-const DEFAULT_BLOCKS_BASE = 'https://raw.githubusercontent.com/tormarod/heavy-iron/main/blocks';
 
-/* Published blocks are fetched from whichever repo is serving the app, so a
-   fork lists its own blocks rather than this one's. On GitHub Pages both the
-   owner and the repo are sitting in the URL; anywhere else (a local server,
-   a custom domain) there is nothing to read and the original stands. */
+/* Published blocks are deployed on the same origin and path as the app
+   itself — the Pages build uploads the whole repo, so blocks/ always sits
+   next to index.html — and fetched relative to the page, so a fork lists
+   its own blocks rather than this one's with no host-parsing needed. This
+   also means the request is same-origin, which is what lets the service
+   worker's network-first /blocks/ handler (sw.js) actually run: fetched
+   cross-origin, as this used to be, it fell straight through that handler
+   and "importable offline once you've seen it" was dead in production. */
 function blocksBase() {
-  const m = /^([A-Za-z0-9-]+)\.github\.io$/.exec(location.hostname);
-  if (!m) return DEFAULT_BLOCKS_BASE;
-  const seg = location.pathname.split('/').filter(Boolean)[0];
-  const repo = seg || (m[1] + '.github.io');   /* a user site has no path segment */
-  return 'https://raw.githubusercontent.com/' + m[1] + '/' + repo + '/main/blocks';
+  return 'blocks';
 }
 
 const DELOAD_PHASE = { r: 'Descarga', t: 'Mitad de series, ~60% del peso. Nada duro. De eso se trata.' };
@@ -2515,7 +2577,7 @@ function drawApp() {
       rIn.placeholder = '—';
       wIn.setAttribute('aria-label', 'Peso, serie ' + (si + 1) + ' de ' + ex.n);
       rIn.setAttribute('aria-label', 'Repeticiones, serie ' + (si + 1) + ' de ' + ex.n);
-      wIn.oninput = e => { r.w = e.target.value.replace(/[^0-9.,]/g, ''); if (r.w !== e.target.value) e.target.value = r.w; save(); };
+      wIn.oninput = e => { r.w = e.target.value.replace(/[^0-9.,]/g, ''); if (r.w !== e.target.value) e.target.value = r.w; stampRowUnit(r); save(); };
       rIn.oninput = e => { r.r = e.target.value.replace(/[^0-9]/g, ''); if (r.r !== e.target.value) e.target.value = r.r; save(); };
 
       const tick = row.querySelector('.tick');
@@ -2526,7 +2588,7 @@ function drawApp() {
           /* Ticking a set whose weight box is still empty takes the greyed
              number showing in it — last week's weight for this same set. It
              is the common case, but it is also a guess, so it says so. */
-          if ((r.w === '' || r.w == null) && hint) { r.w = hint; adopted = hint; }
+          if ((r.w === '' || r.w == null) && hint) { r.w = hint; adopted = hint; stampRowUnit(r); }
           r.ts = Date.now();
         }
         r.done = !r.done;
@@ -2579,7 +2641,7 @@ function drawApp() {
         const where = 'bajada ' + (di + 1) + ', serie ' + (si + 1) + ' de ' + ex.n;
         dwIn.setAttribute('aria-label', 'Peso tras bajar, ' + where);
         drIn.setAttribute('aria-label', 'Repeticiones tras bajar, ' + where);
-        dwIn.oninput = e => { d.w = e.target.value.replace(/[^0-9.,]/g, ''); if (d.w !== e.target.value) e.target.value = d.w; save(); };
+        dwIn.oninput = e => { d.w = e.target.value.replace(/[^0-9.,]/g, ''); if (d.w !== e.target.value) e.target.value = d.w; stampRowUnit(r); save(); };
         drIn.oninput = e => { d.r = e.target.value.replace(/[^0-9]/g, ''); if (d.r !== e.target.value) e.target.value = d.r; save(); };
 
         const del = dRow.querySelector('.drop-x');
@@ -2786,6 +2848,7 @@ $('copyPrev').onclick = () => {
       if (r.done) return;
       const w = (from[i] || from[from.length - 1] || {}).w || '';
       r.w = moved != null ? String(moved) : w;
+      stampRowUnit(r);
     });
   });
   save(); render();
@@ -3511,12 +3574,18 @@ function warmupRamp(target, step, floor) {
    exact fit (e.g. a gap smaller than the smallest plate) — the remainder is
    reported rather than hidden, so a breakdown that doesn't add up is never
    shown as if it did. */
+/* Belt-and-braces alongside the PLATE_MIN/MAX clamp in migrate(): a plate
+   set never reaches here except through state.prefs, but nothing about this
+   function itself guarantees that, so a stray near-zero value stops the loop
+   on a hard cap rather than trusting the caller. */
+const FIT_PLATES_MAX = 200;
+
 function fitPlates(perSide, plateSet) {
   const sorted = (plateSet || []).filter(p => p > 0).sort((a, b) => b - a);
   let remaining = Math.max(0, perSide);
   const used = [];
   sorted.forEach(p => {
-    while (remaining - p > -1e-6) { used.push(p); remaining -= p; }
+    while (remaining - p > -1e-6 && used.length < FIT_PLATES_MAX) { used.push(p); remaining -= p; }
   });
   remaining = Math.round(remaining * 100) / 100;
   return { plates: used, remainder: remaining > 0.01 ? remaining : 0 };
@@ -3653,7 +3722,12 @@ function volumeRows(totals) {
    current length are left out for the same reason the session view hides
    them — the "series en semanas por encima" notice is what speaks for
    those. */
-function blockTonnageByWeek(profile, block) {
+/* `volumeOf` defaults to setVolume (raw, unconverted — the session view's
+   own definition), but the block review passes a unit-converting one of
+   its own: see reviewSetVolume in review.js and the comment by rowWeight,
+   above, for why the two must stay separate functions. */
+function blockTonnageByWeek(profile, block, volumeOf) {
+  const vol = volumeOf || setVolume;
   const weeks = blockWeeks(block);
   const out = new Array(weeks).fill(0);
   const blk = profile.log[block.id] || {};
@@ -3665,7 +3739,7 @@ function blockTonnageByWeek(profile, block) {
     const s = blk[k] || {};
     Object.keys(s).forEach(exId => {
       const rows = s[exId];
-      if (Array.isArray(rows)) out[w - 1] += rows.reduce((t, r) => t + setVolume(r), 0);
+      if (Array.isArray(rows)) out[w - 1] += rows.reduce((t, r) => t + vol(r), 0);
     });
   });
   return out;
@@ -4286,11 +4360,35 @@ async function qrDeflate(bytes) {
   } catch (e) { return null; }
 }
 
+/* Compressed input is already bounded to ~16 KB (QR_MAX_FRAMES × QR_CHUNK),
+   so deflate's ~1000x worst case tops out a few MB, not unbounded — but this
+   is camera input pointed at a screen someone else controls, and reading the
+   whole decompressed stream into memory before any shape check is still the
+   wrong shape for that. Read it in chunks against a budget several times
+   past any real profile instead. */
+const QR_INFLATE_MAX_BYTES = 8 * 1024 * 1024;
+
 async function qrInflate(bytes) {
   const ds = new DecompressionStream('deflate-raw');
   const w = ds.writable.getWriter();
   w.write(bytes); w.close();
-  return new Uint8Array(await new Response(ds.readable).arrayBuffer());
+  const reader = ds.readable.getReader();
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > QR_INFLATE_MAX_BYTES) {
+      reader.cancel();
+      throw new Error('El código trae más datos de los que la app admite.');
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  chunks.forEach(c => { out.set(c, offset); offset += c.length; });
+  return out;
 }
 
 /* ---- frames ----
