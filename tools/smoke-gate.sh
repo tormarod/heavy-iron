@@ -26,10 +26,12 @@
 # plans/, the README, a workflow — is not worth four minutes of Chromium, so
 # the gate first diffs the branch against the base and returns at once when
 # none of the files below changed. The list is what the two suites actually
-# load or read: the shell, the worker, the published blocks, the tests, and
-# this script. It is deliberately wider than CI's cache-version rule
-# (index.html, css/, js/), because the smoke suite also exercises sw.js and
-# imports from blocks/.
+# load or read: the shell, the worker, the published blocks and the tests.
+# It is deliberately wider than CI's cache-version rule (index.html, css/,
+# js/), because the smoke suite also exercises sw.js and imports from
+# blocks/. This script is not on the list: a change to how the gate decides
+# is not something running the suite can check, and a syntax error in it
+# fails the hook on its own. Use SMOKE_GATE_FORCE=1 to run it in full anyway.
 #
 # Environment:
 #   SMOKE_GATE_BASE     the ref the branch is compared against; defaults to
@@ -77,7 +79,7 @@ fi
 
 PLAYWRIGHT_VERSION="${PLAYWRIGHT_VERSION:-1.56.1}"
 SMOKE_GATE_BASE="${SMOKE_GATE_BASE:-origin/main}"
-TESTED_PATHS='^(index\.html|css/|js/|sw\.js|manifest\.webmanifest|blocks/|test/|tools/smoke-gate\.sh)'
+TESTED_PATHS='^(index\.html|css/|js/|sw\.js|manifest\.webmanifest|blocks/|test/)'
 SERVER_PID=""
 
 fail() { echo "smoke-gate: $*" >&2; exit 2; }
