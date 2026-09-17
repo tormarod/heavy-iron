@@ -9,8 +9,11 @@
 # CI could not was invisible from a headless unit test anyway. So it runs
 # here instead — wired as a Claude Code PreToolUse hook in
 # .claude/settings.json that fires when a pull request is about to be
-# created, and blocks the PR if anything fails. It is also fine to run by
-# hand before pushing.
+# created, and blocks the PR if anything fails. The hook's `if` filter is
+# best-effort (a Bash command Claude Code cannot parse into subcommands runs
+# the hook anyway), so the gate also reads the tool call off stdin and skips
+# anything that is not a PR being opened. It is also fine to run by hand
+# before pushing.
 #
 # What it does, in order: syntax-check every script, run test/unit.js,
 # install Playwright + Chromium if they are missing (pinned to the version
@@ -41,6 +44,37 @@ set -u
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT" || exit 2
 
+command -v node >/dev/null 2>&1 || { echo "smoke-gate: node is not installed" >&2; exit 2; }
+
+# As a hook, the tool call arrives as JSON on stdin. The `if` filter in
+# .claude/settings.json is supposed to keep the Bash entry to `gh pr create`,
+# but it has fired on an unrelated Bash command — a long heredoc editing the
+# tests — and, with the unit suite mid-edit, blocked that edit with
+# "test/unit.js failed". So the gate reads the call itself and returns at
+# once unless a pull request is really being opened. No stdin, or stdin that
+# is not hook JSON, means someone ran it by hand: run in full.
+if [ ! -t 0 ]; then
+  verdict="$(node -e '
+    let s = "";
+    process.stdin.on("data", d => { s += d; }).on("end", () => {
+      let call;
+      try { call = JSON.parse(s); } catch (e) { return; }   // not a hook: run
+      const tool = String(call.tool_name || "");
+      if (/^mcp__.*create_pull_request$/.test(tool)) return;
+      if (tool === "Bash") {
+        const cmd = String((call.tool_input && call.tool_input.command) || "");
+        if (/(^|[;&|(]|\n)\s*gh\s+pr\s+create\b/.test(cmd)) return;
+        console.log("a Bash call that is not `gh pr create`");
+        return;
+      }
+      console.log("a " + tool + " call");
+    });')"
+  if [ -n "$verdict" ]; then
+    echo "smoke-gate: hook fired on $verdict — not a pull request being opened, skipping"
+    exit 0
+  fi
+fi
+
 PLAYWRIGHT_VERSION="${PLAYWRIGHT_VERSION:-1.56.1}"
 SMOKE_GATE_BASE="${SMOKE_GATE_BASE:-origin/main}"
 TESTED_PATHS='^(index\.html|css/|js/|sw\.js|manifest\.webmanifest|blocks/|test/|tools/smoke-gate\.sh)'
@@ -49,8 +83,6 @@ SERVER_PID=""
 fail() { echo "smoke-gate: $*" >&2; exit 2; }
 cleanup() { if [ -n "$SERVER_PID" ]; then kill "$SERVER_PID" 2>/dev/null; wait "$SERVER_PID" 2>/dev/null; fi; }
 trap cleanup EXIT
-
-command -v node >/dev/null 2>&1 || fail "node is not installed"
 
 if [ "${SMOKE_GATE_FORCE:-}" != "1" ] && git rev-parse --verify --quiet "$SMOKE_GATE_BASE^{commit}" >/dev/null; then
   # Committed changes since the branch left the base, plus anything still
