@@ -1517,15 +1517,17 @@ const ok = (name, cond, extra) => {
        m.line === '↗ objetivo: 15 kg × 12', JSON.stringify(m));
 
     /* Every set at its own weight: the heaviest breaks the tie, which is
-       the top set, and it fell under the range. */
+       the top set, and it fell under the range. The reps are what the
+       floored weight predicts, a shade over the bottom, not the bottom
+       itself. */
     m = await mixed([['12', '14'], ['14', '11'], ['16', '9']], '');
     ok('with no repeated weight the heaviest set decides',
-       m.from === 16 && m.line === '↘ objetivo: 15 kg × 10', JSON.stringify(m));
+       m.from === 16 && m.line === '↘ objetivo: 15 kg × 12', JSON.stringify(m));
 
     /* Case 3 — the answer copyPrev could never give at all. */
     t = await target([12, 10, 9, 8], '0', 2);
     ok('sets under the bottom of the range mean the weight was too heavy',
-       t.kind === 'down' && t.line === '↘ objetivo: 28 kg × 10', JSON.stringify(t));
+       t.kind === 'down' && t.line === '↘ objetivo: 28 kg × 15/13/12/11', JSON.stringify(t));
 
     /* A deload prescribes no RIR to solve for, and is not a progression
        week in the first place. */
