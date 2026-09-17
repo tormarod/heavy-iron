@@ -387,7 +387,14 @@ For whoever owns this next:
   in three places: `deleteBlocks`, `purgeSessionMeta` (if slot-keyed) or
   `purgeRir` (if exercise-keyed), and the "borrar todo el registro" handler at
   `js/app.js:2673-2681`. Adding a map and forgetting one of those is exactly
-  how this bug happened.
+  how this bug happened. **Plan 008 item 3 added a fourth place, but only for
+  a map keyed by exercise id** (`log`, `rir`, and `order`, whose values are
+  arrays of exercise ids rather than an exId-keyed object): the plan editor's
+  "enviar a otra sesión" move, in `moveExKeyed` and its `moveExLog`/
+  `moveExRir` callers plus `moveExOrder` (all in `js/app.js`), called from
+  `peSave` in `js/block-editor.js`. `notes`/`energy` are keyed by session
+  only, not by exercise, so they stay with the day and need no move — do not
+  add one.
 - **What a reviewer should scrutinise**: that the RIR sweep in Step 2 runs
   *before* the `profile.log[blockId]` early return. That ordering is the
   non-obvious part of the fix — a block with chips but no sets is the case

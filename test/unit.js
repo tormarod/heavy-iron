@@ -257,6 +257,57 @@ ok('...with every exercise name intact', roundTrip.sameExerciseNames);
 ok('...and every exercise id intact', roundTrip.sameExerciseIds);
 ok('...and resolves to the same rendered accent', roundTrip.sameAccent);
 
+/* Plan 008 item 4's STOP condition, carried over from plan 004: the
+   normalizer must accept every backup the app itself has ever produced.
+   The round trip above only covers an untouched profile (empty log); this
+   one populates every parallel map through the app's own writers
+   (entry/setRir/setNoteText/setEnergy/setOrder) — the shape a real week of
+   training actually produces, now that item 4 runs log/rir through the
+   same per-row limits and RIR enum the QR path does — and checks nothing
+   in it is trimmed, re-keyed or dropped. Two different exercises on the
+   same day (not two days sharing an id — normalizeImportedBlock dedupes
+   ids across the whole block, a separate, pre-existing limitation noted in
+   plans/README.md, not something this item touches). */
+const populatedRoundTrip = call(`
+  (function() {
+    state = defaultState();
+    migrate();
+    const profile = state.profiles.hombre;
+    const block = profile.blocks[profile.blockOrder[0]];
+    const day = block.days[0];
+    const ex1 = day.ex[0], ex2 = day.ex[1];
+
+    for (let i = 0; i < ex1.sets; i++) {
+      const row = entry(profile, block.id, 1, day.id, ex1.id, ex1.sets)[i];
+      row.w = String(40 + i); row.r = String(10 - i); row.done = true;
+    }
+    const row2 = entry(profile, block.id, 1, day.id, ex2.id, ex2.sets)[0];
+    row2.w = '20'; row2.r = '12'; row2.done = true;
+    setRir(profile, block.id, 1, day.id, ex1.id, '1');
+    setNoteText(profile, block.id, 1, day.id, 'Buena sesión');
+    setEnergy(profile, block.id, 1, day.id, 'alta');
+    setOrder(profile, block.id, 1, day.id, [ex2.id, ex1.id].concat(day.ex.slice(2).map(e => e.id)));
+
+    const before = JSON.parse(JSON.stringify(profile));
+    const after = normalizeImportedProfile(JSON.parse(JSON.stringify(profile)));
+
+    return {
+      sameLog: JSON.stringify(after.log) === JSON.stringify(before.log),
+      sameRir: JSON.stringify(after.rir) === JSON.stringify(before.rir),
+      sameNotes: JSON.stringify(after.notes) === JSON.stringify(before.notes),
+      sameEnergy: JSON.stringify(after.energy) === JSON.stringify(before.energy),
+      sameOrder: JSON.stringify(after.order) === JSON.stringify(before.order),
+      beforeLog: JSON.stringify(before.log), afterLog: JSON.stringify(after.log),
+    };
+  })()
+`);
+ok('a real week of logged sets round-trips through normalizeImportedProfile unchanged',
+   populatedRoundTrip.sameLog, populatedRoundTrip.beforeLog + ' vs ' + populatedRoundTrip.afterLog);
+ok('...RIR chips too', populatedRoundTrip.sameRir, JSON.stringify(populatedRoundTrip));
+ok('...session notes too', populatedRoundTrip.sameNotes, JSON.stringify(populatedRoundTrip));
+ok('...energy too', populatedRoundTrip.sameEnergy, JSON.stringify(populatedRoundTrip));
+ok('...session order too', populatedRoundTrip.sameOrder, JSON.stringify(populatedRoundTrip));
+
 const validBlock = { name: 'B', weeks: 8, deload: 8, days: [{ name: 'D', ex: [{ n: 'Ex', sets: 3, reps: '10-15' }] }] };
 const tooManyBlocksProfile = { blocks: {}, blockOrder: [], log: {} };
 for (let i = 0; i < 41; i++) { tooManyBlocksProfile.blocks['b' + i] = validBlock; tooManyBlocksProfile.blockOrder.push('b' + i); }

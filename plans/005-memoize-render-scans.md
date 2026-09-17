@@ -425,6 +425,14 @@ For whoever owns this next:
   five arguments — `profile` is deliberately omitted because a render is
   always for one profile. If per-profile rendering is ever added, that key
   must gain a profile component.
+- **Extended by plan 008 item 2**: the same `__proto__`/`constructor` hazard
+  this plan fixed for the render cache also reaches the id-keyed storage
+  maps (`profile.log`, `rir`, `notes`, `energy`, `order`) — a scanned or
+  restored id, not a typed exercise name, but the identical sink. Item 2
+  adds a `safeKey()` deny-list at the id source (`migrate()`,
+  `normalizeImportedBlock`, `normalizeImportedProfile`) and gives `rowsFor`
+  its own `Object.create(null)` slot map as belt-and-braces, citing this
+  plan's precedent rather than repeating the reasoning.
 - **What this clears the ground for**: the bigger win is not rebuilding the
   entire list on every tick (`js/app.js:2177` does `list.innerHTML = ''`), and
   deleting the two focus workarounds that exist only because of it — the
