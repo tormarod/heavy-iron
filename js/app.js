@@ -289,7 +289,7 @@ function migrate() {
          and nothing has to be rewritten. */
       const usedDays = new Set();
       block.days.forEach((day, i) => {
-        let id = day.id;
+        let id = safeKey(day.id);
         if (!id || usedDays.has(id)) {
           id = 'd' + i;
           while (usedDays.has(id)) id = uid('d');
@@ -302,7 +302,7 @@ function migrate() {
         if (!day.ex.length) day.ex = [newExercise()];
         const usedEx = new Set();
         day.ex.forEach((ex, j) => {
-          let id2 = ex.id;
+          let id2 = safeKey(ex.id);
           if (!id2 || usedEx.has(id2)) { id2 = slugify(ex.n) || ('ex-' + i + '-' + j); while (usedEx.has(id2)) id2 = uid('ex'); }
           ex.id = id2;
           usedEx.add(id2);
@@ -1038,7 +1038,15 @@ function setsFor(ex, w, block) {
 function rowsFor(profile, blockId, w, dayId, exId) {
   if (!profile.log[blockId]) profile.log[blockId] = {};
   const k = slot(w, dayId);
-  if (!profile.log[blockId][k]) profile.log[blockId][k] = {};
+  /* Object.create(null) rather than {}: ids reach here from storage and
+     from imports, and safeKey is the fix for that (see migrate() and the
+     normalizeImported* functions) — this is the belt-and-braces the audit
+     that found the bug called for. A plain {} answers `['__proto__']` with
+     the real Object.prototype (truthy, not an array), so `entry()`'s
+     `.push` below throws straight to the recovery screen; a prototype-less
+     object has no such property to shadow the lookup with, so even an id
+     that slipped through unsanitized becomes a real own property here. */
+  if (!profile.log[blockId][k]) profile.log[blockId][k] = Object.create(null);
   if (!profile.log[blockId][k][exId]) profile.log[blockId][k][exId] = [];
   return profile.log[blockId][k][exId];
 }
@@ -1449,19 +1457,67 @@ function purgeRir(profile, blockId, dayId, exId) {
 }
 
 /* "Send to another session" in the plan editor: the exercise moves between
-   draft days right away, but its logged sets stay filed under the session
-   it was in until the draft is saved — this is what makes that filing
-   catch up, across every week the block could have. */
-function moveExLog(profile, blockId, fromDayId, toDayId, exId) {
-  const blk = profile.log[blockId];
+   draft days right away, but everything filed under the session it was in —
+   the log, the RIR chips (moveExRir) and the session order (moveExOrder,
+   below) — stays there until the draft is saved. This is what makes that
+   filing catch up, across every week the block could have.
+
+   Merges into the destination's existing entry for the id rather than
+   overwriting it: a block can carry the same exercise id on two days by
+   design (see migrate()'s day/exercise-id repair), so the destination can
+   already have its own rows for this id, and blindly assigning would erase
+   them. An array (a day's logged rows) is concatenated; anything else (an
+   RIR chip) is left alone if the destination already has one, since there
+   is no way to merge two single values without picking a side. Either way
+   nothing is ever destroyed by calling this — including calling it twice,
+   which peSave cannot do today but a future bug easily could. */
+function moveExKeyed(map, blockId, fromDayId, toDayId, exId) {
+  const blk = map[blockId];
   if (!blk) return;
   for (let w = 1; w <= MAX_WEEKS; w++) {
-    const from = blk[slot(w, fromDayId)];
-    if (!from || !from[exId]) continue;
+    const fromKey = slot(w, fromDayId);
+    const from = blk[fromKey];
+    if (!from || from[exId] === undefined) continue;
     const toKey = slot(w, toDayId);
     if (!blk[toKey]) blk[toKey] = {};
-    blk[toKey][exId] = from[exId];
+    const dest = blk[toKey];
+    if (Array.isArray(from[exId])) {
+      dest[exId] = dest[exId] ? dest[exId].concat(from[exId]) : from[exId];
+    } else if (dest[exId] === undefined) {
+      dest[exId] = from[exId];
+    }
     delete from[exId];
+    if (!Object.keys(from).length) delete blk[fromKey];
+  }
+}
+
+function moveExLog(profile, blockId, fromDayId, toDayId, exId) {
+  moveExKeyed(profile.log, blockId, fromDayId, toDayId, exId);
+}
+
+function moveExRir(profile, blockId, fromDayId, toDayId, exId) {
+  moveExKeyed(profile.rir, blockId, fromDayId, toDayId, exId);
+}
+
+/* Order arrays are a permutation of a day's exercises, not a map keyed by
+   exercise id like log/rir are, so they need their own move: drop the id
+   from the source day's recorded order (if it had one) and append it to
+   the destination's (if it has one). A day with no recorded order keeps
+   meaning "the plan's order", which already includes the exercise wherever
+   it now sits in the plan, so there is nothing to add there. */
+function moveExOrder(profile, blockId, fromDayId, toDayId, exId) {
+  const blk = profile.order[blockId];
+  if (!blk) return;
+  for (let w = 1; w <= MAX_WEEKS; w++) {
+    const fromKey = slot(w, fromDayId), toKey = slot(w, toDayId);
+    const fromIds = blk[fromKey];
+    if (Array.isArray(fromIds)) {
+      const i = fromIds.indexOf(exId);
+      if (i >= 0) fromIds.splice(i, 1);
+      if (!fromIds.length) delete blk[fromKey];
+    }
+    const toIds = blk[toKey];
+    if (Array.isArray(toIds) && toIds.indexOf(exId) < 0) toIds.push(exId);
   }
 }
 
@@ -2074,6 +2130,23 @@ const IMPORT_LIMITS = { days: 14, ex: 40, name: 80, exName: 120, alt: 200, cue: 
 
 function txt(v, max) {
   return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+/* `__proto__`, `constructor` and `prototype` are ordinary strings everywhere
+   except as a key into a fresh `{}`: `log['__proto__'] = x` sets the
+   prototype instead of adding an own property, so a later `log[k][exId]`
+   read (rowsFor, js/app.js) finds `Object.prototype` — truthy, not an
+   array — and the next `.push` on it throws, straight to the recovery
+   screen. `Object.prototype.hasOwnProperty.call({}, s)` is not a fix on its
+   own: a plain `{}` owns none of these names either, hasOwnProperty says
+   so, and the walk up the chain happens anyway. A fixed deny-list is what
+   the reference implementation below (normalizeImportedBlock) and every
+   other id read from storage or an import checks ids against; returns ''
+   for a blocked id so the caller's existing "fall back to a generated one"
+   path handles it for free. */
+const UNSAFE_KEYS = ['__proto__', 'constructor', 'prototype'];
+function safeKey(id) {
+  return UNSAFE_KEYS.indexOf(id) >= 0 ? '' : id;
 }
 
 /* ---------- nav ---------- */
@@ -4139,6 +4212,16 @@ const QR_FRAME_MS = 500;
 /* Rows arrive from a camera, so they get the same treatment as any other
    imported data: bounded, coerced, never trusted for length or type. */
 const LOG_LIMITS = { rows: 24, val: 12, slots: MAX_WEEKS * IMPORT_LIMITS.days };
+/* A single exercise logging LOG_LIMITS.rows (24) sets in one session is
+   already more than a real workout has; two orders of magnitude past that
+   is not a long session, it is a row array padded to make every consumer
+   that walks the whole array — the CSV export, the volume dashboard's
+   Math.max spreads, countProfileSets — hang the tab the first time it
+   opens. Rejected outright rather than silently sliced to LOG_LIMITS.rows,
+   the same call ex.add makes in normalizeImportedBlock: a backup this far
+   off is not a backup with a little extra padding, and truncating it would
+   restore silently instead of saying so. */
+const LOG_ROW_HARD_CAP = LOG_LIMITS.rows * 100;
 
 /* ---- checksum ----
    QR carries Reed–Solomon error correction of its own: a frame that decodes
@@ -4507,6 +4590,9 @@ function normalizeImportedLog(rawLog, rawBlock, normalized) {
     Object.keys(slotLog).forEach(rawExId => {
       const exId = exMap[rawExId];
       if (!exId || !Array.isArray(slotLog[rawExId])) return;
+      if (slotLog[rawExId].length > LOG_ROW_HARD_CAP) {
+        throw new Error('trae ' + slotLog[rawExId].length + ' series para un solo ejercicio en una sesión — demasiadas para ser un registro real.');
+      }
       const rows = slotLog[rawExId].slice(0, LOG_LIMITS.rows).map(r => {
         if (!r || typeof r !== 'object' || Array.isArray(r)) return { w: '', r: '', done: false };
         const row = { w: txt(r.w, LOG_LIMITS.val), r: txt(r.r, LOG_LIMITS.val), done: !!r.done };

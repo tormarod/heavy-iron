@@ -55,6 +55,23 @@ function describeProfileProblem(p, pk) {
    app itself could have written. */
 const PROFILE_LIMITS = { blocks: 40 };
 
+/* True only when `o` OWNS `k` as a property, never when it merely inherits
+   one. A plain {} answers a bracket read of '__proto__' with the real
+   Object.prototype (truthy — see safeKey, js/app.js) unless it happens to
+   own that exact key itself, which is exactly what a JSON.parse'd '__proto__'
+   block id does (JSON.parse defines it as a normal own property, unlike the
+   `{ __proto__: x }` literal syntax, which sets the actual prototype
+   instead). Every lookup below that indexes a plain object by a raw,
+   unsanitized block id goes through this first — a naive `obj[k]` truthy
+   check would treat that inherited Object.prototype as "found", and the
+   assignment it leads to would then create a NEW property under a key that
+   isn't there yet, which for '__proto__' specifically means the plain
+   `obj[k] = v` that follows call the inherited setter and change the
+   receiver's actual prototype instead of adding a property to it. */
+function ownGet(o, k) {
+  return o && Object.prototype.hasOwnProperty.call(o, k) ? o[k] : undefined;
+}
+
 function normalizeImportedProfile(p) {
   const rawIds = Object.keys(p.blocks);
   if (rawIds.length > PROFILE_LIMITS.blocks) {
@@ -62,6 +79,22 @@ function normalizeImportedProfile(p) {
   }
 
   const blocks = {};
+  /* raw block key -> the key it actually lands on. Almost always itself —
+     block ids are ordinary strings — but `__proto__`/`constructor`/
+     `prototype` would set the prototype of the plain {} above instead of
+     adding a property (see safeKey, js/app.js, and plans/008 item 2), so a
+     key like that gets a fresh id here. Every other block-id-keyed thing
+     below (log/rir/notes/energy/order, blockOrder, activeBlock) has to
+     follow the same rename, or the block comes back with everything except
+     its own history.
+
+     A Map, not a plain object: the raw key is exactly the untrusted string
+     this whole function exists to defend against, and `plainObj[bk] = id`
+     has the identical bracket-assignment hazard ownGet's comment describes
+     — a `keyMap = {}` here reintroduces the bug one line below the fix for
+     it. Map.prototype.get/set never consult a prototype chain, so any
+     string is just a key. */
+  const keyMap = new Map();
   rawIds.forEach(bk => {
     const raw = p.blocks[bk];
     let normalized;
@@ -70,40 +103,101 @@ function normalizeImportedProfile(p) {
     } catch (e) {
       throw new Error('el bloque "' + (raw && raw.name || bk) + '": ' + e.message);
     }
+    let id = safeKey(bk) || uid('block');
+    while (blocks[id]) id = uid('block');
+    keyMap.set(bk, id);
     /* Not part of normalizeImportedBlock's own return — it has no concept
        of the key it will be filed under. blockId is the profile.blocks key
        everywhere else in the app (log/rir/notes/energy/order are all keyed
        by it too), so that is the id kept here, not whatever raw.id says. */
-    normalized.id = bk;
+    normalized.id = id;
     normalized.createdAt = (raw && raw.createdAt) || new Date().toISOString();
-    blocks[bk] = normalized;
+    blocks[id] = normalized;
+
+    /* The QR "blocklog" path already runs every row through the same
+       per-row limits and RIR enum (LOG_LIMITS / normalizeImportedLog /
+       normalizeImportedRir, js/app.js) before trusting them; a restored
+       backup or a loaded profile file is exactly as untrusted as a scanned
+       block and used to skip this entirely (plans/008, item 4) — an
+       oversized or hand-repaired row array restored without complaint, and
+       the first tap on the volume dashboard or the CSV export hung the
+       tab. Re-keyed the same way a QR transfer is, in case
+       normalizeImportedBlock above renamed an id this profile's log still
+       refers to by its old name (a duplicate, or a blocked key like
+       `__proto__`). ownGet, not a naive `p.log[bk]`: see its own comment. */
+    const rawLog = ownGet(p.log, bk);
+    if (rawLog) {
+      try {
+        p.log[bk] = normalizeImportedLog(rawLog, raw, normalized);
+      } catch (e) {
+        throw new Error('el registro del bloque "' + normalized.name + '" ' + e.message);
+      }
+    }
+    const rawRir = ownGet(p.rir, bk);
+    if (rawRir) p.rir[bk] = normalizeImportedRir(rawRir, raw, normalized);
+
+    /* Notes and energy carry no such re-keying (they are per-session, not
+       per-exercise, so no id map applies) but were never capped or
+       validated against their own limits on this path either — only
+       migrate()'s generic "is it an object" check ran. */
+    const rawNotes = ownGet(p.notes, bk);
+    if (rawNotes && typeof rawNotes === 'object' && !Array.isArray(rawNotes)) {
+      const out = {};
+      Object.keys(rawNotes).slice(0, LOG_LIMITS.slots).forEach(k => {
+        const t = txt(rawNotes[k], NOTE_LIMIT);
+        if (t) out[k] = t;
+      });
+      p.notes[bk] = out;
+    } else if (p.notes) {
+      delete p.notes[bk];
+    }
+    const rawEnergy = ownGet(p.energy, bk);
+    if (rawEnergy && typeof rawEnergy === 'object' && !Array.isArray(rawEnergy)) {
+      const out = {};
+      Object.keys(rawEnergy).slice(0, LOG_LIMITS.slots).forEach(k => {
+        if (ENERGY_OPTIONS.indexOf(rawEnergy[k]) >= 0) out[k] = rawEnergy[k];
+      });
+      p.energy[bk] = out;
+    } else if (p.energy) {
+      delete p.energy[bk];
+    }
   });
   p.blocks = blocks;
+
+  /* Whatever a block-id-keyed map points at has to still exist under its
+     (possibly renamed) key: an entry left behind for a block that got
+     rejected, renumbered or renamed above is an orphan by construction, the
+     same invariant deleteBlocks maintains on purpose (see
+     plans/002-purge-parallel-maps.md). Rebuilding under the mapped key does
+     both the rename and the orphan drop in one pass. `out[id] = …` is safe
+     even though `bk` is not: `id` only ever comes from keyMap, which never
+     hands back one of the three blocked names (see safeKey). */
+  ['log', 'rir', 'notes', 'energy', 'order'].forEach(key => {
+    const map = p[key];
+    if (!map || typeof map !== 'object') return;
+    const out = {};
+    Object.keys(map).forEach(bk => {
+      const id = keyMap.get(bk);
+      if (id && blocks[id]) out[id] = map[bk];
+    });
+    p[key] = out;
+  });
 
   /* Same dedupe-and-append shape migrate() uses on blockOrder: keep the
      order the file gave, once per id, drop anything that didn't survive
      normalization, then file in any block the order was missing. */
   const rawOrder = Array.isArray(p.blockOrder) ? p.blockOrder : rawIds;
   const seen = new Set();
-  const order = rawOrder.filter(id => blocks[id] && !seen.has(id) && seen.add(id));
-  rawIds.forEach(id => { if (blocks[id] && order.indexOf(id) < 0) order.push(id); });
+  const order = rawOrder.map(bk => keyMap.get(bk)).filter(id => id && blocks[id] && !seen.has(id) && seen.add(id));
+  rawIds.forEach(bk => { const id = keyMap.get(bk); if (id && order.indexOf(id) < 0) order.push(id); });
   p.blockOrder = order;
-  if (!blocks[p.activeBlock]) p.activeBlock = order[order.length - 1];
+  const activeId = keyMap.get(p.activeBlock);
+  p.activeBlock = (activeId && blocks[activeId]) ? activeId : order[order.length - 1];
 
   p.label = txt(p.label, 80);
   /* accentOf already encodes "in ACCENTS, or a known legacy value, or the
      default" — the same rule migrate() applies to a stored profile's theme. */
   p.theme = accentOf(p);
-
-  /* Whatever a block-id-keyed map points at has to still exist: an entry
-     left behind for a block that got rejected or renumbered above is an
-     orphan by construction, the same invariant deleteBlocks maintains on
-     purpose (see plans/002-purge-parallel-maps.md). */
-  ['log', 'rir', 'notes', 'energy', 'order'].forEach(key => {
-    const map = p[key];
-    if (!map || typeof map !== 'object') return;
-    Object.keys(map).forEach(id => { if (!blocks[id]) delete map[id]; });
-  });
 
   return p;
 }

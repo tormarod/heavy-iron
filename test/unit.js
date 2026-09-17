@@ -457,5 +457,232 @@ ok('and a reset prices the added set too', e.note === 'reset' && e.reps === '15/
 e = estimate([[15, 15, 15, 15]], { rir: ['2+'], add: 2 });
 ok('a jump prices one number for every set and does not extend', e.kind === 'up' && e.reps === '12', JSON.stringify(e));
 
+console.log('\n== __proto__ / constructor / prototype ids are never trusted as keys (plans/008 item 2) ==');
+ok('safeKey blocks __proto__', call("safeKey('__proto__')") === '');
+ok('safeKey blocks constructor', call("safeKey('constructor')") === '');
+ok('safeKey blocks prototype', call("safeKey('prototype')") === '');
+ok('safeKey leaves an ordinary id alone', call("safeKey('squat')") === 'squat');
+
+const protoExBlock = Object.assign({}, minimalBlock, {
+  days: [{ name: 'Día 1', ex: [{ id: '__proto__', n: 'Ex', sets: 3, reps: '10-15' }] }],
+});
+ok('an exercise id of "__proto__" is never kept as the exercise\'s own id',
+   call('normalizeImportedBlock(' + JSON.stringify(protoExBlock) + ').days[0].ex[0].id') !== '__proto__');
+
+const protoDayBlock = Object.assign({}, minimalBlock, {
+  days: [{ id: '__proto__', name: 'Día 1', ex: [{ n: 'Ex', sets: 3, reps: '10-15' }] }],
+});
+ok('a day id of "__proto__" is never kept as the day\'s own id',
+   call('normalizeImportedBlock(' + JSON.stringify(protoDayBlock) + ').days[0].id') !== '__proto__');
+
+const rowsForProbe = call(`
+  (function() {
+    const profile = { log: {} };
+    const rows = rowsFor(profile, 'b1', 1, 'd0', '__proto__');
+    return { isArray: Array.isArray(rows), length: rows.length };
+  })()
+`);
+ok('rowsFor hands back a real (empty) array for a "__proto__" exercise id, not Object.prototype',
+   rowsForProbe.isArray && rowsForProbe.length === 0, JSON.stringify(rowsForProbe));
+
+/* Built via JSON.parse inside the sandbox rather than an object literal out
+   here: `{ '__proto__': x }` as literal syntax sets the prototype instead
+   of creating an own property, which would test nothing — the exact case
+   this guards against is JSON.parse (CreateDataProperty, a real own
+   property either way), which is how every one of these ids actually
+   arrives, from a file or a QR scan. */
+const protoBlockKeyJson = JSON.stringify({ blocks: { PLACEHOLDER: validBlock }, blockOrder: ['PLACEHOLDER'], log: {} })
+  .replace(/PLACEHOLDER/g, '__proto__');
+const protoKeyProbe = call(`
+  (function() {
+    const raw = JSON.parse(${JSON.stringify(protoBlockKeyJson)});
+    const normalized = normalizeImportedProfile(raw);
+    const keys = Object.keys(normalized.blocks);
+    return {
+      noProtoBlockKey: keys.indexOf('__proto__') < 0,
+      onePlainBlock: keys.length === 1,
+      orderMatchesTheRenamedKey: normalized.blockOrder.length === 1 && normalized.blockOrder[0] === keys[0],
+      activeIsTheRenamedKey: normalized.activeBlock === keys[0],
+    };
+  })()
+`);
+ok('a block keyed "__proto__" in a restored profile is renamed rather than setting Object.prototype',
+   protoKeyProbe.noProtoBlockKey && protoKeyProbe.onePlainBlock, JSON.stringify(protoKeyProbe));
+ok('...and blockOrder/activeBlock follow the rename',
+   protoKeyProbe.orderMatchesTheRenamedKey && protoKeyProbe.activeIsTheRenamedKey, JSON.stringify(protoKeyProbe));
+ok('Object.prototype itself is never touched by any of the above', Object.getPrototypeOf({}) === Object.prototype);
+
+console.log('\n== normalizeImportedLog / normalizeImportedRir (plans/008 item 4) ==');
+const logProbe = call(`
+  (function() {
+    const rawBlock = { name: 'B', weeks: 8, deload: 0, days: [{ id: 'd0', name: 'D', ex: [{ id: 'e1', n: 'Ex', sets: 3, reps: '10-15' }] }] };
+    const normalized = normalizeImportedBlock(rawBlock);
+    const dayId = normalized.days[0].id, exId = normalized.days[0].ex[0].id;
+
+    const goodLog = {};
+    goodLog['w1-' + dayId] = {};
+    goodLog['w1-' + dayId][exId] = [{ w: '50', r: '10', done: true }];
+    const outLog = normalizeImportedLog(goodLog, rawBlock, normalized);
+    const roundTripOk = !!(outLog['w1-' + dayId] && outLog['w1-' + dayId][exId] && outLog['w1-' + dayId][exId][0].w === '50');
+
+    const hugeLog = {};
+    hugeLog['w1-' + dayId] = {};
+    hugeLog['w1-' + dayId][exId] = new Array(LOG_ROW_HARD_CAP + 1).fill({ w: '1', r: '1', done: false });
+    let threw = false;
+    try { normalizeImportedLog(hugeLog, rawBlock, normalized); } catch (e) { threw = true; }
+
+    const goodRir = {};
+    goodRir['w1-' + dayId] = {};
+    goodRir['w1-' + dayId][exId] = '1';
+    const outRir = normalizeImportedRir(goodRir, rawBlock, normalized);
+    const rirOk = !!(outRir['w1-' + dayId] && outRir['w1-' + dayId][exId] === '1');
+
+    const badRir = {};
+    badRir['w1-' + dayId] = {};
+    badRir['w1-' + dayId][exId] = 'not-a-real-rir';
+    const outBadRir = normalizeImportedRir(badRir, rawBlock, normalized);
+    const badRirDropped = !outBadRir['w1-' + dayId];
+
+    return { roundTripOk, threwOnHugeRows: threw, rirOk, badRirDropped };
+  })()
+`);
+ok('normalizeImportedLog keeps a well-formed row', logProbe.roundTripOk, JSON.stringify(logProbe));
+ok('normalizeImportedLog rejects a row array past LOG_ROW_HARD_CAP rather than silently truncating it',
+   logProbe.threwOnHugeRows, JSON.stringify(logProbe));
+ok('normalizeImportedRir keeps a value in RIR_OPTIONS', logProbe.rirOk, JSON.stringify(logProbe));
+ok('normalizeImportedRir drops a value outside RIR_OPTIONS', logProbe.badRirDropped, JSON.stringify(logProbe));
+
+console.log('\n== normalizeImportedProfile: a restore runs the same per-row limits QR already had (plans/008 item 4) ==');
+const restoreProbe = call(`
+  (function() {
+    const block = { name: 'B', weeks: 8, deload: 0, days: [{ id: 'd0', name: 'D', ex: [{ id: 'e1', n: 'Ex', sets: 3, reps: '10-15' }] }] };
+
+    const hugeProfile = {
+      blocks: { b1: JSON.parse(JSON.stringify(block)) }, blockOrder: ['b1'], activeBlock: 'b1',
+      log: { b1: { 'w1-d0': { e1: new Array(LOG_ROW_HARD_CAP + 1).fill({ w: '1', r: '1', done: false }) } } },
+    };
+    let threw = false, message = '';
+    try { normalizeImportedProfile(hugeProfile); } catch (e) { threw = true; message = e.message; }
+
+    const badRirProfile = {
+      blocks: { b1: JSON.parse(JSON.stringify(block)) }, blockOrder: ['b1'], activeBlock: 'b1',
+      rir: { b1: { 'w1-d0': { e1: 'nope' } } },
+    };
+    const normalizedRirProfile = normalizeImportedProfile(badRirProfile);
+    const rirDropped = !normalizedRirProfile.rir.b1 || !normalizedRirProfile.rir.b1['w1-d0'];
+
+    const notesEnergyProfile = {
+      blocks: { b1: JSON.parse(JSON.stringify(block)) }, blockOrder: ['b1'], activeBlock: 'b1',
+      notes: { b1: { 'w1-d0': 'x'.repeat(400) } },
+      energy: { b1: { 'w1-d0': 'not-a-real-level' } },
+    };
+    const normalizedNE = normalizeImportedProfile(notesEnergyProfile);
+
+    return {
+      threwOnHugeRows: threw, message,
+      rirDropped,
+      noteCapped: normalizedNE.notes.b1['w1-d0'].length === NOTE_LIMIT,
+      badEnergyDropped: !normalizedNE.energy.b1 || !normalizedNE.energy.b1['w1-d0'],
+    };
+  })()
+`);
+ok('restoring a profile with a row array past LOG_ROW_HARD_CAP is rejected, not silently restored',
+   restoreProbe.threwOnHugeRows, JSON.stringify(restoreProbe));
+ok('...and the message names the block', restoreProbe.message.indexOf('"B"') >= 0, restoreProbe.message);
+ok('restoring a profile drops a RIR value outside RIR_OPTIONS', restoreProbe.rirDropped, JSON.stringify(restoreProbe));
+ok('restoring a profile caps a note to NOTE_LIMIT', restoreProbe.noteCapped, JSON.stringify(restoreProbe));
+ok('restoring a profile drops an energy value outside ENERGY_OPTIONS', restoreProbe.badEnergyDropped, JSON.stringify(restoreProbe));
+
+console.log('\n== moveExLog / moveExRir / moveExOrder merge rather than overwrite (plans/008 items 1, 3) ==');
+const moveProbe = call(`
+  (function() {
+    const profile = {
+      log: { B: {
+        'w1-d0': { e1: [{ w: '50', r: '10', done: true }] },
+        'w1-d1': { e1: [{ w: '60', r: '8', done: true }] },
+      } },
+      rir: { B: { 'w1-d0': { e1: '1' }, 'w1-d1': { e1: '0' } } },
+      order: { B: { 'w1-d0': ['e1', 'e2'], 'w1-d1': ['e3'] } },
+    };
+    moveExLog(profile, 'B', 'd1', 'd0', 'e1');
+    const mergedRows = profile.log.B['w1-d0'].e1;
+    const sourceLogGone = !profile.log.B['w1-d1'] || !profile.log.B['w1-d1'].e1;
+
+    moveExRir(profile, 'B', 'd1', 'd0', 'e1');
+    const rirKeptTheDestinations = profile.rir.B['w1-d0'].e1 === '1';
+
+    moveExOrder(profile, 'B', 'd1', 'd0', 'e1');
+    const orderRemoved = profile.order.B['w1-d1'].indexOf('e1') < 0;
+    const orderAdded = profile.order.B['w1-d0'].indexOf('e1') >= 0;
+
+    /* Calling it again must be a no-op, not a second overwrite — the
+       source has nothing left under this id after the first move. */
+    moveExLog(profile, 'B', 'd1', 'd0', 'e1');
+    const stillBothRows = profile.log.B['w1-d0'].e1.length === 2;
+
+    return { mergedRows: JSON.stringify(mergedRows), sourceLogGone, rirKeptTheDestinations, orderRemoved, orderAdded, stillBothRows };
+  })()
+`);
+ok('moveExLog concatenates the destination day\'s own rows with the moved ones, in order',
+   JSON.parse(moveProbe.mergedRows).length === 2 &&
+   JSON.parse(moveProbe.mergedRows)[0].w === '50' && JSON.parse(moveProbe.mergedRows)[1].w === '60',
+   moveProbe.mergedRows);
+ok('...and empties the source rather than leaving a stale copy', moveProbe.sourceLogGone, JSON.stringify(moveProbe));
+ok('moveExRir never overwrites an RIR chip the destination already has',
+   moveProbe.rirKeptTheDestinations, JSON.stringify(moveProbe));
+ok('moveExOrder drops the id from the source day\'s recorded order', moveProbe.orderRemoved, JSON.stringify(moveProbe));
+ok('...and appends it to the destination\'s', moveProbe.orderAdded, JSON.stringify(moveProbe));
+ok('calling moveExLog again after the move destroys nothing (idempotent once the source is empty)',
+   moveProbe.stillBothRows, JSON.stringify(moveProbe));
+
+console.log('\n== plan editor "Guardar cambios": same exercise id on two days is not confused (plans/008 item 1) ==');
+const peSaveProbe = call(`
+  (function() {
+    /* The same shape editPlan.onclick builds: a deep clone of the block,
+       and an origin map filled by walking every day's exercises. The bug
+       this guards against only shows up with the SAME exercise id on two
+       different days, which migrate() allows on purpose. */
+    const block = {
+      id: 'B', name: 'Block', weeks: 8, deload: 0,
+      days: [
+        { id: 'd0', name: 'Day A', ex: [{ id: 'e1', n: 'Chest', sets: 3, reps: '10-15' }] },
+        { id: 'd1', name: 'Day B', ex: [{ id: 'e1', n: 'Chest', sets: 3, reps: '10-15' }] },
+      ],
+    };
+    const profile = {
+      log: { B: {
+        'w1-d0': { e1: [{ w: '50', r: '10', done: true }] },
+        'w1-d1': { e1: [{ w: '60', r: '8', done: true }] },
+      } },
+      rir: { B: {} }, order: { B: {} },
+    };
+
+    const draft = JSON.parse(JSON.stringify(block));
+    const originalDay = new Map();
+    draft.days.forEach(day => day.ex.forEach(ex => originalDay.set(ex, day.id)));
+
+    /* peSave's catch-up loop, run without touching anything in the sheet —
+       the failure this reproduces happened on an unmodified save. */
+    draft.days.forEach(day => {
+      day.ex.forEach(ex => {
+        const from = originalDay.get(ex);
+        if (from && from !== day.id) {
+          moveExLog(profile, 'B', from, day.id, ex.id);
+          moveExRir(profile, 'B', from, day.id, ex.id);
+          moveExOrder(profile, 'B', from, day.id, ex.id);
+        }
+      });
+    });
+
+    return JSON.parse(JSON.stringify(profile.log.B));
+  })()
+`);
+ok('an unmodified save leaves day A\'s rows alone',
+   peSaveProbe['w1-d0'] && peSaveProbe['w1-d0'].e1 && peSaveProbe['w1-d0'].e1.length === 1 && peSaveProbe['w1-d0'].e1[0].w === '50',
+   JSON.stringify(peSaveProbe));
+ok('...and day B\'s — the id-only map used to erase one of them',
+   peSaveProbe['w1-d1'] && peSaveProbe['w1-d1'].e1 && peSaveProbe['w1-d1'].e1.length === 1 && peSaveProbe['w1-d1'].e1[0].w === '60',
+   JSON.stringify(peSaveProbe));
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

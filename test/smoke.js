@@ -2283,6 +2283,53 @@ const ok = (name, cond, extra) => {
     await ctx.close();
   }
 
+  // ---------- plan-editor save: same exercise id on two days (plans/008 item 1) ----------
+  {
+    console.log('\n== "Guardar cambios" con el mismo id de ejercicio en dos días ==');
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await dismissSetup(page);
+    await page.waitForTimeout(400);
+
+    /* migrate() allows the same exercise id on two different days on
+       purpose (see test/unit.js, "the same id on two different days
+       survives, by design"). A hand-repaired file or an old backup can
+       carry it, and "Guardar cambios" used to confuse the two under a map
+       keyed by id alone, erasing one day's history even when nothing in
+       the sheet was touched. */
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      const p = s.profiles.hombre;
+      const b = p.blocks['block-1'];
+      const src = b.days[0].ex.find(e => e.id === 'chestpress');
+      b.days[1].ex.unshift(JSON.parse(JSON.stringify(src)));
+      const set = (w, r) => ({ w: String(w), r: String(r), done: true });
+      p.log['block-1'] = {
+        'w1-d0': { chestpress: [set(40, 12)] },
+        'w1-d1': { chestpress: [set(60, 8)] },
+      };
+      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+    });
+    await page.reload({ waitUntil: 'networkidle' });
+    await dismissSetup(page);
+    await page.waitForTimeout(400);
+
+    await page.click('#editPlan');
+    ok('editor opens', await page.locator('#planSheet.up').count() === 1);
+    await page.click('#peSave');
+    await page.waitForTimeout(400);
+
+    ok('day 1\'s chest press history survives an unmodified save',
+       await page.evaluate(() => state.profiles.hombre.log['block-1']['w1-d0'].chestpress[0].w) === '40');
+    ok('so does day 2\'s — the id-only map used to erase one of them',
+       await page.evaluate(() => state.profiles.hombre.log['block-1']['w1-d1'].chestpress[0].w) === '60');
+    ok('the save offers an undo, like every other destructive action here',
+       (await page.textContent('#toastAct')) === 'Deshacer');
+
+    await ctx.close();
+  }
+
   // ---------- session note, energy, deload check ----------
   {
     console.log('\n== nota, energía y control de descarga ==');
