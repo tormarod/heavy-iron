@@ -814,5 +814,27 @@ ok('the raw setVolume() the session view uses is untouched — still blends the 
 ok('reviewSetVolume converts that same week to kg instead, so both weeks read as the same tonnage',
    Math.round(reviewUnitProbe.converted[0]) === Math.round(reviewUnitProbe.converted[1]), JSON.stringify(reviewUnitProbe));
 
+console.log('\n== seed plans match their published block files (plans/008 item 12) ==');
+/* js/data.js:6-9 asks whoever edits the seed plans by hand to also
+   regenerate blocks/hombre-bloque-1.json and blocks/mujer-bloque-1.json — a
+   comment nothing checks. This turns it into an assertion: the two files
+   are exports of exactly this data, and drift would ship a fresh install
+   with a Bloque 1 "Importar JSON" cannot get back to. */
+const readBlockFile = name => JSON.parse(fs.readFileSync(path.join(ROOT, 'blocks', name), 'utf8'));
+const hombreBlockFile = readBlockFile('hombre-bloque-1.json');
+const mujerBlockFile = readBlockFile('mujer-bloque-1.json');
+ok('blocks/hombre-bloque-1.json days match DEFAULT_DAYS_TU',
+   JSON.stringify(call('DEFAULT_DAYS_TU')) === JSON.stringify(hombreBlockFile.days));
+ok('blocks/hombre-bloque-1.json phase matches DEFAULT_PHASE_TU',
+   JSON.stringify(call('DEFAULT_PHASE_TU')) === JSON.stringify(hombreBlockFile.phase));
+ok('blocks/hombre-bloque-1.json priority matches DEFAULT_PRIORITY_TU',
+   JSON.stringify(call('DEFAULT_PRIORITY_TU')) === JSON.stringify(hombreBlockFile.priority));
+ok('blocks/mujer-bloque-1.json days match DEFAULT_DAYS_PAREJA',
+   JSON.stringify(call('DEFAULT_DAYS_PAREJA')) === JSON.stringify(mujerBlockFile.days));
+ok('blocks/mujer-bloque-1.json phase matches DEFAULT_PHASE_PAREJA',
+   JSON.stringify(call('DEFAULT_PHASE_PAREJA')) === JSON.stringify(mujerBlockFile.phase));
+ok('blocks/mujer-bloque-1.json priority matches DEFAULT_PRIORITY_PAREJA',
+   JSON.stringify(call('DEFAULT_PRIORITY_PAREJA')) === JSON.stringify(mujerBlockFile.priority));
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

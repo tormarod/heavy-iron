@@ -1,0 +1,9 @@
+version: 2
+updates:
+  # Actions in .github/workflows/ are pinned to commit SHAs rather than
+  # mutable tags. Dependabot is what keeps a pin from going stale: it opens a
+  # PR with the new SHA and version comment when upstream tags a release.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"

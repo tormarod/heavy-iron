@@ -416,9 +416,18 @@ function stampRowUnit(r) {
    out of the page flushes it: see the pagehide/visibilitychange handlers. */
 let saveT = null;
 let frozen = false;
+/* Set while a two-tab conflict toast is up (see the 'storage' handler below)
+   and cleared by whichever of its two actions the user picks. The debounced
+   path respects it so the write that caused the conflict cannot land behind
+   the user's back while the toast is still asking; flushSave always passes
+   force so closing the tab never silently drops a logged set — see its own
+   comment below. */
+let held = false;
 
-function writeState() {
+function writeState(force) {
   if (frozen) return;
+  if (held && !force) return;
+  held = false;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     mark('Guardado ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
@@ -432,11 +441,16 @@ function save() {
   saveT = setTimeout(() => { saveT = null; writeState(); }, 400);
 }
 
+/* Always forces the write through, even mid-conflict: an unanswered toast
+   must never be the reason a set logged right before closing the tab is
+   lost. The conflict itself was never about *whether* to keep local
+   changes — only about not overwriting the other tab's newer ones out from
+   under the user without asking first. */
 function flushSave() {
-  if (!saveT) return;
+  if (!saveT && !held) return;
   clearTimeout(saveT);
   saveT = null;
-  writeState();
+  writeState(true);
 }
 
 window.addEventListener('pagehide', flushSave);
@@ -445,11 +459,23 @@ window.addEventListener('beforeunload', flushSave);
 /* Two tabs (or the installed app and a browser tab) share one localStorage.
    The event only fires in the *other* tab, so anything arriving here is a
    write we did not make: adopt it when we have nothing pending, and say so
-   when we do rather than silently overwriting it on our next flush. */
+   when we do rather than silently overwriting it on our next flush.
+
+   Cancelling the pending timer here is the fix: it used to keep running and
+   fire up to 400 ms later regardless, landing before anyone could have read
+   the toast, let alone answered it — the two-tab guarantee the README sells
+   was really just a message that arrived after the fact. */
 window.addEventListener('storage', e => {
   if (e.key !== STORAGE_KEY || frozen || !ready) return;
-  if (saveT) {
-    toast('Otra pestaña ha guardado cambios. Aquí tienes cambios sin guardar: al guardarlos se quedarán los tuyos.', 'Recargar', () => location.reload());
+  if (saveT || held) {
+    clearTimeout(saveT);
+    saveT = null;
+    held = true;
+    toast(
+      'Otra pestaña ha guardado cambios. Aquí tienes cambios sin guardar.',
+      'Quedarme con lo mío', () => { held = false; writeState(true); },
+      'Recargar', () => location.reload()
+    );
     return;
   }
   let next;
@@ -538,7 +564,10 @@ function setNote(el, text, err) {
 /* ---------- toast ----------
    For the few notices that need an answer rather than an acknowledgement:
    a new version is waiting, another tab has changed the log. */
-function toast(msg, actionLabel, fn) {
+/* A second action (actionLabel2/fn2) is for the rare toast offering two real
+   choices rather than one action and a dismiss — today only the two-tab
+   conflict, above. Omit them for the common one-action-or-none toast. */
+function toast(msg, actionLabel, fn, actionLabel2, fn2) {
   $('toastMsg').textContent = msg;
   const act = $('toastAct');
   if (actionLabel) {
@@ -547,6 +576,14 @@ function toast(msg, actionLabel, fn) {
     act.onclick = () => { hideToast(); fn(); };
   } else {
     act.hidden = true;
+  }
+  const act2 = $('toastAct2');
+  if (actionLabel2) {
+    act2.hidden = false;
+    act2.textContent = actionLabel2;
+    act2.onclick = () => { hideToast(); fn2(); };
+  } else {
+    act2.hidden = true;
   }
   $('toast').hidden = false;
 }
@@ -4156,6 +4193,12 @@ function registerServiceWorker() {
       if (Date.now() - lastUpdateCheck < UPDATE_CHECK_MS) return;
       lastUpdateCheck = Date.now();
       reg.update().catch(() => { /* no signal — the basement case, and fine */ });
+      /* A worker that installed with a hole in its precache (sw.js,
+         'install') self-heals on 'activate', but a device that has been
+         open since then never re-activates on its own. Ask the controller
+         to check its own cache on the same cadence as the update check
+         above, so the hole does not outlive the current session. */
+      if (navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage('checkShell');
     });
   }).catch(() => { /* offline on first load, or opened from file:// — the app still runs */ });
 

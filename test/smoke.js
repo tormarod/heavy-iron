@@ -2668,6 +2668,52 @@ const ok = (name, cond, extra) => {
     await ctx.close();
   });
 
+  // ---------- two tabs: the pending write used to land before the toast ----------
+  /* js/app.js's 'storage' handler used to leave its own pending debounce
+     timer running after showing the conflict toast, so it fired up to
+     400 ms later regardless of the toast — landing before anyone could have
+     read it, let alone answered it. Two pages in one context share
+     localStorage the way two real tabs do, so a write from one fires a real
+     'storage' event in the other. */
+  await section('dos pestañas: el guardado pendiente no se adelanta al aviso', async () => {
+    const ctx = await browser.newContext();
+    const page1 = await ctx.newPage();
+    await page1.goto(BASE, { waitUntil: 'networkidle' });
+    await page1.fill('#setupNames input >> nth=0', 'Ana');
+    await page1.click('#setupSave');
+    await page1.waitForTimeout(500);
+
+    const page2 = await ctx.newPage();
+    await page2.goto(BASE, { waitUntil: 'networkidle' });
+    await page2.waitForTimeout(500);
+
+    await page1.evaluate(() => { state.prefs.barWeight = 11; save(); });
+    ok('page1 has a debounced write queued', await page1.evaluate(() => saveT !== null));
+
+    await page2.evaluate(() => { state.prefs.barWeight = 22; writeState(true); });
+    await page1.waitForTimeout(150);
+
+    ok('page1 shows the two-tab conflict toast', await page1.locator('#toast').isVisible());
+    ok('offering both "keep mine" and "reload" rather than one dismiss',
+       (await page1.textContent('#toastAct')).includes('Quedarme') &&
+       (await page1.textContent('#toastAct2')).includes('Recargar'));
+    ok('and cancels its own pending timer instead of letting it fire later',
+       await page1.evaluate(() => saveT === null && held === true));
+
+    await page1.waitForTimeout(500);
+    const midway = await page2.evaluate(() => JSON.parse(localStorage.getItem('heavy-iron-v1')).prefs.barWeight);
+    ok('past the old 400ms window, page2\'s write is still the one on disk — nothing overwrote it silently',
+       midway === 22, midway);
+
+    await page1.click('#toastAct');
+    await page1.waitForTimeout(300);
+    const kept = await page1.evaluate(() => JSON.parse(localStorage.getItem('heavy-iron-v1')).prefs.barWeight);
+    ok('"Quedarme con lo mío" writes page1\'s state through on purpose',
+       kept === 11, kept);
+    ok('and clears the held flag', await page1.evaluate(() => held === false));
+    await ctx.close();
+  });
+
   // ---------- the rest alarm with the phone in a pocket ----------
   /* The alarm above only fires while the page is running. This is the part
      that survives a locked screen: a near-silent loop that keeps the page
