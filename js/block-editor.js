@@ -228,7 +228,7 @@ function normalizeImportedBlock(raw) {
       if (!n) throw new Error('Falta el nombre de un ejercicio en "' + dayName + '".');
       const reps = txt(e.reps, IMPORT_LIMITS.reps);
       if (!reps) throw new Error('Falta el rango de repeticiones en "' + n + '".');
-      const baseId = txt(e.id, 60) || (slugify(n) || ('ex-' + di + '-' + ei));
+      const baseId = safeKey(txt(e.id, 60)) || (slugify(n) || ('ex-' + di + '-' + ei));
       let uniqueId = baseId, suffix = 2;
       while (usedIds.has(uniqueId)) uniqueId = baseId + '-' + (suffix++);
       usedIds.add(uniqueId);
@@ -266,7 +266,7 @@ function normalizeImportedBlock(raw) {
       if (e.type != null) { const t = txt(e.type, TYPE_LIMIT); if (t) out.type = t; }
       return out;
     });
-    let dayId = txt(day.id, 60);
+    let dayId = safeKey(txt(day.id, 60));
     while (!dayId || usedDayIds.has(dayId)) dayId = uid('d');
     usedDayIds.add(dayId);
     const out = { id: dayId, name: dayName, ex };
@@ -492,21 +492,30 @@ async function copyBlockPrompt(noteEl) {
    "Retirados". */
 let peDraftBlock = null;
 let peDraftPurge = [];
-/* exId -> the session it lived in when the editor was opened. The real log
-   is still filed under that session until "Guardar cambios", so anything
-   that reads "how much history does this exercise have" while the sheet is
-   open has to look there, not at wherever the draft has moved it to. */
-let peDraftOriginalDay = {};
+/* draft exercise object -> the session it lived in when the editor was
+   opened. The real log is still filed under that session until "Guardar
+   cambios", so anything that reads "how much history does this exercise
+   have" while the sheet is open has to look there, not at wherever the
+   draft has moved it to.
+
+   Keyed by object identity, not by exercise id: a block can carry the same
+   id on two days on purpose (migrate() allows it, see test/unit.js "the
+   same id on two different days survives, by design"), and an id-only map
+   only remembers one of them, so "Guardar cambios" would move the other
+   day's log on top of it even though nothing was sent anywhere. Sending an
+   exercise between draft days keeps the same object (moveExToDay splices
+   and pushes, never clones), so identity survives the move. */
+let peDraftOriginalDay = new Map();
 
 
 /* Logged-set counts for the editor: keyed off the exercise's original
    session (see peDraftOriginalDay) so a pending "send to another session"
    move doesn't make its history look gone before the draft is saved. */
-function draftExLogged(profile, exId, currentDayId) {
-  return loggedSets(profile, peDraftBlock.id, peDraftOriginalDay[exId] || currentDayId, exId);
+function draftExLogged(profile, ex, currentDayId) {
+  return loggedSets(profile, peDraftBlock.id, peDraftOriginalDay.get(ex) || currentDayId, ex.id);
 }
 function draftDayLogged(profile, day) {
-  return day.ex.reduce((t, ex) => t + draftExLogged(profile, ex.id, day.id), 0);
+  return day.ex.reduce((t, ex) => t + draftExLogged(profile, ex, day.id), 0);
 }
 
 /* Move an exercise to another session, keeping its id (and so its log)
@@ -695,7 +704,7 @@ function renderRetired(host, profile) {
   items.forEach(it => {
     const isDay = !it.ex;
     const logged = isDay ? draftDayLogged(profile, it.day)
-                         : draftExLogged(profile, it.ex.id, it.day.id);
+                         : draftExLogged(profile, it.ex, it.day.id);
     const row = document.createElement('div');
     row.className = 'pe-arch';
     row.innerHTML =
@@ -817,7 +826,7 @@ function buildExRow(profile, day, ex, pos, liveCount) {
   row.querySelector('.f-ss').checked = !!ex.ss;
   row.querySelector('.f-ss').onchange = e => { if (e.target.checked) ex.ss = 1; else delete ex.ss; };
 
-  const logged = draftExLogged(profile, ex.id, day.id);
+  const logged = draftExLogged(profile, ex, day.id);
   if (logged) row.querySelector('.pe-log-tag').textContent = setsLabel(logged);
 
   const moveSel = row.querySelector('.pe-move-sel');
@@ -921,7 +930,7 @@ function closePlanEditor() {
   closeSheet('planSheet');
   peDraftBlock = null;
   peDraftPurge = [];
-  peDraftOriginalDay = {};
+  peDraftOriginalDay = new Map();
 }
 
 
@@ -971,8 +980,8 @@ function wireBlockEditor() {
   $('editPlan').onclick = () => {
     peDraftBlock = JSON.parse(JSON.stringify(getBlock()));
     peDraftPurge = [];
-    peDraftOriginalDay = {};
-    peDraftBlock.days.forEach(day => day.ex.forEach(ex => { peDraftOriginalDay[ex.id] = day.id; }));
+    peDraftOriginalDay = new Map();
+    peDraftBlock.days.forEach(day => day.ex.forEach(ex => { peDraftOriginalDay.set(ex, day.id); }));
     $('peBlockName').value = peDraftBlock.name;
     $('peWeeks').value = blockWeeks(peDraftBlock);
     renderDeloadOptions();
@@ -997,12 +1006,25 @@ function wireBlockEditor() {
     const problem = syncDraftFromForm();
     if (problem) { await tell('Falta algo', problem); return; }
     const profile = getProfile();
-    /* Catch the real log up on any "enviar a…" moves made while the sheet was
-       open, before anything below reads or purges it by session id. */
+    /* This is the one save path that can move or erase logged sets (the
+       "enviar a…" catch-up below, and the purge loop after it), so it is
+       the one that needs the same one-level undo every other destructive
+       action in this sheet already gets. */
+    snapshotForUndo('Plan actualizado.');
+    /* Catch the real log, RIR chips and session order up on any "enviar
+       a…" moves made while the sheet was open, before anything below reads
+       or purges them by session id. Merges into whatever the destination
+       day already has rather than overwriting it — the same id can live on
+       two days by design, so this can run more than once on the same
+       exercise without losing either day's history. */
     peDraftBlock.days.forEach(day => {
       day.ex.forEach(ex => {
-        const from = peDraftOriginalDay[ex.id];
-        if (from && from !== day.id) moveExLog(profile, peDraftBlock.id, from, day.id, ex.id);
+        const from = peDraftOriginalDay.get(ex);
+        if (from && from !== day.id) {
+          moveExLog(profile, peDraftBlock.id, from, day.id, ex.id);
+          moveExRir(profile, peDraftBlock.id, from, day.id, ex.id);
+          moveExOrder(profile, peDraftBlock.id, from, day.id, ex.id);
+        }
       });
     });
     /* The only path that erases logged sets, and only the ones explicitly
@@ -1012,7 +1034,7 @@ function wireBlockEditor() {
       else purgeDayLog(profile, peDraftBlock.id, p.dayId);
     });
     profile.blocks[peDraftBlock.id] = peDraftBlock;
-    peDraftBlock = null; peDraftPurge = []; peDraftOriginalDay = {};
+    peDraftBlock = null; peDraftPurge = []; peDraftOriginalDay = new Map();
     save(); render();
     closeSheet('planSheet');
     mark('Plan actualizado — el registro se mantiene');
