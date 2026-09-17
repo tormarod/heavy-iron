@@ -1545,6 +1545,14 @@ python3 -m http.server 8765 &
 node test/smoke.js
 ```
 
+The suite is a list of sections, one browser context each, so while working
+on one thing you can run just the sections that can see it instead of the
+full two-and-a-half-minute pass: `node test/smoke.js --list` names them and
+`node test/smoke.js --only "aviso de versión"` runs one (the flag repeats
+and matches a case-insensitive substring; `SMOKE_ONLY=a,b` does the same
+from the environment). A section whose selectors no longer match is
+reported as a failure and the next section still runs.
+
 Or let `tools/smoke-gate.sh` do all of that: it installs Playwright if it
 is missing, serves the repo on a free port, runs both suites and stops the
 server. It is the same script the Claude Code hook in

@@ -59,6 +59,19 @@ Returning users are served the app shell cache-first, so an unbumped version
 leaves them on the old code indefinitely. Each plan restates this; it is
 repeated here because it is the single easiest thing to forget.
 
+## A rule that applies to every plan's verification steps
+
+A step's **Verify** column says `node --check` and `node test/unit.js`, or a
+targeted `node test/smoke.js --only "<section>"` when the step changes
+something only a browser can see. It does not say `node test/smoke.js` bare,
+and it does not say `tools/smoke-gate.sh`: the full browser suite runs once,
+by the PreToolUse hook, when the pull request is opened, and an executor that
+also runs it after every step spends two and a half minutes per step
+repeating that. Plans 001 and 002 predate this rule and put the full suite in
+every verify row; read those rows as "run the unit suite" now. The
+acceptance checklist may list the full suite once, phrased as "the PR gate is
+green", which the hook satisfies. See AGENTS.md, "How to verify a change".
+
 ## Second audit (2026-09-17)
 
 A second pass at commit `1f559ee`, after plans 001–007 landed, is in
