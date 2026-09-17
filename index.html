@@ -2,11 +2,12 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<!-- The app is a static page that only ever talks to two hosts: Google Fonts
-     for the typefaces and raw.githubusercontent.com for published blocks.
-     Saying so here means an injected string can't turn into a script tag or
-     phone your training log anywhere. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; media-src data:; connect-src 'self' https://raw.githubusercontent.com; manifest-src 'self'; base-uri 'none'; form-action 'none'">
+<!-- The app is a static page that only ever talks to one external host:
+     Google Fonts, for the typefaces. Published blocks are fetched
+     same-origin (see blocksBase() in js/app.js), so they need no entry
+     here. Saying so here means an injected string can't turn into a script
+     tag or phone your training log anywhere. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; media-src data:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#E4E2DA" media="(prefers-color-scheme: light)">

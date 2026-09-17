@@ -539,6 +539,32 @@ const ok = (name, cond, extra) => {
     await page.click('#bRestore');
     ok('non-backup rejected', (await page.textContent('#status')).includes('no tiene perfiles'));
 
+    console.log('\n== downloadFile prefers the share sheet when one exists (plans/008 item 8) ==');
+    // Stands in for an installed iOS PWA, where <a download> is unreliable:
+    // Web Share API with a file is what downloadFile() should reach for
+    // first there, falling back to the anchor everywhere else. The backup
+    // sheet from the block above is still open — no need to reopen it, and
+    // clicking #backup again while its own sheet covers it would only hit
+    // the overlay.
+    await page.evaluate(() => {
+      window.__shared = null;
+      navigator.canShare = files => true;
+      navigator.share = data => { window.__shared = data; return Promise.resolve(); };
+    });
+    await page.click('#bDownload');
+    await page.waitForTimeout(200);
+    const shared = await page.evaluate(() => window.__shared && {
+      count: window.__shared.files.length,
+      name: window.__shared.files[0].name,
+      isFile: window.__shared.files[0] instanceof File,
+    });
+    ok('the backup download goes through navigator.share when it is available',
+       !!shared && shared.count === 1 && shared.isFile, JSON.stringify(shared));
+    ok('the shared file is named like a backup', /heavy-iron-backup-.*\.json$/.test(shared && shared.name), shared && shared.name);
+    // Cleaned up, but the sheet itself is left open: the QR section below
+    // reaches #qrBtn from inside it.
+    await page.evaluate(() => { delete navigator.canShare; delete navigator.share; });
+
     /* The camera itself is manual-test territory — there is no way to point a
        headless browser at another phone's screen. Everything up to the camera
        is not: the split/checksum/reassembly protocol and the import that
@@ -911,10 +937,6 @@ const ok = (name, cond, extra) => {
     ok('it replaces the profile it names', await page.evaluate(() => state.profiles.mujer.label) === 'Ana (del otro móvil)');
     ok('the other profile is untouched', await page.evaluate(() => JSON.stringify(state.profiles.hombre)) === otherBefore);
 
-    console.log('\n== published blocks follow the fork ==');
-    const base = await page.evaluate(() => blocksBase());
-    ok('a local server falls back to the original repo', base.includes('tormarod/heavy-iron'), base);
-
     console.log('\n== week switch persists on its own ==');
     // A week/day switch must reach localStorage on its own: nothing else is
     // going to write it if the phone goes into a pocket straight after.
@@ -1176,6 +1198,44 @@ const ok = (name, cond, extra) => {
     await page.waitForTimeout(800);
     ok('app boots with no network', await page.locator('.ex').count() > 0);
     ok('log still readable offline', (await page.textContent('#title')).includes('Bloque 1'));
+    await ctx.close();
+  }
+
+  // ---------- published blocks stay importable offline ----------
+  {
+    console.log('\n== published blocks stay importable offline (plans/008 item 7) ==');
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await dismissSetup(page);
+    await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.waitForTimeout(300);
+
+    // blocksBase() fetches blocks/ relative to the page now (same-origin),
+    // which is what lets the worker's network-first /blocks/ handler see
+    // and cache these requests — cross-origin, as this used to be, the
+    // handler never ran and "importable offline once you've seen it" was
+    // dead in production. Seeing it once online is the setup for that.
+    await page.click('#blockbar >> text=Importar JSON');
+    await page.waitForSelector('.import-item button');
+    await page.locator('.import-item button').first().click();
+    await page.waitForTimeout(400);
+    ok('a published block imports online', (await page.textContent('#title')).length > 0);
+
+    await ctx.setOffline(true);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await dismissSetup(page);
+    await page.waitForTimeout(500);
+    await page.click('#blockbar >> text=Importar JSON');
+    await page.waitForTimeout(500);
+    ok('the published-blocks list still loads offline',
+       await page.locator('.import-item').count() > 0,
+       await page.textContent('#importRepoList'));
+    await page.locator('.import-item button').first().click();
+    await page.waitForTimeout(400);
+    ok('importing an already-seen block still works offline',
+       (await page.textContent('#importError')) === '',
+       await page.textContent('#importError'));
     await ctx.close();
   }
 

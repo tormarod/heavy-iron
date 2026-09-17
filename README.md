@@ -294,11 +294,12 @@ care about not losing your history (e.g. clearing browser data, switching
 phones).
 
 The page is locked down with a Content-Security-Policy that only allows it
-to talk to two hosts: Google Fonts for the typefaces, and
-`raw.githubusercontent.com` to list and fetch the blocks published in this
-repo (read-only, no token). Nothing else can be loaded and nothing can be
-sent anywhere, so your log physically cannot leave the device except
-through the backup buttons you press yourself.
+to talk to one external host: Google Fonts, for the typefaces. Blocks
+published to `blocks/` in this repo are fetched same-origin, relative to
+the page, so listing and importing them needs no entry of its own. Nothing
+else can be loaded and nothing can be sent anywhere, so your log physically
+cannot leave the device except through the backup buttons you press
+yourself.
 
 The QR transfer doesn't change that. Both QR libraries are vendored in
 `js/vendor/` and load under the existing `script-src 'self'`, and reading a
@@ -1227,16 +1228,17 @@ Two ways to get JSON in:
    Good for a one-off block someone (or an AI agent) hands you in a chat.
 2. **Publish it to `blocks/` in the repo** — commit a file there plus
    an entry in `blocks/index.json`, and it shows up as a one-click
-   "Importar" option, fetched read-only from `raw.githubusercontent.com`
-   (no token, no write access from the app itself). This is the intended
-   path for a training agent with commit access: it commits a new block
-   file, and the block is available in the app the next time the sheet is
-   opened — no copying and pasting.
+   "Importar" option, fetched read-only, same-origin (no token, no write
+   access from the app itself). This is the intended path for a training
+   agent with commit access: it commits a new block file, and the block
+   is available in the app the next time the sheet is opened, once the
+   Pages deploy for that push finishes — no copying and pasting.
 
-   The app fetches from **whichever repo is serving it**, worked out from
-   the URL, so a fork lists its own blocks rather than this one's. Served
-   from anywhere that isn't GitHub Pages (a local server, a custom
-   domain), it falls back to this repo.
+   The app fetches `blocks/` relative to its own page, so **whichever
+   repo is serving it** is whichever repo's blocks show up — a fork lists
+   its own rather than this one's — and a block you have already imported
+   stays importable offline (the service worker caches same-origin
+   `blocks/` requests network-first).
 
 If the person you're sending this to doesn't use the app themselves — a
 training partner, a coach — **Importar JSON** also has **Descargar

@@ -188,8 +188,9 @@ async function newBlock(skipReview) {
 /* ---------- import block from JSON ----------
    Lets an external agent (or you, by hand) hand over a block as plain
    JSON — either pasted in, or committed to blocks/ in this repo and
-   picked from the list, fetched read-only via raw.githubusercontent.com
-   (no token, no write access). See README for the expected JSON shape.
+   picked from the list, fetched read-only, same-origin, relative to the
+   page (see blocksBase() in app.js) — no token, no write access. See
+   README for the expected JSON shape.
    `genericPhase`/`DELOAD_PHASE`/`GENERIC_RAMP`/`IMPORT_LIMITS`/`txt`/`slugify`
    stay in app.js — they're used well outside block-import too
    (migrate/emptyBlock, the QR log limits, muscle/pattern tags) and app.js
