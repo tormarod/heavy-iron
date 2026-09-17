@@ -64,29 +64,50 @@ version bump (the `cache-version` job in `.github/workflows/test.yml`) but
 
 ## How to verify a change
 
+There are three rungs. Use the cheapest one that can see your change, and
+stop there — the full browser suite runs once, by itself, when the pull
+request is opened.
+
 ```
-node --check js/<file>.js                # fast syntax gate
-node test/unit.js                        # pure logic, no server, no browser
+node --check js/<file>.js                # 1. syntax, instant
+node test/unit.js                        # 2. all pure logic, under a second
+node test/smoke.js --only "<section>"    # 3. one browser section, ~5-10 s
+```
+
+**While working: rungs 1 and 2 after every edit. Do not run the full
+`test/smoke.js` or `tools/smoke-gate.sh` yourself.** The full suite takes
+about two and a half minutes and is wired as a PreToolUse hook in
+`.claude/settings.json` on both `mcp__github__create_pull_request` and
+`gh pr create`, so every path that opens a PR runs it exactly once and a
+failure blocks the PR. Running it by hand before that point only repeats
+what the hook is about to do. It skips itself on a branch that changes
+nothing the suites load (the shell, `sw.js`, `blocks/`, `test/`).
+
+Rung 3 is for the things `test/unit.js` cannot see — a sheet opening, a
+value surviving a reload, `sw.js`, the layout — and it is targeted:
+`node test/smoke.js --list` prints the section names,
+`--only <substring>` (repeatable, case-insensitive) runs just those, and
+needs a static server on `:8765` (or `BASE=`) plus Playwright:
+
+```
 npm install --no-save playwright@1.56.1  # once — the README omits this
 npx playwright install chromium          # once
 python3 -m http.server 8765 &
-node test/smoke.js                       # drives the real app in a browser
-tools/smoke-gate.sh                      # all of the above, in one go
 ```
 
-Only `test/unit.js` runs on GitHub. The browser suite runs on the machine
-the pull request is opened from: `tools/smoke-gate.sh` is wired as a
-PreToolUse hook in `.claude/settings.json` on `mcp__github__create_pull_request`
-and `gh pr create`, and a failure blocks the PR. It returns at once when
-the branch changes nothing the suites load (the shell, `sw.js`, `blocks/`,
-`test/`), so a docs-only PR is not held for a Chromium run. Run it yourself
-before pushing if you are not going through that tool. `test/unit.js` loads the
-six source files into one shared Node context — the same global scope the
-`<script>` tags create — and is the fastest full check.
+The whole suite by hand is warranted in three cases only: you edited
+`test/smoke.js` itself, you changed the script load order or `sw.js`, or
+the hook failed and you are checking the fix — and even then, iterate
+with `--only` on the failing section and let the hook do the final full
+pass. Only `test/unit.js` runs on GitHub. It loads the six source files into
+one shared Node context — the same global scope the `<script>` tags create —
+and is the fastest full check.
 
 **Testing policy** (`test/smoke.js:9-10`): *"Add a case here whenever a bug
 turns out to have been invisible from the outside."* Arithmetic and data
-repair go in `test/unit.js` instead.
+repair go in `test/unit.js` instead — and prefer that side of the line when
+a case fits either: a unit assertion costs nothing on every later run, a
+smoke assertion costs Chromium time forever.
 
 ## Untrusted input
 

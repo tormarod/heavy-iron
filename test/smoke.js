@@ -10,11 +10,54 @@
  * to have been invisible from the outside.
  *
  * BASE can be overridden: BASE=http://localhost:8000 node test/smoke.js
+ *
+ * The suite is a list of independent sections, each opening its own browser
+ * context. The full run is what the pre-PR hook does; while working on one
+ * thing, run only the sections that can see it:
+ *
+ *   node test/smoke.js --list                      # the section names, no browser
+ *   node test/smoke.js --only "aviso de versión"   # substring, case-insensitive
+ *   node test/smoke.js --only recovery --only layout
+ *   SMOKE_ONLY=offline,layout node test/smoke.js   # the same, as an env var
+ *
+ * "main session" is the exception: its sub-headings (boot, undo, QR transfer,
+ * …) share one page and build on each other's state, so they run as one
+ * section or not at all.
  */
 const { chromium } = require('playwright');
 
 const BASE = process.env.BASE || 'http://127.0.0.1:8765';
-let pass = 0, fail = 0;
+let pass = 0, fail = 0, skipped = 0;
+
+const argv = process.argv.slice(2);
+const LIST = argv.includes('--list');
+const ONLY = [];
+for (let i = 0; i < argv.length; i++) {
+  if (argv[i] === '--only' && argv[i + 1] != null) ONLY.push(argv[++i]);
+  else if (argv[i].startsWith('--only=')) ONLY.push(argv[i].slice(7));
+}
+if (process.env.SMOKE_ONLY) ONLY.push(...process.env.SMOKE_ONLY.split(','));
+const wanted = ONLY.map(s => s.trim().toLowerCase()).filter(Boolean);
+const selected = name => !wanted.length || wanted.some(w => name.toLowerCase().includes(w));
+let ran = 0;
+
+/* One section per browser context. A section that throws — a selector that
+   no longer exists, a sheet that never opened — used to abort the whole
+   suite through the single catch at the bottom, so one stale line hid every
+   later section's result. Now it is recorded as a failure and the next
+   section still runs; the contexts it leaves open are closed with the
+   browser. */
+const section = async (name, fn) => {
+  if (LIST) { console.log(name); return; }
+  if (!selected(name)) { skipped++; return; }
+  ran++;
+  console.log('\n== ' + name + ' ==');
+  try { await fn(); }
+  catch (e) {
+    fail++;
+    console.log('  FAIL  ' + name + ': the section itself threw  → ' + (e && e.stack || e));
+  }
+};
 /* A device with no saved data now opens on the first-run setup sheet.
    Tests that are not about setup skip it, exactly as a user could. */
 const dismissSetup = async page => {
@@ -39,10 +82,10 @@ const ok = (name, cond, extra) => {
 };
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = LIST ? null : await chromium.launch();
 
   // ---------- main session ----------
-  {
+  await section('main session', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     const errors = [];      // real JS faults
@@ -962,11 +1005,10 @@ const ok = (name, cond, extra) => {
     ok('no Content-Security-Policy violations', cspErrors.length === 0, cspErrors.join(' | '));
     console.log('  note: ' + netErrors.length + ' network fetches failed (sandbox has no direct egress; app degrades gracefully)');
     await ctx.close();
-  }
+  });
 
   // ---------- profile import hardening + happy-path restore ----------
-  {
-    console.log('\n== profile import hardening ==');
+  await section('profile import hardening', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     await page.goto(BASE, { waitUntil: 'networkidle' });
@@ -1019,11 +1061,10 @@ const ok = (name, cond, extra) => {
     ok('the undo toast is offered after a restore', (await page.textContent('#toastAct')) === 'Deshacer');
 
     await ctx.close();
-  }
+  });
 
   // ---------- weight drops ----------
-  {
-    console.log('\n== weight drops ==');
+  await section('weight drops', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     await page.goto(BASE, { waitUntil: 'networkidle' });
@@ -1182,11 +1223,10 @@ const ok = (name, cond, extra) => {
        'drop rows: ' + await page.locator('.drop-row').count());
 
     await ctx.close();
-  }
+  });
 
   // ---------- offline ----------
-  {
-    console.log('\n== offline ==');
+  await section('offline', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     await page.goto(BASE, { waitUntil: 'networkidle' });
@@ -1199,7 +1239,7 @@ const ok = (name, cond, extra) => {
     ok('app boots with no network', await page.locator('.ex').count() > 0);
     ok('log still readable offline', (await page.textContent('#title')).includes('Bloque 1'));
     await ctx.close();
-  }
+  });
 
   // ---------- published blocks stay importable offline ----------
   {
@@ -1240,8 +1280,7 @@ const ok = (name, cond, extra) => {
   }
 
   // ---------- corrupted data ----------
-  {
-    console.log('\n== corrupt data recovery ==');
+  await section('corrupt data recovery', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     await page.goto(BASE, { waitUntil: 'networkidle' });
@@ -1291,11 +1330,10 @@ const ok = (name, cond, extra) => {
     await page.reload({ waitUntil: 'networkidle' });
     ok('bad days array is repaired, not fatal', await page.locator('.ex').count() > 0);
     await ctx.close();
-  }
+  });
 
   // ---------- recovery screen ----------
-  {
-    console.log('\n== recovery screen ==');
+  await section('recovery screen', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     page.on('dialog', d => d.accept());
@@ -1318,11 +1356,10 @@ const ok = (name, cond, extra) => {
     const after = await page.evaluate(() => (localStorage.getItem('heavy-iron-v1') || '').length);
     ok('refuses to write over the data it could not read', !clobbered && before === after);
     await ctx.close();
-  }
+  });
 
   // ---------- deleting a block takes its parallel maps with it ----------
-  {
-    console.log('\n== block delete purges rir/notes/energy/order ==');
+  await section('block delete purges rir/notes/energy/order', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     await page.goto(BASE, { waitUntil: 'networkidle' });
@@ -1367,11 +1404,10 @@ const ok = (name, cond, extra) => {
     ok('deleting a block takes its rir/notes/energy/order with it',
        leftovers.length === 0, 'still present in: ' + leftovers.join(', '));
     await ctx.close();
-  }
+  });
 
   // ---------- target weight + diagnóstico ----------
-  {
-    console.log('\n== objetivo de peso y diagnóstico ==');
+  await section('objetivo de peso y diagnóstico', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     await page.goto(BASE, { waitUntil: 'networkidle' });
@@ -1717,11 +1753,10 @@ const ok = (name, cond, extra) => {
          return pt.sets === 2 && pt.vol === (45 * 8 + 30 * 5) + 45 * 6;
        }));
     await ctx.close();
-  }
+  });
 
   // ---------- volume across the block + priority muscles ----------
-  {
-    console.log('\n== volumen del bloque y músculos prioritarios ==');
+  await section('volumen del bloque y músculos prioritarios', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     await page.goto(BASE, { waitUntil: 'networkidle' });
@@ -1826,11 +1861,10 @@ const ok = (name, cond, extra) => {
          days: [{ ex: [{ n: 'X', reps: '8-12' }] }],
        }).priority.join(',')) === 'Pecho,Espalda');
     await ctx.close();
-  }
+  });
 
   // ---------- frequency per muscle, from r.ts ----------
-  {
-    console.log('\n== frecuencia por músculo ==');
+  await section('frecuencia por músculo', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     await page.goto(BASE, { waitUntil: 'networkidle' });
@@ -1946,11 +1980,10 @@ const ok = (name, cond, extra) => {
     ok('and brings the across-blocks toggle back',
        await page.evaluate(() => getComputedStyle(document.getElementById('diagScope')).display) !== 'none');
     await ctx.close();
-  }
+  });
 
   // ---------- strength index per muscle ----------
-  {
-    console.log('\n== índice de fuerza por músculo ==');
+  await section('índice de fuerza por músculo', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     await page.goto(BASE, { waitUntil: 'networkidle' });
@@ -2068,11 +2101,10 @@ const ok = (name, cond, extra) => {
          return Math.round(r.change * 100) / 100;
        }) === 0);
     await ctx.close();
-  }
+  });
 
   // ---------- the order the session was actually done in ----------
-  {
-    console.log('\n== orden real de la sesión ==');
+  await section('orden real de la sesión', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     await page.goto(BASE, { waitUntil: 'networkidle' });
@@ -2190,11 +2222,10 @@ const ok = (name, cond, extra) => {
        csvRow('Press de pecho').join(','));
 
     await ctx.close();
-  }
+  });
 
   // ---------- the same lift on two days of the block ----------
-  {
-    console.log('\n== el mismo ejercicio en dos sesiones ==');
+  await section('el mismo ejercicio en dos sesiones', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     await page.goto(BASE, { waitUntil: 'networkidle' });
@@ -2341,11 +2372,10 @@ const ok = (name, cond, extra) => {
        }));
 
     await ctx.close();
-  }
+  });
 
   // ---------- plan-editor save: same exercise id on two days (plans/008 item 1) ----------
-  {
-    console.log('\n== "Guardar cambios" con el mismo id de ejercicio en dos días ==');
+  await section('"Guardar cambios" con el mismo id de ejercicio en dos días', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     await page.goto(BASE, { waitUntil: 'networkidle' });
@@ -2388,11 +2418,10 @@ const ok = (name, cond, extra) => {
        (await page.textContent('#toastAct')) === 'Deshacer');
 
     await ctx.close();
-  }
+  });
 
   // ---------- session note, energy, deload check ----------
-  {
-    console.log('\n== nota, energía y control de descarga ==');
+  await section('nota, energía y control de descarga', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     await page.goto(BASE, { waitUntil: 'networkidle' });
@@ -2492,11 +2521,10 @@ const ok = (name, cond, extra) => {
       return pts.length === 2 && pts.every(p => p.weight >= 60);
     }));
     await ctx.close();
-  }
+  });
 
   // ---------- block review ----------
-  {
-    console.log('\n== revisión del bloque ==');
+  await section('revisión del bloque', async () => {
     /* The export is the feature, so the copy buttons are tested for real
        rather than around — which needs the clipboard permission Chromium
        withholds by default. */
@@ -2604,11 +2632,10 @@ const ok = (name, cond, extra) => {
     ok('an empty block says there is nothing to review yet',
        await page.locator('#reviewHost .chart-empty').count() === 1);
     await ctx.close();
-  }
+  });
 
   // ---------- keeping the log on the device ----------
-  {
-    console.log('\n== almacenamiento ==');
+  await section('almacenamiento', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     await page.goto(BASE, { waitUntil: 'networkidle' });
@@ -2639,7 +2666,7 @@ const ok = (name, cond, extra) => {
     ok('and asking never throws the log away',
        (await page.textContent('#title')).includes('Ana'));
     await ctx.close();
-  }
+  });
 
   // ---------- the rest alarm with the phone in a pocket ----------
   /* The alarm above only fires while the page is running. This is the part
@@ -2649,8 +2676,7 @@ const ok = (name, cond, extra) => {
      notification permission outright, so the permission and the delivery are
      stubbed and what is tested is the app's own decision: what it posts,
      when, and when it stays quiet. */
-  {
-    console.log('\n== descanso con la pantalla apagada ==');
+  await section('descanso con la pantalla apagada', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     await page.goto(BASE, { waitUntil: 'networkidle' });
@@ -2738,7 +2764,7 @@ const ok = (name, cond, extra) => {
        await page.evaluate(() => window.__notes.length === 0));
     await page.evaluate(() => stopRest());
     await ctx.close();
-  }
+  });
 
   // ---------- being told about a new version ----------
   /* The prompt used to hang off updatefound alone, which never fires for a
@@ -2748,8 +2774,7 @@ const ok = (name, cond, extra) => {
      to the files under test, so what is stubbed is the state the browser
      hands the app (a registration with something waiting) and what is
      asserted is what the app does about it. */
-  {
-    console.log('\n== aviso de versión nueva ==');
+  await section('aviso de versión nueva', async () => {
     const ctx = await browser.newContext();
 
     /* First visit: register, and become controlled. */
@@ -2800,15 +2825,14 @@ const ok = (name, cond, extra) => {
     await page.waitForTimeout(300);
     ok('coming back much later does', await page.evaluate(() => window.__updates === 1));
     await ctx.close();
-  }
+  });
 
   // ---------- which version is running ----------
   /* "Did it update?" used to be answerable only by reasoning about service
      workers. The footer line answers it, and it has to come from the worker
      serving the page rather than a constant in this file, or it would report
      what the code wishes it were rather than what is installed. */
-  {
-    console.log('\n== versión en el pie ==');
+  await section('versión en el pie', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     await page.goto(BASE, { waitUntil: 'networkidle' });
@@ -2846,7 +2870,7 @@ const ok = (name, cond, extra) => {
     ok('a worker that does not answer leaves the line hidden',
        quiet.hidden === true && quiet.text === '', JSON.stringify(quiet));
     await ctx.close();
-  }
+  });
 
   // ---------- the app starts without the font host ----------
   /* The webfont sat in front of the scripts, so a font host that was slow to
@@ -2854,8 +2878,7 @@ const ok = (name, cond, extra) => {
      otherwise needs no network at all. It is parked on media="print" now and
      switched on once it lands. The service worker is blocked in these cases
      so that the font request is the page's own, and therefore routable. */
-  {
-    console.log('\n== arranque sin la tipografía ==');
+  await section('arranque sin la tipografía', async () => {
 
     const startsWith = async (label, routeFn) => {
       const ctx = await browser.newContext({ serviceWorkers: 'block' });
@@ -2921,15 +2944,14 @@ const ok = (name, cond, extra) => {
     ok('every element that asks for the webfont also names a fallback',
        orphaned.length === 0, JSON.stringify(orphaned));
     await ctx.close();
-  }
+  });
 
   // ---------- installable as an app ----------
   /* Firefox on Android is the strict one: it only offers "Instalar" when the
      manifest names a raster icon of a size it can parse and that size is at
      least 192. An SVG with sizes:"any" — which Chrome and Safari are happy
      with — is invisible to it, so these cases pin the PNGs down. */
-  {
-    console.log('\n== installable ==');
+  await section('installable', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     await page.goto(BASE, { waitUntil: 'networkidle' });
@@ -2988,11 +3010,10 @@ const ok = (name, cond, extra) => {
     ok('the apple-touch-icon is a PNG (iOS ignores an SVG here)',
        /\.png$/.test(touch || ''), touch);
     await ctx.close();
-  }
+  });
 
   // ---------- layout on real phone widths ----------
-  {
-    console.log('\n== layout ==');
+  await section('layout', async () => {
     for (const [label, width] of [['iPhone SE', 375], ['Pixel', 412], ['tablet', 768]]) {
       const ctx = await browser.newContext({ viewport: { width, height: 820 } });
       const page = await ctx.newPage();
@@ -3011,10 +3032,15 @@ const ok = (name, cond, extra) => {
       ok(label + ': page does not scroll sideways', r.scroll <= r.vw, r.scroll + ' > ' + r.vw);
       await ctx.close();
     }
-  }
+  });
 
-  await browser.close();
+  if (browser) await browser.close();
+  if (LIST) process.exit(0);
+  if (wanted.length && !ran) {
+    console.error('smoke: no section matches --only ' + JSON.stringify(ONLY) + ' — see --list');
+    process.exit(2);
+  }
   console.log('\n----------------------------------------');
-  console.log(pass + ' passed, ' + fail + ' failed');
+  console.log(pass + ' passed, ' + fail + ' failed' + (skipped ? ', ' + skipped + ' sections skipped by --only' : ''));
   process.exit(fail ? 1 : 0);
 })().catch(e => { console.error('HARNESS ERROR', e); process.exit(2); });
