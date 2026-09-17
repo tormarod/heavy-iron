@@ -616,7 +616,11 @@ function diagRows(profile, block) {
         easy: recent.filter(p => p.rir === '2+').length >= 2,
         failure: !!last && (last.rir === '0' || forcedDrop(last.rows)),
         decay: !!last && repDecay(last.rows) >= 3,
-        estDown: !!est && est.kind === 'down',
+        /* A stall reset is also `down`, but it is not "the weight was
+           picked wrong" — it is the target rule's own answer to the
+           stall this screen is about to name, so it reads as the stall,
+           not as a mis-chosen weight. */
+        estDown: !!est && est.kind === 'down' && est.note !== 'reset',
         /* Not a fourth reading of the log: the target rule already crossed
            the top of the range with the failure signals and came back with
            MANTENER. Reading its note rather than re-deriving it is what

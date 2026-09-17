@@ -352,5 +352,110 @@ ok('an upward trend with no signals reads as working as intended',
 ok('too few sessions is its own verdict',
    call('diagVerdict("none", {}).lectura') === 'Aún no hay suficientes sesiones');
 
+console.log('\n== objetivo: la tasa de progresión ==');
+/* The single-session cases live in smoke.js, next to the lines they draw.
+   What belongs here is the part of the rule that reads MORE than one
+   session: the effort-normalised targets and the progression rate the
+   block's own history at a weight sets. `weeks` is one array of reps per
+   logged week, all at `opts.w` (default 32) unless a set is given as
+   [weight, reps]; the target is asked for the week after the last one. */
+const estimateProbe = `
+  (function(weeks, opts) {
+    opts = opts || {};
+    const phase = {};
+    for (let i = 1; i <= weeks.length + 1; i++) {
+      phase[i] = { r: (opts.rirPlan && opts.rirPlan[i - 1] != null ? opts.rirPlan[i - 1] : 2) + ' RIR' };
+    }
+    const ex = { id: 'E', n: 'x', sets: opts.sets || weeks[0].length, reps: opts.range || '10–15', inc: opts.inc || 2 };
+    if (opts.add) ex.add = opts.add;
+    const block = { id: 'B', name: 'B', weeks: 8, deload: 0, phase: phase, days: [{ id: 'D', name: 'D', ex: [ex] }] };
+    const profile = { log: { B: {} }, rir: { B: {} } };
+    weeks.forEach((sets, i) => {
+      profile.log.B['w' + (i + 1) + '-D'] = { E: sets.map(r => Array.isArray(r)
+        ? { w: String(r[0]), r: String(r[1]), done: true }
+        : { w: String(opts.w || 32), r: String(r), done: true }) };
+      if (opts.rir && opts.rir[i]) profile.rir.B['w' + (i + 1) + '-D'] = { E: opts.rir[i] };
+    });
+    /* Same block/day/ex ids on every call, and no drawApp() between them
+       to reset the render cache — so reset it here or the second call
+       reads the first call's history. */
+    resetRenderCache();
+    const e = targetEstimate(profile, block, block.days[0], ex, weeks.length + 1);
+    return e && { kind: e.kind, note: e.note || '', stall: e.stall, weight: e.weight,
+                  reps: e.reps.join('/'), line: targetLine(e), notes: targetNotes(e).join(' | ') };
+  })
+`;
+const estimate = (weeks, opts) => call(estimateProbe)(weeks, opts);
+const flat = [12, 12, 10, 10];
+
+/* The effort-normalised line: the number on the line is the number the
+   note used to contradict. 12 at 0 RIR is 10 at 2 RIR; plus the week's
+   rep is 11, and that is what the line says. */
+let e = estimate([[15, 15, 12, 12]], { rir: ['0'] });
+ok('a set taken to failure is priced at this week\'s RIR on the line itself',
+   e.kind === 'hold' && e.reps === '14/14/11/11' && e.line.indexOf('→ objetivo: 32 kg') === 0, JSON.stringify(e));
+ok('and the note says the line already discounts it',
+   e.notes.includes('~10 y no 12') && e.notes.includes('ya lo descuenta'), e.notes);
+e = estimate([[11, 11, 10, 10]], { rirPlan: [3, 2] });
+ok('a week that prescribed more reserve than this one gives those reps back',
+   e.reps === '13/13/12/12', JSON.stringify(e));
+ok('and says where the extra reps come from', e.notes.includes('no de ganar fuerza'), e.notes);
+e = estimate([[11, 11, 10, 10]], { rirPlan: [3, 0] });
+ok('but never more than two reps over last week on one set', e.reps === '13/13/12/12', JSON.stringify(e));
+/* A middle set that did fewer reps than the last one did not have less in
+   it — the last set came after it. 14×15/11/12 at 0 RIR: set two is
+   floored at the last set's 12, so it reads 11 at 2 RIR, not 10. */
+e = estimate([[[14, 15], [14, 11], [14, 12]]], { rir: ['0'], w: 14, inc: 1 });
+ok('a middle set is never read as weaker than the set that came after it',
+   e.kind === 'hold' && e.reps === '14/11/11', JSON.stringify(e));
+
+/* The weight that cannot reach the range at this week's RIR. */
+e = estimate([[12, 11, 10, 10]], { rir: ['0'] });
+ok('sets inside the range at 0 RIR that would fall under it at 2 RIR mean the weight is too heavy',
+   e.kind === 'down' && e.note === 'predUnder' && e.weight === 30 && e.reps === '10', JSON.stringify(e));
+ok('and the note prices the current weight at this week\'s RIR', e.notes.includes('~8 reps'), e.notes);
+e = estimate([[16, 16, 16, 16]], { rir: ['0'], range: '16–20', w: 12, inc: 1 });
+ok('past the Epley ceiling that case says sin estimar rather than guessing', e.kind === 'skip', JSON.stringify(e));
+
+/* The progression rate. */
+e = estimate([flat, [13, 13, 11, 11]]);
+ok('a session that gained reps keeps the full rate: one more on every set',
+   e.stall === 0 && e.reps === '14/14/12/12', JSON.stringify(e));
+e = estimate([flat, flat]);
+ok('one flat session is noise — the full rate holds through it',
+   e.stall === 1 && e.reps === '13/13/11/11' && e.note === '', JSON.stringify(e));
+e = estimate([flat, flat, flat]);
+ok('two flat sessions shrink the ask to one rep in total, on the first set with room',
+   e.stall === 2 && e.note === 'stallOne' && e.reps === '13/12/10/10', JSON.stringify(e));
+ok('and say so', e.notes.includes('2 sesiones sin sumar reps a 32 kg'), e.notes);
+e = estimate([flat, flat, flat, flat]);
+ok('three flat sessions reset: one step down, the reps rebuilt off the same e1RM',
+   e.kind === 'down' && e.note === 'reset' && e.stall === 3 && e.weight === 30 && e.reps === '15/15/13/13', JSON.stringify(e));
+ok('and the line points down with the reset named', e.line.indexOf('↘ objetivo: 30 kg') === 0 && e.notes.includes('reinicio'), JSON.stringify(e));
+e = estimate([flat, flat, flat, flat], { rirPlan: [3, 2, 2, 1, 1] });
+ok('holding the reps while the plan turns the RIR down is a stall, not a hold',
+   e.note === 'reset', JSON.stringify(e));
+e = estimate([[10, 10, 10, 10], [10, 10, 10, 10], [10, 10, 10, 10], [11, 11, 10, 10]]);
+ok('one rep gained anywhere ends the streak', e.stall === 0 && e.reps === '12/12/11/11', JSON.stringify(e));
+e = estimate([[[30, 14], [30, 14], [30, 12], [30, 12]], flat, flat, flat]);
+ok('a session at another weight ends the walk — the streak is this weight\'s own',
+   e.stall === 2 && e.note === 'stallOne', JSON.stringify(e));
+e = estimate([flat, flat, flat, flat, [[30, 15], [30, 15], [30, 13], [30, 13]]]);
+ok('so the week after a reset starts a fresh run at the lighter weight',
+   e.kind === 'hold' && e.stall === 0 && e.reps === '15/15/14/14', JSON.stringify(e));
+const long = [18, 17, 16, 16];
+e = estimate([long, long, long, long], { range: '12–20', w: 12, inc: 1 });
+ok('past the Epley ceiling a stall cannot be priced, so it is said in words instead',
+   e.kind === 'hold' && e.note === 'stallLong' && e.reps === '19/17/16/16', JSON.stringify(e));
+
+/* The sets the plan asks for this week, not the sets logged last time. */
+e = estimate([[15, 15, 12, 12]], { rir: ['2+'], add: 2 });
+ok('a set the plan adds this week gets the tail of the observed decay',
+   e.reps === '15/15/13/13/12' && e.notes.includes('la serie 5 no tiene referencia'), JSON.stringify(e));
+e = estimate([flat, flat, flat, flat], { add: 5 });
+ok('and a reset prices the added set too', e.note === 'reset' && e.reps === '15/15/13/13/12', JSON.stringify(e));
+e = estimate([[15, 15, 15, 15]], { rir: ['2+'], add: 2 });
+ok('a jump prices one number for every set and does not extend', e.kind === 'up' && e.reps === '12', JSON.stringify(e));
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
