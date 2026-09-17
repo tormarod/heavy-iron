@@ -29,7 +29,7 @@ below so it is not lost or re-audited.
 | 005 | [Stop re-walking the whole log several times per render](005-memoize-render-scans.md) | P2 | S | LOW | — | DONE |
 | 006 | [Four small correctness fixes](006-four-small-correctness-fixes.md) | P2 | S | LOW | — | DONE |
 | 007 | [Write `AGENTS.md`](007-agents-md.md) | P2 | S | LOW | — | DONE |
-| 008 | [Second audit: ranked findings and plan](008-audit-2026-09-17.md) | P1 | — | — | — | TODO |
+| 008 | [Second audit: ranked findings and plan](008-audit-2026-09-17.md) | P1 | — | — | — | IN PROGRESS (items 1–4) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)

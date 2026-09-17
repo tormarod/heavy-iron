@@ -1549,7 +1549,8 @@ Or let `tools/smoke-gate.sh` do all of that: it installs Playwright if it
 is missing, serves the repo on a free port, runs both suites and stops the
 server. It is the same script the Claude Code hook in
 `.claude/settings.json` runs before a pull request is opened, and it blocks
-the PR when anything fails.
+the PR when anything fails. It skips itself when the branch touches nothing
+the suites load, so a docs-only PR opens without waiting for Chromium.
 
 Only the headless half runs on GitHub (`.github/workflows/test.yml`); the
 browser suite needs a Chromium download on every run, so it runs on the
