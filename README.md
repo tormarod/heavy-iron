@@ -558,18 +558,71 @@ rirLast   = the chip you tapped, or what the plan asked for that week
 equivFail = lastSetReps + rirLast          reps at true failure
 e1RM      = w × (1 + equivFail / 30)       Epley, the same est1RM the charts use
 predictedAt(w') = (e1RM / w' − 1) × 30 − rirThis
+pred[i]   = max(reps[i], lastSetReps) + rirLast − rirThis
 ```
 
-Then three cases, in this order:
+The last line is the same normalisation applied to every set that stays at
+the weight, not just to the last one. The chip describes the last set;
+earlier sets were done fresher, so they carried at least that much
+reserve, and none of them had less in it than the set that came after all
+of them. Reading each one at the same RIR, floored at the last set's reps,
+is a lower bound — and low is the cheap side to be wrong on.
+
+Then the cases, in this order:
 
 | | when | answer |
 |---|---|---|
 | **Bajar** | any set fell below the bottom of the range | the weight that puts you back at the bottom, rounded **down** |
 | **Subir** | every set reached the top of the range | the step the set actually paid for, with the reps to expect there |
-| **Mantener** | anything in between | same weight, one more rep on each set (capped at the top) |
+| **Bajar** | every set was in range, but at *this* week's RIR the last one would not be | the same answer — the weight is too heavy for what the week asks |
+| **Reinicio** | three sessions at this weight without the reps moving | one step down, the sets priced off the same e1RM at the lighter weight |
+| **Mantener** | anything else | same weight, the reps `pred[i]` predicts plus this week's gain |
 
 `Bajar` is the answer `Copiar pesos` could never give: it copied the same
-weight forever, however badly it had been chosen.
+weight forever, however badly it had been chosen. The second `Bajar` is the
+first one a step removed: 10 reps at 0 RIR in a week that prescribes 2 is
+8 at the prescription, under a 10–15 range, and holding the weight would
+ask for a set the range itself says is too heavy. It reads off the last set
+only — the one the chip describes — so the weight it prices always lands
+below the current one.
+
+**The gain is a rate, and the rate is read off the block.** A rule that
+adds one rep to every set of last week has no memory: it asks for the
+same thing on the fourth flat week as on the first. Instead the sessions
+at this exact weight are walked back — a session at any other weight ends
+the walk, a step up or a reset is a new run — and compared on reps per
+set plus the RIR they were left at. The same 12 reps in a week that turned
+the RIR down from 2 to 1 did not stand still, they went backwards; per set
+rather than in total so the extra set `ex.add` brings in, always the
+lowest, does not read as a jump. The number of consecutive sessions that
+failed to improve on the one before sets the rate:
+
+| flat sessions | rate | why |
+|---|---|---|
+| 0–1 | **+1 on every set** | one flat session is noise: sleep, a bad day, a busy gym |
+| 2 | **+1 in total**, on the first set with room | the ask has failed twice; the freshest set is where the reserve actually is |
+| 3+ | **one step down, rebuild** | the oldest trick in double progression: two steps forward, one back |
+
+The reset needs Epley to price the lighter weight, so past its ceiling
+(below) it falls through to the +1-in-total ask and names the stall in
+words instead: `3 sesiones sin sumar reps a 12 kg: si esta tampoco suma,
+baja un escalón o cambia el ejercicio`. The week after a reset is a fresh
+run at the lighter weight, and the week after the reps climb back to the
+top is a jump — usually back to the weight that stalled, with the reps to
+show for it this time.
+
+**No target asks for more than two reps over last week on any set.** The
+RIR normalisation and the weekly gain compound — a week that went from
+3 RIR to 2 with a rep of progress is honestly `r + 2` — and past that the
+number is a guess dressed as a target.
+
+**The target lists the sets the plan asks for this week**, not the sets
+logged last time. `ex.add` brings a set in mid-block, and that set has no
+history at this weight to read off, so it gets the tail of the decay the
+others showed — the last known set, less the average drop from one set to
+the next, never under one rep — and the line says so: `la serie 5 no
+tiene referencia a 32 kg: ~12 reps es una extrapolación de la caída entre
+series`. A jump prices one number for every set and stays that way.
 
 **The weight is taken from the sets that did the work.** It is usually
 constant across an exercise, but when it varied — a back-off set, a stack
@@ -583,8 +636,11 @@ weight is not evidence about these ones either, so the plan's prescription
 stands in instead.
 
 **When holding, the target is per set** — `15/15/13/13`, not one number.
-Chasing one rep on each set is what the week is actually for, and it keeps
-the two sets of 15 you already own instead of quietly resetting them.
+Chasing reps on each set is what the week is actually for, and it keeps
+the two sets of 15 you already own instead of quietly resetting them. The
+arrow on the line compares the sets that have a last week to compare with:
+`↗` when the total climbs, `→ mantener` when the numbers repeat, a bare `→`
+when pulling back to this week's RIR costs reps.
 
 **The guardrails**, in the order they apply:
 
@@ -621,12 +677,21 @@ the two sets of 15 you already own instead of quietly resetting them.
 **The note under the line is where RIR earns its place.** If last week's
 final set went to failure and this week prescribes 2 RIR, the rep count
 *should* fall — you are pulling back to the prescription, not losing
-ground. Without saying so the app looks like it is reporting a loss:
+ground. The line prices that in, and the note says so, or the app looks
+like it is reporting a loss:
 
 ```
-↗ objetivo: 32 kg × 15/15/13/13
-   ojo: la última fue a 0 RIR; a 2 RIR igual salen ~10 y no 12. No es retroceso.
+→ objetivo: 32 kg × 14/14/11/11
+   ojo: la última fue a 0 RIR; a 2 RIR las mismas fuerzas dan ~10 y no 12 — el objetivo ya lo descuenta. No es retroceso.
 ```
+
+The line used to say `15/15/13/13` there and let the note take a rep back
+from it — one number on the line and another underneath, for the same
+set. The other direction is said too: a week that prescribed 3 RIR followed
+by one that asks for 2 gives back the reps it left in the tank, and a
+target two reps up is a rebate, not a demand. And when a stall has changed
+the rate, the line names the stall: `2 sesiones sin sumar reps a 32 kg: una
+rep más en total, en la primera serie con margen, y el resto igual`.
 
 **One rule, one place.** `Copiar pesos de semana anterior` calls this same
 estimate rather than carrying its own inline copy of double progression.
@@ -872,7 +937,7 @@ exactly why guessing at a stall goes wrong.
 
 | e1RM | Señal en el registro | Lectura | Qué cambias |
 |---|---|---|---|
-| plano | objetivo por debajo del peso actual | Peso mal elegido | Baja al objetivo y sube el rango de reps como es debido |
+| plano | objetivo por debajo del peso actual (no un reinicio) | Peso mal elegido | Baja al objetivo y sube el rango de reps como es debido |
 | plano | RIR 0, o una bajada forzada | Fatiga, no falta de esfuerzo | Mismo peso, vuelve a 1–2 RIR. Apretar más es la palanca equivocada |
 | plano | caída de reps ≥3 | Primera serie al fallo | Empieza más ligero para que las series 2 y 3 sumen volumen |
 | plano | RIR 2+ repetido | Falta intensidad | Sube carga o reps: te dejas el estímulo sin usar |

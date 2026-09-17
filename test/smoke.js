@@ -1346,14 +1346,18 @@ const ok = (name, cond, extra) => {
     ok('and with the RIR it was logged at, there is nothing to warn about', t.note === '', t.note);
 
     /* The same sets at a harder RIR mean less capacity, so this week's
-       prescription will produce fewer reps — which is not a loss. */
+       prescription will produce fewer reps — which is not a loss. The line
+       prices that in rather than asking for a rep on top of a number the
+       note underneath then takes back: 12 at 1 RIR is 11 at 2, plus the
+       week's rep is 12 again. */
     t = await target([15, 15, 12, 12], '1', 2);
-    ok('a harder last set still holds and chases reps',
-       t.line === '↗ objetivo: 32 kg × 15/15/13/13', t.line);
-    ok('but warns that pulling back to the prescription will cost reps',
+    ok('a harder last set holds the weight and the reps, at this week\'s RIR',
+       t.line === '→ objetivo: mantener 32 kg × 15/15/12/12', t.line);
+    ok('and says that pulling back to the prescription is what ate the rep',
        t.note.includes('~11 y no 12') && t.note.includes('No es retroceso'), t.note);
     t = await target([15, 15, 12, 12], '0', 2);
-    ok('and a set taken to failure warns harder', t.note.includes('~10 y no 12'), t.note);
+    ok('and a set taken to failure comes down further, and warns harder',
+       t.line === '→ objetivo: 32 kg × 14/14/11/11' && t.note.includes('~10 y no 12'), JSON.stringify(t));
     t = await target([15, 15, 12, 12], '', 2);
     ok('with no chip the plan’s own prescription stands in, and agrees',
        t.line === '↗ objetivo: 32 kg × 15/15/13/13' && t.note === '', JSON.stringify(t));
@@ -1407,7 +1411,7 @@ const ok = (name, cond, extra) => {
 
     m = await mixed([['14', '15'], ['14', '11'], ['14', '12']], '0');
     ok('a constant weight is untouched by any of that',
-       m.from === 14 && m.line === '↗ objetivo: 14 kg × 15/12/13' &&
+       m.from === 14 && m.line === '→ objetivo: 14 kg × 14/11/11' &&
        m.notes[0].includes('No es retroceso'), JSON.stringify(m));
 
     /* A back-off set after the working sets must not drag the verdict down

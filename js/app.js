@@ -2691,7 +2691,7 @@ $('copyPrev').onclick = () => {
   const profile = getProfile(), block = getBlock(), day = currentDay();
   const src = profile.log[block.id] && profile.log[block.id][slot(profile.week - 1, day.id)];
   if (profile.week === 1 || !src) { mark('No hay nada registrado en la semana ' + (profile.week - 1) + ' para este día'); return; }
-  let leveled = 0, heldBack = 0, lowered = 0;
+  let leveled = 0, heldBack = 0, lowered = 0, reset = 0;
   exList(day).forEach(ex => {
     const from = src[ex.id]; if (!from || !from.length) return;
     const to = entry(profile, block.id, profile.week, day.id, ex.id, setsFor(ex, profile.week, block));
@@ -2706,6 +2706,7 @@ $('copyPrev').onclick = () => {
     const est = targetEstimate(profile, block, day, ex, profile.week);
     const moved = est && (est.kind === 'up' || est.kind === 'down') ? est.weight : null;
     if (est && est.kind === 'up') leveled++;
+    else if (est && est.kind === 'down' && est.note === 'reset') reset++;
     else if (est && est.kind === 'down') lowered++;
     else if (est && (est.note === 'topFailure' || est.note === 'topForced')) heldBack++;
     to.forEach((r, i) => {
@@ -2717,7 +2718,8 @@ $('copyPrev').onclick = () => {
   save(); render();
   mark('Pesos copiados de la semana ' + (profile.week - 1) +
     (leveled ? ' — ' + leveled + (leveled === 1 ? ' ejercicio sube' : ' ejercicios suben') + ' de peso (tope de rango la semana pasada)' : '') +
-    (lowered ? ' — ' + lowered + (lowered === 1 ? ' ejercicio baja' : ' ejercicios bajan') + ' de peso (alguna serie se quedó por debajo del rango)' : '') +
+    (lowered ? ' — ' + lowered + (lowered === 1 ? ' ejercicio baja' : ' ejercicios bajan') + ' de peso (alguna serie se quedó, o se quedaría a este RIR, por debajo del rango)' : '') +
+    (reset ? ' — ' + reset + (reset === 1 ? ' ejercicio baja un escalón' : ' ejercicios bajan un escalón') + ' para reconstruir (' + STALL_RESET + ' sesiones sin sumar reps)' : '') +
     (heldBack ? ' — ' + heldBack + (heldBack === 1 ? ' ejercicio llegó al tope pero no sube' : ' ejercicios llegaron al tope pero no suben') + ' (hubo que bajar peso, o la última serie fue al fallo)' : '') +
     ' — supéralos');
 };
@@ -2811,10 +2813,23 @@ function bestSet(done, metric) {
        e1RM      = w × (1 + equivFail/30)     Epley — est1RM() above
        predictedAt(ww) = (e1RM/ww − 1) × 30 − rirThis
 
-   Then three cases, in this order. Any set under the bottom of the range
-   means the weight was picked too heavy — the answer copyPrev could never
-   give. Every set at or above the top means the jump is earned. Anything
-   in between holds the weight and buys reps, one per set.
+   And, for the sets that stay at the same weight, the same normalisation
+   per set rather than one number for the last one:
+
+       pred[i]   = max(reps[i], lastSetReps) + rirLast − rirThis
+
+   The chip describes the LAST set. Earlier sets at the same weight were
+   done fresher, so they carried at least that much reserve, and none of
+   them had less in it than the set that came after all of them — reading
+   each one at the same RIR, and at no less than the last set's reps, is a
+   lower bound, and the low side is the cheap side to be wrong on. Then
+   the cases, in this order. Any set under the bottom of
+   the range means the weight was picked too heavy — the answer copyPrev
+   could never give. Every set at or above the top means the jump is
+   earned. A weight that cannot reach the bottom at THIS week's RIR is the
+   first case in disguise. Anything else holds the weight and buys reps —
+   how many, and on which sets, is decided by what this weight has been
+   doing all block, not by adding one to last week and hoping.
 
    Nothing here is typed for it: the reps are in the log, the chip is
    optional with the plan's own prescription standing in, and the range and
@@ -2824,24 +2839,40 @@ function bestSet(done, metric) {
    a number rather than reading one. */
 const EST_MAX_REPS = 15;
 
-function targetEstimate(profile, block, day, ex, week) {
-  const prev = lastTimeCached(profile, block.id, day.id, ex.id, week);
-  if (!prev) return null;
+/* How many sessions in a row at the same weight may go by without the
+   effort-normalised reps moving before the rule stops asking for the same
+   thing again. One flat session is noise — sleep, a bad day, a busy gym —
+   so the rate holds through it. Two is a pattern: the +1-on-every-set ask
+   has failed twice, so the ask shrinks to one rep in total, on the set
+   with the most reserve. Three is a stall: the weight comes down one step
+   and the reps are rebuilt to the top of the range from there, which is
+   the oldest trick in double progression (two steps forward, one back) and
+   the one a rule that only ever adds a rep can never take. */
+const STALL_CONCENTRATE = 2, STALL_RESET = 3;
 
-  const rows = prev.sets.filter(hasReps);
-  if (!rows.length) return null;
+/* No target ever asks for more than this many reps over last week on one
+   set. The RIR normalisation and the weekly gain compound — a week that
+   went from 3 RIR to 2 with +1 progress is honestly r + 2 — and past that
+   the number is a guess dressed as a target. Under-shooting costs one
+   slightly light set; over-shooting costs a failed session. */
+const EST_MAX_RISE = 2;
 
-  /* The weight is *usually* constant across the sets, and the rule below
-     reads a rep count per set — so when it varied, taking one set's weight
-     and every set's reps mixes them into nonsense. 14×15, 14×11, 9×12 came
-     out as "9 kg × 15/12/13": fifteen reps at a weight two of the three
-     sets were nowhere near.
+/* The sets of one session that were done at its working weight.
 
-     So the working weight is the one most of the sets were actually done
-     at, heaviest on a tie, and only those sets feed the rule. Whatever was
-     done at some other weight — a back-off, a stack that had to come down,
-     a mis-tap — is left out and said so, rather than folded in as though
-     it had happened at the working weight. */
+   The weight is *usually* constant across the sets, and the rule reads a
+   rep count per set — so when it varied, taking one set's weight and
+   every set's reps mixes them into nonsense. 14×15, 14×11, 9×12 came out
+   as "9 kg × 15/12/13": fifteen reps at a weight two of the three sets
+   were nowhere near.
+
+   So the working weight is the one most of the sets were actually done
+   at, heaviest on a tie, and only those sets feed the rule. Whatever was
+   done at some other weight — a back-off, a stack that had to come down,
+   a mis-tap — is left out and said so, rather than folded in as though it
+   had happened at the working weight. `chipFits` says whether the RIR chip
+   — which records the LAST set of the session — describes one of these
+   sets at all. */
+function workingSets(rows) {
   const weights = rows.map(r => num(r.w)).filter(v => v > 0);
   if (!weights.length) return null;
   const seen = {};
@@ -2851,10 +2882,65 @@ function targetEstimate(profile, block, day, ex, week) {
     const v = num(k);
     if (seen[k] > seen[w] || (seen[k] === seen[w] && v > w)) w = v;
   });
-
   const atW = rows.filter(r => num(r.w) === w);
-  const apart = rows.length - atW.length;
-  const sets = atW.map(r => num(r.r));
+  return { w: w, sets: atW.map(r => num(r.r)), apart: rows.length - atW.length,
+           chipFits: num(rows[rows.length - 1].w) === w };
+}
+
+/* The RIR a session's last working set was done at: the chip when it was
+   tapped AND describes a set at the working weight, the plan's own
+   prescription for that week otherwise. `value` is null only in a week
+   the plan gave no number for — a deload — which is not evidence about
+   anything. */
+function sessionRir(profile, block, day, ex, sess, ws) {
+  const logged = ws.chipFits ? getRir(profile, block.id, sess.week, day.id, ex.id) : '';
+  const val = rirNumber(logged);
+  return { logged: logged, value: val == null ? phaseRir(block, sess.week) : val, assumed: val == null };
+}
+
+const avgOf = a => a.reduce((t, v) => t + v, 0) / a.length;
+
+/* How many sessions in a row, ending at `prev`, have been done at weight
+   `w` without the effort-normalised reps improving on the session before.
+   "Effort-normalised" is reps per set plus the RIR they were left at: the
+   same 12 reps at 0 RIR in a week that asked for 2 is not the same
+   session as 12 at 2, and a session that held its reps while the plan
+   turned the RIR down did not stand still, it went backwards. Per set
+   rather than in total so that the extra set `ex.add` brings in one week
+   — a tired set, always the lowest — does not read as a jump.
+
+   Only the block's own history at this exact weight counts. A session at
+   any other weight ends the walk: a step up or a reset is a new run, and
+   the reps it opens with have nothing to say about the old one. */
+function stallStreak(profile, block, day, ex, prev, w, effort) {
+  let stall = 0, cur = effort, week = prev.week;
+  for (;;) {
+    const before = lastTimeCached(profile, block.id, day.id, ex.id, week);
+    if (!before) break;
+    const rows = before.sets.filter(hasReps);
+    const ws = rows.length ? workingSets(rows) : null;
+    if (!ws || ws.w !== w) break;
+    const rir = sessionRir(profile, block, day, ex, before, ws).value;
+    if (rir == null) break;
+    const then = avgOf(ws.sets) + rir;
+    if (cur > then) break;
+    stall++;
+    cur = then;
+    week = before.week;
+  }
+  return stall;
+}
+
+function targetEstimate(profile, block, day, ex, week) {
+  const prev = lastTimeCached(profile, block.id, day.id, ex.id, week);
+  if (!prev) return null;
+
+  const rows = prev.sets.filter(hasReps);
+  if (!rows.length) return null;
+
+  const ws = workingSets(rows);
+  if (!ws) return null;
+  const w = ws.w, sets = ws.sets, apart = ws.apart;
   const last = sets[sets.length - 1];
   const lo = repRangeBottom(ex.reps), hi = repRangeTop(ex.reps);
   if (!(w > 0) || !(lo > 0) || !(hi > 0) || !(last > 0)) return null;
@@ -2868,29 +2954,48 @@ function targetEstimate(profile, block, day, ex, week) {
      was not at the working weight it describes a set this estimate is not
      built on, so it is not this set's evidence — the plan's own
      prescription stands in instead, exactly as when no chip was tapped. */
-  const chipFits = num(rows[rows.length - 1].w) === w;
-  const rirLogged = chipFits ? getRir(profile, block.id, prev.week, day.id, ex.id) : '';
-  const loggedVal = rirNumber(rirLogged);
-  const rirLast = loggedVal == null ? phaseRir(block, prev.week) : loggedVal;
+  const rirInfo = sessionRir(profile, block, day, ex, prev, ws);
+  const rirLogged = rirInfo.logged, rirLast = rirInfo.value;
   if (rirLast == null) return null;
 
   const inc = incFor(ex);
+  /* The sets the plan asks for THIS week, which is not always how many
+     were logged last time: `ex.add` brings one in mid-block, and a set
+     the plan gained has no history at this weight to read a target off. */
+  const n = setsFor(ex, week, block);
   const out = { week: prev.week, from: w, fromReps: last, sets: sets,
-                rir: rirLast, rirThis: rirThis, assumed: loggedVal == null,
+                rir: rirLast, rirThis: rirThis, assumed: rirInfo.assumed,
                 apart: apart, weight: w, reps: [last] };
 
-  /* Only the two cases that have to PRICE a weight need Epley, and only
-     those two are blocked by its rep ceiling. Holding the weight to chase
-     one more rep per set is pure rep arithmetic — it never touches the
-     estimate — so checking the ceiling before the cases silenced the app
-     on exactly the high-rep isolation work where holding is nearly always
-     the answer. A 12–20 range spends most of its life above 15 reps. */
+  /* Only the cases that have to PRICE a weight need Epley, and only those
+     are blocked by its rep ceiling. Holding the weight to chase reps is
+     pure rep arithmetic — it never touches the estimate — so checking the
+     ceiling before the cases silenced the app on exactly the high-rep
+     isolation work where holding is nearly always the answer. A 12–20
+     range spends most of its life above 15 reps. */
   const canPrice = last <= EST_MAX_REPS;
 
   const equivFail = last + rirLast;
   const e1 = est1RM(w, equivFail);
   const predictedAt = ww => (e1 / ww - 1) * 30 - rirThis;
   const round2 = v => Math.round(v * 100) / 100;
+  const bottomAt = () => round2(Math.floor((e1 / (1 + (lo + rirThis) / 30)) / inc) * inc);
+
+  /* Sets beyond the ones this weight has a record for get the tail of the
+     observed decay: what the last known set did, less the average drop
+     between one set and the next. Never below one rep — a fifth set that
+     the arithmetic prices at zero is still a set you are going to do —
+     and never above the top. Only the per-set answers extend; a jump
+     prices one number for every set and stays that way. */
+  const extend = () => {
+    const extra = n - rows.length;
+    if (extra <= 0 || out.reps.length !== sets.length) return;
+    const drop = sets.length > 1 ? Math.max(0, Math.round((sets[0] - last) / (sets.length - 1))) : 0;
+    for (let i = 0; i < extra; i++) {
+      out.reps.push(Math.max(1, Math.min(hi, out.reps[out.reps.length - 1] - drop)));
+    }
+    out.extra = extra;
+  };
 
   /* Case 3 — any set under the bottom of the range. The weight was picked
      too heavy, and rounding DOWN is the point: landing back inside the
@@ -2898,7 +3003,7 @@ function targetEstimate(profile, block, day, ex, week) {
   if (sets.some(r => r < lo)) {
     if (!canPrice) { out.kind = 'skip'; return out; }
     out.kind = 'down';
-    out.weight = round2(Math.floor((e1 / (1 + (lo + rirThis) / 30)) / inc) * inc);
+    out.weight = bottomAt();
     out.reps = [lo];
     return out;
   }
@@ -2912,6 +3017,7 @@ function targetEstimate(profile, block, day, ex, week) {
       out.kind = 'hold';
       out.reps = sets.map(() => hi);
       out.note = forcedDrop(prev.sets) ? 'topForced' : 'topFailure';
+      extend();
       return out;
     }
     if (!canPrice) { out.kind = 'skip'; return out; }
@@ -2933,17 +3039,79 @@ function targetEstimate(profile, block, day, ex, week) {
     return out;
   }
 
-  /* Case 1 — hold the weight, chase one more rep on each set. No Epley
-     here, and the note below is a rep subtraction rather than an estimate,
-     so both stand however long the sets ran. */
+  /* From here on the weight stays and the sets are read one by one. The
+     gap is what this week's prescription costs or gives back against
+     last week's effort: positive when last week was easier than this one
+     asks for (the reps it left in the tank are reps to collect), negative
+     when it was harder (the reps have to come down to get back to the
+     prescription, and that is not a loss). */
+  const gap = rirLast - rirThis;
+  const pred = sets.map(r => Math.max(r, last) + gap);
+  out.predLast = last + gap;
+
+  /* Case 3 again, one step removed: every set was inside the range, but at
+     the RIR this week asks for the same strength does not reach its
+     bottom. 10 reps at 0 RIR in a week that prescribes 2 is 8 reps at the
+     prescription — under a 10–15 range — and holding the weight would
+     ask for a set the range itself says is too heavy. Read off the last
+     set only, the one the chip actually describes and the one every
+     other prediction here is floored at, so the weight it prices — the
+     bottom of the range at this week's RIR, off the same e1RM — always
+     lands below the current one. The weekly gain is not counted on to
+     rescue a weight, because a target is a number you can fail. */
+  if (out.predLast < lo) {
+    if (!canPrice) { out.kind = 'skip'; return out; }
+    out.kind = 'down';
+    out.weight = bottomAt();
+    out.reps = [lo];
+    out.note = 'predUnder';
+    return out;
+  }
+
+  const stall = stallStreak(profile, block, day, ex, prev, w, avgOf(sets) + rirLast);
+  out.stall = stall;
+
+  /* A stall long enough resets: one step down, and the sets are priced
+     off the same e1RM at the lighter weight, keeping the shape of the
+     decay last week showed. The reset needs Epley, so past its ceiling it
+     falls through to the concentrated ask and says the stall in words. */
+  if (stall >= STALL_RESET && canPrice && round2(w - inc) > 0) {
+    out.kind = 'down';
+    out.note = 'reset';
+    out.weight = round2(w - inc);
+    const lastNew = Math.round(predictedAt(out.weight));
+    out.reps = sets.map(r => Math.max(1, Math.min(hi, lastNew + (r - last))));
+    extend();
+    return out;
+  }
+
+  /* Case 1 — hold the weight and buy reps. At full rate that is one rep
+     on every set on top of what the prescription already predicts; once
+     the weight has stalled it is one rep in total, on the first set that
+     still has room — the freshest set, where the reserve actually is.
+     Capped at the top of the range and at EST_MAX_RISE over last week;
+     never under one rep. No Epley anywhere in here, so this stands however
+     long the sets ran. */
+  const each = stall < STALL_CONCENTRATE;
+  let given = false;
   out.kind = 'hold';
-  out.reps = sets.map(r => Math.min(hi, r + 1));
-  const predLast = Math.round(equivFail - rirThis);
+  out.reps = sets.map((r, i) => {
+    let gain = 0;
+    if (each) gain = 1;
+    else if (!given && pred[i] < hi) { gain = 1; given = true; }
+    return Math.max(1, Math.min(hi, r + EST_MAX_RISE, pred[i] + gain));
+  });
+  if (!each) out.note = stall >= STALL_RESET ? 'stallLong' : 'stallOne';
   /* The whole reason RIR has to be in the arithmetic. If last week's final
      set went to failure and this week prescribes 2 RIR, the rep count
      SHOULD fall — that is pulling back to the prescription, not losing
-     ground. Without saying so the app looks like it is reporting a loss. */
-  if (predLast < last) { out.note = 'rirDrop'; out.predLast = predLast; }
+     ground. The line above already prices that in; without saying so it
+     looks like the app is reporting a loss. The other direction is said
+     too, because a target two reps up looks like a demand rather than a
+     rebate. */
+  if (gap < 0) out.rirDrop = true;
+  else if (gap > 0) out.rirGain = true;
+  extend();
   return out;
 }
 
@@ -2962,10 +3130,14 @@ function targetLine(est) {
   const reps = est.reps.join('/');
   if (est.kind === 'hold') {
     /* An arrow only where something actually moves: holding the weight to
-       chase reps is progress, repeating the same set numbers is not. */
-    const climbing = est.reps.some((r, i) => r > est.sets[i]);
-    return (climbing ? '↗' : '→') + ' objetivo: ' + (climbing ? '' : 'mantener ') +
-      n(est.weight) + u + ' × ' + reps;
+       chase reps is progress, repeating the same set numbers is not, and
+       pulling back to the prescription is neither — compared over the
+       sets that have a last week to compare with, not the ones the plan
+       added since. */
+    const total = a => a.reduce((t, v) => t + v, 0);
+    const was = total(est.sets), now = total(est.reps.slice(0, est.sets.length));
+    const head = now > was ? '↗ objetivo: ' : now === was ? '→ objetivo: mantener ' : '→ objetivo: ';
+    return head + n(est.weight) + u + ' × ' + reps;
   }
   return (est.kind === 'up' ? '↗' : '↘') + ' objetivo: ' + n(est.weight) + u + ' × ' + reps;
 }
@@ -2977,11 +3149,13 @@ function targetLine(est) {
 function targetNotes(est) {
   const out = [];
   if (!est) return out;
+  const u = ' ' + units();
   if (est.apart) {
     out.push(est.apart === 1
-      ? 'una serie fue a otro peso y queda fuera: el objetivo va sobre las que hiciste a ' + est.from + ' ' + units()
-      : est.apart + ' series fueron a otro peso y quedan fuera: el objetivo va sobre las que hiciste a ' + est.from + ' ' + units());
+      ? 'una serie fue a otro peso y queda fuera: el objetivo va sobre las que hiciste a ' + est.from + u
+      : est.apart + ' series fueron a otro peso y quedan fuera: el objetivo va sobre las que hiciste a ' + est.from + u);
   }
+  const rirWas = est.rir + ' RIR' + (est.assumed ? ' previstos' : '');
   if (est.note === 'topFailure') {
     out.push('tope del rango pero al fallo — mismo peso, ejecútalo a ' + est.rirThis + ' RIR');
   } else if (est.note === 'topForced') {
@@ -2989,10 +3163,33 @@ function targetNotes(est) {
   } else if (est.note === 'coarse') {
     out.push('el siguiente escalón te deja en ~' + est.reps[0] + ' reps, por debajo del rango — ' +
       'normal con stack grueso, sube en 1-2 semanas');
-  } else if (est.note === 'rirDrop') {
-    out.push('ojo: la última fue a ' + est.rir + ' RIR' + (est.assumed ? ' previstos' : '') +
-      '; a ' + est.rirThis + ' RIR igual salen ~' + est.predLast + ' y no ' + est.fromReps +
-      '. No es retroceso.');
+  } else if (est.note === 'predUnder') {
+    out.push('la última fue a ' + rirWas + '; a ' + est.rirThis + ' RIR, ' + est.from + u +
+      ' se queda en ~' + est.predLast + ' reps, por debajo del rango. Peso de más para lo que pide esta semana');
+  } else if (est.note === 'reset') {
+    out.push('reinicio: ' + est.stall + ' sesiones sin sumar reps a ' + est.from + u +
+      ' — un escalón abajo y a reconstruir hasta el tope del rango');
+  } else if (est.note === 'stallOne') {
+    out.push(est.stall + ' sesiones sin sumar reps a ' + est.from + u +
+      ': una rep más en total, en la primera serie con margen, y el resto igual');
+  } else if (est.note === 'stallLong') {
+    out.push(est.stall + ' sesiones sin sumar reps a ' + est.from + u +
+      ': si esta tampoco suma, baja un escalón o cambia el ejercicio');
+  }
+  if (est.rirDrop) {
+    out.push('ojo: la última fue a ' + rirWas + '; a ' + est.rirThis + ' RIR las mismas fuerzas dan ~' +
+      est.predLast + ' y no ' + est.fromReps + ' — el objetivo ya lo descuenta. No es retroceso.');
+  } else if (est.rirGain) {
+    out.push('la última fue a ' + rirWas + ' y esta semana pide ' + est.rirThis +
+      ': parte de las reps de más salen de ahí, no de ganar fuerza');
+  }
+  if (est.extra) {
+    const first = est.reps.length - est.extra + 1, lastIdx = est.reps.length;
+    out.push(est.extra === 1
+      ? 'la serie ' + first + ' no tiene referencia a ' + est.from + u + ': ~' + est.reps[est.reps.length - 1] +
+        ' reps es una extrapolación de la caída entre series'
+      : 'las series ' + first + '–' + lastIdx + ' no tienen referencia a ' + est.from + u +
+        ': sus reps son una extrapolación de la caída entre series');
   }
   return out;
 }
