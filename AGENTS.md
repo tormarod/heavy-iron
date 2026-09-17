@@ -77,8 +77,10 @@ tools/smoke-gate.sh                      # all of the above, in one go
 Only `test/unit.js` runs on GitHub. The browser suite runs on the machine
 the pull request is opened from: `tools/smoke-gate.sh` is wired as a
 PreToolUse hook in `.claude/settings.json` on `mcp__github__create_pull_request`
-and `gh pr create`, and a failure blocks the PR. Run it yourself before
-pushing if you are not going through that tool. `test/unit.js` loads the
+and `gh pr create`, and a failure blocks the PR. It returns at once when
+the branch changes nothing the suites load (the shell, `sw.js`, `blocks/`,
+`test/`), so a docs-only PR is not held for a Chromium run. Run it yourself
+before pushing if you are not going through that tool. `test/unit.js` loads the
 six source files into one shared Node context — the same global scope the
 `<script>` tags create — and is the fastest full check.
 

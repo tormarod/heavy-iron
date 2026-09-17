@@ -19,7 +19,19 @@
 # the first failure's. Exit code 2 is what a PreToolUse hook needs to block
 # the tool call, so every failure path uses it.
 #
+# A pull request that touches nothing the tests can see — a plan under
+# plans/, the README, a workflow — is not worth four minutes of Chromium, so
+# the gate first diffs the branch against the base and returns at once when
+# none of the files below changed. The list is what the two suites actually
+# load or read: the shell, the worker, the published blocks, the tests, and
+# this script. It is deliberately wider than CI's cache-version rule
+# (index.html, css/, js/), because the smoke suite also exercises sw.js and
+# imports from blocks/.
+#
 # Environment:
+#   SMOKE_GATE_BASE     the ref the branch is compared against; defaults to
+#                       origin/main. Unknown ref → the gate runs in full.
+#   SMOKE_GATE_FORCE=1  run everything even when the diff is docs-only.
 #   SMOKE_GATE_SKIP=1   skip the browser half (unit tests still run) — for a
 #                       machine with no Chromium and no way to fetch one.
 #   PLAYWRIGHT_VERSION  defaults to 1.56.1.
@@ -30,6 +42,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT" || exit 2
 
 PLAYWRIGHT_VERSION="${PLAYWRIGHT_VERSION:-1.56.1}"
+SMOKE_GATE_BASE="${SMOKE_GATE_BASE:-origin/main}"
+TESTED_PATHS='^(index\.html|css/|js/|sw\.js|manifest\.webmanifest|blocks/|test/|tools/smoke-gate\.sh)'
 SERVER_PID=""
 
 fail() { echo "smoke-gate: $*" >&2; exit 2; }
@@ -37,6 +51,17 @@ cleanup() { if [ -n "$SERVER_PID" ]; then kill "$SERVER_PID" 2>/dev/null; wait "
 trap cleanup EXIT
 
 command -v node >/dev/null 2>&1 || fail "node is not installed"
+
+if [ "${SMOKE_GATE_FORCE:-}" != "1" ] && git rev-parse --verify --quiet "$SMOKE_GATE_BASE^{commit}" >/dev/null; then
+  # Committed changes since the branch left the base, plus anything still
+  # uncommitted or untracked in the working tree — `git diff <commit>` covers
+  # the first two, `ls-files --others` the third.
+  changed="$( { git diff --name-only "$(git merge-base "$SMOKE_GATE_BASE" HEAD)"; git ls-files --others --exclude-standard; } | sort -u )"
+  if ! printf '%s\n' "$changed" | grep -qE "$TESTED_PATHS"; then
+    echo "smoke-gate: nothing the tests can see changed against $SMOKE_GATE_BASE — skipping"
+    exit 0
+  fi
+fi
 
 echo "smoke-gate: syntax check"
 for f in js/*.js sw.js test/*.js; do
