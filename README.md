@@ -575,7 +575,7 @@ Then the cases, in this order:
 |---|---|---|
 | **Bajar** | any set fell below the bottom of the range | the weight that puts you back at the bottom, rounded **down** |
 | **Subir** | every set reached the top of the range | the step the set actually paid for, with the reps to expect there |
-| **Bajar** | every set was in range, but at *this* week's RIR the last one would not be | the same answer — the weight is too heavy for what the week asks |
+| **Bajar** | every set was in range, but at *this* week's RIR **most** of them would not be | the same answer — the weight is too heavy for what the week asks |
 | **Reinicio** | three sessions at this weight without the reps moving | one step down, the sets priced off the same e1RM at the lighter weight |
 | **Mantener** | anything else | same weight, the reps `pred[i]` predicts plus this week's gain |
 
@@ -583,9 +583,32 @@ Then the cases, in this order:
 weight forever, however badly it had been chosen. The second `Bajar` is the
 first one a step removed: 10 reps at 0 RIR in a week that prescribes 2 is
 8 at the prescription, under a 10–15 range, and holding the weight would
-ask for a set the range itself says is too heavy. It reads off the last set
-only — the one the chip describes — so the weight it prices always lands
-below the current one.
+ask for a session the range itself says is too heavy.
+
+**Most sets, not any set.** `45 × 12/10/9/8` with the last set at 0 RIR
+reads `10/8/7/6` at 2 RIR on an 8–12 range: two sets short, two not, and
+the first set has the top of the range in it. That weight is not too heavy
+— the freshest set says so — the session fell away, which is pacing and
+rest, and the rep-decay line already names it. Pricing the weight off the
+most fatigued set there took 5 % off a load the lifter plainly owns. So
+the rule holds the weight, asks the short sets for the bottom of the range
+anyway, and says what that costs:
+
+```
+→ objetivo: 45 kg × 11/9/8/8
+   a 2 RIR las series 3 y 4 no llegan a 8: van igualmente, y saldrán a ~1 y ~0 RIR.
+   El peso lo aguanta la primera serie; lo que cae es el resto de la sesión
+```
+
+Only when the majority of the sets miss is the weight the answer, and
+then it is priced so that the *last* set lands back at the bottom — every
+set inside the range, not just the first.
+
+**Every `Bajar` and `Reinicio` line shows the sets.** `42,75 × 8` under a
+`45 × 12/10/9/8` read as a quarter of the volume gone, when the model was
+predicting `12/10/9/8` at the lighter weight. The last set is priced off
+its own e1RM and the rest keep the shape of last week's decay:
+`↘ objetivo: 28 kg × 15/13/12/11`.
 
 **The gain is a rate, and the rate is read off the block.** A rule that
 adds one rep to every set of last week has no memory: it asks for the

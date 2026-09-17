@@ -460,13 +460,37 @@ e = estimate([[[14, 15], [14, 11], [14, 12]]], { rir: ['0'], w: 14, inc: 1 });
 ok('a middle set is never read as weaker than the set that came after it',
    e.kind === 'hold' && e.reps === '14/11/11', JSON.stringify(e));
 
-/* The weight that cannot reach the range at this week's RIR. */
+/* The weight that cannot reach the range at this week's RIR — on MOST of
+   its sets. 12/11/10/10 at 0 RIR reads 10/9/8/8 at 2 RIR: three of four
+   under a 10–15 range, so the weight is the answer, priced so that every
+   set lands back inside the range and shown per set. */
 e = estimate([[12, 11, 10, 10]], { rir: ['0'] });
-ok('sets inside the range at 0 RIR that would fall under it at 2 RIR mean the weight is too heavy',
-   e.kind === 'down' && e.note === 'predUnder' && e.weight === 30 && e.reps === '10', JSON.stringify(e));
-ok('and the note prices the current weight at this week\'s RIR', e.notes.includes('~8 reps'), e.notes);
+ok('sets inside the range at 0 RIR that would mostly fall under it at 2 RIR mean the weight is too heavy',
+   e.kind === 'down' && e.note === 'predUnder' && e.weight === 30 && e.reps === '13/12/11/11', JSON.stringify(e));
+ok('and the note counts the sets that miss and prices each at this week\'s RIR',
+   e.notes.includes('3 de 4 series') && e.notes.includes('~10/9/8/8'), e.notes);
 e = estimate([[16, 16, 16, 16]], { rir: ['0'], range: '16–20', w: 12, inc: 1 });
 ok('past the Epley ceiling that case says sin estimar rather than guessing', e.kind === 'skip', JSON.stringify(e));
+/* The report that changed the rule: 45 × 12/10/9/8 at 0 RIR on 8–12, next
+   week at 2 RIR, used to come out as "42,75 × 8". Two sets short at the
+   prescription, two not, and the first set has the top of the range in it:
+   the weight is owned, the session fell away. Hold, clamp the short sets
+   at the bottom, and say where they will land. */
+e = estimate([[12, 10, 9, 8]], { rir: ['0'], w: 45, range: '8–12', inc: 0.25 });
+ok('half the sets short at the prescription is pacing, not load: the weight holds',
+   e.kind === 'hold' && e.weight === 45 && e.reps === '11/9/8/8', JSON.stringify(e));
+ok('and the short sets are named with the RIR they will land at',
+   e.notes.includes('las series 3 y 4 no llegan a 8') && e.notes.includes('~1 y ~0 RIR') &&
+   !e.notes.includes('No es retroceso'), e.notes);
+e = estimate([[12, 8, 8, 8]], { rir: ['0'], w: 45, range: '8–12', inc: 0.25 });
+ok('but three of four sets short is the weight, and the line shows every set at the lighter one',
+   e.kind === 'down' && e.weight === 42.75 && e.reps === '12/8/8/8', JSON.stringify(e));
+/* An actual set under the range keeps its case, and now shows the sets —
+   priced at the weight the step grid allows, which is a shade under the
+   exact one, so the reps come out a shade over the bottom. */
+e = estimate([[12, 10, 9, 8]], { rir: ['0'] });
+ok('a set under the range prices every set at the weight that puts the last one back at the bottom',
+   e.kind === 'down' && e.note === '' && e.weight === 28 && e.reps === '15/13/12/11', JSON.stringify(e));
 
 /* The progression rate. */
 e = estimate([flat, [13, 13, 11, 11]]);
