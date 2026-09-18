@@ -1182,12 +1182,16 @@ const chartUnitProbe = call(`
     profile.log[blockId][slot(2, day.id)] = { [exId]: [{ w: '220.462262185', r: '5', done: true, u: 'lb' }] };
     state.prefs.units = 'kg';
     const points = collectHistory(profile, blockId, day.id, exId, 8, 'weight');
+    const all = collectHistoryAll(profile, exId, 'weight');
     state.prefs.units = 'kg';
-    return points.map(p => Math.round(p.weight * 100) / 100);
+    const round = ps => ps.map(p => Math.round(p.weight * 100) / 100);
+    return { block: round(points), all: round(all) };
   })()
 `);
 ok('collectHistory converts the lb-stamped week instead of stepping the line 2,2x',
-   JSON.stringify(chartUnitProbe) === JSON.stringify([100, 100]), JSON.stringify(chartUnitProbe));
+   JSON.stringify(chartUnitProbe.block) === JSON.stringify([100, 100]), JSON.stringify(chartUnitProbe));
+ok('"todos los bloques" converts too — it is the same line over a longer history',
+   JSON.stringify(chartUnitProbe.all) === JSON.stringify([100, 100]), JSON.stringify(chartUnitProbe));
 
 console.log('\n== the CSV is safe to open in a spreadsheet and says which unit each row is in (plans/011) ==');
 ok('csvCell prefixes a leading = so a name out of an imported file cannot be a formula',
