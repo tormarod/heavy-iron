@@ -36,7 +36,7 @@ below so it is not lost or re-audited.
 | 012 | [Freeform tags, editor numbers and the setup import cannot crash, hang or alias](012-input-boundary-tags-clamps-aliasing.md) | P1 | S | LOW | — | DONE (+ `safeKey` widened as a follow-up — see its Maintenance notes) |
 | 013 | [Six small correctness fixes](013-six-small-correctness-fixes.md) | P2 | S | LOW | — (Step D overlaps 009 item 1) | DONE (two deviations from the plan text — see its Maintenance notes) |
 | 014 | [The harness checks the repo's own invariants; `--list` works again](014-harness-invariants.md) | P1 | S | LOW | — (Steps 2, 4 overlap 009 item 3) | DONE (Step 5's round-trip narrowed to the ids a file states — see its Maintenance notes) |
-| 015 | [Docs match the code; one-command `CACHE_VERSION` bump](015-docs-sync-and-release-helper.md) | P2 | S | LOW | 014 (soft); overlaps 009 item 8 | DONE (Step 4 edits `js/vendor/README.md`, which CI's `cache-version` regex treats as a shell change — open maintainer call, see its Maintenance notes) |
+| 015 | [Docs match the code; one-command `CACHE_VERSION` bump](015-docs-sync-and-release-helper.md) | P2 | S | LOW | 014 (soft); overlaps 009 item 8 | DONE (+ the `cache-version` regex narrowed to the shell's own extensions, out of the plan's scope but needed to land Step 4 — see its Maintenance notes) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)

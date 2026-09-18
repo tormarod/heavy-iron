@@ -253,13 +253,20 @@ instead:
   suite would exit on its "matched no section" path. The recipe ships
   `--only "main session"` with one clause saying why.
 - **The plan's "CI does not require a bump for these paths" is wrong for
-  `js/vendor/README.md`.** The `cache-version` job gates on
-  `grep -qE '^(index\.html|css/|js/)'`, and that path starts with `js/`.
-  So this plan's Step 4, which the same plan says must not bump
-  `CACHE_VERSION`, is the one edit here that turns the job red. Left for
-  the maintainer — see the status row in `plans/README.md`. The narrow fix
-  is to exclude `.md` from the job's regex, which this plan puts out of
-  scope.
+  `js/vendor/README.md`, so `.github/workflows/test.yml` was edited after
+  all.** The `cache-version` job gated on
+  `grep -qE '^(index\.html|css/|js/)'`, and that path starts with `js/` —
+  so Step 4, in a plan that forbids bumping `CACHE_VERSION`, was the one
+  edit here that turned the job red. The three options (bump anyway, narrow
+  the gate, drop Step 4) were put to the maintainer, who chose to narrow
+  it: the pattern is now anchored on the extension,
+  `^(index\.html|css/.*\.css|js/.*\.js)$`. That is identical to the old
+  one for every file the shell actually contains and stops the three
+  non-shell files under `js/vendor/` — `README.md`, `SHA256SUMS`, the
+  license — from asking for a bump. It is outside the plan's stated scope;
+  it is here because the plan's own Step 4 could not land without it. The
+  same commit drops a comment in that file quoting the AGENTS.md sentence
+  Step 2 deleted.
 - **Step 1 was half a check, as the Overlap note predicted.** The
   `js/app.js:5437` citation and the "seven files" quote were already gone
   (`40048a0`, `7762bcf`); only the three citations under "Untrusted input"
