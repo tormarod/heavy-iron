@@ -12,8 +12,12 @@
 (function () {
   var theme = null;
   try {
-    var raw = localStorage.getItem('heavy-iron-v1');
-    var t = raw && JSON.parse(raw).prefs && JSON.parse(raw).prefs.theme;
+    /* 'heavy-iron-v1' duplicates STORAGE_KEY (js/app.js:1) — unavoidable
+       since this file runs before app.js defines anything, but it means a
+       renamed STORAGE_KEY silently brings back the flash of the wrong theme
+       this file exists to prevent, with nothing to catch the drift. */
+    var parsed = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+    var t = parsed && parsed.prefs && parsed.prefs.theme;
     if (t === 'light' || t === 'dark') theme = t;
   } catch (e) { /* private mode / storage blocked / first run — fall through to system preference */ }
   if (!theme) {

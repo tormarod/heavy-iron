@@ -282,7 +282,7 @@ const HEAT_MAX_WEEKS = 18;
 
 function buildHeatmapSVG(days) {
   const keys = Object.keys(days).sort();
-  if (!keys.length) return '';
+  if (!keys.length) return { svg: '', maxW: 0 };
   const parse = k => { const p = k.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); };
   const last = parse(keys[keys.length - 1]);
   let first = parse(keys[0]);
@@ -306,11 +306,13 @@ function buildHeatmapSVG(days) {
   const labels = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
   /* The per-week max-width depends on `weeks`, computed above from the data
      — a `style=""` attribute can't survive dropping the CSP's
-     'unsafe-inline' for styles, so it travels here as a data attribute and
-     the caller (drawDiagFreq) applies it as a real CSSOM property, which the
-     CSP does not restrict either way (plans/008 item 22). */
-  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" class="u-svg-fluid" data-max-w="' +
-    (W * 1.6) + '" role="img" aria-label="Días entrenados">';
+     'unsafe-inline' for styles, so it comes back to the caller (drawDiagFreq)
+     as `maxW` alongside the markup, for it to apply as a real CSSOM property,
+     which the CSP does not restrict either way (plans/008 item 22). Returned
+     rather than round-tripped through a data attribute, so a second caller
+     can't silently drop the sizing with no error anywhere. */
+  const maxW = W * 1.6;
+  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" class="u-svg-fluid" role="img" aria-label="Días entrenados">';
   labels.forEach((l, r) => {
     if (r % 2) return;  /* every other row, or they collide at this size */
     svg += '<text x="0" y="' + (padT + r * (cell + gap) + cell - 1) + '" font-size="7.5" fill="var(--soft)" ' +
@@ -328,7 +330,7 @@ function buildHeatmapSVG(days) {
     }
   }
   svg += '</svg>';
-  return svg;
+  return { svg, maxW };
 }
 
 /* ---------- strength index per muscle ----------
@@ -776,12 +778,12 @@ function drawDiagFreq(profile, block) {
   host.innerHTML = '';
   const trained = trainedDays(profile, block);
   const heat = buildHeatmapSVG(trained);
-  if (heat) {
+  if (heat.svg) {
     const cal = document.createElement('div');
     cal.className = 'freq-cal';
-    cal.innerHTML = '<div class="freq-cal-t"></div><div class="freq-cal-g">' + heat + '</div>';
-    const heatSvg = cal.querySelector('svg[data-max-w]');
-    if (heatSvg) { heatSvg.style.maxWidth = heatSvg.dataset.maxW + 'px'; heatSvg.removeAttribute('data-max-w'); }
+    cal.innerHTML = '<div class="freq-cal-t"></div><div class="freq-cal-g">' + heat.svg + '</div>';
+    const heatSvg = cal.querySelector('svg');
+    if (heatSvg) heatSvg.style.maxWidth = heat.maxW + 'px';
     const dayCount = Object.keys(trained).length;
     cal.querySelector('.freq-cal-t').textContent = dayCount === 1
       ? '1 día entrenado en este bloque'

@@ -980,7 +980,6 @@ body {
 .u-status-left-lg { text-align: left; padding-top: 6px; }
 .sheet-lead { font-weight: 600; color: var(--ink); margin-bottom: 6px; }
 .calc-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
-.calc-col { flex: 1; min-width: 140px; }
 .u-svg-fluid { width: 100%; height: auto; display: block; }
 .u-flex-grow { flex: 1; min-width: 140px; }
 .u-flex-grow-sm { flex: 1; min-width: 70px; }

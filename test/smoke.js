@@ -1405,6 +1405,32 @@ const ok = (name, cond, extra) => {
     await ctx.close();
   });
 
+  // ---------- storage read failure (not corrupt data — no bytes at all) ----------
+  await section('storage read failure', async () => {
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    // simulates private-mode/blocked storage: getItem throws before any bytes
+    // are retrieved, which must not be folded into "first run" or "corrupt
+    // data" — both would risk seeding over or losing data that may be intact.
+    await page.addInitScript(() => {
+      const orig = Storage.prototype.getItem;
+      Storage.prototype.getItem = function (key) {
+        if (key === 'heavy-iron-v1') throw new Error('storage blocked de prueba');
+        return orig.call(this, key);
+      };
+    });
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.recovery', { timeout: 5000 });
+    ok('a storage read failure lands on the recovery screen, not a fresh seed',
+       await page.locator('.recovery').count() === 1);
+    ok('copy says storage could not be read, not that the data is corrupt',
+       (await page.textContent('.recovery h1')).includes('podido leer'));
+    ok('no download offered when there are no bytes to hand over',
+       await page.locator('#recDownload').count() === 0);
+    ok('Reintentar is offered as the primary way out', await page.locator('#recReload').count() === 1);
+    await ctx.close();
+  });
+
   // ---------- recovery screen ----------
   await section('recovery screen', async () => {
     const ctx = await browser.newContext();

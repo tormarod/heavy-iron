@@ -341,10 +341,12 @@ function drawQr() {
     };
   });
   const showing = qrMode === 'show';
-  $('qrShowPane').style.display = showing ? '' : 'none';
-  /* .hidden, not .style.display: index.html ships this pane with the
-     `hidden` attribute (plans/008 item 22), and clearing an inline style
-     would leave that attribute in charge, never showing the scanner. */
+  /* .hidden on both, not .style.display for one of them: index.html ships
+     qrScanPane with the `hidden` attribute (plans/008 item 22), and clearing
+     an inline style there would leave that attribute in charge, never
+     showing the scanner — so both panes toggle the same property rather than
+     splitting the pair across two mechanisms. */
+  $('qrShowPane').hidden = !showing;
   $('qrScanPane').hidden = showing;
   if (showing) { stopQrScan(); drawQrShow(); }
   else { stopQrShow(); startQrScan(); }

@@ -790,6 +790,12 @@ ok('a near-zero plate is filtered out by the PLATE_MIN/MAX bounds, not just p > 
    JSON.stringify(migratedPlates.prefs.plates));
 ok('fitPlates never grows past FIT_PLATES_MAX even fed a plate size migrate() would already reject',
    call('fitPlates(1000000, [0.0001]).plates.length') <= call('FIT_PLATES_MAX'));
+ok('fitPlates reports a remainder that matches the plates actually returned, even when reconstruction hits FIT_PLATES_MAX',
+   call('(function(){var f=fitPlates(60,[0.25]);return Math.abs(f.plates.reduce((a,b)=>a+b,0)+f.remainder-60)<1e-6;})()'),
+   String(call('JSON.stringify(fitPlates(60,[0.25]))')));
+ok('fitPlates picks the fewest plates for an exact fit, not just any feasible one',
+   call('fitPlates(30, [20, 15, 5]).plates.length') === 2,
+   String(call('JSON.stringify(fitPlates(30, [20, 15, 5]))')));
 
 console.log('\n== unit-stamped rows: diagnostics and the review convert instead of blending kg/lb (plans/008 item 9) ==');
 ok('convertWeight round-trips kg -> lb -> kg',
@@ -993,25 +999,30 @@ ok('no digits at all returns null',
    call('phaseRir({ phase: [{ r: "Deload" }] }, 0)') === null);
 
 console.log('\n== buildHeatmapSVG: week count is calendar days, not milliseconds (plans/008 item 16) ==');
-const heatWeeks = svg => {
-  const m = svg.match(/viewBox="0 0 (\d+)/);
+const heatWeeks = heat => {
+  const m = heat.svg.match(/viewBox="0 0 (\d+)/);
   return Math.round((Number(m[1]) - 16) / 13);
 };
 ok('two Mondays exactly 14 days apart span 3 weeks (inclusive)',
    heatWeeks(call('buildHeatmapSVG({ "2026-01-05": 1, "2026-01-19": 1 })')) === 3);
 ok('a single trained day is one week',
    heatWeeks(call('buildHeatmapSVG({ "2026-06-10": 1 })')) === 1);
+ok('maxW comes back alongside the markup instead of round-tripping through a data attribute',
+   call('buildHeatmapSVG({ "2026-06-10": 1 }).maxW') > 0);
 
 console.log('\n== storage-failure paths (plans/008 item 18) ==');
 {
   const origGetItem = call('localStorage.getItem');
   const origShowRecovery = call('showRecovery');
   call('__recoveryCalls = [];');
-  app.showRecovery = (e, raw, drawFailure) => { call('__recoveryCalls').push({ msg: e && e.message, drawFailure: !!drawFailure }); };
+  app.showRecovery = (e, raw, mode) => { call('__recoveryCalls').push({ msg: e && e.message, raw, mode }); };
   app.localStorage.getItem = () => { throw new Error('getItem blocked'); };
   call('load()');
   ok('a thrown read goes to recovery instead of seeding a fresh device over it',
-     call('__recoveryCalls.length') === 1 && call('__recoveryCalls[0].drawFailure') === false,
+     call('__recoveryCalls.length') === 1 && call('__recoveryCalls[0].raw') === null,
+     JSON.stringify(call('__recoveryCalls')));
+  ok('a thrown read is tagged as a read failure, not the corrupt-data or draw-failure copy',
+     call('__recoveryCalls[0].mode') === 'read',
      JSON.stringify(call('__recoveryCalls')));
   app.localStorage.getItem = origGetItem;
   app.showRecovery = origShowRecovery;

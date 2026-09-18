@@ -87,14 +87,19 @@ function collectHistoryAll(profile, exId, metric) {
        current length: bestByExercise (the RECORD badge) already counts a
        shortened block's stranded weeks, and this chart disagreeing with it
        hid the very sets that would explain a badge with no history to show
-       for it — see plans/008 item 20. */
-    const weeks = Array.from(new Set(
-      Object.keys(blk).map(k => { const m = /^w(\d+)-/.exec(k); return m ? +m[1] : null; }).filter(w => w != null)
-    )).sort((a, b) => a - b);
-    weeks.forEach(w => {
-      Object.keys(blk).forEach(k => {
-        const m = /^w(\d+)-(.+)$/.exec(k);
-        if (!m || +m[1] !== w) return;
+       for it — see plans/008 item 20. One pass groups the keys by week so
+       the full key set isn't walked again per distinct week just to get the
+       output ordered. */
+    const byWeek = new Map();
+    Object.keys(blk).forEach(k => {
+      const m = /^w(\d+)-/.exec(k);
+      if (!m) return;
+      const w = +m[1];
+      if (!byWeek.has(w)) byWeek.set(w, []);
+      byWeek.get(w).push(k);
+    });
+    Array.from(byWeek.keys()).sort((a, b) => a - b).forEach(w => {
+      byWeek.get(w).forEach(k => {
         const rows = blk[k][exId];
         if (!Array.isArray(rows)) return;
         const done = rows.filter(r => r && r.done && r.w !== '' && r.w != null && !isNaN(num(r.w)));

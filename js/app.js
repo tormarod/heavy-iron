@@ -129,7 +129,7 @@ function load() {
   try {
     raw = localStorage.getItem(STORAGE_KEY);
   } catch (e) {
-    showRecovery(e, null);
+    showRecovery(e, null, 'read');
     return;
   }
   const firstRun = raw == null;
@@ -1095,74 +1095,89 @@ function emptyBlock() {
    (so the broken copy is not overwritten with something worse), and offer to
    hand the raw bytes over as a file before anything is thrown away.
 
-   `drawFailure` tells the two causes apart. load()'s JSON.parse/shape checks
-   and a thrown read mean the *data* is unreadable — "Empezar de cero" is the
-   only real way out, alongside downloading the raw bytes first. render()'s
-   catch is different: the data parsed fine and migrate() already repaired
-   its shape, so a throw here is a deterministic bug in a screen reading an
-   unusual-but-valid log — pushing that person toward deleting intact data is
-   the wrong first move. Offer to sidestep the screen instead: reset to week
-   1, or away from whatever block is on screen, before the destructive option. */
-function showRecovery(err, raw, drawFailure) {
+   `mode` tells the three causes apart. Omitted (undefined) is load()'s
+   JSON.parse/shape checks: the *data* is unreadable — "Empezar de cero" is a
+   real way out, alongside downloading the raw bytes first. 'read' is
+   readRaw() throwing before any bytes were even retrieved (private mode,
+   storage blocked, a transient failure) — there are no bytes to download and
+   the data on disk may well be intact, so "Reintentar" leads and the download
+   button and its "download before anything else" copy don't show at all.
+   'draw' is render()'s catch: the data parsed fine and migrate() already
+   repaired its shape, so a throw here is a deterministic bug in a screen
+   reading an unusual-but-valid log — pushing that person toward deleting
+   intact data is the wrong first move. Offer to sidestep the screen instead:
+   reset to week 1, or away from whatever block is on screen, before the
+   destructive option. */
+function showRecovery(err, raw, mode) {
   frozen = true;
   ready = false;
   clearTimeout(saveT); saveT = null;
   stopRest();
 
+  const drawFailure = mode === 'draw';
+  const readFailure = mode === 'read';
+  const hasBytes = raw != null;
+
   const box = document.createElement('div');
   box.className = 'recovery';
   box.innerHTML =
-    '<h1>' + (drawFailure ? 'La app ha fallado al dibujar' : 'No se ha podido abrir tu registro') + '</h1>' +
+    '<h1>' + (drawFailure ? 'La app ha fallado al dibujar'
+      : readFailure ? 'No se ha podido leer tu registro'
+      : 'No se ha podido abrir tu registro') + '</h1>' +
     (drawFailure
       ? '<p>Ha ocurrido un error dibujando la pantalla — probablemente un fallo de la app, no de tus datos. ' +
         'Se ha dejado de guardar mientras tanto, para no arriesgar nada.</p>'
+      : readFailure
+      ? '<p>No se ha podido leer el almacenamiento del navegador — puede ser un fallo puntual (modo privado, ' +
+        'almacenamiento bloqueado) y tus datos podrían seguir intactos. Se ha dejado de guardar mientras tanto.</p>'
       : '<p>Los datos guardados en este navegador no tienen la forma que la app espera, ' +
         'así que no se ha dibujado nada — y, para no empeorarlo, se ha dejado de guardar.</p>') +
-    '<p><b>Descarga los datos antes de nada.</b> Ese archivo es tu registro tal cual está: ' +
-    'aunque la app no sepa leerlo, no se pierde y se puede recuperar a mano.</p>' +
+    (hasBytes
+      ? '<p><b>Descarga los datos antes de nada.</b> Ese archivo es tu registro tal cual está: ' +
+        'aunque la app no sepa leerlo, no se pierde y se puede recuperar a mano.</p>'
+      : '') +
     '<pre></pre>' +
     '<div class="foot-btns">' +
-      '<button class="sm key" id="recDownload" type="button">Descargar los datos tal cual</button>' +
+      (readFailure ? '<button class="sm key" id="recReload" type="button">Reintentar</button>' : '') +
+      (hasBytes ? '<button class="sm' + (readFailure ? '' : ' key') + '" id="recDownload" type="button">Descargar los datos tal cual</button>' : '') +
       (drawFailure
         ? '<button class="sm" id="recWeek1" type="button">Volver a la semana 1</button>' +
           '<button class="sm" id="recBlock" type="button">Cambiar de bloque</button>'
         : '') +
-      '<button class="sm" id="recReload" type="button">Reintentar</button>' +
+      (readFailure ? '' : '<button class="sm" id="recReload" type="button">Reintentar</button>') +
       '<button class="sm warn" id="recReset" type="button">Empezar de cero</button>' +
     '</div>';
   box.querySelector('pre').textContent = String((err && err.message) || err || 'Error desconocido');
   document.body.replaceChildren(box);
 
-  box.querySelector('#recDownload').onclick = () =>
+  const dl = box.querySelector('#recDownload');
+  if (dl) dl.onclick = () =>
     downloadFile('heavy-iron-datos-sin-abrir-' + new Date().toISOString().slice(0, 10) + '.json',
                  raw == null ? '' : raw, 'application/json');
-  /* Both edit `state` (already a real, migrated object here — that is what
-     makes drawFailure true) and write it straight to localStorage, bypassing
-     `frozen`: render() is gone from this DOM, so the only way back is a
-     reload, and this box has already replaced the elements render() writes
-     into. */
+  /* Both buttons edit `state` (already a real, migrated object here — that
+     is what makes drawFailure true), write it straight to localStorage
+     bypassing `frozen`, and reload: render() is gone from this DOM, so the
+     only way back is a reload, and this box has already replaced the
+     elements render() writes into. Shared here so that reasoning has one
+     copy instead of two; only the mutation differs per button. */
+  const recoverAndReload = mutateProfile => {
+    try {
+      const profile = state.profiles && state.profiles[state.activeProfile];
+      if (profile) mutateProfile(profile);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (e) { /* reload surfaces whatever is still wrong */ }
+    location.reload();
+  };
   if (drawFailure) {
     const week1 = box.querySelector('#recWeek1');
-    if (week1) week1.onclick = () => {
-      try {
-        const profile = state.profiles && state.profiles[state.activeProfile];
-        if (profile) profile.week = 1;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      } catch (e) { /* reload surfaces whatever is still wrong */ }
-      location.reload();
-    };
+    if (week1) week1.onclick = () => recoverAndReload(profile => { profile.week = 1; });
     const chBlock = box.querySelector('#recBlock');
-    if (chBlock) chBlock.onclick = () => {
-      try {
-        const profile = state.profiles && state.profiles[state.activeProfile];
-        if (profile && Array.isArray(profile.blockOrder) && profile.blockOrder.length) {
-          profile.activeBlock = profile.blockOrder.find(id => id !== profile.activeBlock) || profile.blockOrder[0];
-          profile.week = 1;
-        }
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      } catch (e) { /* reload surfaces whatever is still wrong */ }
-      location.reload();
-    };
+    if (chBlock) chBlock.onclick = () => recoverAndReload(profile => {
+      if (Array.isArray(profile.blockOrder) && profile.blockOrder.length) {
+        profile.activeBlock = profile.blockOrder.find(id => id !== profile.activeBlock) || profile.blockOrder[0];
+        profile.week = 1;
+      }
+    });
   }
   box.querySelector('#recReload').onclick = () => location.reload();
   box.querySelector('#recReset').onclick = () => {
@@ -2190,7 +2205,7 @@ function render() {
   try {
     drawApp();
   } catch (e) {
-    showRecovery(e, readRaw(), true);
+    showRecovery(e, readRaw(), 'draw');
   }
 }
 
@@ -2735,7 +2750,7 @@ function drawCard(exId) {
     refreshWeekDot(profile, block);
     drawDeloadCheck(profile, block);
   } catch (e) {
-    showRecovery(e, readRaw(), true);
+    showRecovery(e, readRaw(), 'draw');
   }
 }
 

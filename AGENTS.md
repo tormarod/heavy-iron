@@ -17,8 +17,8 @@ identical to an oversight unless someone writes down which it is:
 
 - **No build step, no bundler, no `package.json`, no TypeScript.** Plain
   HTML/CSS/JS, served by any static server. Do not add a build step.
-- **No modules.** Eleven `<script>` tags share one global scope, in a fixed
-  order (`index.html`, the `<script>` block at the foot of `<body>`):
+- **No modules.** Twelve `<script>` tags share one global scope — eleven of
+  them in a fixed order at the foot of `<body>` (`index.html`):
 
   ```html
   <script src="js/data.js"></script>
@@ -155,9 +155,12 @@ Strict, in a `<meta>` tag at `index.html`. No inline scripts or styles may
 be added — `style-src` has no `'unsafe-inline'` any more (plans/008 item
 22), so a literal `style="..."` attribute anywhere, including one stamped
 into an `innerHTML` string, is a silent, console-only failure to apply that
-style. Use a class in `css/style.css` instead — the "utility classes"
-section there (`.u-*`) is the pattern for a value that would otherwise be a
-one-off inline style. A value computed at runtime (a chart's max-width) goes
+style. Use a class in `css/style.css` instead — the `/* ---- utility classes
+---- */` section there is the pattern for a value that would otherwise be a
+one-off inline style. Most are named `.u-*`, but a few (`.sheet-lead`,
+`.calc-row`) are named for what they hold instead, per that section's own
+comment — the section is identified by location, not by prefix. A value
+computed at runtime (a chart's max-width) goes
 through a real CSSOM property assignment (`el.style.maxWidth = ...`), which
 the CSP does not restrict, never `setAttribute('style', ...)` or
 `.style.cssText`, which it does. This is why the webfont flip lives in a
@@ -175,7 +178,7 @@ prevent — not what the code does. Two examples from the source:
    read used to mean a white screen and no way back. Instead: stop writing
    (so the broken copy is not overwritten with something worse), and offer to
    hand the raw bytes over as a file before anything is thrown away. */
-function showRecovery(err, raw) {
+function showRecovery(err, raw, mode) {
 ```
 
 ```js

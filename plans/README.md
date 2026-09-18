@@ -105,24 +105,18 @@ leverage.
   training as the second profile who turns on "Solo yo" is moved onto the
   first profile's blocks and log, and the name they typed lands on the other
   person's label. S effort, one ordering change.
-- **The heat-map week count is computed in milliseconds** (`js/diagnostics.js:270`).
-  Across a DST transition a local day is 23 h, so a span of N calendar days
-  measures short and the most recent trained day can be dropped off the right
-  edge of the chart. The rendering loop immediately below already uses
-  DST-safe calendar arithmetic; only the column count is wrong. S effort,
-  cosmetic impact.
+- ~~**The heat-map week count is computed in milliseconds**
+  (`js/diagnostics.js:270`)~~ — done (008 item 16): `js/diagnostics.js`
+  counts calendar days via `Date.UTC` on both ends instead.
 - **`install` swallows every precache failure** (`sw.js:48-55`). A flaky
   connection during the first install can leave a shell file uncached while
   the worker activates and claims clients, so the app reports itself installed
   and offline-ready with a subresource missing — discovered at the gym, with
   no way to self-heal until back online. A retry on `activate` is the safer
   shape than failing the install.
-- **`requestWakeLock` has no guard against a rest stopped mid-request**
-  (`js/app.js:1891-1895`). Tapping "saltar" inside the request's latency
-  leaves a wake lock held with no timer running, and no path can release it.
-  Narrow window; real battery cost when it hits. Note the `visibilitychange`
-  re-request is **not** a leak — browsers auto-release wake locks when a
-  document is hidden.
+- ~~**`requestWakeLock` has no guard against a rest stopped mid-request**
+  (`js/app.js:1891-1895`)~~ — done (008 item 15): it releases the lock
+  instead of holding it when `tId` is null after the `await`.
 
 **Security / robustness**
 
@@ -205,15 +199,19 @@ leverage.
 - **The restore path has no happy-path test.** Every `#bRestore` assertion in
   `test/smoke.js` (`:536`, `:539`, `:898`) is a rejection case; nothing reaches
   the success branch at `js/profile-transfer.js:107`. Folded into plan 004.
-- **Two documented data-safety guarantees are untested**: two-tab
-  reconciliation (`js/app.js:403-417`) and flush-on-hide (`:396-397`). The
-  README sells both as guarantees. Playwright supports two pages in one
-  context, so both are reachable.
+- ~~**Two documented data-safety guarantees are untested**: two-tab
+  reconciliation (`js/app.js:403-417`) and flush-on-hide (`:396-397`)~~ —
+  done (008 item 21, bullet 3): both turned out to already be covered by
+  existing smoke sections from earlier work.
 - **167 fixed sleeps totalling ~68 s** are the smoke suite's entire
   synchronisation strategy, and the whole 2,767-line file is one `try`/`catch`
-  — a single broken selector hides the other 19 blocks' results. Wrapping each
-  block to record a failure and continue would make a red build far more
-  useful.
+  — a single broken selector hides the other 19 blocks' results. **The
+  try/catch half is done** (008 item 21, bullet 1): every top-level block is
+  a `section(name, fn)` call that records a failure and continues. **The
+  sleep count is not down** (bullet 2, still open): `waitForTimeout` went
+  197 → 205 across PR #75, since the smoke coverage that PR added for items
+  15–22 used the same fixed-sleep pattern instead of `waitForFunction`
+  polling.
 - **The README says the tests "run on every push and pull request"** — they do
   not; `test.yml` is `pull_request` and `workflow_dispatch` only, deliberately.
   Meanwhile `pages.yml` deploys on every push to `main`, so a direct push
