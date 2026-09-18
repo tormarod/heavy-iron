@@ -1960,9 +1960,13 @@ if (typeof closeQr !== 'function') globalThis.closeQr = function () {};
    and back to whatever opened it when it closes, so the whole app is usable
    without a mouse. */
 /* Order matters: Escape closes whichever of these is open *last*, so a sheet
-   that can be opened on top of another (qrSheet, from the backup sheet) has
-   to sit after it here. */
-const SHEET_IDS = ['setupSheet', 'sheet', 'planSheet', 'blocksSheet', 'importSheet', 'chartSheet', 'calcSheet', 'volumeSheet', 'qrSheet'];
+   that can be opened on top of another (qrSheet, from the backup sheet;
+   reviewSheet, from "+ Nuevo bloque" on the blocks sheet) has to sit after
+   it here. Every .sheet in index.html belongs in this list except askSheet,
+   which the confirm dialog above already answers for — reviewSheet and
+   diagSheet were missing and Escape simply did nothing on them, so
+   test/unit.js now checks the list against the markup (plans/013). */
+const SHEET_IDS = ['setupSheet', 'sheet', 'planSheet', 'blocksSheet', 'reviewSheet', 'diagSheet', 'importSheet', 'chartSheet', 'calcSheet', 'volumeSheet', 'qrSheet'];
 let sheetReturn = null;
 
 function openSheet(id) {
@@ -1992,6 +1996,10 @@ document.addEventListener('keydown', e => {
   if (top === 'planSheet') closePlanEditor();
   else if (top === 'setupSheet') closeSetup();
   else if (top === 'qrSheet') closeQr();
+  /* Not closeSheet: reviewSheet carries the resume callback that opened it
+     ("+ Nuevo bloque" waits for the review to be read), and only
+     closeReview runs it. */
+  else if (top === 'reviewSheet') closeReview();
   else closeSheet(top);
 });
 

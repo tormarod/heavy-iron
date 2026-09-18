@@ -1647,6 +1647,36 @@ console.log('\n== safeKey refuses every inherited Object.prototype name, not thr
   call('__pSK = null; __bSK = null;');
 }
 
+console.log('\n== Escape reaches every sheet (plans/013) ==');
+{
+  /* reviewSheet and diagSheet were in the markup and opened by openSheet()
+     but never listed here, so Escape did nothing on them — the gap the
+     accessibility work was recorded as having closed. Checking the array
+     against index.html rather than against a second hand-written list is
+     what stops the next sheet reopening it. */
+  const sheetIds = call('SHEET_IDS');
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  const markup = Array.from(html.matchAll(/<div class="sheet" id="(\w+)"/g), m => m[1]);
+
+  ok('the index.html scan found the sheets it is meant to check', markup.length >= 10, String(markup.length));
+  /* askSheet is the confirm dialog's own; the Escape handler answers for it
+     before it ever looks at this list. */
+  const missing = markup.filter(id => id !== 'askSheet' && sheetIds.indexOf(id) === -1);
+  ok('every sheet in index.html except askSheet is in SHEET_IDS', missing.length === 0, missing.join(', '));
+  const stray = sheetIds.filter(id => markup.indexOf(id) === -1);
+  ok('and SHEET_IDS names no sheet that is not in the markup', stray.length === 0, stray.join(', '));
+
+  /* Order is what decides which sheet Escape closes when two are up. */
+  ok('reviewSheet sits after blocksSheet, which it opens over',
+     sheetIds.indexOf('reviewSheet') > sheetIds.indexOf('blocksSheet'),
+     JSON.stringify(Array.from(sheetIds)));
+  ok('diagSheet sits after blocksSheet too',
+     sheetIds.indexOf('diagSheet') > sheetIds.indexOf('blocksSheet'),
+     JSON.stringify(Array.from(sheetIds)));
+  ok('closeReview is a global, so the Escape handler can reach it',
+     call('typeof closeReview') === 'function');
+}
+
 console.log('\n== requestWakeLock: one rest, one lock — skipped mid-request, doubled up, or re-acquired (plans/008 item 15, plans/013) ==');
 (async () => {
   /* A real WakeLockSentinel carries its own .released flag, and the guard
