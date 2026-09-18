@@ -2425,6 +2425,56 @@ function priorWeight(profile, blockId, w, dayId, exId, idx) {
   return '';
 }
 
+/* ---------- the block before this one ----------
+   Every block starts at week 1 with nothing behind it: priorWeight walks
+   this block's own weeks, targetEstimate reads this block's own history
+   and copyPrev refuses on week 1 — so the first session of every block
+   asked for eight weeks of loads to be retyped from memory. The log of the
+   block this one was copied from is one step back in blockOrder.
+
+   This reads it as a HINT only: a greyed placeholder and a labelled band,
+   never a target, never a write. The deload week is skipped — it is ~60 %
+   of the working weight by design, and it is usually the last week logged.
+   The same lift is matched the way the chart's "Todos los bloques" matches
+   it, by id and then by name (liftSlots), so a block that arrived as JSON
+   with its own ids still finds the machine by its name. Newest earlier
+   block first; within it, the latest week with a ticked set. */
+function priorBlockSets(profile, block, ex) {
+  const order = profile.blockOrder || [];
+  let at = order.indexOf(block.id);
+  if (at < 0) at = order.length;
+  for (let b = at - 1; b >= 0; b--) {
+    const prev = profile.blocks[order[b]];
+    if (!prev || !profile.log[prev.id]) continue;
+    const slots = liftSlots(prev, ex);
+    if (!slots.length) continue;
+    const dl = deloadWeek(prev);
+    for (let w = blockWeeks(prev); w >= 1; w--) {
+      if (w === dl) continue;
+      for (let i = 0; i < slots.length; i++) {
+        const s = profile.log[prev.id][slot(w, slots[i].dayId)];
+        const arr = s && s[slots[i].exId];
+        if (!Array.isArray(arr)) continue;
+        const done = arr.filter(x => x && x.done && x.w !== '' && x.w != null);
+        if (done.length) return { block: prev, week: w, dayId: slots[i].dayId, sets: done };
+      }
+    }
+  }
+  return null;
+}
+
+/* Once per card, not once per set row: the walk above visits every earlier
+   block, and buildExCard asks for the hint on every row. Held in
+   renderCache like lastTime is. */
+function priorBlockSetsCached(profile, block, ex) {
+  const key = block.id + '|' + ex.id;
+  const c = renderCache && renderCache.priorBlock;
+  if (c && key in c) return c[key];
+  const v = priorBlockSets(profile, block, ex);
+  if (c) c[key] = v;
+  return v;
+}
+
 /* Everything below is a pure function of (profile, block, week, day) and is
    asked for the same answer several times inside one render — lastTime twice
    per card, liftSlots once per card over every card. Held for the duration of
@@ -2433,7 +2483,7 @@ function priorWeight(profile, blockId, w, dayId, exId, idx) {
 let renderCache = null;
 
 function resetRenderCache() {
-  renderCache = { lastTime: Object.create(null), liftSlots: Object.create(null), slug: Object.create(null) };
+  renderCache = { lastTime: Object.create(null), liftSlots: Object.create(null), slug: Object.create(null), priorBlock: Object.create(null) };
 }
 
 /* Same five arguments, same answer — and the card loop asks twice: once
@@ -2574,11 +2624,20 @@ function buildExCard(ctx, ex, i) {
      session's numbers would leave that target looking like it came from
      nowhere. Two bands, no comparison drawn — the reading is yours. */
   const other = lastTimeOtherDay(profile, block, day, ex, profile.week);
+  /* Only when this block has nothing of its own to show for this lift —
+     neither this session's earlier weeks nor another day's. The block
+     before is older than either, and would only muddy a card that
+     already has a history. */
+  const prior = (!prev && !other) ? priorBlockSetsCached(profile, block, ex) : null;
+  const priorTag = prior
+    ? (prior.block.name.length > 14 ? prior.block.name.slice(0, 13).replace(/[\s+/-]+$/, '') + '…' : prior.block.name) + ' · Sem. ' + prior.week
+    : '';
   const band = (cls, tag, sets) => '<div class="last' + cls + '"><span class="tag">' + esc(tag) +
     '</span><span><b>' + sets.map(s => esc(setSummary(s))).join('</b> · <b>') + '</b></span></div>';
   const prevTxt =
     (prev ? band('', 'Sem. ' + prev.week, prev.sets) : '') +
-    (other ? band(' other', 'Sem. ' + other.week + ' · ' + dayTag(block, other.dayId), other.sets) : '');
+    (other ? band(' other', 'Sem. ' + other.week + ' · ' + dayTag(block, other.dayId), other.sets) : '') +
+    (prior ? band(' prior', priorTag, prior.sets) : '');
 
   const decay = repDecay(rows);
   /* Read off the previous session, so it is the same number all week and
@@ -2727,7 +2786,13 @@ function buildExCard(ctx, ex, i) {
       '<button type="button" class="tick' + (r.done ? ' on' : '') + '" aria-pressed="' + (r.done ? 'true' : 'false') + '">✓</button>';
 
     const [wIn, rIn] = row.querySelectorAll('input');
-    const hint = priorWeight(profile, block.id, profile.week, day.id, ex.id, si);
+    const ownHint = priorWeight(profile, block.id, profile.week, day.id, ex.id, si);
+    /* No earlier week in this block: the previous block's last logged
+       session, same set index, last set when the plan has since grown —
+       the same fallback priorWeight applies within a block. */
+    const priorRow = (!ownHint && prior) ? (prior.sets[si] || prior.sets[prior.sets.length - 1]) : null;
+    const hint = ownHint || (priorRow ? String(priorRow.w) : '');
+    const hintFrom = ownHint ? 'la semana anterior' : (priorRow ? '"' + prior.block.name + '", semana ' + prior.week : '');
     wIn.value = r.w; rIn.value = r.r;
     wIn.placeholder = hint || '—';
     rIn.placeholder = '—';
@@ -2759,7 +2824,7 @@ function buildExCard(ctx, ex, i) {
         maybeNagBackup();
       }
       save(); drawCard(ex.id);
-      if (adopted) mark('Serie ' + (si + 1) + ' anotada con ' + adopted + ' ' + units() + ' (lo de la semana anterior) — cámbialo si no fue eso');
+      if (adopted) mark('Serie ' + (si + 1) + ' anotada con ' + adopted + ' ' + units() + ' (lo de ' + hintFrom + ') — cámbialo si no fue eso');
     };
 
     /* ↓ adds a segment rather than opening a panel: there is nothing to
@@ -3052,8 +3117,35 @@ function currentDay() {
 
 $('copyPrev').onclick = () => {
   const profile = getProfile(), block = getBlock(), day = currentDay();
+  /* Week 1 has no week before it in this block. The block before this one
+     does — the same source the placeholder reads — so the button copies
+     that across instead of refusing. No objetivo on top of it: the
+     estimate needs a week of THIS block to price a step, and a deload as
+     last week would price it wrong anyway. Plain copy, as the message says. */
+  if (profile.week === 1) {
+    let copied = 0;
+    const names = new Set();
+    exList(day).forEach(ex => {
+      const prior = priorBlockSetsCached(profile, block, ex);
+      if (!prior) return;
+      const to = entry(profile, block.id, 1, day.id, ex.id, setsFor(ex, 1, block));
+      to.forEach((r, i) => {
+        if (r.done) return;
+        const from = prior.sets[i] || prior.sets[prior.sets.length - 1];
+        r.w = String(from.w);
+        stampRowUnit(r);
+      });
+      copied++;
+      names.add(prior.block.name);
+    });
+    if (!copied) { mark('No hay nada registrado antes de este bloque para los ejercicios de este día'); return; }
+    commit();
+    mark('Pesos copiados de ' + (names.size === 1 ? '"' + [...names][0] + '"' : 'bloques anteriores') + ' en ' + copied +
+      (copied === 1 ? ' ejercicio' : ' ejercicios') + ' — tal cual, sin subir: el objetivo empieza cuando este bloque tenga una semana registrada');
+    return;
+  }
   const src = profile.log[block.id] && profile.log[block.id][slot(profile.week - 1, day.id)];
-  if (profile.week === 1 || !src) { mark('No hay nada registrado en la semana ' + (profile.week - 1) + ' para este día'); return; }
+  if (!src) { mark('No hay nada registrado en la semana ' + (profile.week - 1) + ' para este día'); return; }
   let leveled = 0, heldBack = 0, lowered = 0, reset = 0;
   exList(day).forEach(ex => {
     const from = src[ex.id]; if (!from || !from.length) return;

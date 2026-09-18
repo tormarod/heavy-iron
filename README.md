@@ -39,7 +39,8 @@ your data, settings, and wipe the log.
 press **Copiar pesos de la semana anterior** on the same day: it brings
 last week's numbers across and adds the increment on the exercises that
 earned it. When the block ends, **+ Nuevo bloque** starts the next one
-from a copy of the plan and leaves this one's history where it is.
+from a copy of the plan and leaves this one's history where it is. Its
+first week already shows the loads the old one ended on.
 
 ## Features
 
@@ -410,7 +411,12 @@ charge, the line simply isn't there.
   number in it is what you lifted on that same set the last week you
   logged it. Tick a set without typing anything and it takes that number,
   telling you so in the status line — change it if the weight was
-  different.
+  different. On the first week of a new block, where there is no last week
+  yet, it shows what you lifted on that exercise in the block before — the
+  last week you logged it, skipping the deload — under a band that names
+  that block and week, and **Copiar pesos** copies those numbers across as
+  they were, with no increment: there is no week in this block to earn one
+  from yet.
 - **Decimals with a comma work.** `22,5` is stored and charted as 22.5;
   previously the browser threw the whole value away when it saw a comma.
 - **RÉCORD** appears on an exercise when a completed set beats the best
