@@ -4321,8 +4321,8 @@ $('bCsv').onclick = () => {
    parsing, regardless of load order. See js/block-editor.js,
    js/diagnostics.js and js/profile-transfer.js for why that matters. */
 wireBlockEditor();
-/* Guarded, unlike wireBlockEditor/wireProfileTransfer, because these
-   three files are newer than some already-deployed shells: a returning user
+/* Guarded, unlike wireBlockEditor/wireProfileTransfer, because the files
+   below are newer than some already-deployed shells: a returning user
    whose service worker still holds the previous index.html can be served
    this app.js against markup that has no script tag for them yet. An
    unguarded call would throw here, load() below would never run, and the
