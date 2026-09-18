@@ -65,7 +65,17 @@ jobs:
           changed=$(git diff --name-only "$base"...HEAD)
           echo "Changed files:"; echo "$changed"
 
-          if ! echo "$changed" | grep -qE '^(index\.html|css/|js/)'; then
+          # The shell is index.html, css/*.css and js/*.js. Matching the
+          # js/ prefix alone also caught the three files that sit beside the
+          # vendored libraries — README.md, SHA256SUMS, the license — so
+          # editing the vendor notes failed this job asking for a bump that
+          # would have cost every returning user a fresh download of a shell
+          # that had not changed. Anchored on the extension instead. If the
+          # shell ever gains an asset that is neither (a font, a .json),
+          # name it here; the icons and manifest at the repo root are
+          # already outside this gate, on the grounds that they change once
+          # a year and the worker re-fetches them on the next bump anyway.
+          if ! echo "$changed" | grep -qE '^(index\.html|css/.*\.css|js/.*\.js)$'; then
             echo "No app-shell changes — nothing to check."
             exit 0
           fi
@@ -84,9 +94,9 @@ jobs:
           fi
           echo "CACHE_VERSION was bumped."
 
-      # AGENTS.md says adding a shell file to sw.js's SHELL array "is on
-      # you" — the version-bump check above cannot see a forgotten entry,
-      # only a forgotten bump. This closes that half: every top-level
+      # The version-bump check above cannot see a forgotten SHELL entry,
+      # only a forgotten bump — AGENTS.md's "The release rule" is the prose
+      # version of both halves. This closes the second one: every top-level
       # js/*.js and css/*.css file must be named in SHELL (js/vendor/*.js
       # belongs in VENDOR instead, kept separate on purpose — see sw.js).
       - name: Require every shell script and stylesheet to be in sw.js's SHELL array
