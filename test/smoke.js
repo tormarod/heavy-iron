@@ -149,6 +149,64 @@ const ok = (name, cond, extra) => {
     await page.click('#tskip');
     ok('skip hides timer', await page.locator('#timer.up').count() === 0);
 
+    console.log('\n== one card redraws, the rest stand still (plans/008 item 14) ==');
+    ok('every card names the exercise it is drawing', await page.locator('#list .ex[data-ex]').count() === 7);
+    /* An expando property, not an attribute: it cannot survive the element
+       being replaced, which makes it exactly the question "was this card
+       rebuilt?". Ticking a set used to rebuild all seven. */
+    await page.evaluate(() => {
+      document.querySelectorAll('#list .ex').forEach((el, i) => { el.__probe = 'card' + i; });
+    });
+    await page.locator('.ex').first().locator('.set-row').nth(1).locator('.tick').click();
+    await page.waitForTimeout(250);
+    ok('the other six cards are still the same elements',
+       await page.evaluate(() => Array.from(document.querySelectorAll('#list .ex'))
+         .filter((el, i) => i > 0 && el.__probe === 'card' + i).length) === 6);
+    ok('the card that was ticked is the one that got rebuilt',
+       await page.evaluate(() => document.querySelectorAll('#list .ex')[0].__probe === undefined));
+    ok('the keyboard lands on the tick that was pressed rather than falling to <body>',
+       await page.evaluate(() => !!document.activeElement && document.activeElement.classList.contains('tick')));
+    const tickedNote = await page.textContent('#note');
+    ok('the line under the session counts both ticked sets without a full draw',
+       /(^|\s)2 de \d+ series hechas/.test(tickedNote), tickedNote);
+    ok('and the progress bar moved with it',
+       await page.evaluate(() => parseFloat(document.getElementById('barfill').style.width) > 0));
+
+    /* The half of the win that only a keyboard notices: a redraw of one card
+       is invisible to a box being typed in on another. */
+    ok('a redraw elsewhere leaves another card\'s box and cursor untouched',
+       await page.evaluate(() => {
+         const cards = document.querySelectorAll('#list .ex');
+         const box = cards[1].querySelector('.set-row input');
+         box.focus();
+         drawCard(cards[0].dataset.ex);
+         return document.activeElement === box;
+       }));
+    ok('and the rebuilt card keeps the text cursor where it was, not at the end',
+       await page.evaluate(() => {
+         const card = document.querySelectorAll('#list .ex')[0];
+         const box = card.querySelector('.set-row input');
+         box.focus();
+         box.setSelectionRange(2, 2);
+         drawCard(card.dataset.ex);
+         const a = document.activeElement;
+         /* A different element carrying the same value: the card really was
+            rebuilt, and the cursor came across anyway. */
+         return a !== box && a.value === box.value && a.selectionStart === 2;
+       }));
+
+    console.log('\n== the week dot follows the log (plans/008 item 14) ==');
+    const weekDots = () => page.locator('#weeks .wk').first().locator('.dot').count();
+    ok('week 1 carries a dot while something is ticked in it', await weekDots() === 1);
+    await page.locator('.ex').first().locator('.set-row').nth(1).locator('.tick').click();
+    await page.locator('.ex').first().locator('.set-row').first().locator('.tick').click();
+    await page.waitForTimeout(250);
+    ok('unticking the last set of the week takes the dot with it', await weekDots() === 0);
+    await page.locator('.ex').first().locator('.set-row').first().locator('.tick').click();
+    await page.waitForTimeout(250);
+    ok('and the next tick brings it back', await weekDots() === 1);
+    await page.click('#tskip');
+
     console.log('\n== muscle-group volume dashboard ==');
     ok('muscleTag falls back to "Sin clasificar" for an untagged exercise', await page.evaluate(() => muscleTag({}) === 'Sin clasificar'));
     ok('muscleTag reports whatever freeform tag is stored', await page.evaluate(() => muscleTag({ muscle: 'Gemelo externo' }) === 'Gemelo externo'));
@@ -2667,6 +2725,27 @@ const ok = (name, cond, extra) => {
        /proteg/.test(await page.textContent('#status')), await page.textContent('#status'));
     ok('and asking never throws the log away',
        (await page.textContent('#title')).includes('Ana'));
+
+    /* Writes are debounced by 400 ms, and the phone going into a pocket is
+       the most likely moment for the tab to be discarded — so hiding the
+       page has to flush. Untested until the rest timer was split out of
+       app.js (plans/008 item 13): that listener did this job and the timer's
+       in the same handler, and only one half stayed behind. */
+    await page.keyboard.press('Escape');  /* the backup sheet is still up */
+    await page.waitForTimeout(200);
+    const flushed = await page.evaluate(() => {
+      const box = document.querySelector('#list .set-row input');
+      box.value = '77,5';
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+      /* Straight into the debounce window: nothing is in localStorage yet. */
+      const before = localStorage.getItem('heavy-iron-v1').includes('77,5');
+      Object.defineProperty(document, 'visibilityState', { get: () => 'hidden', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+      return { before: before, after: localStorage.getItem('heavy-iron-v1').includes('77,5') };
+    });
+    ok('a weight typed a moment ago is not in storage yet', flushed.before === false);
+    ok('and hiding the page flushes it before the debounce would have',
+       flushed.after === true);
     await ctx.close();
   });
 

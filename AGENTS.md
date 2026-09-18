@@ -17,8 +17,8 @@ identical to an oversight unless someone writes down which it is:
 
 - **No build step, no bundler, no `package.json`, no TypeScript.** Plain
   HTML/CSS/JS, served by any static server. Do not add a build step.
-- **No modules.** Six `<script>` tags share one global scope, in a fixed
-  order (`index.html:479-484`):
+- **No modules.** Eight `<script>` tags share one global scope, in a fixed
+  order (`index.html`, the `<script>` block at the foot of `<body>`):
 
   ```html
   <script src="js/data.js"></script>
@@ -26,31 +26,39 @@ identical to an oversight unless someone writes down which it is:
   <script src="js/diagnostics.js"></script>
   <script src="js/review.js"></script>
   <script src="js/profile-transfer.js"></script>
+  <script src="js/calculator.js"></script>
+  <script src="js/rest-timer.js"></script>
   <script src="js/app.js"></script>
   ```
 
   `js/app.js` loads last because it wires the others together and then calls
   `load()`.
 - **A file other than `app.js` must keep all its DOM wiring inside its own
-  `wire*()` function**, called from `app.js`'s tail (`js/app.js:4783-4798`):
+  `wire*()` function**, called from `app.js`'s tail (`js/app.js:5437`):
 
   ```js
   wireBlockEditor();
-  /* Guarded, unlike wireBlockEditor/wireProfileTransfer, because these two
-     files are newer than some already-deployed shells: a returning user
-     whose service worker still holds the previous index.html can be served
-     this app.js against markup that has no script tag for them yet. An
-     unguarded call would throw here, load() below would never run, and the
-     app would sit on "Cargando tu registro…" — the same stuck screen the
-     first script split caused. Losing a button until the worker updates is
-     the right failure. */
+  /* Guarded, unlike wireBlockEditor/wireProfileTransfer, because these
+     four files are newer than some already-deployed shells: … */
   if (typeof wireDiagnostics === 'function') wireDiagnostics();
   if (typeof wireReview === 'function') wireReview();
+  if (typeof wireCalculator === 'function') wireCalculator();
+  if (typeof wireRestTimer === 'function') wireRestTimer();
   wireProfileTransfer();
   ```
 
   Any new file that can be added to an already-deployed shell needs the same
-  `typeof ... === 'function'` guard, not a bare call.
+  `typeof ... === 'function'` guard, not a bare call. `js/app.js` is being
+  split along its own section seams, one per pull request (plans/008 item
+  13), so expect this list to keep growing: each new file needs the script
+  tag *before* `js/app.js`, a `SHELL` entry in `sw.js`, a guarded
+  `wire*()` call here, its place in `loadApp()` in `test/unit.js`, and a
+  line in this list and in the README's layout table. A symbol `app.js`
+  itself reads either stays in `app.js` or is stubbed to a no-op there when
+  the file is missing (`js/rest-timer.js` does the latter for its five):
+  the split file may be missing from an old cached shell, and `app.js`
+  reaching for something that never loaded is the stuck-loading screen
+  above.
 - **Spanish for everything a user sees; English for code comments.**
 
 ## The release rule
@@ -100,8 +108,9 @@ The whole suite by hand is warranted in three cases only: you edited
 the hook failed and you are checking the fix — and even then, iterate
 with `--only` on the failing section and let the hook do the final full
 pass. Only `test/unit.js` runs on GitHub. It loads the six source files into
-one shared Node context — the same global scope the `<script>` tags create —
-and is the fastest full check.
+one shared Node context — the same global scope the `<script>` tags create,
+in the same order — and is the fastest full check. A new file under `js/`
+goes into that list too, in the position its `<script>` tag has.
 
 **Testing policy** (`test/smoke.js:9-10`): *"Add a case here whenever a bug
 turns out to have been invisible from the outside."* Arithmetic and data
@@ -114,8 +123,8 @@ smoke assertion costs Chromium time forever.
 Anything arriving from a file, a paste, `blocks/`, or a QR scan is
 untrusted. It goes through a `normalizeImported*` function
 (`js/block-editor.js:207` is the reference implementation) and is escaped
-with `esc` (`js/app.js:23`) on the way out. Limits are enforced in
-`IMPORT_LIMITS` (`js/app.js:2073`) — not just clamped, some values (like
+with `esc` (`js/app.js:32`) on the way out. Limits are enforced in
+`IMPORT_LIMITS` (`js/app.js:2284`) — not just clamped, some values (like
 `ex.add`) reject the import outright rather than silently coercing it.
 
 ## The CSP
@@ -160,5 +169,5 @@ this file.
 
 ## Where things live
 
-See `README.md`'s "Project layout" table (~line 1477) for the full map. It
+See `README.md`'s "Project layout" table (~line 1599) for the full map. It
 is the reference; this file is the briefing.

@@ -1607,7 +1607,9 @@ rule, and which of this project's absences are deliberate.
 | `js/diagnostics.js` | the Diagnóstico screen: e1RM trend per exercise crossed with the log's own signals and with a second slope over kilos per set, real frequency per muscle from the row timestamps, and the indexed strength-per-muscle chart |
 | `js/review.js` | the block review and the brief it exports for the next block |
 | `js/profile-transfer.js` | backup/restore and moving one profile between phones as a file |
-| `js/app.js` | everything else: state, rendering, QR transfer, calculator, volume dashboard |
+| `js/calculator.js` | the warm-up ramp and plate-loading calculator sheet |
+| `js/rest-timer.js` | the rest countdown, its alarm, and the lock-screen card that keeps it audible from a pocket |
+| `js/app.js` | everything else: state, rendering, QR transfer, volume dashboard |
 | `js/vendor/` | the two QR libraries, verbatim from npm — see the README in there |
 | `sw.js` | offline caching; bump `CACHE_VERSION` when releasing |
 | `manifest.webmanifest`, `icon.svg`, `icon-*.png` | what makes it installable |
