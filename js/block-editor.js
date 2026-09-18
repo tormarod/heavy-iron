@@ -804,12 +804,12 @@ function buildExRow(profile, day, ex, pos, liveCount) {
     '<div class="pe-row"><div class="u-flex-grow"><span class="pe-field-lbl">Nota / cue</span><input type="text" class="f-cue"></div></div>' +
     '<div class="pe-row"><div class="u-flex-grow"><span class="pe-field-lbl">Ajustes de máquina (asiento, respaldo…)</span><input type="text" class="f-setup" maxlength="' + SETUP_LIMIT + '"></div></div>' +
     '<div class="pe-row">' +
-      '<div><span class="pe-field-lbl">Series</span><input type="number" min="1" class="f-sets"></div>' +
+      '<div><span class="pe-field-lbl">Series</span><input type="number" min="1" max="12" class="f-sets"></div>' +
       '<div class="u-flex-grow-sm"><span class="pe-field-lbl">Reps</span><input type="text" class="f-reps"></div>' +
-      '<div><span class="pe-field-lbl">Descanso (s)</span><input type="number" min="0" step="5" class="f-rest"></div>' +
+      '<div><span class="pe-field-lbl">Descanso (s)</span><input type="number" min="0" max="900" step="5" class="f-rest"></div>' +
     '</div>' +
     '<div class="pe-row">' +
-      '<div><span class="pe-field-lbl">+1 serie desde sem.</span><input type="number" min="1" max="8" class="f-add"></div>' +
+      '<div><span class="pe-field-lbl">+1 serie desde sem.</span><input type="number" min="1" max="' + MAX_WEEKS + '" class="f-add"></div>' +
       '<div><span class="pe-field-lbl">Incremento de peso (' + esc(units()) + ')</span><input type="number" min="' + INC_MIN + '" max="' + INC_MAX + '" step="' + INC_STEP + '" class="f-inc"></div>' +
     '</div>' +
     '<div class="pe-row"><div class="u-flex-grow"><span class="pe-field-lbl">Músculo</span>' +
@@ -834,13 +834,19 @@ function buildExRow(profile, day, ex, pos, liveCount) {
   row.querySelector('.f-setup').value = ex.setup || '';
   row.querySelector('.f-setup').oninput = e => { const v = e.target.value; if (v) ex.setup = v; else delete ex.setup; };
   row.querySelector('.f-sets').value = ex.sets;
-  row.querySelector('.f-sets').oninput = e => ex.sets = parseInt(e.target.value, 10) || 1;
+  /* The bounds migrate() uses (js/app.js), applied as you type rather than
+     on the next load: the session builds its set rows from the draft as
+     saved, so 5000 in Series is 5000 rows on the spot (plans/012). */
+  row.querySelector('.f-sets').oninput = e => ex.sets = clampInt(e.target.value, 1, 12, 3);
   row.querySelector('.f-reps').value = ex.reps;
   row.querySelector('.f-reps').oninput = e => ex.reps = e.target.value;
   row.querySelector('.f-rest').value = ex.rest || 0;
-  row.querySelector('.f-rest').oninput = e => ex.rest = parseInt(e.target.value, 10) || 0;
+  row.querySelector('.f-rest').oninput = e => ex.rest = clampInt(e.target.value, 0, 900, 90);
   row.querySelector('.f-add').value = ex.add || '';
-  row.querySelector('.f-add').oninput = e => { const v = parseInt(e.target.value, 10); if (v) ex.add = v; else delete ex.add; };
+  /* Clamped from 0, not from 1, so clearing the box still clears the
+     field: clampInt('') is 0 raised to the low bound, so a floor of 1
+     would read an empty box as "from week 1" and make `add` unremovable. */
+  row.querySelector('.f-add').oninput = e => { const v = clampInt(e.target.value, 0, MAX_WEEKS, 0); if (v) ex.add = v; else delete ex.add; };
   row.querySelector('.f-inc').value = ex.inc || '';
   /* Decimals, not just integers — clampNum is what makes that safe: 2.3 kg
      is a real plate increment, not a typo to round away like clampInt would
@@ -950,6 +956,14 @@ function syncDraftFromForm() {
     for (const e of ex) {
       if (!String(e.n || '').trim()) return 'Todos los ejercicios necesitan un nombre.';
       if (!e.reps || !String(e.reps).trim()) return 'Falta el rango de repeticiones en "' + (e.n || 'un ejercicio') + '".';
+      /* The oninput clamps above are the UX; this is the gate. migrate()
+         clamps these on the next load, but the session draws from the
+         draft as saved, and 5000 sets is 5000 rows before any reload gets
+         the chance to repair it. `add` is bounded by this block's own
+         length, which the form may just have shortened. */
+      e.sets = clampInt(e.sets, 1, 12, 3);
+      e.rest = clampInt(e.rest, 0, 900, 90);
+      if (e.add != null) { const a = clampInt(e.add, 0, peDraftBlock.weeks, 0); if (a) e.add = a; else delete e.add; }
     }
   }
   return null;
