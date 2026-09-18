@@ -50,14 +50,14 @@ they will all conflict on that one line, and 2 → 5 → 4 also share code.
 
 | # | Title | Strength | Effort | Risk | Depends on | Status |
 |---|-------|----------|--------|------|------------|--------|
-| 1 | Deepen the sheet module (fixes: Escape dead on two sheets) | Strong | S | LOW | — | TODO |
-| 2 | Collapse the three set-volume implementations | Strong | S | LOW | — | TODO |
-| 3 | Pin the shell list and the storage key with two unit assertions | Worth exploring | S | LOW | — | TODO |
-| 4 | Give the log a module: `parseSlot` and `forEachSlot` | Strong | M | MED | — | TODO |
-| 5 | One write path for imported rows; name the persist-and-redraw pair | Worth exploring | S | LOW | 4 | TODO |
-| 6 | One entry point per accepted import shape; write down the rule-(a) exception | Worth exploring | M | MED | 5 | TODO |
+| 1 | Deepen the sheet module (fixes: Escape dead on two sheets) | Strong | S | LOW | — | DONE (the bug itself had already gone in 013 Step D) |
+| 2 | Collapse the three set-volume implementations | Strong | S | LOW | — | DONE by plans/011 Step 1, as `convertedSetVolume` |
+| 3 | Pin the shell list and the storage key with two unit assertions | Worth exploring | S | LOW | — | DONE by plans/014 Steps 2 and 4 |
+| 4 | Give the log a module: `parseSlot` and `forEachSlot` | Strong | M | MED | — | DONE (six walks, not the five listed) |
+| 5 | One write path for imported rows; name the persist-and-redraw pair | Worth exploring | S | LOW | 4 | DONE for `installImportedBlock` and the fifteen `commit()` sites; its second call site is not a write path — see below |
+| 6 | One entry point per accepted import shape; write down the rule-(a) exception | Worth exploring | M | MED | 5 | **STOPPED** on its own STOP condition; the `AGENTS.md` half is DONE — see below |
 | 7 | Put `drawCard`'s positional contract in its interface | Speculative | S | LOW | deferred — see trigger | DEFERRED |
-| 8 | Re-anchor the four drifted line references in `AGENTS.md` | housekeeping | XS | — | fold into item 1's PR | TODO |
+| 8 | Re-anchor the four drifted line references in `AGENTS.md` | housekeeping | XS | — | fold into item 1's PR | DONE by plans/015 Step 1 |
 
 ---
 
@@ -682,3 +682,134 @@ Recorded so the next review does not re-walk it:
   reach past: `vm.runInContext` over one global scope (`test/unit.js:80`)
   is the honest consequence of thirteen scripts sharing a scope. The gap is
   not the harness; it is the four assertions items 1 and 3 add.
+
+---
+
+## What was executed, and where this text did not hold
+
+Run on 2026-09-18 against `8ba17fa`, five merges after the `6def9fc` this
+plan was written at. Every in-scope file had changed since; the drift check
+was run per item and most of what follows is its result.
+
+**One pull request, not one per item.** The executor instructions ask for a
+pull request per item. This ran in a single non-interactive session on one
+branch, which cannot sequence four merges, so items 1, 4 and 5 are one
+commit each on one branch and `CACHE_VERSION` is bumped once (v60 to v61)
+rather than three times.
+
+**Three items were already done by the plans written beside this one.**
+`plans/README.md` predicted the overlap; it landed the other way round:
+
+- **Item 2** - plans/011 Step 1 had already collapsed `diagSetVolume` and
+  `reviewSetVolume` into `convertedSetVolume`. Nothing left to do, and the
+  name that landed is kept, as `plans/README.md` says to.
+- **Item 3** - plans/014 Steps 2 and 4 added both assertions, and more of
+  them than this item asked for.
+- **Item 8** - plans/015 Step 1 re-anchored the references by deleting the
+  line numbers outright, which is better than re-pinning them.
+
+**Item 1: the bug was gone, the shape was not.** plans/013 Step D had
+already added `reviewSheet` and `diagSheet` to `SHEET_IDS`, so Escape worked
+on both. It did that by adding a fourth branch to the Escape if-chain -
+`else if (top === 'reviewSheet') closeReview()` - which made `js/app.js`
+read a symbol from `js/review.js` with no stub, against `AGENTS.md` rule
+(a). `registerSheet` removes that read instead of stubbing it, and the same
+turned out to apply to `closeQr`: its stub had exactly one reader, the
+if-chain, and nothing outside `js/qr-transfer.js` can open or close that
+sheet, so the stub is deleted along with the unit assertion that exercised
+it. `AGENTS.md`'s list of stubbed files is corrected to match.
+
+Two things the design did not mention and the code needed:
+
+- The sheets section had to **move above the first-run setup section**.
+  `app.js` registers `setupSheet` at its own top level, which runs before
+  the `const sheets` declaration - a temporal dead zone the unit harness
+  caught on the first run.
+- `openSheet` **does not push a second stack entry** for a sheet already up,
+  or Escape would need two presses and the first return target would be
+  something inside the sheet itself.
+
+Both STOP conditions were checked and neither fired: `classList.add('up')`
+outside `openSheet` is `askSheet` (the confirm dialog, which the Escape
+handler answers for before it looks at the stack) and the rest timer,
+neither of them a sheet.
+
+**Item 4: six walks, not five.** The item lists five `1..MAX_WEEKS` sweeps.
+There are six of that family - it does not name `moveExOrder`, which has the
+same cap and the same blindness above it. All six are converted.
+`moveExOrder` could not simply filter on the source day: its two halves are
+independent, and a week can hold a recorded order for the destination day
+and no entry at all for the source, so it walks the weeks *either* day has.
+
+The three `blockShare*` builders loop to `MAX_WEEKS` too and are **left
+alone**: they decide what leaves the device, so widening them changes a
+payload rather than fixing a purge.
+
+Eleven regex sites, exactly as counted. A unit assertion now fails if a
+twelfth appears - verified by reintroducing one.
+
+**Item 5: one of its two call sites is not a write path.** The item asks for
+`installBlockData` at `js/block-editor.js` *and* at
+`js/profile-transfer.js:131-162`. The first is right: `installImportedBlock`
+is already the single place an imported block's rows land - both the pasted
+JSON and a scanned QR reach it - and it was missing `safeKey` on the block
+id. The second is not an install at all: `normalizeImportedProfile`
+normalizes an untrusted object *in place*, keyed by the sender's own keys,
+and re-keys every map afterwards through `keyMap`. Routing it through
+`safeKey` would drop entries before that pass maps them, undoing what
+plans/010 added. It is left as it is, with a comment on `installBlockData`
+recording why.
+
+The fifteen `save(); render();` sites were read first, per the STOP
+condition: none has anything between the two calls. The rename is still how
+this nearly shipped broken - a blanket `sed` rewrote `commit()`'s own body
+into `function commit() { commit(); }`, and the suite could not see it
+because nothing called `commit()`. Something does now.
+
+**Item 6 stopped on its own STOP condition.** It reads: stop if
+`normalizeImportedProfile` needs the raw *and* normalized block for anything
+beyond the three `normalizeImported*` calls. It does - it sets
+`normalized.id` and `normalized.createdAt` from the key it is about to file
+the block under, stores it in the rebuilt `blocks` map, records that key in
+`keyMap` for the re-key pass, and validates notes and energy against their
+own limits. `acceptBlockWithLog`'s `{block, log, rir, order}` cannot carry
+any of it, so - in the item's own words - the entry point's return shape is
+wrong rather than the caller. That leaves `js/qr-transfer.js` as its only
+possible caller, and a shared entry point with one caller fails this plan's
+own deletion test.
+
+The item's other half is prose, independent of the code, and **is done**:
+`AGENTS.md` now records that `js/data.js`, `js/block-editor.js` and
+`js/profile-transfer.js` predate the split and count as part of `app.js` for
+both rules. That is what their unguarded `wire*()` calls, `app.js` reading
+`normalizeImportedBlock`, and `js/review.js` reading `buildAiPrompt` have
+all been relying on unwritten.
+
+**Item 7** stays deferred; its trigger - a second card-local redraw path -
+has not happened.
+
+## Maintenance notes
+
+- The sheet registry is checked against `index.html` in both directions,
+  exactly as `SHEET_IDS` was: a new sheet needs the markup and a
+  `registerSheet` call from its own file's `wire*()`, or `test/unit.js`
+  fails. A sheet needing teardown passes it as `onClose` - Escape and the
+  backdrop both run it, and `app.js` never learns the function's name.
+- `registerSheet` is called from `app.js`'s own top level for `setupSheet`,
+  so the sheets section has to stay above the first-run setup section.
+- `slot`/`parseSlot` are the only pair that knows the log key's shape, and a
+  unit assertion enforces it. Walk a block with `forEachSlot`, never by
+  rebuilding keys week by week - that is what reaches a week filed above
+  `MAX_WEEKS`.
+- `forEachSlot` hands `fn` a key it may delete (`Object.keys` is a
+  snapshot). It promises no order, and nothing currently depends on one.
+- `commit()` is `save(); render();` and the unit suite recurses to a
+  `RangeError` if it ever becomes anything else.
+- Open, not done here: the three `blockShare*` builders still walk
+  `1..MAX_WEEKS`, so a week above the cap is neither shared nor exported.
+  That is a payload decision and wants its own item.
+- Rung 3 was not run locally - Playwright is not installed in this
+  environment. The three smoke edits (Escape closes Diagnostico; Escape
+  closes the review and still resumes "+ Nuevo bloque"; focus returns to
+  `#backup` after a sheet opened over it) are covered by the pull-request
+  hook's full run.

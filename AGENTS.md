@@ -78,12 +78,22 @@ identical to an oversight unless someone writes down which it is:
      stubbed to a no-op there.** The split file may be missing from an old
      cached shell (a precache hole), and `app.js` reaching for something
      that never loaded is the stuck-loading screen above. `js/rest-timer.js` is stubbed for
-     five, `js/chart.js` and `js/qr-transfer.js` for one each.
+     five and `js/chart.js` for one. `js/qr-transfer.js` needed one until
+     sheets registered their own teardown (plans/009 item 1): structure can
+     retire a stub, by removing the read rather than answering it.
   2. **A symbol another split file reads stays in `app.js` outright** — a
      stub cannot help there, because a plausible-looking empty answer is
      worse than a dead button. That is why the volume arithmetic, the
      `blockShare*` builders and the `normalizeImported*` validators
      stayed behind while their screens left.
+
+  Both rules have one exception, and it is older than the rules: `js/data.js`,
+  `js/block-editor.js` and `js/profile-transfer.js` predate the split and are
+  precached in every deployed shell, so a symbol defined in them is treated as
+  if it were in `app.js`. That is why their `wire*()` calls are unguarded,
+  why `app.js` may read `normalizeImportedBlock` from `js/block-editor.js`
+  with no stub, and why `js/review.js` may read `buildAiPrompt` from it. A
+  file split out *since* then gets no such licence.
 
   The mix the other way round — a *new* split file loading beside the
   *old* cached `app.js`, both declaring the same top-level `const`/`let`,
