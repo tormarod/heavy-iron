@@ -84,7 +84,12 @@ function buildBarSVG(rows) {
    ignores both toggles: tonnage only ever comes from what was ticked done,
    there is no plan-side number to compare it against. */
 function drawVolumeTonnage(profile, block, week) {
-  const byWeek = blockTonnageByWeek(profile, block);
+  /* Every week of the block added together, so this is a cross-session
+     reader like the review and diagnostics — not like the card, which shows
+     one session's numbers as typed. Hence convertedSetVolume: without it a
+     block trained partly in lb would be summed in two units and printed
+     through fmtKg as if it were all one. */
+  const byWeek = blockTonnageByWeek(profile, block, convertedSetVolume);
   const total = byWeek.reduce((t, v) => t + v, 0);
   const thisWeek = byWeek[week - 1] || 0;
   const logged = byWeek.filter(v => v > 0).length;
