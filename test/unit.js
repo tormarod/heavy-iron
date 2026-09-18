@@ -827,6 +827,10 @@ const targetProbe = `
     const week = opts.week || sessions.length + 1;
     const phase = {};
     for (let i = 1; i <= week + 4; i++) phase[i] = { r: (opts.rirWeek != null ? opts.rirWeek : 2) + ' RIR' };
+    /* Every week gets the same prescription unless a case overrides it, which
+       is the only way to reach weekRir's prose fallback: a phase somebody
+       wrote in their own words has no number in it at all. */
+    if (opts.phase) for (const k in phase) phase[k] = opts.phase;
     const ex = { id: 'E', n: 'x', sets: opts.sets || 3, reps: opts.range || '10–15', inc: opts.inc || 2.5 };
     if (opts.add) ex.add = opts.add;
     if (opts.minRir) ex.minRir = opts.minRir;
@@ -839,7 +843,13 @@ const targetProbe = `
       const d = s.day != null ? s.day : i * 7;
       lastDay = d;
       profile.log.B['w' + (i + 1) + '-D'] = { E: s.sets.map(function (p) {
-        return { w: String(p[0]), r: String(p[1]), done: true, ts: T0 + d * DAY };
+        const row = { w: String(p[0]), r: String(p[1]), done: true, ts: T0 + d * DAY };
+        /* A third element is the unit the row was written in. The key is
+           added only when there is one, because that is what the app writes:
+           a row logged in the profile's own unit carries no u at all, and a
+           literal u: undefined is a shape no restore ever produces. */
+        if (p[2] === 'lb') row.u = 'lb';
+        return row;
       }) };
       if (s.rir) profile.rir.B['w' + (i + 1) + '-D'] = { E: s.rir };
     });
@@ -857,6 +867,10 @@ const targetProbe = `
       }).join(' · '),
       line: targetLine(t), says: targetNotes(t).join(' | '),
       phi: t.phi ? t.phi.map(function (v) { return v.toFixed(3); }).join(' ') : '',
+      /* The rule's own workings, for the cases that have to assert on the
+         arithmetic rather than on the card: the floor in repsAt hides a
+         third of a rep, which is most of what the trend term is worth. */
+      g: t.g, level: t.level, rirWeek: t.rirWeek, sessions: t.sessions,
     };
   })
 `;
