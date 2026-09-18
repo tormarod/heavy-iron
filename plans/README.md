@@ -31,7 +31,7 @@ below so it is not lost or re-audited.
 | 007 | [Write `AGENTS.md`](done/007-agents-md.md) | P2 | S | LOW | — | DONE |
 | 008 | [Second audit: ranked findings and plan](done/008-audit-2026-09-17.md) | P1 | — | — | — | IN PROGRESS (items 1–20 and 22 done, 21 bullet 2 open, 23: two of six done — see "Third audit") |
 | 009 | [Architecture deepening: seven shallow seams, ranked](009-architecture-deepening.md) | P2 | L | MED | 008 items 13–14 (done) | TODO |
-| 010 | [A backup or profile file the app itself wrote always restores, exactly as it was](010-restore-round-trips-own-data.md) | P1 | M | MED | — | TODO |
+| 010 | [A backup or profile file the app itself wrote always restores, exactly as it was](010-restore-round-trips-own-data.md) | P1 | M | MED | — | DONE |
 | 011 | [Every cross-session reader converts kg/lb per row; CSV formula guard](011-units-everywhere-and-csv-boundary.md) | P1 | M | LOW | — (overlaps 009 item 2) | TODO |
 | 012 | [Freeform tags, editor numbers and the setup import cannot crash, hang or alias](012-input-boundary-tags-clamps-aliasing.md) | P1 | S | LOW | — | TODO |
 | 013 | [Six small correctness fixes](013-six-small-correctness-fixes.md) | P2 | S | LOW | — (Step D overlaps 009 item 1) | TODO |
