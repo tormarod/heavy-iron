@@ -36,6 +36,20 @@ const inert = () => ({
   get value() { return ''; }, set value(v) {},
 });
 
+/* The same order as the <script> tags in index.html — theme-init.js first
+   because it loads in <head>, app.js after the ten it wires and then calls
+   load() from, and boot-guard.js last, after app.js, because it is the one
+   script that has to run even when app.js could not.
+
+   Hoisted out of loadApp() because the section below asserts index.html and
+   sw.js agree with it; a second copy would be a fourth list to keep in step. */
+const SHELL_SCRIPTS = [
+  'js/theme-init.js', 'js/data.js', 'js/block-editor.js', 'js/diagnostics.js', 'js/review.js',
+  'js/profile-transfer.js', 'js/calculator.js', 'js/rest-timer.js',
+  'js/chart.js', 'js/volume-sheet.js', 'js/qr-transfer.js',
+  'js/app.js', 'js/boot-guard.js',
+];
+
 function loadApp() {
   const store = {};
   const ctx = vm.createContext({
@@ -57,14 +71,7 @@ function loadApp() {
   ctx.window.self = ctx.window;
   ctx.globalThis = ctx;
 
-  /* The same order as the <script> tags in index.html — theme-init.js first
-     because it loads in <head>, app.js after the ten it wires and then calls
-     load() from, and boot-guard.js last, after app.js, because it is the one
-     script that has to run even when app.js could not. */
-  ['js/theme-init.js', 'js/data.js', 'js/block-editor.js', 'js/diagnostics.js', 'js/review.js',
-   'js/profile-transfer.js', 'js/calculator.js', 'js/rest-timer.js',
-   'js/chart.js', 'js/volume-sheet.js', 'js/qr-transfer.js',
-   'js/app.js', 'js/boot-guard.js'].forEach(f => {
+  SHELL_SCRIPTS.forEach(f => {
     vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f });
   });
   return ctx;
@@ -75,6 +82,39 @@ const ok = (name, cond, extra) => {
   if (cond) { pass++; console.log('  PASS  ' + name); }
   else { fail++; console.log('  FAIL  ' + name + (extra ? '  → ' + extra : '')); }
 };
+
+/* Before loadApp() runs, so that a file missing from disk is reported as a
+   failed assertion here rather than as an exception that takes the suite
+   down before it can say which list is wrong.
+
+   AGENTS.md asks for four things to move together when a js/ file is added:
+   the <script> tag in index.html, the SHELL entry in sw.js, a guarded wire*()
+   call, and the file's place in loadApp(). CI enforces exactly one of them
+   (js/*.js ⊆ SHELL); the rest were prose, and this repo has shipped two
+   stuck-loading crashes from getting them wrong. */
+console.log('\n== the four script lists agree (AGENTS.md: index.html, sw.js SHELL, loadApp, js/) ==');
+const indexHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+const indexScripts = [...indexHtml.matchAll(/<script src="(js\/[^"]+)"><\/script>/g)].map(m => m[1]);
+const swSrc = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+/* Comments stripped first: SHELL carries a prose note, and a single
+   apostrophe in it — "the worker's" — would otherwise read as the opening
+   quote of a filename and swallow the rest of the list. */
+const shellBlock = /const SHELL = \[([\s\S]*?)\];/.exec(swSrc)[1].replace(/\/\*[\s\S]*?\*\//g, '');
+const shellFiles = [...shellBlock.matchAll(/'([^']+)'/g)].map(m => m[1]);
+/* Not recursive: js/vendor/ holds bundled libraries that are deliberately
+   not shell scripts and have no tag of their own. */
+const jsFiles = fs.readdirSync(path.join(ROOT, 'js')).filter(f => f.endsWith('.js')).map(f => 'js/' + f);
+ok('index.html loads exactly the files loadApp() loads, in the same order',
+   JSON.stringify(indexScripts) === JSON.stringify(SHELL_SCRIPTS), JSON.stringify(indexScripts));
+ok('every index.html script is in sw.js SHELL',
+   indexScripts.every(f => shellFiles.includes(f)),
+   JSON.stringify(indexScripts.filter(f => !shellFiles.includes(f))));
+ok('every js/*.js file is a script tag in index.html',
+   jsFiles.every(f => indexScripts.includes(f)),
+   JSON.stringify(jsFiles.filter(f => !indexScripts.includes(f))));
+ok('every js/ entry in SHELL exists on disk',
+   shellFiles.filter(f => f.startsWith('js/')).every(f => fs.existsSync(path.join(ROOT, f))),
+   JSON.stringify(shellFiles.filter(f => f.startsWith('js/') && !fs.existsSync(path.join(ROOT, f)))));
 
 const app = loadApp();
 const call = expr => vm.runInContext(expr, app);
