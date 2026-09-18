@@ -290,7 +290,7 @@ async function restoreFromText(text) {
   if (!state.activeProfile) state.activeProfile = 'hombre';
   migrate();
   applyTheme();
-  save(); render();
+  commit();
   closeSheet('sheet');
   flushSave();
   mark('Registro restaurado — ' + setsLabel(theirs));
@@ -356,7 +356,7 @@ async function loadProfileFromText(text) {
   state.profiles[target] = incoming;
   migrate();
   applyTheme();
-  save(); render();
+  commit();
   closeSheet('sheet');
   /* Flushed before the message, not after: save() is debounced 400 ms and
      ends in mark('Guardado …'), so anything said here would be wiped off the

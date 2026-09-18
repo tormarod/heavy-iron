@@ -31,7 +31,7 @@ function renderBlockBar() {
     if (id === profile.activeBlock) opt.selected = true;
     select.appendChild(opt);
   });
-  select.onchange = () => { profile.activeBlock = select.value; profile.week = 1; profile.day = 0; stopRest(); save(); render(); };
+  select.onchange = () => { profile.activeBlock = select.value; profile.week = 1; profile.day = 0; stopRest(); commit(); };
   host.appendChild(select);
 
   const newBtn = document.createElement('button');
@@ -89,7 +89,7 @@ function deleteBlocks(profile, ids) {
     profile.week = 1; profile.day = 0;
     stopRest();
   }
-  save(); render();
+  commit();
   return drop.size;
 }
 
@@ -191,7 +191,7 @@ async function newBlock(skipReview) {
   profile.blockOrder.push(id);
   profile.activeBlock = id;
   profile.week = 1; profile.day = 0;
-  save(); render();
+  commit();
   mark('Bloque creado a partir de "' + current.name + '" — edítalo con "Editar plan"');
 }
 
@@ -370,10 +370,8 @@ function installImportedBlock(normalized, log, rir, order) {
   profile.blockOrder.push(block.id);
   profile.activeBlock = block.id;
   profile.week = 1; profile.day = 0;
-  if (log) profile.log[block.id] = log;
-  if (rir) profile.rir[block.id] = rir;
-  if (order) profile.order[block.id] = order;
-  save(); render();
+  installBlockData(profile, block.id, { log: log, rir: rir, order: order });
+  commit();
   return block.id;
 }
 
@@ -1098,7 +1096,7 @@ function wireBlockEditor() {
     });
     profile.blocks[peDraftBlock.id] = peDraftBlock;
     peDraftBlock = null; peDraftPurge = []; peDraftOriginalDay = new Map();
-    save(); render();
+    commit();
     closeSheet('planSheet');
     mark('Plan actualizado — el registro se mantiene');
   };

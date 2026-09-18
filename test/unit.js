@@ -1913,6 +1913,42 @@ console.log('\n== the log key has one reader as well as one builder (plans/009 i
   })()`) === 0);
 }
 
+console.log('\n== commit() is both halves, and installBlockData refuses a bad id (plans/009 item 5) ==');
+{
+  /* A blanket rename of the fifteen `save(); render();` sites rewrote this
+     function's own body into `function commit() { commit(); }` — infinite
+     recursion the suite could not see, because nothing here called it.
+     Now something does. */
+  const halves = call(`(function () {
+    const realSave = save, realRender = render;
+    let saved = 0, drawn = 0;
+    try {
+      globalThis.save = function () { saved++; };
+      globalThis.render = function () { drawn++; };
+      commit();
+    } finally { globalThis.save = realSave; globalThis.render = realRender; }
+    return saved + ',' + drawn;
+  })()`);
+  ok('commit() persists and redraws, once each', halves === '1,1', halves);
+
+  const installed = call(`(function () {
+    const p = { log: {}, rir: {}, order: {} };
+    const done = installBlockData(p, 'b1', { log: { 'w1-d1': { e1: [{ w: 1 }] } }, rir: { 'w1-d1': { e1: 2 } } });
+    return [done, JSON.stringify(p.log.b1), JSON.stringify(p.rir.b1), JSON.stringify(p.order)].join('|');
+  })()`);
+  ok('installBlockData files the maps it was given and leaves the rest alone',
+     installed === 'true|{"w1-d1":{"e1":[{"w":1}]}}|{"w1-d1":{"e1":2}}|{}', installed);
+
+  /* plans/008 item 2's class of key: a block id is a key on five maps, and a
+     hand-edited file can carry a name Object.prototype already answers for. */
+  const proto = call(`(function () {
+    const done = installBlockData({ log: {}, rir: {} }, '__proto__', { log: { 'w1-d1': {} } });
+    return done + '|' + ({}).hasOwnProperty('w1-d1');
+  })()`);
+  ok('installBlockData refuses __proto__ as a block id, and writes nothing at all',
+     proto === 'false|false', proto);
+}
+
 console.log('\n== "borrar registro" reaches a week past the cap (plans/009 item 4) ==');
 {
   /* A block shortened, or a backup hand-edited, can hold a week above

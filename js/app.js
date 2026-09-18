@@ -110,6 +110,34 @@ function parseSlot(k) {
   return m ? { week: +m[1], dayId: m[2] } : null;
 }
 
+/* The one way imported rows reach a profile. Both routes that add an
+   imported block — the pasted/loaded JSON and a scanned QR — land in
+   installImportedBlock, which used to assign the maps by hand, each
+   assignment trusting that normalizeImported* had already applied the
+   guards the accessors below apply. Two write vocabularies that agreed by
+   convention; this is the one that does not have to.
+
+   safeKey is what the hand-written version was missing: a block id is a key
+   on five maps, and `__proto__` is a name a hand-edited file can carry
+   (plans/008 item 2). Returns false when it refuses, so a caller cannot
+   file a block and quietly lose its rows.
+
+   normalizeImportedProfile deliberately does not come through here: it
+   walks the *sender's* keys and re-keys every map afterwards, so it is a
+   normalization pass over an untrusted object, not an install into a live
+   profile. See plans/009 item 5. */
+function installBlockData(profile, blockId, data) {
+  const id = safeKey(blockId);
+  if (!id) return false;
+  const d = data || {};
+  ['log', 'rir', 'order', 'notes', 'energy'].forEach(name => {
+    if (!d[name]) return;
+    if (!profile[name]) profile[name] = {};
+    profile[name][id] = d[name];
+  });
+  return true;
+}
+
 /* Walk the slots one block of one of the four parallel maps actually holds,
    in no particular order: fn(key, week, dayId, value), narrowed by `filter`
    on dayId, week, or both.
@@ -2083,7 +2111,7 @@ function renderProfiles() {
     b.className = 'profile-btn' + (key === state.activeProfile ? ' on' : '');
     b.textContent = p.label;
     b.setAttribute('aria-pressed', key === state.activeProfile ? 'true' : 'false');
-    b.onclick = () => { state.activeProfile = key; stopRest(); save(); render(); };
+    b.onclick = () => { state.activeProfile = key; stopRest(); commit(); };
     host.appendChild(b);
   });
   $('app').className = 'profile-' + accentOf(getProfile()) + (soloMode() ? ' solo' : '');
@@ -2232,7 +2260,7 @@ function renderNav() {
     b.setAttribute('aria-selected', w === profile.week ? 'true' : 'false');
     b.setAttribute('aria-label', 'Semana ' + w + (w === dl ? ', descarga' : ''));
     if (weekHasLog(profile, block, w)) { const dot = document.createElement('span'); dot.className = 'dot'; b.appendChild(dot); }
-    b.onclick = () => { profile.week = w; stopRest(); save(); render(); };
+    b.onclick = () => { profile.week = w; stopRest(); commit(); };
     $('weeks').appendChild(b);
   }
 
@@ -2246,7 +2274,7 @@ function renderNav() {
     b.setAttribute('role', 'tab');
     b.setAttribute('aria-selected', i === profile.day ? 'true' : 'false');
     b.setAttribute('aria-label', 'Día ' + (i + 1) + ': ' + d.name);
-    b.onclick = () => { profile.day = i; stopRest(); save(); render(); };
+    b.onclick = () => { profile.day = i; stopRest(); commit(); };
     $('days').appendChild(b);
   });
 }
@@ -2310,6 +2338,12 @@ function takeFocusMark(root) {
    Everything the app draws goes through here, so this is also the one place
    that has to survive bad data: if drawing throws, the recovery screen takes
    over instead of leaving a blank page and an unreachable log. */
+/* Persist and redraw, as one word, so a mutation that has to do both cannot
+   forget half: without save() the change is on screen and not on disk (plan
+   006 fix 1 was that bug, three times over), without render() it is the
+   other way round. A navigation-only change still calls render() alone. */
+function commit() { save(); render(); }
+
 function render() {
   if (!ready) return;
   try {
@@ -2620,7 +2654,7 @@ function buildExCard(ctx, ex, i) {
     btn.title = label;
     btn.onclick = () => {
       if (!moveSessionEx(profile, block, profile.week, day, ex.id, dir)) return;
-      save(); render();
+      commit();
     };
   });
 
@@ -2917,7 +2951,7 @@ function drawOrderNote(profile, block, day, sessionEx) {
   btn.textContent = 'Volver al orden del plan';
   btn.onclick = () => {
     setOrder(profile, block.id, profile.week, day.id, null);
-    save(); render();
+    commit();
     mark('Orden del plan restablecido');
   };
   host.appendChild(txtEl);
@@ -3042,7 +3076,7 @@ $('copyPrev').onclick = () => {
       stampRowUnit(r);
     });
   });
-  save(); render();
+  commit();
   mark('Pesos copiados de la semana ' + (profile.week - 1) +
     (leveled ? ' — ' + leveled + (leveled === 1 ? ' ejercicio sube' : ' ejercicios suben') + ' de peso (tope de rango la semana pasada)' : '') +
     (lowered ? ' — ' + lowered + (lowered === 1 ? ' ejercicio baja' : ' ejercicios bajan') + ' de peso (las series no llegan al rango a este peso)' : '') +
@@ -3063,7 +3097,7 @@ $('clearDay').onclick = async () => {
   if (profile.log[block.id]) delete profile.log[block.id][slot(profile.week, day.id)];
   if (profile.rir[block.id]) delete profile.rir[block.id][slot(profile.week, day.id)];
   purgeSessionMeta(profile, block.id, day.id, profile.week);
-  save(); render();
+  commit();
   mark('Día borrado');
 };
 
@@ -3084,7 +3118,7 @@ $('wipe').onclick = async () => {
   profile.notes = {};
   profile.energy = {};
   profile.order = {};
-  save(); render();
+  commit();
   mark('Registro de ' + profile.label + ' borrado');
 };
 
