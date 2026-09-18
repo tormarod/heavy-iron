@@ -688,6 +688,18 @@ $('toastDismiss').onclick = hideToast;
    soon as the next one replaces it. */
 let undoSnapshot = null;
 
+/* What the confirm dialog in front of a snapshot is allowed to promise,
+   kept next to the snapshot so the two cannot drift apart. Five dialogs
+   used to say "No se puede deshacer." and then call snapshotForUndo
+   anyway: anyone who believed the dialog never went looking for the toast,
+   which is the whole point of the feature (plans/013). The one dialog in
+   js/block-editor.js that still says it — deleting a retired exercise's
+   log from the editor — is right to, because that path has no snapshot
+   behind it until the editor's own save takes one.
+   Same scope rule as UNCLASSIFIED_LABEL above: defined here, read from the
+   files that load before this one, and only ever from inside a handler. */
+const UNDO_PROMISE = 'Podrás deshacerlo justo después, mientras no hagas otra cosa.';
+
 function snapshotForUndo(what) {
   try {
     undoSnapshot = JSON.stringify(state);

@@ -1647,6 +1647,27 @@ console.log('\n== safeKey refuses every inherited Object.prototype name, not thr
   call('__pSK = null; __bSK = null;');
 }
 
+console.log('\n== the dialogs tell the truth about undo (plans/013) ==');
+{
+  /* Five confirm dialogs said "No se puede deshacer." and then took an undo
+     snapshot, so the people most likely to want the toast were the ones
+     told not to look for it. The one that still says it deletes a retired
+     exercise's log, which really has no snapshot behind it — so the count
+     is the assertion, not the absence. */
+  ok('UNDO_PROMISE is the single wording the snapshot dialogs share',
+     typeof call('UNDO_PROMISE') === 'string' && call('UNDO_PROMISE').length > 0,
+     String(call('UNDO_PROMISE')));
+
+  const claims = ['js/app.js', 'js/block-editor.js', 'js/profile-transfer.js', 'js/qr-transfer.js', 'js/review.js']
+    /* The closing quote is part of the needle: it finds the claim where it
+       ends a string a dialog shows, and not where a comment quotes it. */
+    .map(rel => [rel, fs.readFileSync(path.join(ROOT, rel), 'utf8').split("No se puede deshacer.'").length - 1])
+    .filter(([, n]) => n > 0);
+  ok('exactly one dialog still claims there is no undo, and it is the one without a snapshot',
+     claims.length === 1 && claims[0][0] === 'js/block-editor.js' && claims[0][1] === 1,
+     JSON.stringify(claims));
+}
+
 console.log('\n== Escape reaches every sheet (plans/013) ==');
 {
   /* reviewSheet and diagSheet were in the markup and opened by openSheet()

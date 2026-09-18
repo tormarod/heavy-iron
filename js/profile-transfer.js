@@ -273,7 +273,7 @@ async function restoreFromText(text) {
     body: 'Copia' + (stamp ? ' del ' + stamp : '') + ': ' + setsLabel(theirs) + '.\n' +
       'Ahora mismo tienes: ' + setsLabel(mine) + '.\n\n' +
       (theirs < mine ? 'La copia tiene MENOS registro que lo que hay ahora — comprueba que es la que quieres. ' : '') +
-      'No se puede deshacer.',
+      UNDO_PROMISE,
     okLabel: 'Reemplazar', danger: true,
   });
   if (!okd) return;
@@ -347,7 +347,7 @@ async function loadProfileFromText(text) {
     body: 'Entra "' + incomingLabel + '"' + (stamp ? ' del ' + stamp : '') + ': ' + setsLabel(theirs) + '.\n' +
       'Se reemplaza ' + local.label + ', que tiene ahora ' + setsLabel(mine) + '.\n\n' +
       (others.length ? others.join(' y ') + ' no se toca' + (others.length > 1 ? 'n' : '') + '. ' : '') +
-      'No se puede deshacer.',
+      UNDO_PROMISE,
     okLabel: 'Sustituir', danger: true,
   });
   if (!okd) return;

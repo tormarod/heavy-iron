@@ -129,7 +129,7 @@ function renderBlockManager() {
         : 'El bloque actual, "' + profile.blocks[profile.activeBlock].name + '", se queda exactamente como está.';
       const okd = await ask({
         title: '¿Eliminar "' + block.name + '"' + (date ? ' (' + date + ')' : '') + '?',
-        body: cost + rest + ' No se puede deshacer.',
+        body: cost + rest + ' ' + UNDO_PROMISE,
         okLabel: 'Eliminar', danger: true,
       });
       if (!okd) return;
@@ -1005,7 +1005,7 @@ function wireBlockEditor() {
       title: '¿Eliminar los otros ' + others.length + ' bloques de ' + profile.label + '?',
       body: names + '\n\n' +
         (sets ? 'Se borran ' + setsLabel(sets) + ' en total. ' : 'No tienen nada registrado. ') +
-        '"' + getBlock().name + '" y todo su registro se quedan como están. No se puede deshacer.',
+        '"' + getBlock().name + '" y todo su registro se quedan como están. ' + UNDO_PROMISE,
       okLabel: 'Eliminar', danger: true,
     });
     if (!okd) return;
@@ -1129,7 +1129,7 @@ function wireBlockEditor() {
     const okd = await ask({
       title: '¿Eliminar "' + peDraftBlock.name + '"?',
       body: (sets ? 'Se borran sus ' + setsLabel(sets) + '. ' : 'No tiene nada registrado. ') +
-        'Es el bloque en el que estás entrenando: al borrarlo pasas al bloque más reciente que quede. No se puede deshacer.',
+        'Es el bloque en el que estás entrenando: al borrarlo pasas al bloque más reciente que quede. ' + UNDO_PROMISE,
       okLabel: 'Eliminar', danger: true,
     });
     if (!okd) return;
