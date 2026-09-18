@@ -530,6 +530,33 @@ const strictDayAwareLog = call(`
     };
   })()
 `);
+/* 6. An id the re-keying maps could not carry at all. importIdMaps indexes
+      by raw, untrusted id, and a plain {} answers `map['__proto__']` with
+      the real Object.prototype — truthy — while `put`'s `in` check saw that
+      same inherited hit and never stored the mapping. So the rows came back
+      filed under the literal key '[object Object]', on every path that
+      re-keys: QR "blocklog", a restored backup, a profile file. */
+const protoIdReKey = call(`
+  (function() {
+    /* JSON.parse, not an object literal: { '__proto__': x } as literal
+       syntax sets the prototype instead of creating an own property, which
+       would test nothing. JSON.parse is also how these ids really arrive. */
+    const raw = JSON.parse('{"name":"B","weeks":4,"deload":0,"days":[{"id":"d0","name":"D","ex":[{"id":"__proto__","n":"Press","reps":"8-10"}]}]}');
+    const rawLog = JSON.parse('{"w1-d0":{"__proto__":[{"w":"60","r":"8","done":true}]}}');
+    const normalized = normalizeImportedBlock(raw);
+    const exId = normalized.days[0].ex[0].id;
+    const s = normalizeImportedLog(rawLog, raw, normalized)[slot(1, normalized.days[0].id)] || {};
+    return {
+      renamed: exId !== '__proto__',
+      landed: !!(s[exId] && s[exId][0] && s[exId][0].w === '60'),
+      keys: Object.keys(s).join(','), exId: exId,
+    };
+  })()
+`);
+ok('an exercise id of "__proto__" is renamed rather than kept', protoIdReKey.renamed, protoIdReKey.exId);
+ok('...and its sets are re-keyed onto the renamed exercise, not "[object Object]"',
+   protoIdReKey.landed, 'slot holds: ' + protoIdReKey.keys + ' (expected ' + protoIdReKey.exId + ')');
+
 ok('a pasted block with one id on two days still renames the second (strict path unchanged)',
    strictDayAwareLog.renamed, strictDayAwareLog.ids);
 ok("...day A's sets land on day A's exercise", strictDayAwareLog.dayARow, strictDayAwareLog.sbKeys);

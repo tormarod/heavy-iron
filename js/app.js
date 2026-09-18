@@ -4033,17 +4033,26 @@ function setsWithDoneLabel(total, done) {
    a log keyed by the *sender's* ids has to be re-keyed to the ids the block
    actually ended up with. `normalizeImportedBlock` maps days and exercises
    one-to-one and in order, so position is a reliable bridge between the two. */
-/* Shared by normalizeImportedLog and normalizeImportedRir: both need to
-   re-key a payload from the sender's day/exercise ids to whatever
-   `normalizeImportedBlock` renamed them to. First occurrence wins, both here
-   and for days. A sender whose block had the same id on two exercises leaves
-   a mapping that is genuinely ambiguous — but `normalizeImportedBlock`
-   renames the *later* duplicate and leaves the first one's id alone, so rows
-   filed under that id belong to the first. Letting the duplicate overwrite
-   the mapping would quietly move somebody's sets onto a different
-   exercise. */
+/* Shared by normalizeImportedLog, normalizeImportedRir and
+   normalizeImportedOrder: all three need to re-key a payload from the
+   sender's day/exercise ids to whatever `normalizeImportedBlock` renamed
+   them to. First occurrence wins, both here and for days. A sender whose
+   block had the same id on two exercises *of one day* leaves a mapping that
+   is genuinely ambiguous — but `normalizeImportedBlock` renames the *later*
+   duplicate and leaves the first one's id alone, so rows filed under that
+   id belong to the first. Letting the duplicate overwrite the mapping would
+   quietly move somebody's sets onto a different exercise. */
 function importIdMaps(rawBlock, normalized) {
-  const dayMap = {}, exMap = {};
+  /* Object.create(null), not {}: every key below is a raw, untrusted id.
+     A plain object answers `map['__proto__']` with the real Object.prototype
+     and `map['toString']` with a function — both truthy, so an id like that
+     resolved to an object and the rows it carried were filed under the
+     literal key '[object Object]'. `put`'s `in` check has the mirror
+     problem: `'__proto__' in {}` is already true, so that mapping was never
+     stored to begin with. With no prototype there is nothing to inherit,
+     so any string is just a key (same reasoning as ownGet,
+     js/profile-transfer.js). */
+  const dayMap = Object.create(null), exMap = Object.create(null);
   const put = (map, from, to) => { if (from != null && !(String(from) in map)) map[String(from)] = to; };
   (rawBlock.days || []).forEach((rd, di) => {
     const nd = normalized.days[di];
@@ -4051,11 +4060,18 @@ function importIdMaps(rawBlock, normalized) {
     put(dayMap, rd.id, nd.id);
     /* A log already keyed by the id the block ended up with still resolves. */
     put(dayMap, nd.id, nd.id);
+    /* Per day, not per block: the log is keyed by slot (week + day) and then
+       by exercise id, so an id that appears on two days resolves differently
+       depending on which day's slot is being read. One flat map sent day B's
+       rows to day A's exercise (plans/010). Normalized day ids are unique
+       across the block (`usedDayIds` in normalizeImportedBlock), so each day
+       gets its own map. */
+    const forDay = exMap[nd.id] || (exMap[nd.id] = Object.create(null));
     (Array.isArray(rd.ex) ? rd.ex : []).forEach((re, ei) => {
       const ne = nd.ex[ei];
       if (!ne || !re) return;
-      put(exMap, re.id, ne.id);
-      put(exMap, ne.id, ne.id);
+      put(forDay, re.id, ne.id);
+      put(forDay, ne.id, ne.id);
     });
   });
   return { dayMap, exMap };
@@ -4075,9 +4091,10 @@ function normalizeImportedLog(rawLog, rawBlock, normalized) {
     if (!dayId) return;
     const slotLog = rawLog[key];
     if (!slotLog || typeof slotLog !== 'object' || Array.isArray(slotLog)) return;
+    const exFor = exMap[dayId] || Object.create(null);
     const kept = {};
     Object.keys(slotLog).forEach(rawExId => {
-      const exId = exMap[rawExId];
+      const exId = exFor[rawExId];
       if (!exId || !Array.isArray(slotLog[rawExId])) return;
       if (slotLog[rawExId].length > LOG_ROW_HARD_CAP) {
         throw new Error('trae ' + slotLog[rawExId].length + ' series para un solo ejercicio en una sesión — demasiadas para ser un registro real.');
@@ -4118,9 +4135,10 @@ function normalizeImportedRir(rawRir, rawBlock, normalized) {
     if (!dayId) return;
     const slotRir = rawRir[key];
     if (!slotRir || typeof slotRir !== 'object' || Array.isArray(slotRir)) return;
+    const exFor = exMap[dayId] || Object.create(null);
     const kept = {};
     Object.keys(slotRir).forEach(rawExId => {
-      const exId = exMap[rawExId];
+      const exId = exFor[rawExId];
       if (exId && RIR_OPTIONS.indexOf(slotRir[rawExId]) >= 0) kept[exId] = slotRir[rawExId];
     });
     if (Object.keys(kept).length) out[slot(w, dayId)] = kept;
@@ -4145,10 +4163,11 @@ function normalizeImportedOrder(rawOrder, rawBlock, normalized) {
     if (!dayId) return;
     const ids = rawOrder[key];
     if (!Array.isArray(ids)) return;
+    const exFor = exMap[dayId] || Object.create(null);
     const seen = new Set();
     const kept = [];
     ids.slice(0, ORDER_LIMIT).forEach(rawExId => {
-      const exId = exMap[rawExId];
+      const exId = exFor[rawExId];
       if (exId && !seen.has(exId)) { seen.add(exId); kept.push(exId); }
     });
     if (kept.length > 1) out[slot(w, dayId)] = kept;
