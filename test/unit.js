@@ -1697,6 +1697,21 @@ console.log('\n== requestWakeLock: one rest, one lock — skipped mid-request, d
      JSON.stringify({ heldIsFirst: call('wakeLock') === first, first: first.released, second: second.released }));
   call('tId = null; wakeLock = null;');
 
+  console.log('\n== buildQrPayload leaves the backup nag alone (plans/013) ==');
+  call('state = defaultState(); migrate(); state.prefs.sessionsSinceBackup = 5;');
+  /* Building the payload is not sending it: drawQrShow can still refuse the
+     result as too many frames for a camera, and picking "perfil" in the
+     segmented control redraws through here every time. The counter is reset
+     where the frames go on screen, which needs a DOM — so what is asserted
+     here is that this half no longer touches it. */
+  const qrPayload = await call('buildQrPayload("profile", getProfile(), getBlock())');
+  ok('choosing "perfil" does not reset the sessions-since-backup counter',
+     call('state.prefs.sessionsSinceBackup') === 5,
+     String(call('state.prefs.sessionsSinceBackup')));
+  ok('...and the payload it builds is still the whole profile',
+     qrPayload.kind === 'profile' && !!qrPayload.profile && qrPayload.key === call('state.activeProfile'),
+     JSON.stringify({ kind: qrPayload.kind, key: qrPayload.key, hasProfile: !!qrPayload.profile }));
+
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 })();

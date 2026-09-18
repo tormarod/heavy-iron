@@ -383,8 +383,9 @@ function drawQrShow() {
   stopQrShow();
 
   const token = ++qrShowToken;
+  const kind = qrKind;
 
-  buildQrPayload(qrKind, profile, block)
+  buildQrPayload(kind, profile, block)
     .then(async payload => {
       await qrEncoderReady();
       const packed = await qrPackFrames(payload);
@@ -398,6 +399,14 @@ function drawQrShow() {
         return;
       }
       qrFrames = packed.frames;
+      /* Only here, with the frames about to go on screen: the nag counts
+         sessions since the data actually left the phone, and picking
+         "perfil" in the segmented control is not that — neither is being
+         told a paragraph later that the payload is too big to send at all,
+         which is what the return above used to do after the counter had
+         already been wiped (plans/013). The other reset sites
+         (js/profile-transfer.js, js/app.js) fire on the same rule. */
+      if (kind === 'profile') resetBackupNag();
       qrAt = 0;
       renderQrFrame();
       if (qrFrames.length > 1) {
@@ -419,7 +428,6 @@ async function buildQrPayload(kind, profile, block) {
   if (kind === 'profile') {
     /* Shaped exactly like the profile file the app already exports, so the
        receiving side can hand it straight to loadProfileFromText. */
-    resetBackupNag();
     return Object.assign(base, { kind: 'profile', key: state.activeProfile, profile: state.profiles[state.activeProfile] });
   }
   const plan = blockSharePlan(block);
