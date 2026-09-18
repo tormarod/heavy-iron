@@ -80,10 +80,11 @@ function normalizeImportedProfile(p) {
 
   const blocks = {};
   /* raw block key -> the key it actually lands on. Almost always itself —
-     block ids are ordinary strings — but `__proto__`/`constructor`/
-     `prototype` would set the prototype of the plain {} above instead of
-     adding a property (see safeKey, js/app.js, and plans/008 item 2), so a
-     key like that gets a fresh id here. Every other block-id-keyed thing
+     block ids are ordinary strings — but any name `Object.prototype`
+     carries reads back off the plain {} above as a block that is already
+     there, and `__proto__` sets its prototype instead of adding a property
+     (see safeKey, js/app.js, and plans/008 item 2), so a key like that gets
+     a fresh id here. Every other block-id-keyed thing
      below (log/rir/notes/energy/order, blockOrder, activeBlock) has to
      follow the same rename, or the block comes back with everything except
      its own history.
@@ -178,7 +179,7 @@ function normalizeImportedProfile(p) {
      plans/002-purge-parallel-maps.md). Rebuilding under the mapped key does
      both the rename and the orphan drop in one pass. `out[id] = …` is safe
      even though `bk` is not: `id` only ever comes from keyMap, which never
-     hands back one of the three blocked names (see safeKey). */
+     hands back a name safeKey refuses (see safeKey). */
   ['log', 'rir', 'notes', 'energy', 'order'].forEach(key => {
     const map = p[key];
     if (!map || typeof map !== 'object') return;
