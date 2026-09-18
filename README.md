@@ -1158,7 +1158,9 @@ only that chest went nowhere.
 **The export is the feature.** *Copiar prompt con la revisión* hands you
 the same JSON-format prompt the import sheet gives out — with the evidence
 stapled underneath. Paste it into whatever writes your next block, paste
-the JSON that comes back into **Importar JSON**, and the next block is
+the JSON that comes back into the box under those buttons — it lands
+as a new block, through the same checks **Importar JSON** runs — and the
+next block is
 written against what actually happened rather than what you remember of
 it. There is also *Copiar solo la revisión* and a `.txt` download.
 

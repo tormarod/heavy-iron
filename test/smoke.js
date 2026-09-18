@@ -2778,6 +2778,44 @@ const ok = (name, cond, extra) => {
     await page.click('#askCancel');
     await page.waitForTimeout(300);
 
+    /* The return leg, from the flow that needs it most: "+ Nuevo bloque"
+       offers the review, the review takes the JSON back, and the
+       continuation that would have asked to name a copied block is
+       dropped — the pasted block is the next block. */
+    const nextBlock = JSON.stringify({ name: 'Bloque siguiente', days: [{ name: 'Día A', ex: [{ n: 'Press banca', reps: '6–10', sets: 3 }] }] });
+    await page.click('#blockbar button:has-text("+ Nuevo bloque")');
+    await page.waitForSelector('#askSheet.up');
+    await page.click('#askOk');
+    await page.waitForSelector('#reviewSheet.up');
+    ok('the review is up again from "+ Nuevo bloque"', await page.locator('#reviewSheet.up').count() === 1);
+    await page.fill('#reviewBlob', 'esto no es json');
+    await page.click('#reviewImport');
+    await page.waitForFunction(() => (document.getElementById('reviewStatus').textContent || '').includes('JSON'));
+    ok('a paste that is not JSON is refused on the sheet itself',
+       (await page.locator('#reviewStatus').textContent()).includes('JSON') &&
+       await page.locator('#reviewSheet.up').count() === 1,
+       await page.locator('#reviewStatus').textContent());
+    await page.fill('#reviewBlob', '{"name":"Sin días"}');
+    await page.click('#reviewImport');
+    await page.waitForFunction(() => (document.getElementById('reviewStatus').textContent || '').includes('days'));
+    ok('and so is a block the validator rejects, with its own message',
+       (await page.locator('#reviewStatus').textContent()).includes('days'),
+       await page.locator('#reviewStatus').textContent());
+    await page.fill('#reviewBlob', nextBlock);
+    await page.click('#reviewImport');
+    await page.waitForSelector('#reviewSheet.up', { state: 'hidden' });
+    ok('pasting the next block on the review installs it and closes the sheet',
+       await page.locator('#reviewSheet.up').count() === 0);
+    ok('without asking to name a second block afterwards',
+       await page.locator('#askSheet.up').count() === 0);
+    ok('it is the active block now',
+       (await page.textContent('#title')).includes('Bloque siguiente'), await page.textContent('#title'));
+    ok('as a new block beside the old one, not on top of it',
+       await page.evaluate(() => getProfile().blockOrder.length) === 2 &&
+       await page.evaluate(() => getProfile().blocks[getProfile().blockOrder[0]].name) === 'Bloque 1');
+    ok('the old block keeps its log',
+       await page.evaluate(() => Object.keys(getProfile().log['block-1'] || {}).length) === 7);
+
     /* A block with nothing logged has nothing to review, and says so
        instead of printing a page of zeroes. */
     await page.evaluate(() => {
