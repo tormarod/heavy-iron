@@ -130,6 +130,12 @@ failure blocks the PR. Running it by hand before that point only repeats
 what the hook is about to do. It skips itself on a branch that changes
 nothing the suites load (the shell, `sw.js`, `blocks/`, `test/`).
 
+When it blocks, read what it tells you rather than re-running the suite to
+find out: it prints the failing assertions — with the diagnostic each one
+carries after the arrow — on stderr, which is the part of a blocked hook you
+are shown, and writes the whole run to `.smoke-gate.log` (gitignored,
+truncated per run, `SMOKE_GATE_LOG` to move it).
+
 Rung 3 is for the things `test/unit.js` cannot see — a sheet opening, a
 value surviving a reload, `sw.js`, the layout — and it is targeted:
 `node test/smoke.js --list` prints the section names,

@@ -22,6 +22,15 @@
 # the first failure's. Exit code 2 is what a PreToolUse hook needs to block
 # the tool call, so every failure path uses it.
 #
+# Everything both suites print is copied to a log file, and a failure prints
+# the FAIL lines out of it on stderr. Running as a hook, stderr is the only
+# channel that reaches whoever is opening the pull request: stdout is
+# swallowed, so without this a block reads "test/smoke.js failed" and the one
+# assertion that failed — with the diagnostic line the suites print after the
+# arrow, which is usually the whole answer — is lost. That left running the
+# full suite by hand as the only way to find out what broke, which is exactly
+# what AGENTS.md tells agents not to do.
+#
 # A pull request that touches nothing the tests can see — a plan under
 # plans/, the README, a workflow — is not worth four minutes of Chromium, so
 # the gate first diffs the branch against the base and returns at once when
@@ -40,8 +49,15 @@
 #   SMOKE_GATE_SKIP=1   skip the browser half (unit tests still run) — for a
 #                       machine with no Chromium and no way to fetch one.
 #   PLAYWRIGHT_VERSION  defaults to 1.56.1.
+#   SMOKE_GATE_LOG      where this run is logged; defaults to
+#                       .smoke-gate.log in the repo root (gitignored). It is
+#                       truncated per run, and holds the last full run
+#                       whether it passed or failed.
 
 set -u
+# Without pipefail a failing suite piped into tee reports tee's own success,
+# and the gate would wave through every red run.
+set -o pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT" || exit 2
@@ -82,7 +98,22 @@ SMOKE_GATE_BASE="${SMOKE_GATE_BASE:-origin/main}"
 TESTED_PATHS='^(index\.html|css/|js/|sw\.js|manifest\.webmanifest|blocks/|test/)'
 SERVER_PID=""
 
-fail() { echo "smoke-gate: $*" >&2; exit 2; }
+LOG="${SMOKE_GATE_LOG:-$ROOT/.smoke-gate.log}"
+
+# stderr, because that is the only part of a blocked hook the caller is shown.
+# The filter keeps the assertion lines and the tally; if a suite died before
+# printing either, the tail is the stack trace instead of nothing.
+fail() {
+  echo "smoke-gate: $*" >&2
+  if [ -s "$LOG" ]; then
+    lines="$(grep -nE '^[[:space:]]*FAIL|[0-9]+ passed, [0-9]+ failed|^[A-Za-z]*Error|Cannot find|ECONNREFUSED' "$LOG" | tail -30)"
+    [ -n "$lines" ] || lines="$(tail -20 "$LOG")"
+    echo "smoke-gate: ---- from $LOG ----" >&2
+    printf '%s\n' "$lines" >&2
+    echo "smoke-gate: ---- full log: $LOG ----" >&2
+  fi
+  exit 2
+}
 cleanup() { if [ -n "$SERVER_PID" ]; then kill "$SERVER_PID" 2>/dev/null; wait "$SERVER_PID" 2>/dev/null; fi; }
 trap cleanup EXIT
 
@@ -97,13 +128,15 @@ if [ "${SMOKE_GATE_FORCE:-}" != "1" ] && git rev-parse --verify --quiet "$SMOKE_
   fi
 fi
 
-echo "smoke-gate: syntax check"
+: > "$LOG" || fail "cannot write the log at $LOG"
+
+echo "smoke-gate: syntax check" | tee -a "$LOG"
 for f in js/*.js sw.js test/*.js; do
-  node --check "$f" || fail "syntax error in $f"
+  node --check "$f" 2>&1 | tee -a "$LOG" || fail "syntax error in $f"
 done
 
-echo "smoke-gate: unit tests"
-node test/unit.js || fail "test/unit.js failed"
+echo "smoke-gate: unit tests" | tee -a "$LOG"
+node test/unit.js 2>&1 | tee -a "$LOG" || fail "test/unit.js failed"
 
 if [ "${SMOKE_GATE_SKIP:-}" = "1" ]; then
   echo "smoke-gate: SMOKE_GATE_SKIP=1 — browser suite skipped"
@@ -136,7 +169,7 @@ for _ in $(seq 1 40); do
   sleep 0.25
 done
 
-echo "smoke-gate: browser smoke tests on :$PORT"
-BASE="http://127.0.0.1:$PORT" node test/smoke.js || fail "test/smoke.js failed — fix it before opening the pull request"
+echo "smoke-gate: browser smoke tests on :$PORT" | tee -a "$LOG"
+BASE="http://127.0.0.1:$PORT" node test/smoke.js 2>&1 | tee -a "$LOG" || fail "test/smoke.js failed — fix it before opening the pull request"
 
-echo "smoke-gate: all green"
+echo "smoke-gate: all green (log: $LOG)"
