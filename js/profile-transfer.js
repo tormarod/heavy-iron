@@ -316,7 +316,8 @@ async function restoreFromText(text) {
   /* The one destructive path that had no way back. Its sibling
      loadProfileFromText has taken a snapshot since it was written, and
      "Borrar todo el registro" takes one too — restoring a copy is at least as
-     final as either, and is the operation the README tells people to rely on.
+     final as either, and is the operation the guide tells people to rely on
+     (docs/guide.md, "Data & privacy" and "Two phones, one profile each").
      Undo is one level deep and does not survive a reload, which is exactly
      the window this covers: realising within seconds that it was the wrong
      file. */

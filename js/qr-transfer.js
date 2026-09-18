@@ -8,7 +8,8 @@
    screen. Nothing is uploaded, nothing is fetched, the CSP is untouched
    (`getUserMedia` is not a network request and both libraries are vendored
    under `script-src 'self'`), and the "nothing leaves the device" promise in
-   the README stays literally true — the data goes device → photons → device.
+   the guide (docs/guide.md, "Passing data with the camera (QR)") stays
+   literally true — the data goes device → photons → device.
 
    Three things can be sent, smallest first, because size is the whole problem:
 

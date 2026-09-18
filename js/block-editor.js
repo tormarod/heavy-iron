@@ -248,7 +248,7 @@ function normalizeImportedBlock(raw, opts) {
        week (migrate() dedupes within a day only, on purpose), so renaming
        the second one on restore moved a day's history onto an exercise
        nobody trained. A pasted block keeps the block-wide rule — see
-       README "The same lift on two days" for what it means there. */
+       docs/guide.md#the-same-lift-on-two-days for what it means there. */
     const dayIds = own ? new Set() : usedIds;
     const ex = day.ex.map((e, ei) => {
       if (!e || typeof e !== 'object') throw new Error('Un ejercicio del día "' + dayName + '" no es válido.');
