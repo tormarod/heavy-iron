@@ -2,9 +2,14 @@ const STORAGE_KEY = 'heavy-iron-v1';
 
 let state = null;
 let ready = false;
-/* Exercise ids whose "Ajustes" (machine setup) box is expanded right now —
-   in-memory only, so every fresh open of the app starts collapsed again. */
+/* Keys of the "Ajustes" (machine setup) boxes expanded right now — in-memory
+   only, so every fresh open of the app starts collapsed again. Keyed by
+   profile + block + exercise id, not the exercise id alone: JSON-authored
+   blocks reuse ids across blocks and profiles on purpose (sameLift), so an
+   id-only key left a panel opened for one profile's "squat" pre-expanded for
+   the other's. */
 const expandedSetup = new Set();
+const setupKey = (block, ex) => state.activeProfile + '|' + block.id + '|' + ex.id;
 /* Set by the ↓ and ⚙ buttons so the draw they trigger can put the cursor
    straight into a box that does not exist until that draw has run. Both are
    honoured by takeFocusMark() once the card is in the document, because the
@@ -114,7 +119,19 @@ function readRaw() {
 }
 
 function load() {
-  const raw = readRaw();
+  /* A thrown read is not the same as an absent key: readRaw() folds both
+     into null, which used to seed a fresh device over data a flaky read
+     might well still be sitting on. Read directly here so the two cases
+     stay apart — a genuine first run goes on to seed as before, a throw
+     goes to recovery, which at least offers "Reintentar" instead of
+     silently overwriting whatever is actually on disk once save() runs. */
+  let raw;
+  try {
+    raw = localStorage.getItem(STORAGE_KEY);
+  } catch (e) {
+    showRecovery(e, null);
+    return;
+  }
   const firstRun = raw == null;
   if (firstRun) {
     state = defaultState();
@@ -477,6 +494,13 @@ function pruneLog() {
    comment below. */
 let held = false;
 
+/* A failed setItem (quota, private-mode limits) used to be reported only in
+   the footer #status line — easy to miss, and every later keystroke retries
+   and fails the same way, so a whole session could go unsaved with nothing
+   above the fold to say so. The toast fires once per page load; the footer
+   line still updates on every attempt for anyone who is looking at it. */
+let quotaToastShown = false;
+
 function writeState(force) {
   if (frozen) return;
   if (held && !force) return;
@@ -487,6 +511,11 @@ function writeState(force) {
     mark('Guardado ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
   } catch (e) {
     mark('No se ha podido guardar — puede que no quede espacio en el navegador', true);
+    if (!quotaToastShown) {
+      quotaToastShown = true;
+      toast('No se han podido guardar los últimos cambios — puede que no quede espacio en el navegador. Descarga una copia antes de seguir.',
+        'Copia de seguridad', () => $('backup').click());
+    }
   }
 }
 
@@ -693,13 +722,22 @@ function undoLast() {
    `if (!await ask(...)) return;`. Only one can be open at a time, which is
    already true of the confirm() they replace. */
 let askResolve = null;
+/* Its own variable, not the sheet stack's `sheetReturn` below: a confirm
+   raised from inside an open sheet (wipe, delete block) used to null that
+   shared variable on close, so when the sheet itself closed afterwards focus
+   had nowhere to return to. */
+let askReturn = null;
 
 function closeAsk(value) {
   const done = askResolve;
   askResolve = null;
   $('askSheet').classList.remove('up');
-  if (sheetReturn && sheetReturn.focus) sheetReturn.focus();
-  sheetReturn = null;
+  /* isConnected: a re-render between open and close can have already
+     replaced the element that opened this dialog with an equivalent new
+     one — focusing the old, detached node is a silent no-op, so skip it
+     rather than pretend focus went somewhere. */
+  if (askReturn && askReturn.isConnected && askReturn.focus) askReturn.focus();
+  askReturn = null;
   if (done) done(value);
 }
 
@@ -716,14 +754,18 @@ function openAsk(opts) {
   $('askCancel').textContent = opts.cancelLabel || 'Cancelar';
 
   const input = $('askInput');
-  input.style.display = opts.textInput ? '' : 'none';
+  /* .hidden, not .style.display: the markup ships with the `hidden`
+     attribute (plans/008 item 22 — no inline style="" left in index.html),
+     and clearing an inline style would leave that attribute in charge,
+     never showing the field at all. */
+  input.hidden = !opts.textInput;
   if (opts.textInput) {
     input.value = opts.value || '';
     input.placeholder = opts.placeholder || '';
     input.setAttribute('aria-label', opts.title || 'Valor');
   }
 
-  sheetReturn = document.activeElement;
+  askReturn = document.activeElement;
   $('askSheet').classList.add('up');
   const focusTarget = opts.textInput ? input : $('askOk');
   focusTarget.focus();
@@ -744,11 +786,11 @@ const askText = opts => openAsk(Object.assign({ textInput: true, okLabel: 'Crear
 
 $('askOk').onclick = () => {
   const input = $('askInput');
-  closeAsk(input.style.display === 'none' ? true : input.value);
+  closeAsk(input.hidden ? true : input.value);
 };
-$('askCancel').onclick = () => closeAsk($('askInput').style.display === 'none' ? false : null);
+$('askCancel').onclick = () => closeAsk($('askInput').hidden ? false : null);
 $('askSheet').addEventListener('click', e => {
-  if (e.target.id === 'askSheet') closeAsk($('askInput').style.display === 'none' ? false : null);
+  if (e.target.id === 'askSheet') closeAsk($('askInput').hidden ? false : null);
 });
 $('askInput').addEventListener('keydown', e => {
   if (e.key === 'Enter') { e.preventDefault(); closeAsk($('askInput').value); }
@@ -762,14 +804,32 @@ const THEME_ORDER = ['auto', 'light', 'dark'];
 const THEME_LABEL = { auto: 'automático', light: 'claro', dark: 'oscuro' };
 const THEME_ICON = { auto: '◐', light: '☀', dark: '☾' };
 
+/* "auto" is resolved into an explicit light/dark right here — the same
+   thing js/theme-init.js does before this script has even loaded, so the
+   attribute this writes always matches what the first paint already used.
+   Writing "auto" itself as data-theme, or removing the attribute, would put
+   the dark palette back into a @media(prefers-color-scheme) block of its
+   own instead of the single :root[data-theme="dark"] one css/style.css now
+   has (plans/008 item 20). */
+const systemPrefersDark = () => !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+
 function applyTheme() {
   const t = (state.prefs && state.prefs.theme) || 'auto';
-  if (t === 'auto') document.documentElement.removeAttribute('data-theme');
-  else document.documentElement.setAttribute('data-theme', t);
+  document.documentElement.setAttribute('data-theme', t === 'auto' ? (systemPrefersDark() ? 'dark' : 'light') : t);
   const b = $('themeBtn');
   b.textContent = THEME_ICON[t];
   b.title = 'Tema ' + THEME_LABEL[t];
   b.setAttribute('aria-label', 'Tema ' + THEME_LABEL[t] + ' — cambiar');
+}
+
+/* Only matters in "auto": the explicit resolution above means the OS
+   switching light/dark mid-session no longer repaints itself through CSS,
+   so this is what keeps that live instead of waiting for the next reload. */
+if (window.matchMedia) {
+  const themeMq = window.matchMedia('(prefers-color-scheme: dark)');
+  const onSystemThemeChange = () => { if (ready && (!state.prefs || state.prefs.theme === 'auto')) applyTheme(); };
+  if (themeMq.addEventListener) themeMq.addEventListener('change', onSystemThemeChange);
+  else if (themeMq.addListener) themeMq.addListener(onSystemThemeChange);
 }
 
 $('themeBtn').onclick = () => {
@@ -1033,8 +1093,17 @@ function emptyBlock() {
    The app draws straight from whatever is in localStorage, so data it cannot
    read used to mean a white screen and no way back. Instead: stop writing
    (so the broken copy is not overwritten with something worse), and offer to
-   hand the raw bytes over as a file before anything is thrown away. */
-function showRecovery(err, raw) {
+   hand the raw bytes over as a file before anything is thrown away.
+
+   `drawFailure` tells the two causes apart. load()'s JSON.parse/shape checks
+   and a thrown read mean the *data* is unreadable — "Empezar de cero" is the
+   only real way out, alongside downloading the raw bytes first. render()'s
+   catch is different: the data parsed fine and migrate() already repaired
+   its shape, so a throw here is a deterministic bug in a screen reading an
+   unusual-but-valid log — pushing that person toward deleting intact data is
+   the wrong first move. Offer to sidestep the screen instead: reset to week
+   1, or away from whatever block is on screen, before the destructive option. */
+function showRecovery(err, raw, drawFailure) {
   frozen = true;
   ready = false;
   clearTimeout(saveT); saveT = null;
@@ -1043,14 +1112,21 @@ function showRecovery(err, raw) {
   const box = document.createElement('div');
   box.className = 'recovery';
   box.innerHTML =
-    '<h1>No se ha podido abrir tu registro</h1>' +
-    '<p>Los datos guardados en este navegador no tienen la forma que la app espera, ' +
-    'así que no se ha dibujado nada — y, para no empeorarlo, se ha dejado de guardar.</p>' +
+    '<h1>' + (drawFailure ? 'La app ha fallado al dibujar' : 'No se ha podido abrir tu registro') + '</h1>' +
+    (drawFailure
+      ? '<p>Ha ocurrido un error dibujando la pantalla — probablemente un fallo de la app, no de tus datos. ' +
+        'Se ha dejado de guardar mientras tanto, para no arriesgar nada.</p>'
+      : '<p>Los datos guardados en este navegador no tienen la forma que la app espera, ' +
+        'así que no se ha dibujado nada — y, para no empeorarlo, se ha dejado de guardar.</p>') +
     '<p><b>Descarga los datos antes de nada.</b> Ese archivo es tu registro tal cual está: ' +
     'aunque la app no sepa leerlo, no se pierde y se puede recuperar a mano.</p>' +
     '<pre></pre>' +
     '<div class="foot-btns">' +
       '<button class="sm key" id="recDownload" type="button">Descargar los datos tal cual</button>' +
+      (drawFailure
+        ? '<button class="sm" id="recWeek1" type="button">Volver a la semana 1</button>' +
+          '<button class="sm" id="recBlock" type="button">Cambiar de bloque</button>'
+        : '') +
       '<button class="sm" id="recReload" type="button">Reintentar</button>' +
       '<button class="sm warn" id="recReset" type="button">Empezar de cero</button>' +
     '</div>';
@@ -1060,6 +1136,34 @@ function showRecovery(err, raw) {
   box.querySelector('#recDownload').onclick = () =>
     downloadFile('heavy-iron-datos-sin-abrir-' + new Date().toISOString().slice(0, 10) + '.json',
                  raw == null ? '' : raw, 'application/json');
+  /* Both edit `state` (already a real, migrated object here — that is what
+     makes drawFailure true) and write it straight to localStorage, bypassing
+     `frozen`: render() is gone from this DOM, so the only way back is a
+     reload, and this box has already replaced the elements render() writes
+     into. */
+  if (drawFailure) {
+    const week1 = box.querySelector('#recWeek1');
+    if (week1) week1.onclick = () => {
+      try {
+        const profile = state.profiles && state.profiles[state.activeProfile];
+        if (profile) profile.week = 1;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch (e) { /* reload surfaces whatever is still wrong */ }
+      location.reload();
+    };
+    const chBlock = box.querySelector('#recBlock');
+    if (chBlock) chBlock.onclick = () => {
+      try {
+        const profile = state.profiles && state.profiles[state.activeProfile];
+        if (profile && Array.isArray(profile.blockOrder) && profile.blockOrder.length) {
+          profile.activeBlock = profile.blockOrder.find(id => id !== profile.activeBlock) || profile.blockOrder[0];
+          profile.week = 1;
+        }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch (e) { /* reload surfaces whatever is still wrong */ }
+      location.reload();
+    };
+  }
   box.querySelector('#recReload').onclick = () => location.reload();
   box.querySelector('#recReset').onclick = () => {
     /* The only native confirm left, and deliberately: this screen has already
@@ -1299,8 +1403,13 @@ const rirNumber = v => (Object.prototype.hasOwnProperty.call(RIR_VALUE, v) ? RIR
    estimate is skipped entirely rather than invented: a deload is not a
    progression week. */
 function phaseRir(block, w) {
-  const r = block && block.phase && block.phase[w] && block.phase[w].r;
-  const nums = String(r || '').match(/\d+/g);
+  const r = String((block && block.phase && block.phase[w] && block.phase[w].r) || '');
+  /* Prefer the number(s) immediately before "RIR" — free text elsewhere in
+     the phase (a week number, a set/rep scheme) can contain a smaller digit
+     that used to win the plain lowest-digit-anywhere scan. */
+  const near = r.match(/(\d+)(?:\s*[–-]\s*(\d+))?\s*RIR/i);
+  if (near) return Math.min(num(near[1]), num(near[2] != null ? near[2] : near[1]));
+  const nums = r.match(/\d+/g);
   return nums && nums.length ? Math.min.apply(null, nums.map(num)) : null;
 }
 
@@ -1422,13 +1531,6 @@ function orderedEx(profile, block, w, day) {
 
 const sameIds = (a, b) => a.length === b.length && a.every((id, i) => id === b[i]);
 
-/* True when this session was done in some order other than the plan's —
-   which is not the same question as "is anything stored", once a plan edit
-   has had its say through orderedEx above. */
-function reorderedDay(profile, block, w, day) {
-  return !sameIds(orderedEx(profile, block, w, day).map(e => e.id), exList(day).map(e => e.id));
-}
-
 /* Swap an exercise with its neighbour in the actual order. Writing back the
    whole sequence rather than a position keeps the stored value a complete
    permutation at every step; landing back on the plan's own order deletes
@@ -1548,10 +1650,6 @@ function loggedSets(profile, blockId, dayId, exId, weeks) {
     if (s && s[exId]) n += s[exId].filter(rowUsed).length;
   }
   return n;
-}
-
-function loggedSetsDay(profile, blockId, day) {
-  return day.ex.reduce((t, ex) => t + loggedSets(profile, blockId, day.id, ex.id), 0);
 }
 
 /* Rows filed under weeks past the end of a shortened block: kept, but out of
@@ -1836,13 +1934,16 @@ function openSheet(id) {
 
 function closeSheet(id) {
   $(id).classList.remove('up');
-  if (sheetReturn && sheetReturn.focus) sheetReturn.focus();
+  /* isConnected: something opened under this sheet can have triggered a full
+     render() that recreated the button that opened it (the nav bar is
+     rebuilt on every render) — same reasoning as closeAsk, above. */
+  if (sheetReturn && sheetReturn.isConnected && sheetReturn.focus) sheetReturn.focus();
   sheetReturn = null;
 }
 
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
-  if (askResolve) { closeAsk($('askInput').style.display === 'none' ? false : null); return; }
+  if (askResolve) { closeAsk($('askInput').hidden ? false : null); return; }
   const open = SHEET_IDS.filter(id => $(id).classList.contains('up'));
   if (!open.length) return;
   const top = open[open.length - 1];
@@ -2089,7 +2190,7 @@ function render() {
   try {
     drawApp();
   } catch (e) {
-    showRecovery(e, readRaw());
+    showRecovery(e, readRaw(), true);
   }
 }
 
@@ -2321,7 +2422,7 @@ function buildExCard(ctx, ex, i) {
   /* Read off the previous session, so it is the same number all week and
      does not move as you tick sets. */
   const est = targetEstimate(profile, block, day, ex, profile.week);
-  const setupOpen = expandedSetup.has(ex.id);
+  const setupOpen = expandedSetup.has(setupKey(block, ex));
 
   card.innerHTML =
     '<div class="ex-head">' +
@@ -2409,8 +2510,8 @@ function buildExCard(ctx, ex, i) {
   setupBtn.setAttribute('aria-expanded', setupOpen ? 'true' : 'false');
   setupBtn.setAttribute('aria-label', 'Ajustes de máquina de ' + ex.n);
   setupBtn.onclick = () => {
-    if (setupOpen) expandedSetup.delete(ex.id);
-    else { expandedSetup.add(ex.id); focusSetup = ex.id; }
+    if (setupOpen) expandedSetup.delete(setupKey(block, ex));
+    else { expandedSetup.add(setupKey(block, ex)); focusSetup = ex.id; }
     drawCard(ex.id);
   };
   if (setupOpen) {
@@ -2634,7 +2735,7 @@ function drawCard(exId) {
     refreshWeekDot(profile, block);
     drawDeloadCheck(profile, block);
   } catch (e) {
-    showRecovery(e, readRaw());
+    showRecovery(e, readRaw(), true);
   }
 }
 

@@ -83,7 +83,15 @@ function collectHistoryAll(profile, exId, metric) {
     const block = profile.blocks[bId];
     const blk = profile.log[bId];
     if (!block || !blk) return;
-    for (let w = 1; w <= blockWeeks(block); w++) {
+    /* Every week actually logged, not just the ones inside the block's
+       current length: bestByExercise (the RECORD badge) already counts a
+       shortened block's stranded weeks, and this chart disagreeing with it
+       hid the very sets that would explain a badge with no history to show
+       for it — see plans/008 item 20. */
+    const weeks = Array.from(new Set(
+      Object.keys(blk).map(k => { const m = /^w(\d+)-/.exec(k); return m ? +m[1] : null; }).filter(w => w != null)
+    )).sort((a, b) => a - b);
+    weeks.forEach(w => {
       Object.keys(blk).forEach(k => {
         const m = /^w(\d+)-(.+)$/.exec(k);
         if (!m || +m[1] !== w) return;
@@ -95,7 +103,7 @@ function collectHistoryAll(profile, exId, metric) {
         if (!best) return;
         out.push({ label: block.name + ' · S' + w, weight: num(best.w), reps: best.r });
       });
-    }
+    });
   });
   return out;
 }
@@ -115,7 +123,7 @@ function buildChartSVG(series, ticks) {
   const x = i => padL + (n > 1 ? (i - 1) / (n - 1) : 0.5) * (W - padL - padR);
   const y = v => H - padB - ((v - min) / (max - min)) * (H - padT - padB);
 
-  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block;" role="img">';
+  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" class="u-svg-fluid" role="img">';
 
   /* Sixteen weeks — or a season's worth of sessions across every block —
      would turn the axis into a picket fence, so labels thin out as the

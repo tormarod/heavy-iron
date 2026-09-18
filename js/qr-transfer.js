@@ -342,7 +342,10 @@ function drawQr() {
   });
   const showing = qrMode === 'show';
   $('qrShowPane').style.display = showing ? '' : 'none';
-  $('qrScanPane').style.display = showing ? 'none' : '';
+  /* .hidden, not .style.display: index.html ships this pane with the
+     `hidden` attribute (plans/008 item 22), and clearing an inline style
+     would leave that attribute in charge, never showing the scanner. */
+  $('qrScanPane').hidden = showing;
   if (showing) { stopQrScan(); drawQrShow(); }
   else { stopQrShow(); startQrScan(); }
 }
@@ -436,7 +439,8 @@ function renderQrFrame() {
   $('qrCount').textContent = total === 1
     ? 'Un solo código — apunta con el otro móvil.'
     : 'Fotograma ' + (qrAt + 1) + '/' + total + ' — mantén el otro móvil apuntando hasta que los recoja todos.';
-  $('qrPause').style.display = total > 1 ? '' : 'none';
+  /* .hidden, not .style.display — same reason as qrScanPane above. */
+  $('qrPause').hidden = total <= 1;
   $('qrPause').textContent = qrPaused ? 'Reanudar' : 'Pausa';
 }
 

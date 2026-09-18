@@ -39,39 +39,11 @@
   --timer-line: rgba(255,255,255,.3);
 }
 
-/* Auto by system preference, unless the user has explicitly picked light. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --paper: #15161A;
-    --card: #1D1F24;
-    --sunk: #24262C;
-    --ink: #E8E6E0;
-    --soft: #9A9CA3;
-    --line: #33363D;
-    --amber: #E0A33C;
-    --amber-soft: #33270F;
-    --share: #B79BEA;
-    --share-soft: #292236;
-    --share-ink: #D6C6F4;
-    --danger: #F0736A;
-    --signal: #7C97F7;
-    --signal-soft: #212842;
-    --on-signal: #12141B;
-    --on-share: #1B1428;
-    --on-ink-dim: rgba(0,0,0,.6);
-    --on-ink-faint: rgba(0,0,0,.5);
-    --on-ink-line: rgba(0,0,0,.28);
-    --flare: #FFC24D;
-    --shade: rgba(0,0,0,.66);
-    --timer-bg: #2A2D35;
-    --timer-ink: #E8E6E0;
-    --timer-dim: rgba(255,255,255,.55);
-    --timer-line: rgba(255,255,255,.25);
-  }
-}
-
-/* …and the same values again when the user forces dark, so the toggle wins
-   over the system in both directions. */
+/* js/theme-init.js resolves "auto" into an explicit data-theme before this
+   stylesheet is even applied, and js/app.js's applyTheme() keeps it that way
+   for the rest of the session (including a live system-theme change) — so
+   dark only ever needs declaring once, here, rather than a second time under
+   a @media(prefers-color-scheme) block for "auto with no attribute set". */
 :root[data-theme="dark"] {
   --paper: #15161A;
   --card: #1D1F24;
@@ -118,13 +90,6 @@ body {
 :root[data-theme="dark"] #app.profile-azul { --signal: #7C97F7; --signal-soft: #212842; }
 :root[data-theme="dark"] #app.profile-mujer,
 :root[data-theme="dark"] #app.profile-verde { --signal: #5FC496; --signal-soft: #173226; }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) #app[class*="profile-"] { --on-signal: #12141B; }
-  :root:not([data-theme="light"]) #app.profile-hombre,
-  :root:not([data-theme="light"]) #app.profile-azul { --signal: #7C97F7; --signal-soft: #212842; }
-  :root:not([data-theme="light"]) #app.profile-mujer,
-  :root:not([data-theme="light"]) #app.profile-verde { --signal: #5FC496; --signal-soft: #173226; }
-}
 
 /* Solo mode: the shared-station vocabulary is meaningless on your own. */
 #app.solo .badge.together,
@@ -275,6 +240,7 @@ body {
   background: var(--sunk); border: 1px solid var(--line); border-radius: 2px;
   padding: 7px 10px; margin: 0 0 10px;
 }
+.ord-note[hidden] { display: none; }
 .ord-reset {
   background: transparent; border: 1px solid var(--line); color: var(--soft);
   font-size: 10px; font-family: var(--font-sans); font-weight: 600;
@@ -607,6 +573,7 @@ body {
 }
 .sheet-box textarea:focus { outline: none; border-color: var(--signal); }
 .sheet-btns { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 12px; }
+.sheet-btns[hidden] { display: none; }
 .sheet-hr { border-top: 1px solid var(--line); margin: 16px 0; }
 
 /* ---- plan editor ---- */
@@ -985,3 +952,35 @@ body {
   color: var(--soft); margin-bottom: 5px;
 }
 .rev-note { font-size: 11.5px; color: var(--ink); line-height: 1.5; margin-bottom: 3px; }
+
+/* Every transition in the sheet — button presses, the toast, the timer fill
+   bar — collapses to instant for anyone who has told their OS motion makes
+   them uncomfortable or sick. Nothing here is a keyframe animation that
+   conveys information on its own (there are none), so cutting the duration
+   to near-zero loses nothing but the movement. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: .001ms !important;
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* ---- utility classes ----
+   AGENTS.md already forbids adding inline styles; this is what replaced the
+   25 `style=""` attributes index.html used to carry, so the CSP's
+   `style-src` can drop `'unsafe-inline'` (plans/008 item 22). Each is used
+   in one or two places — real one-offs, not a utility framework — so they
+   are named for what they hold rather than abbreviated. */
+.u-bar-empty { width: 0%; }
+.u-no-margin-top { margin-top: 0; }
+.u-margin-top-sm { margin-top: 8px; }
+.u-no-margin-bottom { margin-bottom: 0; }
+.u-status-left { text-align: left; padding-top: 4px; }
+.u-status-left-lg { text-align: left; padding-top: 6px; }
+.sheet-lead { font-weight: 600; color: var(--ink); margin-bottom: 6px; }
+.calc-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.calc-col { flex: 1; min-width: 140px; }
+.u-svg-fluid { width: 100%; height: auto; display: block; }
+.u-flex-grow { flex: 1; min-width: 140px; }
+.u-flex-grow-sm { flex: 1; min-width: 70px; }

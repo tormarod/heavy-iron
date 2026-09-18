@@ -31,7 +31,7 @@ function buildTrendSVG(series, weeks, currentWeek, banded, dl) {
   const x = i => padX + (weeks < 2 ? (W - padX * 2) / 2 : (i / (weeks - 1)) * (W - padX * 2));
   const y = v => padT + plotH - (v / max) * plotH;
 
-  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block;" role="img" aria-hidden="true">';
+  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" class="u-svg-fluid" role="img" aria-hidden="true">';
   if (banded) {
     const top = y(Math.min(VOL_BAND_HIGH, max)), bottom = y(VOL_BAND_LOW);
     svg += '<rect x="0" y="' + top + '" width="' + W + '" height="' + Math.max(0, bottom - top) +
@@ -64,7 +64,7 @@ function buildBarSVG(rows) {
   const max = Math.max(1, ...rows.map(r => r.value));
   const barH = 14;
 
-  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block;" role="img">';
+  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" class="u-svg-fluid" role="img">';
   rows.forEach((r, i) => {
     const y = padT + i * rowH;
     const barY = y + (rowH - barH) / 2;

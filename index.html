@@ -7,7 +7,7 @@
      same-origin (see blocksBase() in js/app.js), so they need no entry
      here. Saying so here means an injected string can't turn into a script
      tag or phone your training log anywhere. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; media-src data:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; media-src data:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#E4E2DA" media="(prefers-color-scheme: light)">
@@ -24,6 +24,10 @@
 <link rel="apple-touch-icon" href="icon-180.png" sizes="180x180">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Resolves the theme into an explicit data-theme before css/style.css is
+     applied, so "auto" never flashes light for a moment on a dark system —
+     see js/theme-init.js. Must load before the stylesheet link below. -->
+<script src="js/theme-init.js"></script>
 <!-- Loaded as a print stylesheet so it is not render-blocking, and switched
      to all once it has arrived (js/app.js). A stylesheet in front of the
      scripts holds them back until it resolves: on a gym connection, or
@@ -56,17 +60,17 @@
   <div class="wrap">
     <div id="banner"></div>
     <div class="energy" id="energy"></div>
-    <p class="deload-check" id="deloadCheck" style="display:none"></p>
+    <p class="deload-check" id="deloadCheck" hidden></p>
     <div class="pair" id="pair"></div>
-    <div class="bar"><i id="barfill" style="width:0%"></i></div>
-    <div class="ord-note" id="ordNote" style="display:none"></div>
+    <div class="bar"><i id="barfill" class="u-bar-empty"></i></div>
+    <div class="ord-note" id="ordNote" hidden></div>
     <div id="list"><div class="skel">Cargando tu registro…</div></div>
     <div class="foot">
       <div class="ses-note">
         <label class="ses-note-lbl" for="sesNote">Nota de la sesión</label>
         <input type="text" id="sesNote" autocomplete="off" placeholder="dormí 5 h, sin desayunar, gimnasio lleno…">
       </div>
-      <p class="ex-parked" id="beyond" style="display:none"></p>
+      <p class="ex-parked" id="beyond" hidden></p>
       <p class="note" id="note"></p>
       <div class="foot-btns">
         <button class="sm" id="copyPrev">Copiar pesos de la semana anterior</button>
@@ -91,7 +95,7 @@
     <div class="sheet-box ask-box" role="dialog" aria-modal="true" aria-labelledby="askT">
       <div class="sheet-t" id="askT"></div>
       <p class="sheet-d" id="askBody"></p>
-      <input type="text" id="askInput" class="pe-block-name" style="display:none" maxlength="60">
+      <input type="text" id="askInput" class="pe-block-name" hidden maxlength="60">
       <div class="sheet-btns">
         <button class="sm key" id="askOk" type="button">Aceptar</button>
         <button class="sm" id="askCancel" type="button">Cancelar</button>
@@ -140,19 +144,19 @@
       <div class="setup-field" id="setupImportField">
         <span class="pe-field-lbl">JSON del bloque</span>
         <p class="setup-hint">Descarga la plantilla o copia el prompt y pégaselo a tu IA junto con tus objetivos, luego pega aquí el JSON que te devuelva.</p>
-        <div class="sheet-btns" style="margin-top:0;">
+        <div class="sheet-btns u-no-margin-top">
           <button type="button" class="sm" id="setupDownloadTemplate">Descargar plantilla JSON</button>
           <button type="button" class="sm" id="setupCopyPrompt">Copiar prompt para tu IA</button>
         </div>
-        <textarea id="setupImportBlob" spellcheck="false" aria-label="JSON del bloque" placeholder='{"name":"Bloque 2","days":[...],"phase":{...}}' style="margin-top:8px;"></textarea>
-        <div id="setupImportStatus" class="status" style="text-align:left;padding-top:4px;"></div>
+        <textarea id="setupImportBlob" spellcheck="false" aria-label="JSON del bloque" placeholder='{"name":"Bloque 2","days":[...],"phase":{...}}' class="u-margin-top-sm"></textarea>
+        <div id="setupImportStatus" class="status u-status-left"></div>
       </div>
 
       <div class="setup-field" id="setupCalcField">
         <span class="pe-field-lbl">Calculadora — peso de la barra</span>
         <div class="fld"><input type="text" inputmode="decimal" autocomplete="off" id="setupBarWeight"><u id="setupBarWeightU"></u></div>
         <span class="pe-field-lbl">Calculadora — discos disponibles por lado (separados por coma)</span>
-        <input type="text" id="setupPlates" class="pe-block-name" style="margin-bottom:0;">
+        <input type="text" id="setupPlates" class="pe-block-name u-no-margin-bottom">
         <p class="setup-hint">Se usan al calcular el calentamiento y el reparto de discos. Cambiar la unidad no convierte estos números — revísalos si acabas de cambiarla.</p>
       </div>
 
@@ -187,28 +191,28 @@
         <button class="sm key" id="bDownload">Descargar copia (.json)</button>
         <button class="sm" id="bUploadBtn">Cargar copia (archivo)</button>
         <button class="sm" id="bCsv">Exportar series (.csv)</button>
-        <input type="file" id="bUpload" accept="application/json,.json" style="display:none">
+        <input type="file" id="bUpload" accept="application/json,.json" hidden>
       </div>
       <p class="sheet-d">El CSV es para mirar los números fuera de la app (hoja de cálculo): una fila por serie registrada. No se puede volver a importar — para eso está el .json.</p>
 
       <div class="sheet-hr"></div>
-      <div class="sheet-d" style="font-weight:600;color:var(--ink);margin-bottom:6px;">Lo que guarda este móvil</div>
+      <div class="sheet-d sheet-lead">Lo que guarda este móvil</div>
       <p class="sheet-d" id="storageState">Comprobando…</p>
-      <div class="sheet-btns" id="storageActs" style="display:none;">
+      <div class="sheet-btns" id="storageActs" hidden>
         <button class="sm" id="storageProtect">Proteger el registro</button>
       </div>
 
       <div class="sheet-hr"></div>
-      <div class="sheet-d" style="font-weight:600;color:var(--ink);margin-bottom:6px;">Pasar un perfil a otro móvil</div>
+      <div class="sheet-d sheet-lead">Pasar un perfil a otro móvil</div>
       <p class="sheet-d">Cada móvil guarda su propio registro. Exporta el perfil de una persona y cárgalo en el otro móvil: sustituye solo a esa persona y deja el otro perfil exactamente como está.</p>
       <div class="sheet-btns" id="profileExports"></div>
       <div class="sheet-btns">
         <button class="sm" id="pUploadBtn">Cargar un perfil (archivo)</button>
-        <input type="file" id="pUpload" accept="application/json,.json" style="display:none">
+        <input type="file" id="pUpload" accept="application/json,.json" hidden>
       </div>
 
       <div class="sheet-hr"></div>
-      <div class="sheet-d" style="font-weight:600;color:var(--ink);margin-bottom:6px;">Pasarlo con la cámara</div>
+      <div class="sheet-d sheet-lead">Pasarlo con la cámara</div>
       <p class="sheet-d">Sin archivos y sin conexión: un móvil enseña el código y el otro lo lee. Puedes pasar solo el plan del bloque, el bloque con todo lo que llevas registrado en él, o el perfil entero.</p>
       <div class="sheet-btns">
         <button class="sm" id="qrBtn">Compartir por QR</button>
@@ -277,12 +281,12 @@
       <div class="sheet-t" id="importSheetT">Importar bloque desde JSON</div>
       <p class="sheet-d">Elige un bloque publicado en el repositorio, o pega el JSON a mano (por ejemplo, generado por tu agente de entrenamiento). Se añade como bloque nuevo al perfil actual — no sobrescribe nada.</p>
 
-      <div class="sheet-d" style="margin:0 0 6px;font-weight:600;color:var(--ink);">Bloques disponibles en GitHub</div>
+      <div class="sheet-d sheet-lead">Bloques disponibles en GitHub</div>
       <div id="importRepoList" class="sheet-d">Cargando…</div>
 
       <div class="sheet-hr"></div>
 
-      <div class="sheet-d" style="margin:0 0 6px;font-weight:600;color:var(--ink);">¿Quieres que una IA te lo genere?</div>
+      <div class="sheet-d sheet-lead">¿Quieres que una IA te lo genere?</div>
       <p class="sheet-d">Descarga la plantilla de ejemplo, o copia un prompt con el formato y pégaselo a tu IA junto con tus objetivos — te devolverá un JSON listo para pegar abajo.</p>
       <div class="sheet-btns">
         <button class="sm" id="importDownloadTemplate">Descargar plantilla JSON</button>
@@ -291,9 +295,9 @@
 
       <div class="sheet-hr"></div>
 
-      <div class="sheet-d" style="margin:0 0 6px;font-weight:600;color:var(--ink);">O pega el JSON a mano</div>
+      <div class="sheet-d sheet-lead">O pega el JSON a mano</div>
       <textarea id="importBlob" spellcheck="false" aria-label="JSON del bloque" placeholder='{"name":"Bloque 2","days":[...],"phase":{...}}'></textarea>
-      <div id="importError" class="status" style="text-align:left;padding-top:6px;"></div>
+      <div id="importError" class="status u-status-left-lg"></div>
       <div class="sheet-btns">
         <button class="sm key" id="importFromText">Importar desde el texto</button>
         <button class="sm" id="importClose">Cerrar</button>
@@ -330,12 +334,12 @@
         <button type="button" class="seg-btn" data-mode="bar">Barra</button>
         <button type="button" class="seg-btn" data-mode="machine">Máquina</button>
       </div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
-        <div style="flex:1;min-width:140px;">
+      <div class="calc-row">
+        <div class="calc-col">
           <label class="pe-field-lbl" for="calcTarget">Peso objetivo</label>
           <div class="fld"><input type="text" inputmode="decimal" autocomplete="off" id="calcTarget"><u id="calcTargetU"></u></div>
         </div>
-        <div id="calcIncField" style="flex:1;min-width:140px;">
+        <div id="calcIncField" class="calc-col">
           <label class="pe-field-lbl" for="calcInc">Incremento de la pila</label>
           <div class="fld"><input type="text" inputmode="decimal" autocomplete="off" id="calcInc"><u id="calcIncU"></u></div>
         </div>
@@ -391,7 +395,7 @@
         <button class="sm" id="reviewDownload">Descargar (.txt)</button>
         <button class="sm" id="reviewClose">Cerrar</button>
       </div>
-      <div id="reviewStatus" class="status" style="text-align:left;padding-top:4px;"></div>
+      <div id="reviewStatus" class="status u-status-left"></div>
     </div>
   </div>
 
@@ -436,11 +440,11 @@
         <div class="qr-stage" id="qrHost"></div>
         <p class="qr-count" id="qrCount"></p>
         <div class="sheet-btns">
-          <button class="sm" id="qrPause" style="display:none">Pausa</button>
+          <button class="sm" id="qrPause" hidden>Pausa</button>
         </div>
       </div>
 
-      <div id="qrScanPane" style="display:none">
+      <div id="qrScanPane" hidden>
         <p class="sheet-d">Apunta a la pantalla del otro móvil. Si el código va cambiando, mantén el encuadre: los fotogramas se recogen en cualquier orden y se repiten en bucle.</p>
         <div class="qr-stage"><video id="qrVideo" class="qr-video" muted playsinline></video></div>
         <p class="qr-count" id="qrScanProgress"></p>
@@ -460,7 +464,7 @@
         <div class="timer-lbl" id="tlbl">Descanso</div>
         <div class="timer-val" id="tval">0:00</div>
       </div>
-      <div class="timer-msg" id="tmsg"></div>
+      <div class="timer-msg" id="tmsg" role="status" aria-live="polite"></div>
       <div class="timer-acts">
         <button class="timer-btn" id="tminus" type="button" aria-label="Quitar 30 segundos de descanso">−30</button>
         <button class="timer-btn" id="tplus" type="button" aria-label="Añadir 30 segundos de descanso">+30</button>
@@ -470,7 +474,7 @@
     </div>
   </div>
 
-  <div class="toast" id="toast" hidden>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden>
     <span id="toastMsg"></span>
     <button class="sm" id="toastAct" type="button"></button>
     <button class="sm" id="toastAct2" type="button" hidden></button>

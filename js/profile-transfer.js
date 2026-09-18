@@ -372,7 +372,7 @@ function renderStorageState() {
 
   if (!canPersist()) {
     line.textContent = size + ' Este navegador no sabe proteger el almacenamiento, así que descarga una copia de vez en cuando.';
-    acts.style.display = 'none';
+    acts.hidden = true;
     return;
   }
 
@@ -380,7 +380,10 @@ function renderStorageState() {
     line.textContent = safe
       ? size + ' Está protegido: el navegador no lo borrará para hacer sitio, solo lo pierdes si borras los datos del sitio o desinstalas la app.'
       : size + ' No está protegido: si al móvil le falta espacio, el navegador puede borrarlo para hacer sitio. Instalar la app y pulsar aquí lo evita.';
-    acts.style.display = safe ? 'none' : '';
+    /* .hidden, not .style.display: index.html ships this with the `hidden`
+       attribute now (plans/008 item 22), and clearing an inline style would
+       leave that attribute in charge, never showing these actions at all. */
+    acts.hidden = safe;
   });
 }
 

@@ -178,12 +178,12 @@ function muscleSessions(profile, block, upToWeek) {
     if (!m) return;
     const w = +m[1];
     if (w < 1 || w > upToWeek) return;
-    const slot = blk[k] || {};
+    const slotRows = blk[k] || {};
     const firstTs = {};
-    Object.keys(slot).forEach(exId => {
+    Object.keys(slotRows).forEach(exId => {
       const tag = muscleOf[exId];
       if (!tag) return;
-      const rows = slot[exId];
+      const rows = slotRows[exId];
       if (!Array.isArray(rows)) return;
       rows.forEach(r => {
         if (!r || !r.done || !(r.ts > 0)) return;
@@ -260,9 +260,9 @@ function trainedDays(profile, block) {
   const blk = profile.log[block.id] || {};
   const days = {};
   Object.keys(blk).forEach(k => {
-    const slot = blk[k] || {};
-    Object.keys(slot).forEach(exId => {
-      const rows = slot[exId];
+    const slotRows = blk[k] || {};
+    Object.keys(slotRows).forEach(exId => {
+      const rows = slotRows[exId];
       if (!Array.isArray(rows)) return;
       rows.forEach(r => {
         if (!r || !r.done || !(r.ts > 0)) return;
@@ -289,7 +289,12 @@ function buildHeatmapSVG(days) {
   /* Start the grid on the Monday of the first trained week. */
   const back = (first.getDay() + 6) % 7;
   first = new Date(first.getFullYear(), first.getMonth(), first.getDate() - back);
-  let weeks = Math.floor((last - first) / (7 * 86400000)) + 1;
+  /* Date.UTC rather than (last - first) in local time: a plain millisecond
+     difference measures 23h/25h across a DST change, so a week can be
+     dropped or gained at the boundary. Calendar days are DST-safe. */
+  const dayCount = Math.round((Date.UTC(last.getFullYear(), last.getMonth(), last.getDate()) -
+    Date.UTC(first.getFullYear(), first.getMonth(), first.getDate())) / 86400000);
+  let weeks = Math.floor(dayCount / 7) + 1;
   if (weeks > HEAT_MAX_WEEKS) {
     first = new Date(first.getFullYear(), first.getMonth(), first.getDate() + (weeks - HEAT_MAX_WEEKS) * 7);
     weeks = HEAT_MAX_WEEKS;
@@ -299,8 +304,13 @@ function buildHeatmapSVG(days) {
   const cell = 11, gap = 2, padL = 16, padT = 2;
   const W = padL + weeks * (cell + gap), H = padT + 7 * (cell + gap);
   const labels = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
-  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block;max-width:' +
-    (W * 1.6) + 'px" role="img" aria-label="Días entrenados">';
+  /* The per-week max-width depends on `weeks`, computed above from the data
+     — a `style=""` attribute can't survive dropping the CSP's
+     'unsafe-inline' for styles, so it travels here as a data attribute and
+     the caller (drawDiagFreq) applies it as a real CSSOM property, which the
+     CSP does not restrict either way (plans/008 item 22). */
+  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" class="u-svg-fluid" data-max-w="' +
+    (W * 1.6) + '" role="img" aria-label="Días entrenados">';
   labels.forEach((l, r) => {
     if (r % 2) return;  /* every other row, or they collide at this size */
     svg += '<text x="0" y="' + (padT + r * (cell + gap) + cell - 1) + '" font-size="7.5" fill="var(--soft)" ' +
@@ -355,10 +365,10 @@ function strengthByExercise(profile, block) {
     if (!m) return;
     const w = +m[1];
     if (w < 1 || w > weeks) return;
-    const slot = blk[k] || {};
-    Object.keys(slot).forEach(exId => {
+    const slotRows = blk[k] || {};
+    Object.keys(slotRows).forEach(exId => {
       if (!muscleOf[exId]) return;
-      const rows = slot[exId];
+      const rows = slotRows[exId];
       if (!Array.isArray(rows)) return;
       /* Same rep ceiling as the trend: past it Epley is inventing a number
          rather than reading one, and one 20-rep back-off set would move a
@@ -451,7 +461,7 @@ function buildIndexSVG(index, weeks, currentWeek) {
   const x = i => padX + (weeks < 2 ? (W - padX * 2) / 2 : (i / (weeks - 1)) * (W - padX * 2));
   const y = v => padT + plotH - ((v - bottom) / (top - bottom)) * plotH;
 
-  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block;" role="img" aria-hidden="true">';
+  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" class="u-svg-fluid" role="img" aria-hidden="true">';
   svg += '<line x1="0" y1="' + y(100) + '" x2="' + W + '" y2="' + y(100) +
     '" stroke="var(--soft)" stroke-width="1" stroke-dasharray="3 3" opacity="0.55"/>';
   let run = [];
@@ -770,6 +780,8 @@ function drawDiagFreq(profile, block) {
     const cal = document.createElement('div');
     cal.className = 'freq-cal';
     cal.innerHTML = '<div class="freq-cal-t"></div><div class="freq-cal-g">' + heat + '</div>';
+    const heatSvg = cal.querySelector('svg[data-max-w]');
+    if (heatSvg) { heatSvg.style.maxWidth = heatSvg.dataset.maxW + 'px'; heatSvg.removeAttribute('data-max-w'); }
     const dayCount = Object.keys(trained).length;
     cal.querySelector('.freq-cal-t').textContent = dayCount === 1
       ? '1 día entrenado en este bloque'

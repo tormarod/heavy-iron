@@ -135,6 +135,16 @@ function renderBlockManager() {
       if (!okd) return;
       deleteBlocks(profile, [id]);
       renderBlockManager();
+      /* deleteBlocks() → render() rebuilds #blockbar, and the line above
+         rebuilds #blockList — both can remove the button this handler is
+         running on (the one that had focus), and a browser resolves that by
+         dropping focus to <body> with no way back. The sheet stays open, so
+         put focus back inside it — the same place openSheet puts it when the
+         sheet is first opened — rather than stranding it on the page root. */
+      if (document.activeElement === document.body) {
+        const box = $('blocksSheet').querySelector('.sheet-box');
+        if (box) box.focus();
+      }
       mark('Bloque eliminado');
     };
 
@@ -760,26 +770,26 @@ function buildExRow(profile, day, ex, pos, liveCount) {
       '</span>' +
     '</div>' +
     '<div class="pe-row">' +
-      '<div style="flex:1;min-width:140px;"><span class="pe-field-lbl">Ejercicio</span><input type="text" class="f-n"></div>' +
+      '<div class="u-flex-grow"><span class="pe-field-lbl">Ejercicio</span><input type="text" class="f-n"></div>' +
     '</div>' +
-    '<div class="pe-row"><div style="flex:1;min-width:140px;"><span class="pe-field-lbl">Alternativa</span><input type="text" class="f-alt"></div></div>' +
-    '<div class="pe-row"><div style="flex:1;min-width:140px;"><span class="pe-field-lbl">Nota / cue</span><input type="text" class="f-cue"></div></div>' +
-    '<div class="pe-row"><div style="flex:1;min-width:140px;"><span class="pe-field-lbl">Ajustes de máquina (asiento, respaldo…)</span><input type="text" class="f-setup" maxlength="' + SETUP_LIMIT + '"></div></div>' +
+    '<div class="pe-row"><div class="u-flex-grow"><span class="pe-field-lbl">Alternativa</span><input type="text" class="f-alt"></div></div>' +
+    '<div class="pe-row"><div class="u-flex-grow"><span class="pe-field-lbl">Nota / cue</span><input type="text" class="f-cue"></div></div>' +
+    '<div class="pe-row"><div class="u-flex-grow"><span class="pe-field-lbl">Ajustes de máquina (asiento, respaldo…)</span><input type="text" class="f-setup" maxlength="' + SETUP_LIMIT + '"></div></div>' +
     '<div class="pe-row">' +
       '<div><span class="pe-field-lbl">Series</span><input type="number" min="1" class="f-sets"></div>' +
-      '<div style="flex:1;min-width:70px;"><span class="pe-field-lbl">Reps</span><input type="text" class="f-reps"></div>' +
+      '<div class="u-flex-grow-sm"><span class="pe-field-lbl">Reps</span><input type="text" class="f-reps"></div>' +
       '<div><span class="pe-field-lbl">Descanso (s)</span><input type="number" min="0" step="5" class="f-rest"></div>' +
     '</div>' +
     '<div class="pe-row">' +
       '<div><span class="pe-field-lbl">+1 serie desde sem.</span><input type="number" min="1" max="8" class="f-add"></div>' +
       '<div><span class="pe-field-lbl">Incremento de peso (' + esc(units()) + ')</span><input type="number" min="' + INC_MIN + '" max="' + INC_MAX + '" step="' + INC_STEP + '" class="f-inc"></div>' +
     '</div>' +
-    '<div class="pe-row"><div style="flex:1;min-width:140px;"><span class="pe-field-lbl">Músculo</span>' +
+    '<div class="pe-row"><div class="u-flex-grow"><span class="pe-field-lbl">Músculo</span>' +
       '<input type="text" class="f-muscle" list="muscleSuggestions" placeholder="Sin clasificar" maxlength="' + MUSCLE_LIMIT + '"></div></div>' +
     '<div class="pe-row">' +
-      '<div style="flex:1;min-width:140px;"><span class="pe-field-lbl">Patrón</span>' +
+      '<div class="u-flex-grow"><span class="pe-field-lbl">Patrón</span>' +
         '<input type="text" class="f-pattern" list="patternSuggestions" placeholder="Sin clasificar" maxlength="' + PATTERN_LIMIT + '"></div>' +
-      '<div style="flex:1;min-width:140px;"><span class="pe-field-lbl">Tipo</span>' +
+      '<div class="u-flex-grow"><span class="pe-field-lbl">Tipo</span>' +
         '<input type="text" class="f-type" list="typeSuggestions" placeholder="Sin clasificar" maxlength="' + TYPE_LIMIT + '"></div>' +
     '</div>' +
     '<div class="pe-row">' +
@@ -990,13 +1000,20 @@ function wireBlockEditor() {
     openSheet('planSheet');
   };
 
+  /* Every other field here mutates the draft without re-rendering; this was
+     the outlier, rebuilding every exercise row on each keystroke of the
+     weeks field. renderDeloadOptions() is cheap (it only touches the deload
+     select) and stays on every input; the exercise rows only need
+     renderPlanEditor() once the field is committed — the weeks value is
+     re-read and re-clamped from the input on save regardless, so the draft
+     cannot drift from skipping the per-keystroke rebuild. */
   $('peWeeks').oninput = () => {
     peDraftBlock.weeks = clampInt($('peWeeks').value, 1, MAX_WEEKS, 8);
     if (deloadWeek(peDraftBlock) > peDraftBlock.weeks) peDraftBlock.deload = 0;
     renderDeloadOptions();
     peDraftBlock.deload = clampInt($('peDeload').value, 0, MAX_WEEKS, 0);
-    renderPlanEditor();
   };
+  $('peWeeks').onchange = () => renderPlanEditor();
 
   $('peDeload').onchange = () => {
     peDraftBlock.deload = clampInt($('peDeload').value, 0, MAX_WEEKS, 0);
