@@ -248,6 +248,13 @@ this file.
 See `README.md`'s table under the `## Project layout` heading for the full
 map. It is the reference; this file is the briefing.
 
+Documentation is split in two. `README.md` is the technical file: what the
+repo does, running it, the tests, the layout, the block JSON shape and
+hosting. Every user-facing behaviour — what a screen does and why it does
+it that way — is written up in `docs/guide.md`, and a change that adds or
+alters one documents it there, not in the README. The README's "What it
+does" list only names features and links into the guide.
+
 One shape is worth naming here because it is read in four files: a log key
 is `slot(week, dayId)` and is read back by `parseSlot`, both in `js/app.js`,
 and nothing else runs the regex — `test/unit.js` fails if anything does.
