@@ -372,6 +372,14 @@ body {
   font-size: 13px; color: var(--ink);
 }
 #sesNote:focus { outline: none; border-color: var(--signal); box-shadow: 0 0 0 2px var(--signal-soft); }
+/* Last week's note on this same day, under the box for this week's. Mono
+   and dimmed like the history bands, so it reads as a record rather than
+   as a second input. */
+.ses-note-prev {
+  margin: 4px 0 0; font-size: 11px; line-height: 1.4; color: var(--soft);
+  font-family: 'IBM Plex Mono', monospace;
+}
+.ses-note-prev b { color: var(--ink); font-weight: 600; }
 
 /* ---- RIR chips ---- */
 .ex-rir { display: flex; align-items: center; gap: 8px; padding: 0 13px 10px; }

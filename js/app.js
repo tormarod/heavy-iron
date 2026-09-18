@@ -3081,6 +3081,27 @@ function drawSessionNote(profile, block, day) {
     setNoteText(profile, block.id, profile.week, day.id, e.target.value);
     save();
   };
+  /* Guarded the same way the storage-actions block is: shown and hidden
+     with the attribute index.html ships it with, never with an inline
+     style. */
+  const prevEl = $('sesNotePrev');
+  if (prevEl) {
+    const last = lastNote(profile, block.id, day.id, profile.week);
+    prevEl.textContent = '';
+    if (last) {
+      /* Two elements set through textContent, not innerHTML and not a text
+         node: the note is user text, and test/unit.js's inert document stub
+         has createElement but no createTextNode — drawSessionNote runs on
+         every render, including load() in the headless suite. */
+      const b = document.createElement('b');
+      b.textContent = 'Sem. ' + last.week + ': ';
+      const t = document.createElement('span');
+      t.textContent = last.text;
+      prevEl.appendChild(b);
+      prevEl.appendChild(t);
+    }
+    prevEl.hidden = !last;
+  }
 }
 
 /* ---------- did the deload work? ----------
