@@ -239,3 +239,34 @@ required; simply confirm `node -e "require('playwright')"` still works.
 - Deferred, maintainer decision: whether the headless job should also run
   on `push` to `main` (direct pushes happen; the browser suite is
   hook-bound). Recorded in plans/README.md.
+
+### How this plan was followed (executed 2026-09-18)
+
+Three places where the plan text did not match the repo, and what was done
+instead:
+
+- **Step 4's verification command does not exist.** The plan closes the
+  vendor recipe with `node test/smoke.js --only QR`. `--only` matches
+  section names, and there is no QR section: the QR checks are sub-headings
+  inside `main session`, which `test/smoke.js:23` says explicitly because
+  they build on that page's state. `--only QR` would select nothing and the
+  suite would exit on its "matched no section" path. The recipe ships
+  `--only "main session"` with one clause saying why.
+- **The plan's "CI does not require a bump for these paths" is wrong for
+  `js/vendor/README.md`.** The `cache-version` job gates on
+  `grep -qE '^(index\.html|css/|js/)'`, and that path starts with `js/`.
+  So this plan's Step 4, which the same plan says must not bump
+  `CACHE_VERSION`, is the one edit here that turns the job red. Left for
+  the maintainer — see the status row in `plans/README.md`. The narrow fix
+  is to exclude `.md` from the job's regex, which this plan puts out of
+  scope.
+- **Step 1 was half a check, as the Overlap note predicted.** The
+  `js/app.js:5437` citation and the "seven files" quote were already gone
+  (`40048a0`, `7762bcf`); only the three citations under "Untrusted input"
+  and the `~line 1599` pointer needed editing.
+
+Smaller drift, all anticipated by the plan's own header: `CACHE_VERSION` is
+`v60`, so the dry run prints `v60 -> v61`, not `v55 -> v56`; the
+`smoke-gate.sh` install line is 153, not 119. The done criterion
+`grep "ignore-scripts" tools/smoke-gate.sh` → 1 match is why the comment
+added there describes the flag rather than naming it twice.
