@@ -2609,6 +2609,19 @@ const ok = (name, cond, extra) => {
     await page.waitForTimeout(400);
     ok('a session note survives a reload', await page.inputValue('#sesNote') === 'Dormí 5 h');
 
+    /* The note comes back the next week, on the same day, under the box.
+       render() runs synchronously off the click, like the week switch at
+       line 381 above, so no wait is needed before reading the DOM. */
+    await page.locator('.wk').nth(1).click();   /* the week after the one the note was typed on */
+    const prevNote = page.locator('#sesNotePrev');
+    ok('last week\'s note shows under the box the following week',
+       await prevNote.isVisible() && (await prevNote.textContent()).includes('Sem. ') &&
+       (await prevNote.textContent()).includes('Dormí 5 h'), await prevNote.textContent());
+    await page.locator('.day').nth(1).click();   /* another day, no note before it */
+    ok('a day with no earlier note shows nothing', await page.locator('#sesNotePrev').isHidden());
+    await page.locator('.day').nth(0).click();
+    await page.locator('.wk').nth(0).click();   /* back to where the section left off */
+
     /* The note is keyed by slot with no exercise under it, so unlike the
        RIR chips it would still be sitting there when the day came back. */
     await page.click('#clearDay');

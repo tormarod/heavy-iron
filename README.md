@@ -483,6 +483,11 @@ charge, the line simply isn't there.
   *sin desayunar*, *gimnasio a reventar*. Worthless the day you write it
   and the only thing that explains a dip in the chart six weeks later. It
   is prose nobody averages, so a session you skip it on costs nothing.
+  The last one you wrote on this same day comes back under the box the next
+  week — `Sem. 2: rodilla izquierda en la hack` — so the thing that explains
+  the dip is in front of you when you are about to repeat it. It is also in
+  the CSV, repeated on every row of that session, as `nota`, beside an
+  `energia` column for the chip.
 - **After a deload, whether it worked.** Standing on the week after a
   deload, one line says how the same exercises came back compared with the
   week before it — matched pairs, so a swapped machine cannot fake it. It
