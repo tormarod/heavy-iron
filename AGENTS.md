@@ -235,3 +235,10 @@ this file.
 
 See `README.md`'s table under the `## Project layout` heading for the full
 map. It is the reference; this file is the briefing.
+
+One shape is worth naming here because it is read in four files: a log key
+is `slot(week, dayId)` and is read back by `parseSlot`, both in `js/app.js`,
+and nothing else runs the regex — `test/unit.js` fails if anything does.
+To walk one block of `log`/`rir`/`notes`/`energy`/`order`, use `forEachSlot`
+rather than rebuilding keys week by week: it visits the slots that exist,
+which is the only way a purge reaches a week filed above `MAX_WEEKS`.

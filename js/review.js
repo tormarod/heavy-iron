@@ -81,9 +81,9 @@ function buildBlockReview(profile, block) {
   const energy = { baja: [], normal: [], alta: [] };
   const blk = profile.log[block.id] || {};
   Object.keys(blk).forEach(k => {
-    const m = /^w(\d+)-(.+)$/.exec(k);
-    if (!m) return;
-    const tag = getEnergy(profile, block.id, +m[1], m[2]);
+    const s = parseSlot(k);
+    if (!s) return;
+    const tag = getEnergy(profile, block.id, s.week, s.dayId);
     if (!energy[tag]) return;
     const slotRows = blk[k] || {};
     let kg = 0;
@@ -98,10 +98,10 @@ function buildBlockReview(profile, block) {
   const notes = [];
   const noteBlk = profile.notes[block.id] || {};
   Object.keys(noteBlk).forEach(k => {
-    const m = /^w(\d+)-(.+)$/.exec(k);
-    if (!m) return;
-    const day = (block.days || []).find(d => d.id === m[2]);
-    notes.push({ week: +m[1], day: day ? day.name : m[2], text: noteBlk[k] });
+    const s = parseSlot(k);
+    if (!s) return;
+    const day = (block.days || []).find(d => d.id === s.dayId);
+    notes.push({ week: s.week, day: day ? day.name : s.dayId, text: noteBlk[k] });
   });
   notes.sort((a, b) => b.week - a.week || a.day.localeCompare(b.day, 'es'));
 

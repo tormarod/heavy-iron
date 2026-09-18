@@ -99,11 +99,10 @@ function collectHistoryAll(profile, exId, metric) {
        output ordered. */
     const byWeek = new Map();
     Object.keys(blk).forEach(k => {
-      const m = /^w(\d+)-/.exec(k);
-      if (!m) return;
-      const w = +m[1];
-      if (!byWeek.has(w)) byWeek.set(w, []);
-      byWeek.get(w).push(k);
+      const s = parseSlot(k);
+      if (!s) return;
+      if (!byWeek.has(s.week)) byWeek.set(s.week, []);
+      byWeek.get(s.week).push(k);
     });
     Array.from(byWeek.keys()).sort((a, b) => a - b).forEach(w => {
       byWeek.get(w).forEach(k => {

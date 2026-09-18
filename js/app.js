@@ -102,6 +102,40 @@ const incFor = ex => {
    with the shuffle. */
 const slot = (w, dayId) => 'w' + w + '-' + dayId;
 
+/* The mirror of slot(), and with it the only pair that knows the key's
+   shape. Eleven readers across four files ran /^w(\d+)-(.+)$/ by hand, so
+   changing the shape meant finding all eleven; now it is these two lines. */
+function parseSlot(k) {
+  const m = /^w(\d+)-(.+)$/.exec(k);
+  return m ? { week: +m[1], dayId: m[2] } : null;
+}
+
+/* Walk the slots one block of one of the four parallel maps actually holds,
+   in no particular order: fn(key, week, dayId, value), narrowed by `filter`
+   on dayId, week, or both.
+
+   The sweeps this replaces rebuilt every *possible* key from 1 to MAX_WEEKS
+   and looked each one up, which made "borrar registro" quietly mean "up to
+   week 16": a block shortened from 12 weeks to 6 still files rows under
+   weeks 7-12 — that part worked — but a hand-edited or older backup can
+   hold a week past the cap, and those were walked straight past and left
+   behind. Iterating what is there has no cap to be wrong about, and costs
+   one pass instead of sixteen lookups.
+
+   Object.keys() is a snapshot, so fn may delete the key it was handed. */
+function forEachSlot(map, blockId, fn, filter) {
+  const blk = map && map[blockId];
+  if (!blk) return;
+  const f = filter || {};
+  Object.keys(blk).forEach(key => {
+    const s = parseSlot(key);
+    if (!s) return;
+    if (f.dayId !== undefined && s.dayId !== f.dayId) return;
+    if (f.week !== undefined && s.week !== f.week) return;
+    fn(key, s.week, s.dayId, blk[key]);
+  });
+}
+
 let uidN = 0;
 const uid = prefix => prefix + '-' + Date.now().toString(36) + '-' + (uidN++);
 
@@ -1778,35 +1812,31 @@ function loggedSets(profile, blockId, dayId, exId, weeks) {
 /* Rows filed under weeks past the end of a shortened block: kept, but out of
    reach until the block is made long enough to show them again. */
 function weeksBeyondEnd(profile, block) {
-  const blk = profile.log[block.id];
-  if (!blk) return 0;
   const weeks = blockWeeks(block);
   let n = 0;
-  Object.keys(blk).forEach(k => {
-    const m = /^w(\d+)-/.exec(k);
-    if (!m || +m[1] <= weeks) return;
-    const s = blk[k];
+  forEachSlot(profile.log, block.id, (k, w, d, s) => {
+    if (w <= weeks) return;
     Object.keys(s || {}).forEach(exId => { if (Array.isArray(s[exId])) n += s[exId].filter(rowUsed).length; });
   });
   return n;
 }
 
-/* These walk to MAX_WEEKS rather than the block's length on purpose: a block
-   shortened from 12 weeks to 6 still has rows filed under weeks 7-12, and
-   "borrar registro" has to mean all of it. */
+/* These walk every week the day actually has rather than the block's length,
+   on purpose: a block shortened from 12 weeks to 6 still has rows filed under
+   weeks 7-12, and "borrar registro" has to mean all of it. They used to walk
+   1..MAX_WEEKS for the same reason, which was the same intention with a cap
+   on it — a key above the cap, from a hand-edited or older backup, was left
+   behind to reappear if the block was ever lengthened again. */
 function purgeExLog(profile, blockId, dayId, exId) {
   purgeRir(profile, blockId, dayId, exId);
-  const blk = profile.log[blockId];
-  if (!blk) return;
-  for (let w = 1; w <= MAX_WEEKS; w++) { const s = blk[slot(w, dayId)]; if (s) delete s[exId]; }
+  forEachSlot(profile.log, blockId, (k, w, d, s) => { if (s) delete s[exId]; }, { dayId: dayId });
 }
 
 function purgeDayLog(profile, blockId, dayId) {
   purgeRir(profile, blockId, dayId);
   purgeSessionMeta(profile, blockId, dayId);
   const blk = profile.log[blockId];
-  if (!blk) return;
-  for (let w = 1; w <= MAX_WEEKS; w++) delete blk[slot(w, dayId)];
+  forEachSlot(profile.log, blockId, k => delete blk[k], { dayId: dayId });
 }
 
 /* The session-level maps are keyed by slot alone, with no exercise under
@@ -1818,8 +1848,7 @@ function purgeSessionMeta(profile, blockId, dayId, onlyWeek) {
   [profile.notes, profile.energy, profile.order].forEach(map => {
     const blk = map && map[blockId];
     if (!blk) return;
-    if (onlyWeek) { delete blk[slot(onlyWeek, dayId)]; return; }
-    for (let w = 1; w <= MAX_WEEKS; w++) delete blk[slot(w, dayId)];
+    forEachSlot(map, blockId, k => delete blk[k], { dayId: dayId, week: onlyWeek });
   });
 }
 
@@ -1830,12 +1859,11 @@ function purgeSessionMeta(profile, blockId, dayId, onlyWeek) {
 function purgeRir(profile, blockId, dayId, exId) {
   const blk = profile.rir && profile.rir[blockId];
   if (!blk) return;
-  for (let w = 1; w <= MAX_WEEKS; w++) {
-    const k = slot(w, dayId);
-    if (!blk[k]) continue;
-    if (exId) delete blk[k][exId];
+  forEachSlot(profile.rir, blockId, (k, w, d, s) => {
+    if (!s) return;
+    if (exId) delete s[exId];
     else delete blk[k];
-  }
+  }, { dayId: dayId });
 }
 
 /* "Send to another session" in the plan editor: the exercise moves between
@@ -1856,10 +1884,8 @@ function purgeRir(profile, blockId, dayId, exId) {
 function moveExKeyed(map, blockId, fromDayId, toDayId, exId) {
   const blk = map[blockId];
   if (!blk) return;
-  for (let w = 1; w <= MAX_WEEKS; w++) {
-    const fromKey = slot(w, fromDayId);
-    const from = blk[fromKey];
-    if (!from || from[exId] === undefined) continue;
+  forEachSlot(map, blockId, (fromKey, w, d, from) => {
+    if (!from || from[exId] === undefined) return;
     const toKey = slot(w, toDayId);
     if (!blk[toKey]) blk[toKey] = {};
     const dest = blk[toKey];
@@ -1870,7 +1896,7 @@ function moveExKeyed(map, blockId, fromDayId, toDayId, exId) {
     }
     delete from[exId];
     if (!Object.keys(from).length) delete blk[fromKey];
-  }
+  }, { dayId: fromDayId });
 }
 
 function moveExLog(profile, blockId, fromDayId, toDayId, exId) {
@@ -1890,7 +1916,13 @@ function moveExRir(profile, blockId, fromDayId, toDayId, exId) {
 function moveExOrder(profile, blockId, fromDayId, toDayId, exId) {
   const blk = profile.order[blockId];
   if (!blk) return;
-  for (let w = 1; w <= MAX_WEEKS; w++) {
+  /* The two halves are independent — the destination day can have a recorded
+     order in a week the source day has no entry for at all, and the exercise
+     still has to join it — so this walks the weeks *either* day has, not
+     just the source's. */
+  const weeks = new Set();
+  forEachSlot(profile.order, blockId, (k, w, d) => { if (d === fromDayId || d === toDayId) weeks.add(w); });
+  weeks.forEach(w => {
     const fromKey = slot(w, fromDayId), toKey = slot(w, toDayId);
     const fromIds = blk[fromKey];
     if (Array.isArray(fromIds)) {
@@ -1900,7 +1932,7 @@ function moveExOrder(profile, blockId, fromDayId, toDayId, exId) {
     }
     const toIds = blk[toKey];
     if (Array.isArray(toIds) && toIds.indexOf(exId) < 0) toIds.push(exId);
-  }
+  });
 }
 
 /* Everything logged anywhere in a block — the number that decides whether
@@ -3613,13 +3645,9 @@ function blockTonnageByWeek(profile, block, volumeOf) {
   const vol = volumeOf || setVolume;
   const weeks = blockWeeks(block);
   const out = new Array(weeks).fill(0);
-  const blk = profile.log[block.id] || {};
-  Object.keys(blk).forEach(k => {
-    const m = /^w(\d+)-/.exec(k);
-    if (!m) return;
-    const w = +m[1];
+  forEachSlot(profile.log, block.id, (k, w, d, slotRows) => {
     if (w < 1 || w > weeks) return;
-    const s = blk[k] || {};
+    const s = slotRows || {};
     Object.keys(s).forEach(exId => {
       const rows = s[exId];
       if (Array.isArray(rows)) out[w - 1] += rows.reduce((t, r) => t + vol(r), 0);
@@ -4161,11 +4189,11 @@ function normalizeImportedLog(rawLog, rawBlock, normalized) {
 
   const out = {};
   Object.keys(rawLog).slice(0, LOG_LIMITS.slots).forEach(key => {
-    const m = /^w(\d+)-(.+)$/.exec(key);
-    if (!m) return;
-    const w = +m[1];
+    const s = parseSlot(key);
+    if (!s) return;
+    const w = s.week;
     if (!Number.isInteger(w) || w < 1 || w > MAX_WEEKS) return;
-    const dayId = dayMap[m[2]];
+    const dayId = dayMap[s.dayId];
     if (!dayId) return;
     const slotLog = rawLog[key];
     if (!slotLog || typeof slotLog !== 'object' || Array.isArray(slotLog)) return;
@@ -4205,11 +4233,11 @@ function normalizeImportedRir(rawRir, rawBlock, normalized) {
 
   const out = {};
   Object.keys(rawRir).slice(0, LOG_LIMITS.slots).forEach(key => {
-    const m = /^w(\d+)-(.+)$/.exec(key);
-    if (!m) return;
-    const w = +m[1];
+    const s = parseSlot(key);
+    if (!s) return;
+    const w = s.week;
     if (!Number.isInteger(w) || w < 1 || w > MAX_WEEKS) return;
-    const dayId = dayMap[m[2]];
+    const dayId = dayMap[s.dayId];
     if (!dayId) return;
     const slotRir = rawRir[key];
     if (!slotRir || typeof slotRir !== 'object' || Array.isArray(slotRir)) return;
@@ -4233,11 +4261,11 @@ function normalizeImportedOrder(rawOrder, rawBlock, normalized) {
 
   const out = {};
   Object.keys(rawOrder).slice(0, LOG_LIMITS.slots).forEach(key => {
-    const m = /^w(\d+)-(.+)$/.exec(key);
-    if (!m) return;
-    const w = +m[1];
+    const s = parseSlot(key);
+    if (!s) return;
+    const w = s.week;
     if (!Number.isInteger(w) || w < 1 || w > MAX_WEEKS) return;
-    const dayId = dayMap[m[2]];
+    const dayId = dayMap[s.dayId];
     if (!dayId) return;
     const ids = rawOrder[key];
     if (!Array.isArray(ids)) return;

@@ -1853,6 +1853,113 @@ console.log('\n== Escape reaches every sheet (plans/013, plans/009 item 1) ==');
 }
 
 console.log('\n== requestWakeLock: one rest, one lock — skipped mid-request, doubled up, or re-acquired (plans/008 item 15, plans/013) ==');
+console.log('\n== the log key has one reader as well as one builder (plans/009 item 4) ==');
+{
+  ok('parseSlot is the mirror of slot()', (() => {
+    const k = call(`slot(3, 'd1')`);
+    const s = call(`parseSlot('${k}')`);
+    return k === 'w3-d1' && s.week === 3 && s.dayId === 'd1';
+  })());
+  /* Day ids are uid()-shaped and carry hyphens of their own, so the dayId
+     half has to be greedy to the end of the key, not up to the next dash. */
+  ok('a day id with hyphens in it survives the round trip',
+     call(`parseSlot(slot(12, 'day-abc-1')).dayId`) === 'day-abc-1');
+  ok('a key that is not a slot reads as null, rather than as week NaN',
+     call(`parseSlot('notes')`) === null && call(`parseSlot('w-d1')`) === null);
+
+  /* The filter is what the purge walks use, and the w17 entry is the whole
+     point: the 1..MAX_WEEKS sweeps could not see it. */
+  const visited = call(`(function () {
+    const map = { b1: { 'w1-d1': 1, 'w2-d1': 2, 'w2-d2': 3, 'w17-d1': 4, notes: 5 } };
+    const out = [];
+    forEachSlot(map, 'b1', (k, w, d, v) => out.push(k + '=' + v), { dayId: 'd1' });
+    return out.sort().join(' ');
+  })()`);
+  ok('forEachSlot visits every week the day actually has, including one past MAX_WEEKS',
+     visited === 'w1-d1=1 w17-d1=4 w2-d1=2', visited);
+
+  const oneWeek = call(`(function () {
+    const map = { b1: { 'w1-d1': 1, 'w2-d1': 2, 'w2-d2': 3 } };
+    const out = [];
+    forEachSlot(map, 'b1', k => out.push(k), { dayId: 'd1', week: 2 });
+    return out.join(' ');
+  })()`);
+  ok('...and narrows to one week when asked', oneWeek === 'w2-d1', oneWeek);
+
+  ok('a block with no entries is not an error', call(`(function () {
+    let n = 0;
+    forEachSlot({}, 'nope', () => n++);
+    forEachSlot(undefined, 'b1', () => n++);
+    return n;
+  })()`) === 0);
+
+  /* The whole point of the pair is that the shape is written down once. A
+     reader that goes back to running the regex by hand is the drift this
+     catches — there were eleven of them across four files. Comments are
+     stripped first, because they still quote the regex to explain it. */
+  const handRolled = ['js/app.js', 'js/chart.js', 'js/diagnostics.js', 'js/review.js']
+    .map(rel => [rel, (fs.readFileSync(path.join(ROOT, rel), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').match(/\/\^w\(/g) || []).length])
+    .filter(([rel, n]) => n > (rel === 'js/app.js' ? 1 : 0));
+  ok('parseSlot() is the only place that runs the slot regex',
+     handRolled.length === 0, JSON.stringify(handRolled));
+
+  /* Object.keys() is a snapshot, which is what lets every purge below delete
+     the key it was just handed. */
+  ok('fn may delete the key it is given', call(`(function () {
+    const blk = { 'w1-d1': 1, 'w2-d1': 2 };
+    forEachSlot({ b1: blk }, 'b1', k => delete blk[k], { dayId: 'd1' });
+    return Object.keys(blk).length;
+  })()`) === 0);
+}
+
+console.log('\n== "borrar registro" reaches a week past the cap (plans/009 item 4) ==');
+{
+  /* A block shortened, or a backup hand-edited, can hold a week above
+     MAX_WEEKS. The old sweeps rebuilt keys w1..w16 and looked each one up,
+     so anything filed above the cap was silently left behind — a deleted
+     day's rows came back if the block was ever lengthened again. */
+  const left = call(`(function () {
+    const p = { log: { b1: { 'w1-d1': { e1: [{}] }, 'w17-d1': { e1: [{}] }, 'w3-d2': { e1: [{}] } } },
+                rir: { b1: { 'w17-d1': { e1: 2 } } },
+                notes: { b1: { 'w17-d1': 'x' } },
+                energy: { b1: {} }, order: { b1: { 'w17-d1': ['e1'] } } };
+    purgeDayLog(p, 'b1', 'd1');
+    return [Object.keys(p.log.b1).join(','), Object.keys(p.rir.b1).length,
+            Object.keys(p.notes.b1).length, Object.keys(p.order.b1).length].join('|');
+  })()`);
+  ok('purgeDayLog takes the w17 rows, the chips, the note and the order with it, and leaves the other day alone',
+     left === 'w3-d2|0|0|0', left);
+
+  const ex = call(`(function () {
+    const p = { log: { b1: { 'w17-d1': { e1: [{}], e2: [{}] } } },
+                rir: { b1: { 'w17-d1': { e1: 2, e2: 3 } } } };
+    purgeExLog(p, 'b1', 'd1', 'e1');
+    return Object.keys(p.log.b1['w17-d1']).join(',') + '|' + Object.keys(p.rir.b1['w17-d1']).join(',');
+  })()`);
+  ok('purgeExLog reaches the same week, and takes only its own exercise', ex === 'e2|e2', ex);
+
+  const moved = call(`(function () {
+    const p = { log: { b1: { 'w17-d1': { e1: [{ w: 1 }] } } } };
+    moveExLog(p, 'b1', 'd1', 'd2', 'e1');
+    return JSON.stringify(p.log.b1);
+  })()`);
+  ok('moveExLog carries a week past the cap across to the other day',
+     moved === '{"w17-d2":{"e1":[{"w":1}]}}', moved);
+
+  /* moveExOrder's two halves are independent: the destination day can have a
+     recorded order in a week the source day has no entry for at all, and the
+     exercise still has to join it. Walking only the source's weeks would
+     miss that, which is why it walks the weeks either day has. */
+  const order = call(`(function () {
+    const p = { order: { b1: { 'w1-d1': ['e1', 'e2'], 'w1-d2': ['e9'], 'w17-d2': ['e9'] } } };
+    moveExOrder(p, 'b1', 'd1', 'd2', 'e1');
+    return JSON.stringify(p.order.b1);
+  })()`);
+  ok('moveExOrder drops the id from the source order and appends it to the destination, in every week either has',
+     order === '{"w1-d1":["e2"],"w1-d2":["e9","e1"],"w17-d2":["e9","e1"]}', order);
+}
+
 (async () => {
   /* A real WakeLockSentinel carries its own .released flag, and the guard
      added in plans/013 reads it — so the fake has to carry one as well. */

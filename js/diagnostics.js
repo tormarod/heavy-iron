@@ -83,8 +83,8 @@ function diagPoints(profile, exId, onlyBlockId) {
          at the verdict, so it cannot reach the slope at all. */
       if (w === deloadWeek(block)) continue;
       Object.keys(blk).forEach(k => {
-        const m = /^w(\d+)-(.+)$/.exec(k);
-        if (!m || +m[1] !== w) return;
+        const s = parseSlot(k);
+        if (!s || s.week !== w) return;
         const rows = blk[k][exId];
         if (!Array.isArray(rows)) return;
         /* rowWeight() rather than num(r.w): converts a row logged in the
@@ -113,7 +113,7 @@ function diagPoints(profile, exId, onlyBlockId) {
           vol: worked.reduce((t, r) => t + convertedSetVolume(r), 0),
           sets: worked.length,
           ts: rows.reduce((t, r) => (r && r.done && r.ts > t ? r.ts : t), 0),
-          rir: getRir(profile, bId, w, m[2], exId),
+          rir: getRir(profile, bId, w, s.dayId, exId),
           rows: rows.filter(r => r && r.done),
         });
       });
@@ -162,9 +162,9 @@ function muscleSessions(profile, block, upToWeek) {
   const blk = profile.log[block.id] || {};
   const out = {};
   Object.keys(blk).forEach(k => {
-    const m = /^w(\d+)-(.+)$/.exec(k);
-    if (!m) return;
-    const w = +m[1];
+    const s = parseSlot(k);
+    if (!s) return;
+    const w = s.week;
     if (w < 1 || w > upToWeek) return;
     const slotRows = blk[k] || {};
     const firstTs = {};
@@ -351,9 +351,9 @@ function strengthByExercise(profile, block) {
   const blk = profile.log[block.id] || {};
   const out = {};
   Object.keys(blk).forEach(k => {
-    const m = /^w(\d+)-(.+)$/.exec(k);
-    if (!m) return;
-    const w = +m[1];
+    const s = parseSlot(k);
+    if (!s) return;
+    const w = s.week;
     if (w < 1 || w > weeks) return;
     const slotRows = blk[k] || {};
     Object.keys(slotRows).forEach(exId => {
