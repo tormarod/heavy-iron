@@ -2725,6 +2725,27 @@ const ok = (name, cond, extra) => {
        /proteg/.test(await page.textContent('#status')), await page.textContent('#status'));
     ok('and asking never throws the log away',
        (await page.textContent('#title')).includes('Ana'));
+
+    /* Writes are debounced by 400 ms, and the phone going into a pocket is
+       the most likely moment for the tab to be discarded — so hiding the
+       page has to flush. Untested until the rest timer was split out of
+       app.js (plans/008 item 13): that listener did this job and the timer's
+       in the same handler, and only one half stayed behind. */
+    await page.keyboard.press('Escape');  /* the backup sheet is still up */
+    await page.waitForTimeout(200);
+    const flushed = await page.evaluate(() => {
+      const box = document.querySelector('#list .set-row input');
+      box.value = '77,5';
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+      /* Straight into the debounce window: nothing is in localStorage yet. */
+      const before = localStorage.getItem('heavy-iron-v1').includes('77,5');
+      Object.defineProperty(document, 'visibilityState', { get: () => 'hidden', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+      return { before: before, after: localStorage.getItem('heavy-iron-v1').includes('77,5') };
+    });
+    ok('a weight typed a moment ago is not in storage yet', flushed.before === false);
+    ok('and hiding the page flushes it before the debounce would have',
+       flushed.after === true);
     await ctx.close();
   });
 

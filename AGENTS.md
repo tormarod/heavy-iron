@@ -17,7 +17,7 @@ identical to an oversight unless someone writes down which it is:
 
 - **No build step, no bundler, no `package.json`, no TypeScript.** Plain
   HTML/CSS/JS, served by any static server. Do not add a build step.
-- **No modules.** Seven `<script>` tags share one global scope, in a fixed
+- **No modules.** Eight `<script>` tags share one global scope, in a fixed
   order (`index.html`, the `<script>` block at the foot of `<body>`):
 
   ```html
@@ -27,6 +27,7 @@ identical to an oversight unless someone writes down which it is:
   <script src="js/review.js"></script>
   <script src="js/profile-transfer.js"></script>
   <script src="js/calculator.js"></script>
+  <script src="js/rest-timer.js"></script>
   <script src="js/app.js"></script>
   ```
 
@@ -38,10 +39,11 @@ identical to an oversight unless someone writes down which it is:
   ```js
   wireBlockEditor();
   /* Guarded, unlike wireBlockEditor/wireProfileTransfer, because these
-     three files are newer than some already-deployed shells: … */
+     four files are newer than some already-deployed shells: … */
   if (typeof wireDiagnostics === 'function') wireDiagnostics();
   if (typeof wireReview === 'function') wireReview();
   if (typeof wireCalculator === 'function') wireCalculator();
+  if (typeof wireRestTimer === 'function') wireRestTimer();
   wireProfileTransfer();
   ```
 
@@ -52,9 +54,11 @@ identical to an oversight unless someone writes down which it is:
   tag *before* `js/app.js`, a `SHELL` entry in `sw.js`, a guarded
   `wire*()` call here, its place in `loadApp()` in `test/unit.js`, and a
   line in this list and in the README's layout table. A symbol `app.js`
-  itself reads stays in `app.js`: the split file may be missing from an old
-  cached shell, and `app.js` reaching for something that never loaded is
-  the stuck-loading screen above.
+  itself reads either stays in `app.js` or is stubbed to a no-op there when
+  the file is missing (`js/rest-timer.js` does the latter for its five):
+  the split file may be missing from an old cached shell, and `app.js`
+  reaching for something that never loaded is the stuck-loading screen
+  above.
 - **Spanish for everything a user sees; English for code comments.**
 
 ## The release rule

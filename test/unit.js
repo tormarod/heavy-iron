@@ -60,7 +60,8 @@ function loadApp() {
   /* The same order as the <script> tags in index.html — app.js last, because
      it is the one that wires the others and then calls load(). */
   ['js/data.js', 'js/block-editor.js', 'js/diagnostics.js', 'js/review.js',
-   'js/profile-transfer.js', 'js/calculator.js', 'js/app.js'].forEach(f => {
+   'js/profile-transfer.js', 'js/calculator.js', 'js/rest-timer.js',
+   'js/app.js'].forEach(f => {
     vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f });
   });
   return ctx;
