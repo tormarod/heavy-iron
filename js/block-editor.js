@@ -293,9 +293,9 @@ function normalizeImportedBlock(raw, opts) {
          muscle/pattern/type taxonomy. Only trimmed and length-capped; a
          blank or missing value is left absent rather than rejecting the
          whole import. */
-      if (e.muscle != null) { const m = txt(e.muscle, MUSCLE_LIMIT); if (m) out.muscle = m; }
-      if (e.pattern != null) { const p = txt(e.pattern, PATTERN_LIMIT); if (p) out.pattern = p; }
-      if (e.type != null) { const t = txt(e.type, TYPE_LIMIT); if (t) out.type = t; }
+      if (e.muscle != null) { const m = safeKey(txt(e.muscle, MUSCLE_LIMIT)); if (m) out.muscle = m; }
+      if (e.pattern != null) { const p = safeKey(txt(e.pattern, PATTERN_LIMIT)); if (p) out.pattern = p; }
+      if (e.type != null) { const t = safeKey(txt(e.type, TYPE_LIMIT)); if (t) out.type = t; }
       /* Own data only. A share drops retired items outright (blockSharePlan)
          so the receiver gets the plan as trained, but a restore that
          resurrected them handed the user back a plan they had already

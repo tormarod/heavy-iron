@@ -340,9 +340,9 @@ function migrate() {
           ex.rest = clampInt(ex.rest, 0, 900, 90);
           if (ex.reps == null || ex.reps === '') ex.reps = '10–15';
           if (!ex.muscle) { if (MUSCLE_BY_ID[ex.id]) ex.muscle = MUSCLE_BY_ID[ex.id]; }
-          else { const m = txt(ex.muscle, MUSCLE_LIMIT); if (m) ex.muscle = m; else delete ex.muscle; }
-          if (ex.pattern != null) { const p = txt(ex.pattern, PATTERN_LIMIT); if (p) ex.pattern = p; else delete ex.pattern; }
-          if (ex.type != null) { const t = txt(ex.type, TYPE_LIMIT); if (t) ex.type = t; else delete ex.type; }
+          else { const m = safeKey(txt(ex.muscle, MUSCLE_LIMIT)); if (m) ex.muscle = m; else delete ex.muscle; }
+          if (ex.pattern != null) { const p = safeKey(txt(ex.pattern, PATTERN_LIMIT)); if (p) ex.pattern = p; else delete ex.pattern; }
+          if (ex.type != null) { const t = safeKey(txt(ex.type, TYPE_LIMIT)); if (t) ex.type = t; else delete ex.type; }
           if (ex.inc != null) { const v = clampNum(ex.inc, INC_MIN, INC_MAX, 0, INC_STEP); if (v > 0) ex.inc = v; else delete ex.inc; }
           if (ex.setup != null) { const s = txt(ex.setup, SETUP_LIMIT); if (s) ex.setup = s; else delete ex.setup; }
         });
@@ -1260,7 +1260,13 @@ function getBlock() { const p = getProfile(); return p.blocks[p.activeBlock]; }
    imbalance like "8 sets of horizontal push, 45 of isolation" visible at a
    glance, which was the point of adding `pattern`/`type` in the first
    place. */
-const muscleTag = ex => txt(ex.muscle, MUSCLE_LIMIT) || UNCLASSIFIED_LABEL;
+/* safeKey on a freeform tag, not just on an exercise id: every tag is a
+   plain-object key somewhere downstream (byMuscle[tag] in diagnostics,
+   totals[t] in the volume dashboard), and a tag of "__proto__" reads the
+   inherited Object.prototype as "already there" and then throws on .push —
+   an empty Diagnóstico with no message (plans/012). Typeable in the
+   editor's Músculo box, so this is not only an import problem. */
+const muscleTag = ex => safeKey(txt(ex.muscle, MUSCLE_LIMIT)) || UNCLASSIFIED_LABEL;
 
 /* ---------- priority muscles ----------
    `block.priority` — the muscles this block is actually *for*, as a list of
@@ -1283,13 +1289,13 @@ const isPriority = (block, tag) => blockPriority(block).indexOf(tag) >= 0;
 function cleanPriority(list) {
   const out = [];
   (Array.isArray(list) ? list : []).forEach(v => {
-    const t = txt(v, MUSCLE_LIMIT);
+    const t = safeKey(txt(v, MUSCLE_LIMIT));
     if (t && t !== UNCLASSIFIED_LABEL && out.indexOf(t) < 0 && out.length < PRIORITY_MAX) out.push(t);
   });
   return out;
 }
-const patternTag = ex => txt(ex.pattern, PATTERN_LIMIT) || txt(ex.type, TYPE_LIMIT) || UNCLASSIFIED_LABEL;
-const typeTag = ex => txt(ex.type, TYPE_LIMIT) || UNCLASSIFIED_LABEL;
+const patternTag = ex => safeKey(txt(ex.pattern, PATTERN_LIMIT)) || safeKey(txt(ex.type, TYPE_LIMIT)) || UNCLASSIFIED_LABEL;
+const typeTag = ex => safeKey(txt(ex.type, TYPE_LIMIT)) || UNCLASSIFIED_LABEL;
 
 /* The volume dashboard's switchable dimensions, in the order their toggle
    buttons appear. Each entry names the tag function that buckets an
