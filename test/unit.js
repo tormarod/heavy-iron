@@ -1223,6 +1223,56 @@ ok('a rep range written backwards, or with no numbers in it, is no target at all
    target([{ sets: [[40, 10]], rir: '1' }, { sets: [[40, 10]], rir: '1' }], { range: '15–10' }) === null &&
    target([{ sets: [[40, 10]], rir: '1' }, { sets: [[40, 10]], rir: '1' }], { range: 'AMRAP' }) === null);
 
+console.log('\n== el mismo ejercicio en dos días del mismo bloque (plans/026) ==');
+/* The harness above is a one-day block by construction, so the day split in
+   exHistory — the same machine pressed first on Monday and fourth on
+   Thursday is not the same set — was reachable only from test/smoke.js.
+   This asks exHistory directly, which costs nothing per run. */
+const twoDayProbe = call(`
+  (function () {
+    const T0 = Date.UTC(2026, 0, 5), DAY = 86400000;
+    const mk = function () { return { id: 'E', n: 'x', sets: 2, reps: '8–12', inc: 2.5 }; };
+    const ex = mk();
+    const row = function (w, d) { return [{ w: String(w), r: '10', done: true, ts: T0 + d * DAY }]; };
+    const blockB = { id: 'B', name: 'B', weeks: 8, deload: 0, phase: {},
+                     days: [{ id: 'D1', name: 'D1', ex: [mk()] }, { id: 'D2', name: 'D2', ex: [mk()] }] };
+    const logB = function () {
+      return { 'w1-D1': { E: row(40, 0) }, 'w1-D2': { E: row(41, 3) },
+               'w2-D1': { E: row(42, 7) }, 'w2-D2': { E: row(43, 10) } };
+    };
+    const show = function (list) {
+      return list.map(function (s) { return s.blockId + '/' + s.dayId + ':' + s.sets[0].w; }).join(' ');
+    };
+
+    const one = { log: { B: logB() }, rir: { B: {} }, obj: {}, variants: {},
+                  blocks: { B: blockB }, blockOrder: ['B'] };
+    resetRenderCache();
+    const d1 = show(exHistory(one, blockB, ex, 'D1', 3));
+    const d2 = show(exHistory(one, blockB, ex, 'D2', 3));
+
+    /* The block before this one had the lift on a single day, and that
+       day's number means nothing here: whoever wrote that plan numbered
+       its days for themselves. Matching on it would throw the history
+       away rather than separate it. */
+    const blockA = { id: 'A', name: 'A', weeks: 8, deload: 0, phase: {},
+                     days: [{ id: 'DA', name: 'DA', ex: [mk()] }] };
+    const two = { log: { A: { 'w1-DA': { E: row(30, -30) } }, B: logB() },
+                  rir: { A: {}, B: {} }, obj: {}, variants: {},
+                  blocks: { A: blockA, B: blockB }, blockOrder: ['A', 'B'] };
+    resetRenderCache();
+    const priorD1 = show(exHistory(two, blockB, ex, 'D1', 3));
+    const priorD2 = show(exHistory(two, blockB, ex, 'D2', 3));
+    return { d1: d1, d2: d2, priorD1: priorD1, priorD2: priorD2 };
+  })()
+`);
+ok('a lift the plan puts on two days reads only its own day inside the block being trained',
+   twoDayProbe.d1 === 'B/D1:40 B/D1:42', JSON.stringify(twoDayProbe));
+ok('...and the other day reads only the other day',
+   twoDayProbe.d2 === 'B/D2:41 B/D2:43', JSON.stringify(twoDayProbe));
+ok('...while an earlier block\'s single day counts for both, oldest first',
+   twoDayProbe.priorD1 === 'A/DA:30 B/D1:40 B/D1:42' &&
+   twoDayProbe.priorD2 === 'A/DA:30 B/D2:41 B/D2:43', JSON.stringify(twoDayProbe));
+
 console.log('\n== el objetivo guardado, las variantes y minRir ==');
 
 /* `ex.minRir` is the reserve a lift never goes under, whatever the phase
