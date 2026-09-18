@@ -265,12 +265,49 @@ smoke sections by name.
 - `closeReview` is not a global function (it is at `6def9fc`).
 - An existing smoke section fails on something other than a label string.
 
+## What was done differently
+
+Both deviations are recorded here rather than silently absorbed, because
+each contradicts a line of the plan above.
+
+1. **Step B's guard is `if (wakeLock && !wakeLock.released) return;`, not
+   `if (wakeLock) return;`.** The browser releases the lock itself when the
+   tab goes hidden and nothing nulls the variable — the visibilitychange
+   handler in `wireRestTimer` re-acquires precisely because of that, and
+   says so in its own comment. The bare guard would have turned that
+   re-acquire into a no-op and let the screen sleep for the rest of every
+   countdown that survived a tab switch: a second bug in place of the
+   first. A second `.released` check after the `await` covers the other
+   half of "never hold two", two rests started in the same tick, which the
+   pre-await guard alone cannot see. `test/unit.js` asserts both, plus the
+   re-acquire the guard has to keep working.
+2. **`test/smoke.js` was edited, though the Scope section does not list
+   it.** The STOP condition "`warmupRamp` callers exist outside
+   `js/calculator.js`" says the grep at `6def9fc` showed only
+   `js/calculator.js` and `test/unit.js`. It did not: `test/smoke.js:498`
+   at that commit already asserted `JSON.stringify(warmupRamp(50, 2.5, 20))`
+   against an array of plain numbers. That is a test, not a production
+   caller, so the STOP condition's intent was not met — the assertion was
+   updated to `.map(r => r.weight)` and the "main session" section run.
+
+Two smaller judgement calls, neither a contradiction: the five Step E
+strings became one `UNDO_PROMISE` constant next to `snapshotForUndo` in
+`js/app.js` (same cross-file pattern as `UNCLASSIFIED_LABEL`) so the
+promise and the snapshot cannot drift apart; and Step F also dropped the
+line number `AGENTS.md` pinned the wire call site to, which had already
+drifted from 5437 to 4323.
+
 ## Maintenance notes
 
 - Step D's test makes "every `.sheet` is in `SHEET_IDS`" a checked
-  invariant; a future sheet needs both the markup and the array entry.
+  invariant, in both directions; a future sheet needs both the markup and
+  the array entry. Step E's test is the same shape: it counts the dialogs
+  that still claim there is no undo, so a new one has to be deliberate.
 - The wake-lock guard assumes `releaseWakeLock` is the only place that
   nulls `wakeLock`; if a future change releases elsewhere, keep that true.
+  It tolerates a sentinel the browser released on its own — that is what
+  the `.released` half of the test is for, and the unit test pins it so
+  nobody "simplifies" the guard back to bare truth.
 - Open maintainer call, not done here: `copyPrev` overwrites unticked
   weights with no snapshot. One line (`snapshotForUndo('Pesos copiados…')`)
   if wanted.
