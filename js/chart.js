@@ -20,17 +20,24 @@
 /* Which logged set of a group "wins" depends on what's being charted: the
    heaviest weight for the weight series, but the highest estimated 1RM for
    the 1RM series — a heavier single at fewer reps can out-rank a lighter
-   set done for many reps, which is the point of showing this at all. */
+   set done for many reps, which is the point of showing this at all.
+
+   Every weight is read through rowWeight(), not num(r.w): this chart fits
+   one line through many sessions, so a block trained partly in kg and
+   partly in lb — a mid-block unit switch, or a profile restored from a
+   partner who lifts in the other unit — would otherwise draw a 2.2× step
+   that never happened, under an axis that already says units(). The session
+   card is exempt on purpose; see the comment by rowWeight in app.js. */
 function bestSet(done, metric) {
   if (metric === 'e1rm') {
     const withReps = done.filter(hasReps);
     if (!withReps.length) return null;
     let best = withReps[0];
-    withReps.forEach(r => { if (est1RM(num(r.w), num(r.r)) > est1RM(num(best.w), num(best.r))) best = r; });
+    withReps.forEach(r => { if (est1RM(rowWeight(r), num(r.r)) > est1RM(rowWeight(best), num(best.r))) best = r; });
     return best;
   }
   let best = done[0];
-  done.forEach(r => { if (num(r.w) > num(best.w)) best = r; });
+  done.forEach(r => { if (rowWeight(r) > rowWeight(best)) best = r; });
   return best;
 }
 
@@ -40,11 +47,11 @@ function collectHistory(profile, blockId, dayId, exId, weeks, metric) {
     const s = profile.log[blockId] && profile.log[blockId][slot(w, dayId)];
     const rows = s && s[exId];
     if (!rows) continue;
-    const done = rows.filter(r => r.done && r.w !== '' && r.w != null && !isNaN(num(r.w)));
+    const done = rows.filter(r => r && r.done && r.w !== '' && r.w != null && !isNaN(rowWeight(r)));
     if (!done.length) continue;
     const best = bestSet(done, metric);
     if (!best) continue;
-    points.push({ week: w, weight: num(best.w), reps: best.r });
+    points.push({ week: w, weight: rowWeight(best), reps: best.r });
   }
   return points;
 }
@@ -63,11 +70,11 @@ function collectHistoryDays(profile, block, ex, weeks, metric) {
       const bucket = blk[slot(w, s.dayId)];
       const rows = bucket && bucket[s.exId];
       if (!Array.isArray(rows)) return;
-      const done = rows.filter(r => r.done && r.w !== '' && r.w != null && !isNaN(num(r.w)));
+      const done = rows.filter(r => r && r.done && r.w !== '' && r.w != null && !isNaN(rowWeight(r)));
       if (!done.length) return;
       const best = bestSet(done, metric);
       if (!best) return;
-      points.push({ week: w, dayId: s.dayId, weight: num(best.w), reps: best.r });
+      points.push({ week: w, dayId: s.dayId, weight: rowWeight(best), reps: best.r });
     });
   }
   return points;
@@ -102,11 +109,11 @@ function collectHistoryAll(profile, exId, metric) {
       byWeek.get(w).forEach(k => {
         const rows = blk[k][exId];
         if (!Array.isArray(rows)) return;
-        const done = rows.filter(r => r && r.done && r.w !== '' && r.w != null && !isNaN(num(r.w)));
+        const done = rows.filter(r => r && r.done && r.w !== '' && r.w != null && !isNaN(rowWeight(r)));
         if (!done.length) return;
         const best = bestSet(done, metric);
         if (!best) return;
-        out.push({ label: block.name + ' · S' + w, weight: num(best.w), reps: best.r });
+        out.push({ label: block.name + ' · S' + w, weight: rowWeight(best), reps: best.r });
       });
     });
   });

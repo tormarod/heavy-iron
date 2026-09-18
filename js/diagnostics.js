@@ -57,21 +57,8 @@ const DIAG_TRENDS = {
 let diagScope = 'block';  /* 'block' | 'all' */
 let diagView = 'trend';   /* 'trend' per exercise | 'freq' | 'index' per muscle */
 
-/* Mirrors setVolume() (app.js) exactly, except every weight is read through
-   rowWeight() rather than num(r.w) — a drop shares its row's stamp (drops
-   have no unit of their own; see stampRowUnit in app.js), so it converts
-   with the same fromUnit as the set it belongs to. */
-function diagSetVolume(r) {
-  if (!r || !r.done) return 0;
-  const toUnit = units();
-  const from = rowUnit(r);
-  const w = convertWeight(num(r.w), from, toUnit), reps = num(r.r);
-  const dropsVol = dropsOf(r).filter(dropUsed).reduce((t, d) => {
-    const dw = convertWeight(num(d.w), from, toUnit), dr = num(d.r);
-    return t + ((isNaN(dw) || isNaN(dr)) ? 0 : dw * dr);
-  }, 0);
-  return ((isNaN(w) || isNaN(reps)) ? 0 : w * reps) + dropsVol;
-}
+/* The unit-converting volume rule is convertedSetVolume in js/app.js — an
+   identical copy lived here until plans/011 made the two one. */
 
 /* Every session this exercise was logged in, oldest first, as one e1RM
    point each. Modelled on collectHistoryAll(), but it keeps what the charts
@@ -112,17 +99,18 @@ function diagPoints(profile, exId, onlyBlockId) {
         /* The work side of the same session, and it counts every ticked
            set — EST_MAX_REPS and all. That ceiling is a statement about
            Epley, not about kilos: a 20-rep set moved weight whether or not
-           an estimate can honestly be read off it. diagSetVolume() mirrors
-           setVolume() (app.js) — "one definition of kilos moved" still
-           holds for the session view; this is the unit-converted read of
-           the same rule, for a screen that spans sessions. */
+           an estimate can honestly be read off it. convertedSetVolume()
+           mirrors setVolume() (both in app.js) — "one definition of kilos
+           moved" still holds for the session view; this is the
+           unit-converted read of the same rule, for a screen that spans
+           sessions. */
         const worked = rows.filter(r => r && r.done && hasReps(r) && rowWeight(r) > 0);
         out.push({
           label: block.name + ' · S' + w,
           e1rm: est1RM(rowWeight(best), num(best.r)),
           weight: rowWeight(best),
           reps: num(best.r),
-          vol: worked.reduce((t, r) => t + diagSetVolume(r), 0),
+          vol: worked.reduce((t, r) => t + convertedSetVolume(r), 0),
           sets: worked.length,
           ts: rows.reduce((t, r) => (r && r.done && r.ts > t ? r.ts : t), 0),
           rir: getRir(profile, bId, w, m[2], exId),

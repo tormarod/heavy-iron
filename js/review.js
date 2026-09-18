@@ -24,25 +24,8 @@ const REVIEW_MAX_NOTES = 8;
 const reviewPct = v => (v > 0 ? '+' : v < 0 ? '−' : '') +
   String(Math.abs(Math.round(v * 10) / 10)).replace('.', ',') + ' %';
 
-/* Mirrors setVolume() (app.js), except every weight is read through
-   rowWeight() — a block trained partly in kg and partly in lb (a mid-block
-   unit switch, or a backup restored from a partner who uses the other
-   unit) would otherwise fit tonnage.reduce/energy's kg mean through raw
-   numbers in two different units at once. A drop shares its row's stamp
-   (drops have no unit of their own; see stampRowUnit in app.js). The
-   session view itself is exempt from this on purpose — see the comment by
-   rowWeight() in app.js — so setVolume() there is untouched. */
-function reviewSetVolume(r) {
-  if (!r || !r.done) return 0;
-  const toUnit = units();
-  const from = rowUnit(r);
-  const w = convertWeight(num(r.w), from, toUnit), reps = num(r.r);
-  const dropsVol = dropsOf(r).filter(dropUsed).reduce((t, d) => {
-    const dw = convertWeight(num(d.w), from, toUnit), dr = num(d.r);
-    return t + ((isNaN(dw) || isNaN(dr)) ? 0 : dw * dr);
-  }, 0);
-  return ((isNaN(w) || isNaN(reps)) ? 0 : w * reps) + dropsVol;
-}
+/* The unit-converting volume rule is convertedSetVolume in js/app.js — an
+   identical copy lived here until plans/011 made the two one. */
 
 /* Everything worth saying about a block, gathered from the views that
    already say it: strength from the index, attendance from the
@@ -50,7 +33,7 @@ function reviewSetVolume(r) {
 function buildBlockReview(profile, block) {
   const weeks = blockWeeks(block);
   const upTo = Math.min(Math.max(profile.week, 1), weeks);
-  const tonnage = blockTonnageByWeek(profile, block, reviewSetVolume);
+  const tonnage = blockTonnageByWeek(profile, block, convertedSetVolume);
   const weeksLogged = tonnage.filter(v => v > 0).length;
 
   const strength = strengthRows(profile, block);
@@ -106,7 +89,7 @@ function buildBlockReview(profile, block) {
     let kg = 0;
     Object.keys(slotRows).forEach(exId => {
       const rows = slotRows[exId];
-      if (Array.isArray(rows)) kg += rows.reduce((t, r) => t + reviewSetVolume(r), 0);
+      if (Array.isArray(rows)) kg += rows.reduce((t, r) => t + convertedSetVolume(r), 0);
     });
     if (kg > 0) energy[tag].push(kg);
   });

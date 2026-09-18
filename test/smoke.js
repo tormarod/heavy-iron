@@ -271,7 +271,12 @@ const ok = (name, cond, extra) => {
        kgStrip.includes('todo en la semana 1') && (kgStrip.match(/225/g) || []).length === 1, kgStrip);
     const twoWeekStrip = await page.evaluate(() => {
       const p = getProfile(), b = getBlock(), day = dayList(b)[0].id;
-      p.log[b.id][slot(2, day)] = { probe: [{ done: true, w: '100', r: '10' }] };
+      /* Stamped lb, because this session is in lb and every row the app
+         writes goes through stampRowUnit. The strip converts per row since
+         plans/011, so an unstamped row here would be read as kg — correctly,
+         but it would make this a test of the conversion rather than of the
+         block/week split it is actually about. */
+      p.log[b.id][slot(2, day)] = { probe: [{ done: true, w: '100', r: '10', u: 'lb' }] };
       p.week = 2;
       drawVolumeTonnage(p, b, 2);
       const t = document.getElementById('volumeTonnage').textContent;

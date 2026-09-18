@@ -1629,6 +1629,26 @@ function setVolume(r) {
   return ((isNaN(w) || isNaN(reps)) ? 0 : w * reps) + dropVolume(r);
 }
 
+/* setVolume with every weight read through rowWeight(): a block trained
+   partly in kg and partly in lb — a mid-block unit switch, or a backup
+   restored from a partner on the other unit — would otherwise be summed in
+   two units at once. Used by every screen that adds up more than one
+   session (diagnostics, the block review, the tonnage tile); the session
+   view keeps setVolume, raw, on purpose — see rowWeight's comment. A drop
+   shares its row's unit stamp; drops have none of their own. Lived as two
+   identical copies in js/diagnostics.js and js/review.js until plans/011. */
+function convertedSetVolume(r) {
+  if (!r || !r.done) return 0;
+  const toUnit = units();
+  const from = rowUnit(r);
+  const w = convertWeight(num(r.w), from, toUnit), reps = num(r.r);
+  const dropsVol = dropsOf(r).filter(dropUsed).reduce((t, d) => {
+    const dw = convertWeight(num(d.w), from, toUnit), dr = num(d.r);
+    return t + ((isNaN(dw) || isNaN(dr)) ? 0 : dw * dr);
+  }, 0);
+  return ((isNaN(w) || isNaN(reps)) ? 0 : w * reps) + dropsVol;
+}
+
 /* Kilos in the unit the app is showing, grouped the Spanish way: the
    numbers here run to five digits by mid-block, and "45320 kg" is a number
    you have to count digits on. */
@@ -3528,9 +3548,9 @@ function volumeRows(totals) {
    them — the "series en semanas por encima" notice is what speaks for
    those. */
 /* `volumeOf` defaults to setVolume (raw, unconverted — the session view's
-   own definition), but the block review passes a unit-converting one of
-   its own: see reviewSetVolume in review.js and the comment by rowWeight,
-   above, for why the two must stay separate functions. */
+   own definition), but every reader that spans sessions passes
+   convertedSetVolume (above) instead: see the comment by rowWeight for why
+   the two must stay separate functions. */
 function blockTonnageByWeek(profile, block, volumeOf) {
   const vol = volumeOf || setVolume;
   const weeks = blockWeeks(block);
@@ -4180,12 +4200,24 @@ function normalizeImportedOrder(rawOrder, rawBlock, normalized) {
    cannot: a spreadsheet, a chart, a coach's inbox. Deliberately one-way —
    the .json is what restores, and mixing the two up loses data. */
 function csvCell(v) {
-  const s = String(v == null ? '' : v);
+  let s = String(v == null ? '' : v);
+  /* A cell starting with = + - @ (or a tab/CR) is a formula to Excel,
+     LibreOffice and Sheets. Names in this file come from imported blocks
+     and profile files, so the file that travels to a coach must not be
+     able to carry one. A leading apostrophe is the conventional way to say
+     "text" — spreadsheets hide it. Logged numbers never start with these. */
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
   return /[",;\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
 function buildCsv() {
-  const rows = [['perfil', 'bloque', 'semana', 'dia', 'ejercicio', 'orden', 'serie', units(), 'reps', 'hecha', 'fecha', 'rir', 'bajadas', 'tipo_bajada']];
+  /* `peso` is the number exactly as it was typed and `unidad` is what that
+     number is in, taken from the row's own stamp. A fixed column name plus
+     an explicit unit is what makes a file holding both kg and lb rows — a
+     mid-block unit switch, a profile from a partner on the other unit —
+     readable at all; a header that just said "kg" was making a claim about
+     rows it could not make. */
+  const rows = [['perfil', 'bloque', 'semana', 'dia', 'ejercicio', 'orden', 'serie', 'peso', 'unidad', 'reps', 'hecha', 'fecha', 'rir', 'bajadas', 'tipo_bajada']];
   Object.keys(state.profiles).forEach(pk => {
     const profile = state.profiles[pk];
     profile.blockOrder.forEach(bId => {
@@ -4220,7 +4252,12 @@ function buildCsv() {
                  taken off this file stops matching the app's. */
               const used = dropsOf(r).filter(dropUsed);
               const drops = used.map(d => (d.w == null ? '' : d.w) + 'x' + (d.r == null ? '' : d.r)).join(' ');
-              rows.push([profile.label, block.name, w, day.name, ex.n, ordAt[w][ex.id] || '', i + 1, r.w, r.r,
+              /* The weight stays as typed, so a row here matches the card
+                 it was logged on rather than being converted to whichever
+                 unit happened to be selected at export time; `unidad` is
+                 what says which one it is. The drops share that stamp —
+                 they have none of their own. */
+              rows.push([profile.label, block.name, w, day.name, ex.n, ordAt[w][ex.id] || '', i + 1, r.w, rowUnit(r), r.r,
                          r.done ? 'si' : 'no', r.ts ? new Date(r.ts).toISOString().slice(0, 10) : '', rir,
                          drops, used.length ? DROP_LABEL[dropKind(r)] : '']);
             });

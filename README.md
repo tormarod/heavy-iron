@@ -163,8 +163,17 @@ ever tells you something, is where the fallback is safe.
 
 **About units.** `kg`/`lb` is a *label*, not a conversion. The app never
 touches the number you typed — you write down what's on the machine, and
-this is what it gets called on screen, in the chart and in the CSV header.
-Changing it later relabels everything and rewrites nothing.
+that is the number the card shows you. Changing it later relabels
+everything and rewrites nothing.
+
+What the label does do is get stamped on each set as you log it. That stamp
+is only read by the screens that draw one line through many sessions — the
+progress chart, Diagnóstico, the block review and the tonnage strip on the
+volume dashboard — which convert set by set rather than adding kg and lb
+together. So a block you switched units halfway through still reads as one
+honest line, and the session view still shows exactly what you typed. The
+CSV export takes the same approach from the other end: `peso` is the number
+as typed, and `unidad` next to it says which unit that row is in.
 
 **About solo mode.** The second profile is hidden, not deleted. Its plan
 and history stay in storage and in your backups, so turning two-person
