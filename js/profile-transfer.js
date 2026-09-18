@@ -144,6 +144,12 @@ function normalizeImportedProfile(p) {
     const rawOrder = ownGet(p.order, bk);
     if (rawOrder) p.order[bk] = normalizeImportedOrder(rawOrder, raw, normalized);
 
+    /* Same again for the objetivo record: per exercise, so it is re-keyed
+       like the log and the chips, and absent in every file written before
+       v3 — which restores as no record at all rather than as an error. */
+    const rawObj = ownGet(p.obj, bk);
+    if (rawObj) p.obj[bk] = normalizeImportedObj(rawObj, raw, normalized);
+
     /* Notes and energy carry no such re-keying (they are per-session, not
        per-exercise, so no id map applies) but were never capped or
        validated against their own limits on this path either — only
@@ -180,7 +186,7 @@ function normalizeImportedProfile(p) {
      both the rename and the orphan drop in one pass. `out[id] = …` is safe
      even though `bk` is not: `id` only ever comes from keyMap, which never
      hands back a name safeKey refuses (see safeKey). */
-  ['log', 'rir', 'notes', 'energy', 'order'].forEach(key => {
+  ['log', 'rir', 'notes', 'energy', 'order', 'obj'].forEach(key => {
     const map = p[key];
     if (!map || typeof map !== 'object') return;
     const out = {};
@@ -201,6 +207,28 @@ function normalizeImportedProfile(p) {
   p.blockOrder = order;
   const activeId = keyMap.get(p.activeBlock);
   p.activeBlock = (activeId && blocks[activeId]) ? activeId : order[order.length - 1];
+
+  /* Variants are keyed by exercise id and not by block, so the re-keying
+     above does not reach them: an id the whole file never mentions is
+     harmless (nothing asks for it) but a malformed date is not — it would
+     cut a history at a moment nobody can name. Anything that is not a
+     plain YYYY-MM-DD is dropped, which leaves the exercise reading as one
+     unbroken variant: the reading it had before v3. */
+  if (p.variants && typeof p.variants === 'object' && !Array.isArray(p.variants)) {
+    const vars = {};
+    Object.keys(p.variants).slice(0, IMPORT_LIMITS.days * IMPORT_LIMITS.ex).forEach(rawExId => {
+      const exId = safeKey(rawExId);
+      const list = p.variants[rawExId];
+      if (!exId || !Array.isArray(list)) return;
+      const clean = list.filter(v => v && typeof v === 'object' && VARIANT_SINCE_RE.test(String(v.since)))
+        .map(v => ({ n: txt(v.n, IMPORT_LIMITS.exName) || '', since: String(v.since) }))
+        .slice(-VARIANT_LIMIT);
+      if (clean.length) vars[exId] = clean;
+    });
+    p.variants = vars;
+  } else {
+    p.variants = {};
+  }
 
   p.label = txt(p.label, 80);
   /* accentOf already encodes "in ACCENTS, or a known legacy value, or the

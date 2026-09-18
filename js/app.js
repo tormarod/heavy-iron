@@ -130,7 +130,7 @@ function installBlockData(profile, blockId, data) {
   const id = safeKey(blockId);
   if (!id) return false;
   const d = data || {};
-  ['log', 'rir', 'order', 'notes', 'energy'].forEach(name => {
+  ['log', 'rir', 'order', 'notes', 'energy', 'obj'].forEach(name => {
     if (!d[name]) return;
     if (!profile[name]) profile[name] = {};
     profile[name][id] = d[name];
@@ -330,6 +330,27 @@ function migrate() {
        See getOrder/setOrder: absent means "in the order the plan asks
        for", which is the overwhelming majority of sessions. */
     if (!profile.order || typeof profile.order !== 'object') profile.order = {};
+    /* A sixth map with the `rir` shape — blockId → slot → exId — holding
+       the target this rule actually put on the screen that session. It is
+       the only thing that can tell a back-off the plan asked for from a
+       weight that had to come off, and the only way to measure the rule's
+       own error instead of assuming it. Written by the session view, read
+       by nothing that matters yet, and absent in every backup written
+       before v3, so every reader has to cope with it missing. */
+    if (!profile.obj || typeof profile.obj !== 'object') profile.obj = {};
+    /* Keyed by exercise id rather than by block: an exercise is renamed in
+       ONE block and the history the target rule gathers crosses all of
+       them, so the record of "this is a different lift from here on" has
+       to live where the id does. */
+    if (!profile.variants || typeof profile.variants !== 'object') profile.variants = {};
+    Object.keys(profile.variants).forEach(exId => {
+      const list = profile.variants[exId];
+      if (!Array.isArray(list)) { delete profile.variants[exId]; return; }
+      const clean = list.filter(v => v && typeof v === 'object' && VARIANT_SINCE_RE.test(String(v.since)))
+        .map(v => ({ n: txt(v.n, IMPORT_LIMITS.exName) || '', since: String(v.since) }))
+        .slice(-VARIANT_LIMIT);
+      if (clean.length) profile.variants[exId] = clean; else delete profile.variants[exId];
+    });
     Object.keys(profile.order).forEach(bk => {
       const blk = profile.order[bk];
       if (!blk || typeof blk !== 'object' || Array.isArray(blk)) { delete profile.order[bk]; return; }
@@ -409,10 +430,17 @@ function migrate() {
           if (ex.pattern != null) { const p = safeKey(txt(ex.pattern, PATTERN_LIMIT)); if (p) ex.pattern = p; else delete ex.pattern; }
           if (ex.type != null) { const t = safeKey(txt(ex.type, TYPE_LIMIT)); if (t) ex.type = t; else delete ex.type; }
           if (ex.inc != null) { const v = clampNum(ex.inc, INC_MIN, INC_MAX, 0, INC_STEP); if (v > 0) ex.inc = v; else delete ex.inc; }
+          /* Absent by default, like `share`/`ss`: only the lifts that never
+             go near failure carry one. See weekRir. */
+          if (ex.minRir != null) { const v = clampInt(ex.minRir, 0, 5, 0); if (v > 0) ex.minRir = v; else delete ex.minRir; }
           if (ex.setup != null) { const s = txt(ex.setup, SETUP_LIMIT); if (s) ex.setup = s; else delete ex.setup; }
         });
       });
     });
+
+    /* After the blocks are repaired, because it reads the name each of the
+       three slots is carrying right now. */
+    seedLateralVariants(profile);
   });
 
   /* Whatever happened above, the app cannot draw with no profile at all. */
@@ -1455,10 +1483,15 @@ const VOLUME_DIMENSIONS = {
   type: { label: 'Tipo', tag: typeTag },
 };
 
+/* Half the sets on a deload, counting the one `ex.add` brings in rather
+   than discarding it: the week is "mitad de series" of the week you would
+   otherwise have done, and the target line prices exactly this many. The
+   phase text is read alongside the block's own `deload` field so a
+   hand-written "Descarga" week halves too — see deloadAt. */
 function setsFor(ex, w, block) {
   let n = ex.sets;
   if (ex.add && w >= ex.add) n += 1;
-  if (block && w === deloadWeek(block)) n = Math.max(2, Math.ceil(ex.sets / 2));
+  if (block && deloadAt(block, w)) n = Math.max(2, Math.ceil(n / 2));
   return n;
 }
 
@@ -1891,7 +1924,7 @@ function purgeDayLog(profile, blockId, dayId) {
    the third exercise — would still be sitting there when the day came back.
    Whatever clears a session's sets clears these too. */
 function purgeSessionMeta(profile, blockId, dayId, onlyWeek) {
-  [profile.notes, profile.energy, profile.order].forEach(map => {
+  [profile.notes, profile.energy, profile.order, profile.obj].forEach(map => {
     const blk = map && map[blockId];
     if (!blk) return;
     forEachSlot(map, blockId, k => delete blk[k], { dayId: dayId, week: onlyWeek });
@@ -2021,11 +2054,12 @@ function lastTime(profile, blockId, dayId, exId, beforeWeek) {
    and what you would change if you meant them to be two different lifts,
    so it is the right thing to trust.
 
-   Deliberately read for DISPLAY only. targetEstimate and copyPrev still
-   work from one session's own history, because the two slots are not
-   interchangeable: the same machine done first on Monday and fourth on
-   Thursday, after everything that came before it, is not the same set.
-   Folding them into one target would prescribe a weight set on the fresher
+   The NAME half is deliberately read for DISPLAY only. targetFor gathers
+   its history by id alone, because that is the one statement the plan
+   makes on purpose: two rows written with the same id are the same lift
+   and two rows that merely read alike are not — the unilateral pec deck on
+   Monday and the bilateral one on Thursday share a name and nothing else.
+   Matching those two by name would prescribe a weight set on the fresher
    day and then read the fatigued one as a regression. Showing them next to
    each other says what happened and leaves the judgement where it belongs. */
 function sameLift(a, b) {
@@ -2451,10 +2485,12 @@ function priorWeight(profile, blockId, w, dayId, exId, idx) {
 }
 
 /* ---------- the block before this one ----------
-   Every block starts at week 1 with nothing behind it: priorWeight walks
-   this block's own weeks, targetEstimate reads this block's own history
-   and copyPrev refuses on week 1 — so the first session of every block
-   asked for eight weeks of loads to be retyped from memory. The log of the
+   Every block starts at week 1 with nothing of its own behind it, and
+   priorWeight only walks this block's own weeks — so the first session of
+   every block asked for eight weeks of loads to be retyped from memory.
+   targetFor reads across blocks by exercise id now and usually answers on
+   week 1 by itself; this stays for the band that names where the numbers
+   came from, and for the hint on an exercise the rule cannot price. The log of the
    block this one was copied from is one step back in blockOrder.
 
    This reads it as a HINT only: a greyed placeholder and a labelled band,
@@ -2508,11 +2544,12 @@ function priorBlockSetsCached(profile, block, ex) {
 let renderCache = null;
 
 function resetRenderCache() {
-  renderCache = { lastTime: Object.create(null), liftSlots: Object.create(null), slug: Object.create(null), priorBlock: Object.create(null) };
+  renderCache = { lastTime: Object.create(null), liftSlots: Object.create(null), slug: Object.create(null),
+                  priorBlock: Object.create(null), history: Object.create(null), target: Object.create(null), brake: null };
 }
 
-/* Same five arguments, same answer — and the card loop asks twice: once
-   directly for the previous-week band, once inside targetEstimate. */
+/* Same five arguments, same answer — and the card loop asks for the
+   previous-week band once per card while every set row asks again. */
 function lastTimeCached(profile, blockId, dayId, exId, beforeWeek) {
   if (!renderCache) return lastTime(profile, blockId, dayId, exId, beforeWeek);
   const k = blockId + '|' + dayId + '|' + exId + '|' + beforeWeek;
@@ -2520,6 +2557,41 @@ function lastTimeCached(profile, blockId, dayId, exId, beforeWeek) {
     renderCache.lastTime[k] = lastTime(profile, blockId, dayId, exId, beforeWeek);
   }
   return renderCache.lastTime[k];
+}
+
+/* The target rule walks every block of the profile for one exercise, and
+   three callers inside one draw want the same answer: the card's own line,
+   the placeholder in every weight box of that card, and — once per day —
+   the global brake, which asks the same question of every exercise. Held
+   here for exactly as long as lastTime is, and dropped by the same reset.
+
+   The brake is a single value rather than a map because it is a fact about
+   the whole day; targetFor still takes it as an argument, so the rule
+   itself neither reads the clock nor the other exercises. */
+function exHistoryCached(profile, block, ex, dayId, week, onlyBlockId) {
+  if (!renderCache) return exHistory(profile, block, ex, dayId, week, onlyBlockId);
+  const k = block.id + '|' + ex.id + '|' + (dayId || '') + '|' + week + '|' + (onlyBlockId || '');
+  if (!(k in renderCache.history)) renderCache.history[k] = exHistory(profile, block, ex, dayId, week, onlyBlockId);
+  return renderCache.history[k];
+}
+
+function brakeCached(profile, block, week, now) {
+  if (!renderCache) return brakeOn(profile, block, week, now);
+  if (renderCache.brake == null) renderCache.brake = brakeOn(profile, block, week, now);
+  return renderCache.brake;
+}
+
+/* The one entry point the app uses: the brake and the clock filled in, and
+   the answer held for the rest of the draw. */
+function targetNow(profile, block, day, ex, week) {
+  const now = Date.now();
+  const dayId = day && day.id;
+  if (!renderCache) return targetFor(profile, block, day, ex, week, now, brakeOn(profile, block, week, now));
+  const k = block.id + '|' + ex.id + '|' + (dayId || '') + '|' + week;
+  if (!(k in renderCache.target)) {
+    renderCache.target[k] = targetFor(profile, block, day, ex, week, now, brakeCached(profile, block, week, now));
+  }
+  return renderCache.target[k];
 }
 
 /* O(days × exercises) per call, and the card loop calls it once per card —
@@ -2576,6 +2648,7 @@ function drawApp() {
   drawnSlot = { profile: state.activeProfile, block: block.id, key: slot(profile.week, day.id) };
   drawEnergy(profile, block, day);
   drawDeloadCheck(profile, block);
+  drawBrakeNote(profile, block);
   drawSessionNote(profile, block, day);
   const pairNote = soloMode() ? '' : (day.pair || '');
   $('pair').textContent = pairNote;
@@ -2679,10 +2752,20 @@ function buildExCard(ctx, ex, i) {
     (other ? band(' other', 'Sem. ' + other.week + ' · ' + dayTag(block, other.dayId), other.sets) : '') +
     (prior ? band(' prior', priorTag, prior.sets) : '');
 
+  /* No longer a gate on anything — the decay between sets is measured
+     properly by the target rule's own phi[k] now (see targetFor). What it
+     still does is name, in one line, the thing that number cannot: that
+     the first set of THIS session was probably taken closer to failure
+     than the ones after it. */
   const decay = repDecay(rows);
-  /* Read off the previous session, so it is the same number all week and
-     does not move as you tick sets. */
-  const est = targetEstimate(profile, block, day, ex, profile.week);
+  /* Read off the sessions before this one, so it is the same line all week
+     and does not move as you tick sets. */
+  const est = targetNow(profile, block, day, ex, profile.week);
+  /* Kept the moment the session becomes a session — the first row with
+     anything in it. Not on a bare draw: opening Thursday to look at it is
+     not a session, and a record of every day anyone ever scrolled past is
+     noise in the one place that is supposed to hold what was asked for. */
+  if (est && rows.some(rowUsed) && recordTarget(profile, block.id, profile.week, day.id, ex.id, est)) save();
   const setupOpen = expandedSetup.has(setupKey(block, ex));
 
   card.innerHTML =
@@ -2707,7 +2790,8 @@ function buildExCard(ctx, ex, i) {
     '</div>' +
     '<div class="sets"></div>' +
     (decay ? '<div class="ex-decay"></div>' : '') +
-    (est ? '<div class="ex-est ' + est.kind + '"><span class="ex-est-l"></span>' +
+    (est ? '<div class="ex-est ' + (est.dir || 'flat') + '"><span class="ex-est-l"></span>' +
+      '<span class="ex-est-c ' + est.conf + '"></span>' +
       targetNotes(est).map(() => '<span class="ex-est-n"></span>').join('') + '</div>' : '') +
     '<div class="ex-rir"><span class="ex-rir-lbl">RIR último set</span><div class="rir-chips"></div></div>' +
     (parked ? '<div class="ex-parked"></div>' : '');
@@ -2718,6 +2802,7 @@ function buildExCard(ctx, ex, i) {
 
   if (est) {
     card.querySelector('.ex-est-l').textContent = targetLine(est);
+    card.querySelector('.ex-est-c').textContent = TARGET_CONF_LABEL[est.conf];
     const noteEls = card.querySelectorAll('.ex-est-n');
     targetNotes(est).forEach((t, i) => { if (noteEls[i]) noteEls[i].textContent = t; });
   }
@@ -2827,13 +2912,24 @@ function buildExCard(ctx, ex, i) {
       '<button type="button" class="tick' + (r.done ? ' on' : '') + '" aria-pressed="' + (r.done ? 'true' : 'false') + '">✓</button>';
 
     const [wIn, rIn] = row.querySelectorAll('input');
+    /* The greyed number in the weight box is the target's own weight for
+       THIS set — one rule, one number, and the contract the box has always
+       had ("tick without typing takes what it shows") now adopts the
+       target rather than a copy of last week. Which is also what makes
+       "Copiar pesos" and the line above agree by construction instead of
+       by two implementations happening to say the same thing. */
+    const tgtRow = est && est.sets[si];
     const ownHint = priorWeight(profile, block.id, profile.week, day.id, ex.id, si);
     /* No earlier week in this block: the previous block's last logged
        session, same set index, last set when the plan has since grown —
        the same fallback priorWeight applies within a block. */
-    const priorRow = (!ownHint && prior) ? (prior.sets[si] || prior.sets[prior.sets.length - 1]) : null;
-    const hint = ownHint || (priorRow ? String(priorRow.w) : '');
-    const hintFrom = ownHint ? 'la semana anterior' : (priorRow ? '"' + prior.block.name + '", semana ' + prior.week : '');
+    const priorRow = (!tgtRow && !ownHint && prior) ? (prior.sets[si] || prior.sets[prior.sets.length - 1]) : null;
+    const hint = tgtRow ? loadText(tgtRow.w) : (ownHint || (priorRow ? String(priorRow.w) : ''));
+    /* The whole parenthetical rather than a noun the line then glues "lo de"
+       in front of: "lo de el objetivo" is not Spanish. */
+    const hintFrom = tgtRow ? 'lo que pide el objetivo de esta semana'
+      : ownHint ? 'lo de la semana anterior'
+      : (priorRow ? 'lo de "' + prior.block.name + '", semana ' + prior.week : '');
     wIn.value = r.w; rIn.value = r.r;
     wIn.placeholder = hint || '—';
     rIn.placeholder = '—';
@@ -2865,7 +2961,7 @@ function buildExCard(ctx, ex, i) {
         maybeNagBackup();
       }
       save(); drawCard(ex.id);
-      if (adopted) mark('Serie ' + (si + 1) + ' anotada con ' + adopted + ' ' + units() + ' (lo de ' + hintFrom + ') — cámbialo si no fue eso');
+      if (adopted) mark('Serie ' + (si + 1) + ' anotada con ' + adopted + ' ' + units() + ' (' + hintFrom + ') — cámbialo si no fue eso');
     };
 
     /* ↓ adds a segment rather than opening a panel: there is nothing to
@@ -3171,6 +3267,20 @@ function drawDeloadCheck(profile, block) {
   el.style.display = 'block';
 }
 
+/* ---------- the global brake, said out loud ----------
+   The one line on the screen that overrides every card's own answer, so it
+   has to be visible before the cards are read rather than inferred from
+   twenty exercises that all quietly declined to move. Read from the same
+   cached value targetFor was handed, so the banner and the numbers under
+   it can never disagree. */
+function drawBrakeNote(profile, block) {
+  const el = $('brakeNote');
+  if (!brakeCached(profile, block, profile.week, Date.now())) { el.style.display = 'none'; return; }
+  el.textContent = 'Esta semana no sube nada: ' + BRAKE_COUNT +
+    ' ejercicios han bajado a la vez. Mira sueño, comida o fatiga antes que el plan.';
+  el.style.display = 'block';
+}
+
 /* ---------- day/data actions ---------- */
 function currentDay() {
   const days = dayList(getBlock());
@@ -3179,66 +3289,43 @@ function currentDay() {
 
 $('copyPrev').onclick = () => {
   const profile = getProfile(), block = getBlock(), day = currentDay();
-  /* Week 1 has no week before it in this block. The block before this one
-     does — the same source the placeholder reads — so the button copies
-     that across instead of refusing. No objetivo on top of it: the
-     estimate needs a week of THIS block to price a step, and a deload as
-     last week would price it wrong anyway. Plain copy, as the message says. */
-  if (profile.week === 1) {
-    let copied = 0;
-    const names = new Set();
-    exList(day).forEach(ex => {
-      const prior = priorBlockSetsCached(profile, block, ex);
-      if (!prior) return;
-      const to = entry(profile, block.id, 1, day.id, ex.id, setsFor(ex, 1, block));
-      to.forEach((r, i) => {
-        if (r.done) return;
-        const from = prior.sets[i] || prior.sets[prior.sets.length - 1];
-        r.w = String(from.w);
-        stampRowUnit(r);
-      });
-      copied++;
-      names.add(prior.block.name);
-    });
-    if (!copied) { mark('No hay nada registrado antes de este bloque para los ejercicios de este día'); return; }
-    commit();
-    mark('Pesos copiados de ' + (names.size === 1 ? '"' + [...names][0] + '"' : 'bloques anteriores') + ' en ' + copied +
-      (copied === 1 ? ' ejercicio' : ' ejercicios') + ' — tal cual, sin subir: el objetivo empieza cuando este bloque tenga una semana registrada');
-    return;
-  }
-  const src = profile.log[block.id] && profile.log[block.id][slot(profile.week - 1, day.id)];
-  if (!src) { mark('No hay nada registrado en la semana ' + (profile.week - 1) + ' para este día'); return; }
-  let leveled = 0, heldBack = 0, lowered = 0, reset = 0;
+  /* One rule, one place — and now the button has no special cases left of
+     its own. Week 1 used to be one: the old estimate could only read this
+     block's own weeks, so the first session of a block fell back to a
+     plain copy of whatever the previous block ended on. The rule below
+     reads the history by exercise id across blocks, so week 1 of a new
+     block is simply a week with six sessions behind it like any other, and
+     what goes in the boxes is the objetivo the card is already showing. */
+  let written = 0, up = 0, down = 0, back = 0;
   exList(day).forEach(ex => {
-    const from = src[ex.id]; if (!from || !from.length) return;
+    const t = targetNow(profile, block, day, ex, profile.week);
+    if (!t) return;
     const to = entry(profile, block.id, profile.week, day.id, ex.id, setsFor(ex, profile.week, block));
-    /* One rule, one place: the same estimate the session line shows decides
-       what this button writes. It used to carry its own inline copy of
-       double progression — top of the range, minus a failure signal, plus
-       `ex.inc` — which is case 2 of targetEstimate() and nothing else. Two
-       implementations of one rule is how they drift, and this one could
-       only ever answer "same weight" or "one increment more": it could not
-       size the step off what the set actually cost, and it could never
-       say a weight was too heavy at all. */
-    const est = targetEstimate(profile, block, day, ex, profile.week);
-    const moved = est && (est.kind === 'up' || est.kind === 'down') ? est.weight : null;
-    if (est && est.kind === 'up') leveled++;
-    else if (est && est.kind === 'down' && est.note === 'reset') reset++;
-    else if (est && est.kind === 'down') lowered++;
-    else if (est && (est.note === 'topFailure' || est.note === 'topForced')) heldBack++;
     to.forEach((r, i) => {
       if (r.done) return;
-      const w = (from[i] || from[from.length - 1] || {}).w || '';
-      r.w = moved != null ? String(moved) : w;
+      /* A row past the last set the rule priced — a plan grown since, or a
+         deload's half session — takes the last weight rather than nothing:
+         an empty box is worse than a number you can see is the previous
+         set's. */
+      const from = t.sets[i] || t.sets[t.sets.length - 1];
+      r.w = loadText(from.w);
       stampRowUnit(r);
     });
+    written++;
+    if (t.kind === 'vuelta') back++;
+    /* Counted independently, not as a chain: the common shape of a v3
+       answer is one set up and one set down in the SAME exercise, and a
+       message that names only the first of them reads as a rule that did
+       half its job. */
+    if (t.sets.some(x => x.move === '↑')) up++;
+    if (t.sets.some(x => x.move === '↓')) down++;
   });
+  if (!written) { mark('Todavía no hay historial de estos ejercicios: el objetivo empieza con la primera sesión registrada'); return; }
   commit();
-  mark('Pesos copiados de la semana ' + (profile.week - 1) +
-    (leveled ? ' — ' + leveled + (leveled === 1 ? ' ejercicio sube' : ' ejercicios suben') + ' de peso (tope de rango la semana pasada)' : '') +
-    (lowered ? ' — ' + lowered + (lowered === 1 ? ' ejercicio baja' : ' ejercicios bajan') + ' de peso (las series no llegan al rango a este peso)' : '') +
-    (reset ? ' — ' + reset + (reset === 1 ? ' ejercicio baja un escalón' : ' ejercicios bajan un escalón') + ' para reconstruir (' + STALL_RESET + ' sesiones sin sumar reps)' : '') +
-    (heldBack ? ' — ' + heldBack + (heldBack === 1 ? ' ejercicio llegó al tope pero no sube' : ' ejercicios llegaron al tope pero no suben') + ' (hubo que bajar peso, o la última serie fue al fallo)' : '') +
+  mark('Objetivo escrito en ' + written + (written === 1 ? ' ejercicio' : ' ejercicios') +
+    (up ? ' — ' + up + (up === 1 ? ' sube' : ' suben') + ' de peso en alguna serie' : '') +
+    (down ? ' — ' + down + (down === 1 ? ' baja' : ' bajan') + ' de peso en alguna serie' : '') +
+    (back ? ' — ' + back + (back === 1 ? ' repite' : ' repiten') + ' la última sesión (vuelta de parón)' : '') +
     ' — supéralos');
 };
 
@@ -3275,6 +3362,7 @@ $('wipe').onclick = async () => {
   profile.notes = {};
   profile.energy = {};
   profile.order = {};
+  profile.obj = {};
   commit();
   mark('Registro de ' + profile.label + ' borrado');
 };
@@ -3286,7 +3374,7 @@ function setsLabel(n) { return n + (n === 1 ? ' serie registrada' : ' series reg
 
 /* ---------- estimated 1RM ----------
    The chart that made these necessary now lives in js/chart.js, but they
-   stayed: targetEstimate below reads both, and so does js/diagnostics.js
+   stayed: the target rule below reads both, and so does js/diagnostics.js
    for its own trend. */
 /* Epley: est1RM(w, r) = w × (1 + r/30). Simpler than Brzycki, it's what most
    lifting apps already show, and its error band is well understood. It
@@ -3298,453 +3386,661 @@ const est1RM = (w, r) => w * (1 + r / 30);
    unlike the weight series, which needs nothing but the weight itself. */
 const hasReps = r => r.r !== '' && r.r != null && !isNaN(num(r.r)) && num(r.r) > 0;
 
-/* ---------- target weight and reps for this week ----------
-   Double progression is REP-FIRST. e1RM only answers *how much* weight to
-   move, and only once the reps have earned the move. Driving the whole
-   estimate off e1RM instead — which is what this did first — tells a
-   lifter who put up 32×15/15/12/12 on a 10–15 range to jump to 35 kg and
-   restart at 10 reps, throwing away two sets of 15 he already owns and
-   putting him back at the bottom of a range he never finished. The reps
-   decide the case; e1RM only sizes the step.
+/* ---------- peso objetivo: una respuesta por serie ----------
+   The rule that reads the log and says what to put on the machine. It used
+   to price one weight for the whole exercise off the LAST set of LAST week.
+   That is one session's worth of evidence spent on a decision the log has
+   months of data for, and it froze two shapes of session solid: the one
+   that ends every set at the top of the range (nothing to compare, so
+   nothing moves) and the one whose first set is plainly stronger than its
+   fourth (one weight for both, priced off whichever end the rule happened
+   to read).
 
-   The logged RIR is not a gate either, it is a scale factor. The same
-   32×12 means three different things at 2+, 1 and 0 RIR, and it enters the
-   arithmetic twice: it normalises last week's set to a failure-equivalent,
-   and it predicts what THIS week's prescribed RIR will actually produce.
+   Three estimates come out of the history instead, and each answers a
+   different question:
 
-       rirLast   = the chip, or what the plan asked for that week
-       equivFail = lastSetReps + rirLast      reps at true failure
-       e1RM      = w × (1 + equivFail/30)     Epley — est1RM() above
-       predictedAt(ww) = (e1RM/ww − 1) × 30 − rirThis
+     level   what the first set can do today — the best capacity of the
+             last three sessions, so one bad night cannot lower it
+     phi[k]  what is left by set k — measured as a ratio between sets, so
+             it survives a back-off set at another weight
+     g       what one more session is worth — Theil-Sen over the last six,
+             so one strange point cannot steer it
 
-   And, for the sets that stay at the same weight, the same normalisation
-   per set rather than one number for the last one:
+   Then every set is decided on its own: a set that reached the top of the
+   range goes up a rung if the reps still land inside the range at the new
+   weight, a set the model cannot get to the bottom of the range comes
+   down, and everything else keeps its weight and chases a rep. The reps
+   pick the case and the capacity only sizes the step — that part is
+   unchanged, and it is what stops a lifter who put 32×15/15/12/12 on a
+   10-15 range being told to jump to 35 and restart at 10.
 
-       pred[i]   = max(reps[i], lastSetReps) + rirLast − rirThis
+   Nothing new is typed for any of it: the weights and reps are in the log,
+   the RIR chip is optional with the week's own prescription standing in,
+   and the range, the step and the phase text are in the plan. */
 
-   The chip describes the LAST set. Earlier sets at the same weight were
-   done fresher, so they carried at least that much reserve, and none of
-   them had less in it than the set that came after all of them — reading
-   each one at the same RIR, and at no less than the last set's reps, is a
-   lower bound, and the low side is the cheap side to be wrong on. Then
-   the cases, in this order. Any set under the bottom of
-   the range means the weight was picked too heavy — the answer copyPrev
-   could never give. Every set at or above the top means the jump is
-   earned. A weight that cannot reach the bottom at THIS week's RIR is the
-   first case in disguise. Anything else holds the weight and buys reps —
-   how many, and on which sets, is decided by what this weight has been
-   doing all block, not by adding one to last week and hoping.
-
-   Nothing here is typed for it: the reps are in the log, the chip is
-   optional with the plan's own prescription standing in, and the range and
-   the phase text are in the plan. */
+/* Epley's denominator. est1RM() above bakes the same 30 in for the chart;
+   here it is named because three different formulas divide by it. */
+const EPLEY_A = 30;
 
 /* Above this Epley drifts far enough that the estimate would be inventing
-   a number rather than reading one. */
+   a number rather than reading one. Still the ceiling the chart and the
+   Diagnóstico plot to; the rule below does not refuse past it, it reads
+   the set as a MINIMUM instead (see the censoring note). */
 const EST_MAX_REPS = 15;
 
-/* How many sessions in a row at the same weight may go by without the
-   effort-normalised reps moving before the rule stops asking for the same
-   thing again. One flat session is noise — sleep, a bad day, a busy gym —
-   so the rate holds through it. Two is a pattern: the +1-on-every-set ask
-   has failed twice, so the ask shrinks to one rep in total, on the set
-   with the most reserve. Three is a stall: the weight comes down one step
-   and the reps are rebuilt to the top of the range from there, which is
-   the oldest trick in double progression (two steps forward, one back) and
-   the one a rule that only ever adds a rep can never take. */
-const STALL_CONCENTRATE = 2, STALL_RESET = 3;
+/* ---- censoring ----
+   A set that ends at the top of the range, or is marked "2+", or carries no
+   chip at all, or ran past twelve reps, is not a measurement of what that
+   set could do — it is a floor under it. Halperin et al. (2022) found
+   lifters under-estimate the reps they have left by nearly one on average,
+   and that the error grows sharply past twelve; a set cut off at the top of
+   the range never went near failure in the first place. Both biases push the
+   estimate DOWN, which is the safe side: a target one rep light costs one
+   slightly easy set, a target one rep heavy costs the session.
 
-/* No target ever asks for more than this many reps over last week on one
-   set. The RIR normalisation and the weekly gain compound — a week that
-   went from 3 RIR to 2 with +1 progress is honestly r + 2 — and past that
-   the number is a guess dressed as a target. Under-shooting costs one
-   slightly light set; over-shooting costs a failed session. */
-const EST_MAX_RISE = 2;
+   So a censored set may only ever RAISE the level, never lower it, and the
+   set that has to guess how much is in reserve gets one rep of slack when it
+   decides whether the next rung fits. */
+const CENSOR_REPS = 12;
 
-/* The sets of one session that were done at its working weight.
+/* The level is the best of the last three sessions: a single bad day is not
+   allowed to move it, three sessions renew it completely. */
+const LEVEL_SESSIONS = 3;
+/* The window for both the trend and the between-set decay — roughly a block.
+   Long enough that one night does not set the verdict, short enough that a
+   plateau broken two months ago is not still being counted. */
+const TREND_SESSIONS = 6;
+/* Two points are not a trend, they are a line through two points. */
+const TREND_MIN_POINTS = 3;
+/* Per session, as a fraction of capacity. Above this the "trend" is the
+   learning curve of a new movement, and extrapolating it prescribes a
+   weight nobody can lift in three weeks' time. */
+const MAX_SLOPE = 0.03;
+/* The first sessions on a new variant, where the jump is skill and not
+   strength — so the trend is not read at all and the ordinary +1 rep
+   stands in. */
+const LEARNING_SESSIONS = 3;
+/* Longer than the gap a normal week leaves, so an ordinary Monday-to-Monday
+   never reads as a layoff. Räntilä et al. (2021): no group lost maximal
+   strength in the first three weeks off, which is why coming back repeats
+   the last session rather than discounting it. */
+const GAP_DAYS = 10;
+/* How far under the best of the three sessions before it a session has to
+   fall to count as a real decline rather than a bad day. */
+const DECLINE_DROP = 0.05;
+/* Declines at once that stop the whole day going up, and the window they
+   have to fall inside. Three exercises down in the same week is a fact
+   about sleep, food or fatigue, not about the plan. */
+const BRAKE_COUNT = 3, BRAKE_DAYS = 7;
+/* What one set costs the next when there is nothing to measure it on, and
+   the floor under a measured one — below this the "decay" is a mis-typed
+   row or a set done at a weight the rule could not see. */
+const PSI_PRIOR = 0.97, PSI_MIN = 0.8;
+/* Two loads a hair apart are the same load, and repsAt() lands exactly on
+   an integer often enough (63/47,25 is 9 reps, not 8,999…) that the floor
+   below it has to be nudged off the boundary. */
+const WEIGHT_EPS = 1e-6;
+const DAY_MS = 86400000;
 
-   The weight is *usually* constant across the sets, and the rule reads a
-   rep count per set — so when it varied, taking one set's weight and
-   every set's reps mixes them into nonsense. 14×15, 14×11, 9×12 came out
-   as "9 kg × 15/12/13": fifteen reps at a weight two of the three sets
-   were nowhere near.
+/* The chip as the reps it stands for, with a missing chip read as zero —
+   and a session with no chip is censored anyway (see above), so reading it
+   as "went to failure" can only make the estimate lower, never higher. */
+const rhoOf = raw => { const v = rirNumber(raw); return v == null ? 0 : v; };
 
-   So the working weight is the one most of the sets were actually done
-   at, heaviest on a tie, and only those sets feed the rule. Whatever was
-   done at some other weight — a back-off, a stack that had to come down,
-   a mis-tap — is left out and said so, rather than folded in as though it
-   had happened at the working weight. `chipFits` says whether the RIR chip
-   — which records the LAST set of the session — describes one of these
-   sets at all. */
-function workingSets(rows) {
-  const weights = rows.map(r => num(r.w)).filter(v => v > 0);
-  if (!weights.length) return null;
-  const seen = {};
-  weights.forEach(v => { seen[v] = (seen[v] || 0) + 1; });
-  let w = weights[0];
-  Object.keys(seen).forEach(k => {
-    const v = num(k);
-    if (seen[k] > seen[w] || (seen[k] === seen[w] && v > w)) w = v;
-  });
-  const atW = rows.filter(r => num(r.w) === w);
-  return { w: w, sets: atW.map(r => num(r.r)), apart: rows.length - atW.length,
-           chipFits: num(rows[rows.length - 1].w) === w };
+/* Epley with the reserve added back in: what the set would have been worth
+   taken to failure. */
+const capOf = (w, r, rho) => w * (1 + (r + rho) / EPLEY_A);
+
+/* The other direction — how many reps a capacity is good for at a given
+   weight, leaving this week's prescribed reserve in the tank. Floored,
+   because a target is a number you have to be able to hit. */
+const repsAt = (w, cap, rirWeek) => Math.floor(EPLEY_A * (cap / w - 1) - rirWeek + WEIGHT_EPS);
+
+const sameLoad = (a, b) => Math.abs(a - b) < WEIGHT_EPS;
+const round2 = v => Math.round(v * 100) / 100;
+/* A weight written the way it is typed and read on the card: two decimals
+   at most, no trailing zeros, Spanish comma. */
+const loadText = v => String(round2(v)).replace('.', ',');
+
+function median(a) {
+  const s = a.slice().sort((x, y) => x - y);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
-/* The RIR a session's last working set was done at: the chip when it was
-   tapped AND describes a set at the working weight, the plan's own
-   prescription for that week otherwise. `value` is null only in a week
-   the plan gave no number for — a deload — which is not evidence about
-   anything. */
-function sessionRir(profile, block, day, ex, sess, ws) {
-  const logged = ws.chipFits ? getRir(profile, block.id, sess.week, day.id, ex.id) : '';
-  const val = rirNumber(logged);
-  return { logged: logged, value: val == null ? phaseRir(block, sess.week) : val, assumed: val == null };
-}
-
-const avgOf = a => a.reduce((t, v) => t + v, 0) / a.length;
-
-/* How many sessions in a row, ending at `prev`, have been done at weight
-   `w` without the effort-normalised reps improving on the session before.
-   "Effort-normalised" is reps per set plus the RIR they were left at: the
-   same 12 reps at 0 RIR in a week that asked for 2 is not the same
-   session as 12 at 2, and a session that held its reps while the plan
-   turned the RIR down did not stand still, it went backwards. Per set
-   rather than in total so that the extra set `ex.add` brings in one week
-   — a tired set, always the lowest — does not read as a jump.
-
-   Only the block's own history at this exact weight counts. A session at
-   any other weight ends the walk: a step up or a reset is a new run, and
-   the reps it opens with have nothing to say about the old one. */
-function stallStreak(profile, block, day, ex, prev, w, effort) {
-  let stall = 0, cur = effort, week = prev.week;
-  for (;;) {
-    const before = lastTimeCached(profile, block.id, day.id, ex.id, week);
-    if (!before) break;
-    const rows = before.sets.filter(hasReps);
-    const ws = rows.length ? workingSets(rows) : null;
-    if (!ws || ws.w !== w) break;
-    const rir = sessionRir(profile, block, day, ex, before, ws).value;
-    if (rir == null) break;
-    const then = avgOf(ws.sets) + rir;
-    if (cur > then) break;
-    stall++;
-    cur = then;
-    week = before.week;
+/* Theil-Sen: the median of the slopes between every pair of points. A
+   least-squares line through six sessions is steered by whichever one went
+   worst; the median of the pairwise slopes is not, which matters because
+   the one bad session is exactly the point a training log always has. */
+function theilSen(pts) {
+  const slopes = [];
+  for (let i = 0; i < pts.length; i++) {
+    for (let j = i + 1; j < pts.length; j++) {
+      if (pts[j][0] !== pts[i][0]) slopes.push((pts[j][1] - pts[i][1]) / (pts[j][0] - pts[i][0]));
+    }
   }
-  return stall;
+  return slopes.length ? median(slopes) : 0;
 }
 
-function targetEstimate(profile, block, day, ex, week) {
-  const prev = lastTimeCached(profile, block.id, day.id, ex.id, week);
-  if (!prev) return null;
+/* A deload is ~60 % of the working weight by design, so its sessions are
+   evidence about nothing and are kept out of every window below. The
+   block's own `deload` field is the answer whenever there is one; the text
+   is read too, because a hand-written phase can say "Descarga" on a week
+   the field never heard about, and halving the sets on a week that says
+   "Descarga" is what the week asks for either way. */
+function deloadAt(block, w) {
+  if (w === deloadWeek(block)) return true;
+  return /descarga/i.test(String((block && block.phase && block.phase[w] && block.phase[w].r) || ''));
+}
 
-  const rows = prev.sets.filter(hasReps);
-  if (!rows.length) return null;
+/* The RIR the plan asks for, never under what the exercise itself says is
+   its floor: `ex.minRir` is for the lifts nobody takes to failure — a
+   squat, a Romanian deadlift — where a week prescribing 0-1 RIR is a
+   number you are not going to follow, and an estimate built on it is a
+   weight you cannot make. A phase with no number at all (somebody's own
+   words) falls back to the reserve the last session was left at, which
+   asks for no change rather than inventing one. */
+function weekRir(block, ex, w, lastRho) {
+  let v = phaseRir(block, w);
+  if (v == null) v = lastRho == null ? 0 : lastRho;
+  const floor = num(ex && ex.minRir);
+  return floor > 0 ? Math.max(v, floor) : v;
+}
 
-  const ws = workingSets(rows);
-  if (!ws) return null;
-  const w = ws.w, sets = ws.sets, apart = ws.apart;
-  const last = sets[sets.length - 1];
+/* ---- one session, as the rule reads it ----
+   Only working sets: ticked, with a weight and a rep count. rowWeight()
+   rather than num(r.w), because this window spans months and a profile
+   that switched kg↔lb mid-block would otherwise have two scales in one
+   average — the same reason js/diagnostics.js converts and the old
+   single-session estimate did not have to.
+
+   The date is the MEDIAN of the row timestamps, not the first or the last:
+   a set ticked days later from memory moves a mean and does not move a
+   median. */
+function exSession(profile, blockId, week, dayId, exId, lo, hi) {
+  const bucket = profile.log[blockId] && profile.log[blockId][slot(week, dayId)];
+  const rows = bucket && bucket[exId];
+  if (!Array.isArray(rows)) return null;
+  const work = rows.filter(r => r && r.done && rowWeight(r) > 0 && num(r.r) > 0);
+  if (!work.length) return null;
+  const raw = getRir(profile, blockId, week, dayId, exId) || null;
+  const rho = rhoOf(raw);
+  const stamps = work.map(r => +r.ts).filter(t => t > 0);
+  return {
+    blockId: blockId, week: week, dayId: dayId, rir: raw, rho: rho,
+    ts: stamps.length ? median(stamps) : 0,
+    sets: work.map(r => {
+      const w = rowWeight(r), n = num(r.r);
+      return { w: w, r: n, e: capOf(w, n, rho),
+               cens: n >= hi || raw === '2+' || raw == null || n > CENSOR_REPS };
+    }),
+  };
+}
+
+/* ---- the variant an exercise is on ----
+   Renaming an exercise in the plan editor usually means a different
+   machine or a different groove — "Elevaciones laterales en polea" became
+   "Elevaciones en Y en polea cruzada" and the loads are not comparable.
+   `profile.variants[exId]` records the names with the date each started;
+   everything logged before the current one began is a different lift and
+   is left out. A session with no timestamp at all is kept: it cannot be
+   placed either side of the change, and dropping history the app is merely
+   unsure about is the more expensive mistake. */
+const VARIANT_SINCE_RE = /^\d{4}-\d{2}-\d{2}$/;
+/* One entry per rename. Capped because it is written from an edit nobody
+   rate-limits and read only at its tail: a plan somebody renames forty
+   times has forty rows of history nothing will ever ask for. */
+const VARIANT_LIMIT = 12;
+const isoDay = ts => new Date(ts).toISOString().slice(0, 10);
+
+function variantSince(profile, exId) {
+  const list = profile && profile.variants && profile.variants[exId];
+  if (!Array.isArray(list) || !list.length) return 0;
+  const last = list[list.length - 1];
+  const t = last && last.since ? Date.parse(String(last.since) + 'T00:00:00Z') : NaN;
+  return isFinite(t) ? t : 0;
+}
+
+/* ---- one-off: the lateral raises ----
+   The three lateral-raise slots (`lat1`/`lat2`/`lat3` in the shipped plan)
+   were renamed from "Elevaciones laterales en polea" to "Elevaciones en Y
+   en polea cruzada" before there was anything to record a rename with, so
+   the pair of names is seeded here for any profile still carrying it.
+
+   The DATE is the oldest session the exercise has, not the day of the
+   rename: that day is in nobody's data — the log keeps weights and reps,
+   never the name they were done under — and a guess at it would silently
+   throw away every session before the guess, which on a lift trained three
+   days a week is most of a block. So this records the names and cuts
+   nothing. Every rename from v3 on gets a real date from recordVariant. */
+const LEGACY_LAT_IDS = ['lat1', 'lat2', 'lat3'];
+const LEGACY_LAT_NAME = 'Elevaciones laterales en polea';
+function seedLateralVariants(profile) {
+  LEGACY_LAT_IDS.forEach(exId => {
+    if (profile.variants[exId]) return;
+    let now = '';
+    Object.keys(profile.blocks).forEach(bk => {
+      ((profile.blocks[bk] || {}).days || []).forEach(d => (d.ex || []).forEach(e => {
+        if (e && e.id === exId && e.n) now = e.n;
+      }));
+    });
+    if (!now || slugify(now).indexOf('elevaciones-en-y') !== 0) return;
+    let first = 0;
+    Object.keys(profile.log).forEach(bk => {
+      forEachSlot(profile.log, bk, (k, w, dayId, sl) => {
+        const rows = sl && sl[exId];
+        if (!Array.isArray(rows)) return;
+        rows.forEach(r => { const t = r && +r.ts; if (t > 0 && (!first || t < first)) first = t; });
+      });
+    });
+    profile.variants[exId] = [
+      { n: LEGACY_LAT_NAME, since: '1970-01-01' },
+      { n: now, since: isoDay(first || Date.now()) },
+    ];
+  });
+}
+
+/* Called when a plan edit is saved: an exercise whose NAME changed is
+   treated as a different lift from today on, and the loads before the
+   change stop feeding its target. Deliberately the name and not the id —
+   the id is the app's own handle and never changes under an edit, while
+   the name is the one thing a person edits when they mean "this is a
+   different machine now". A first record is written for the name it had
+   before, so the cut is a date and not a guess.
+
+   This is also why `variants` is written at all rather than derived: the
+   log keeps no copy of the name a session was done under, so once the
+   plan is saved the old name is gone and the date with it. */
+function recordVariant(profile, exId, oldName, newName, ts) {
+  const from = txt(oldName, IMPORT_LIMITS.exName) || '';
+  const to = txt(newName, IMPORT_LIMITS.exName) || '';
+  if (!to || from === to) return;
+  const id = safeKey(exId);
+  if (!id) return;
+  if (!profile.variants) profile.variants = {};
+  const list = profile.variants[id] || (profile.variants[id] = []);
+  /* The variant that was running until today, dated only if this is the
+     first rename we ever saw — after that its own `since` is already on
+     file. Without it the cut would be "since the rename", with everything
+     before it kept, which is the opposite of what a rename means. */
+  if (!list.length && from) list.push({ n: from, since: '1970-01-01' });
+  list.push({ n: to, since: isoDay(ts || Date.now()) });
+  profile.variants[id] = list.slice(-VARIANT_LIMIT);
+}
+
+/* The target as it was on the screen, kept once the session has actually
+   started. Written once per session and never rewritten: the point of the
+   record is what was ASKED for, so a weight that came down mid-session has
+   something to be compared against — the rule's own back-off, or a set the
+   lifter had to strip. Rebuilding it later would only ever reproduce the
+   rule, which is the one thing it must not do. */
+function recordTarget(profile, blockId, week, dayId, exId, t) {
+  const k = slot(week, dayId);
+  const blk = profile.obj[blockId] || (profile.obj[blockId] = Object.create(null));
+  const sl = blk[k] || (blk[k] = Object.create(null));
+  if (sl[exId]) return false;
+  sl[exId] = { v: 3, at: Date.now(), conf: t.conf,
+               sets: t.sets.map(x => ({ w: x.w, r: x.r, m: x.move })) };
+  return true;
+}
+
+/* ---- every session of one exercise, oldest first ----
+   Joined by exercise id and across blocks, which is what makes a rule built
+   on six sessions work at all in week 1 of a new block. By id and not by
+   name on purpose: two rows that read the same on two different days can be
+   two different lifts (the unilateral pec deck on Monday, the bilateral one
+   on Thursday), and the plan is what says whether they are the same — a
+   block written as JSON gives both the same id when they are.
+
+   Chronology is blockOrder, then week, then the day's position in the
+   block: the log records no clock of its own for a session that was never
+   ticked, and the plan's own order is the only other thing that knows
+   which came first. */
+function exHistory(profile, block, ex, dayId, beforeWeek, onlyBlockId) {
   const lo = repRangeBottom(ex.reps), hi = repRangeTop(ex.reps);
-  if (!(w > 0) || !(lo > 0) || !(hi > 0) || !(last > 0)) return null;
-
-  /* A deload prescribes no RIR to solve for, and is not a progression
-     week in the first place. Say nothing at all. */
-  const rirThis = phaseRir(block, week);
-  if (rirThis == null) return null;
-
-  /* The chip records the RIR of the LAST set of the session. When that set
-     was not at the working weight it describes a set this estimate is not
-     built on, so it is not this set's evidence — the plan's own
-     prescription stands in instead, exactly as when no chip was tapped. */
-  const rirInfo = sessionRir(profile, block, day, ex, prev, ws);
-  const rirLogged = rirInfo.logged, rirLast = rirInfo.value;
-  if (rirLast == null) return null;
-
-  const inc = incFor(ex);
-  /* The sets the plan asks for THIS week, which is not always how many
-     were logged last time: `ex.add` brings one in mid-block, and a set
-     the plan gained has no history at this weight to read a target off. */
-  const n = setsFor(ex, week, block);
-  const out = { week: prev.week, from: w, fromReps: last, sets: sets,
-                rir: rirLast, rirThis: rirThis, assumed: rirInfo.assumed,
-                apart: apart, weight: w, reps: [last] };
-
-  /* Only the cases that have to PRICE a weight need Epley, and only those
-     are blocked by its rep ceiling. Holding the weight to chase reps is
-     pure rep arithmetic — it never touches the estimate — so checking the
-     ceiling before the cases silenced the app on exactly the high-rep
-     isolation work where holding is nearly always the answer. A 12–20
-     range spends most of its life above 15 reps. */
-  const canPrice = last <= EST_MAX_REPS;
-
-  const equivFail = last + rirLast;
-  const e1 = est1RM(w, equivFail);
-  const predictedAt = ww => (e1 / ww - 1) * 30 - rirThis;
-  const round2 = v => Math.round(v * 100) / 100;
-  const bottomAt = () => round2(Math.floor((e1 / (1 + (lo + rirThis) / 30)) / inc) * inc);
-  /* What every set should do at some other weight: the last set priced
-     off its own e1RM, and the rest keeping the shape of the decay last
-     week showed. One number for the whole session — which is what the
-     down line used to print — read as "that many on every set", and a
-     42,75 × 8 under a 45 × 12/10/9/8 looked like a quarter of the volume
-     gone when the model was actually predicting 12/10/9/8 at the lighter
-     weight. */
-  const atWeight = nw => {
-    const lastNew = Math.round(predictedAt(nw));
-    return sets.map(r => Math.max(1, Math.min(hi, lastNew + (r - last))));
-  };
-
-  /* Sets beyond the ones this weight has a record for get the tail of the
-     observed decay: what the last known set did, less the average drop
-     between one set and the next. Never below one rep — a fifth set that
-     the arithmetic prices at zero is still a set you are going to do —
-     and never above the top. Only the per-set answers extend; a jump
-     prices one number for every set and stays that way. */
-  const extend = () => {
-    const extra = n - rows.length;
-    if (extra <= 0 || out.reps.length !== sets.length) return;
-    const drop = sets.length > 1 ? Math.max(0, Math.round((sets[0] - last) / (sets.length - 1))) : 0;
-    for (let i = 0; i < extra; i++) {
-      out.reps.push(Math.max(1, Math.min(hi, out.reps[out.reps.length - 1] - drop)));
-    }
-    out.extra = extra;
-  };
-
-  /* Case 3 — any set under the bottom of the range. The weight was picked
-     too heavy, and rounding DOWN is the point: landing back inside the
-     range matters more than the last increment of load. */
-  if (sets.some(r => r < lo)) {
-    if (!canPrice) { out.kind = 'skip'; return out; }
-    out.kind = 'down';
-    out.weight = bottomAt();
-    out.reps = atWeight(out.weight);
-    return out;
-  }
-
-  /* Case 2 — every set at or above the top. The jump is earned. */
-  if (sets.every(r => r >= hi)) {
-    /* Hitting the top means every set equals hi, so there is no rep decay
-       left to detect — only a set taken to failure or one that needed the
-       weight stripped can still say the number was not honestly owned. */
-    if (forcedDrop(prev.sets) || rirLogged === '0') {
-      out.kind = 'hold';
-      out.reps = sets.map(() => hi);
-      out.note = forcedDrop(prev.sets) ? 'topForced' : 'topFailure';
-      extend();
-      return out;
-    }
-    if (!canPrice) { out.kind = 'skip'; return out; }
-    let nw = roundToStep(e1 / (1 + (lo + rirThis) / 30), inc);
-    /* Step down rather than land under the range. This replaces the old
-       ±10 %/week clamp, which was the wrong guardrail: on a coarse machine
-       stack the only available step can exceed 10 %, and the clamp then
-       froze the exercise forever. Saying it in reps says the same thing in
-       the units the program already uses, and degrades correctly. */
-    while (nw > w + inc && predictedAt(nw) < lo) nw -= inc;
-    /* However coarse the stack, one step is always allowed. */
-    if (nw <= w) nw = w + inc;
-    nw = round2(nw);
-    const pred = Math.round(predictedAt(nw));
-    out.kind = 'up';
-    out.weight = nw;
-    out.reps = [pred];
-    if (pred < lo) out.note = 'coarse';
-    return out;
-  }
-
-  /* From here on the weight stays and the sets are read one by one. The
-     gap is what this week's prescription costs or gives back against
-     last week's effort: positive when last week was easier than this one
-     asks for (the reps it left in the tank are reps to collect), negative
-     when it was harder (the reps have to come down to get back to the
-     prescription, and that is not a loss). */
-  const gap = rirLast - rirThis;
-  const pred = sets.map(r => Math.max(r, last) + gap);
-  out.predLast = last + gap;
-  out.pred = pred;
-
-  /* Case 3 again, one step removed: every set was inside the range, but at
-     the RIR this week asks for, the same strength does not reach its
-     bottom on MOST of them. 10 reps at 0 RIR in a week that prescribes 2
-     is 8 reps at the prescription — under a 10–15 range — and holding the
-     weight would ask for a session the range itself says is too heavy.
-
-     Most, not any. A 45 × 12/10/9/8 with the last set at 0 RIR reads
-     10/8/7/6 at 2 RIR: two sets short, two not, and the first set has
-     the top of the range in it. That weight is not too heavy — the
-     freshest set says so — the session fell away, which is pacing and
-     rest, and the rep-decay line above the sets already names it. Pricing
-     the weight off the most fatigued set there took 5 % off a load the
-     lifter plainly owns. When the majority of the sets miss, the
-     freshest one is not carrying the session either, and the weight is
-     the answer; the weight priced is the one that puts the LAST set back
-     at the bottom, so every set lands inside the range. The weekly gain
-     is not counted on to rescue a weight, because a target is a number
-     you can fail. */
-  const missed = pred.filter(p => p < lo).length;
-  if (missed * 2 > sets.length) {
-    if (!canPrice) { out.kind = 'skip'; return out; }
-    out.kind = 'down';
-    out.weight = bottomAt();
-    out.reps = atWeight(out.weight);
-    out.note = 'predUnder';
-    out.missed = missed;
-    return out;
-  }
-
-  const stall = stallStreak(profile, block, day, ex, prev, w, avgOf(sets) + rirLast);
-  out.stall = stall;
-
-  /* A stall long enough resets: one step down, and the sets are priced
-     off the same e1RM at the lighter weight, keeping the shape of the
-     decay last week showed. The reset needs Epley, so past its ceiling it
-     falls through to the concentrated ask and says the stall in words. */
-  if (stall >= STALL_RESET && canPrice && round2(w - inc) > 0) {
-    out.kind = 'down';
-    out.note = 'reset';
-    out.weight = round2(w - inc);
-    const lastNew = Math.round(predictedAt(out.weight));
-    out.reps = sets.map(r => Math.max(1, Math.min(hi, lastNew + (r - last))));
-    extend();
-    return out;
-  }
-
-  /* Case 1 — hold the weight and buy reps. At full rate that is one rep
-     on every set on top of what the prescription already predicts; once
-     the weight has stalled it is one rep in total, on the first set that
-     still has room — the freshest set, where the reserve actually is.
-     Capped at the top of the range and at EST_MAX_RISE over last week;
-     never under one rep. No Epley anywhere in here, so this stands however
-     long the sets ran. */
-  const each = stall < STALL_CONCENTRATE;
-  let given = false;
-  out.kind = 'hold';
-  /* Clamped at the bottom of the range, not at one rep. A set the
-     prescription prices under the range is still asked for the bottom —
-     the range is the plan — and the cost is said in the note: that set
-     will land closer to failure than the week asks. Named off the
-     prescription alone, not off the gain: a set the weekly rep would
-     just lift to the bottom still lands a rep under the RIR asked for,
-     and that is the fact the lifter needs standing in front of it. The
-     landing RIR is what the set's capacity leaves after the bottom, never
-     negative here, because every set in this case actually reached the
-     bottom last week. */
-  out.short = pred.map((p, i) => ({ set: i + 1, land: p + rirThis - lo })).filter((x, i) => pred[i] < lo);
-  out.reps = sets.map((r, i) => {
-    let gain = 0;
-    if (each) gain = 1;
-    else if (!given && pred[i] < hi) { gain = 1; given = true; }
-    return Math.max(lo, Math.min(hi, r + EST_MAX_RISE, pred[i] + gain));
+  const order = profile.blockOrder || [];
+  const at = order.indexOf(block.id);
+  const all = at >= 0 ? order.slice(0, at + 1) : order.concat([block.id]);
+  /* `onlyBlockId` is for the Diagnóstico's own "este bloque" scope, which
+     asks the same question of a narrower window. The rule itself never
+     passes it: a block boundary is a fact about the calendar, not about
+     the lifter, and starting every block from no history is what made
+     week 1 ask for eight weeks of loads from memory. */
+  const ids = onlyBlockId ? all.filter(id => id === onlyBlockId) : all;
+  /* A plan may put one lift on two days of the same week, and those two
+     slots are not interchangeable: the same machine pressed first on
+     Monday and fourth on Thursday, after everything before it, is not the
+     same set. Folding them would prescribe a weight set on the fresher day
+     and then read the fatigued one as a decline. So inside the block being
+     trained the day is part of the key whenever the plan actually splits
+     the lift; everywhere else it is not, because an earlier block's days
+     were renumbered by whoever wrote it and matching on them would throw
+     away the history rather than separate it. */
+  let splitDays = 0;
+  (block.days || []).forEach(d => { if ((d.ex || []).some(e => e && e.id === ex.id)) splitDays++; });
+  const ownDay = splitDays > 1 ? dayId : null;
+  const out = [];
+  ids.forEach((bId, bi) => {
+    const bk = profile.blocks[bId];
+    if (!bk || !profile.log[bId]) return;
+    const dayIdx = {};
+    (bk.days || []).forEach((d, i) => { dayIdx[d.id] = i; });
+    forEachSlot(profile.log, bId, (k, w, dayId2, s) => {
+      if (!s || !Array.isArray(s[ex.id])) return;
+      if (bId === block.id && w >= beforeWeek) return;
+      if (bId === block.id && ownDay && dayId2 !== ownDay) return;
+      if (deloadAt(bk, w)) return;
+      const sess = exSession(profile, bId, w, dayId2, ex.id, lo, hi);
+      if (!sess) return;
+      sess.ord = [bi, w, dayIdx[dayId2] == null ? 99 : dayIdx[dayId2]];
+      out.push(sess);
+    });
   });
-  if (!each) out.note = stall >= STALL_RESET ? 'stallLong' : 'stallOne';
-  /* The whole reason RIR has to be in the arithmetic. If last week's final
-     set went to failure and this week prescribes 2 RIR, the rep count
-     SHOULD fall — that is pulling back to the prescription, not losing
-     ground. The line above already prices that in; without saying so it
-     looks like the app is reporting a loss. The other direction is said
-     too, because a target two reps up looks like a demand rather than a
-     rebate. */
-  if (out.short.length) out.pacing = true;
-  else if (gap < 0) out.rirDrop = true;
-  else if (gap > 0) out.rirGain = true;
-  extend();
+  out.sort((x, y) => x.ord[0] - y.ord[0] || x.ord[1] - y.ord[1] || x.ord[2] - y.ord[2]);
+  const since = variantSince(profile, ex.id);
+  return since ? out.filter(s => !s.ts || s.ts >= since) : out;
+}
+
+/* ---- the rungs this machine actually has ----
+   `ex.inc` says what one step is worth, but a plate stack is not a ruler:
+   the lateral raise goes 18 → 19 and the pec deck goes 39 → 45 → 52. The
+   weights already logged against this exercise ARE the stack, so the next
+   rung up is the lowest of them within one and a half steps, and only when
+   there is none does the step itself have to invent one. That is what
+   keeps a 2,5 kg default from proposing 20,5 on a machine whose next pin
+   is 23, and what lets a micro-plate of 1 kg be a real rung. */
+function loadLadder(sessions) {
+  const seen = [];
+  sessions.forEach(s => s.sets.forEach(x => { if (!seen.some(v => sameLoad(v, x.w))) seen.push(x.w); }));
+  return seen.sort((a, b) => a - b);
+}
+function nextLoad(ladder, w, inc) {
+  const up = ladder.filter(v => v > w + WEIGHT_EPS && v <= w + 1.5 * inc + WEIGHT_EPS);
+  return up.length ? up[0] : w + inc;
+}
+function prevLoad(ladder, w, inc) {
+  const dn = ladder.filter(v => v < w - WEIGHT_EPS && v >= w - 1.5 * inc - WEIGHT_EPS);
+  return dn.length ? dn[dn.length - 1] : w - inc;
+}
+
+/* ---- the level, and what counts as losing it ----
+   A capacity sequence is one number per session: what the FIRST set was
+   worth, because it is the only set done fresh and therefore the only one
+   comparable across sessions of different lengths.
+
+   A decline is a session at least DECLINE_DROP under the best of the three
+   before it, read off a set that was not censored — a session that ended at
+   the top of the range is a floor, and a floor cannot say you got weaker.
+   One of those holds the weights where they are for a day. Two in a row is
+   the level itself moving, which is the only thing that lowers it. */
+function capSeq(sessions) {
+  return sessions.map(s => ({ C: s.sets[0].e, cens: s.sets[0].cens }));
+}
+function declineAt(seq, i) {
+  if (i <= 0 || !seq[i] || seq[i].cens) return false;
+  const before = seq.slice(Math.max(0, i - 3), i).map(x => x.C);
+  if (!before.length) return false;
+  return seq[i].C < Math.max.apply(null, before) * (1 - DECLINE_DROP);
+}
+function levelOf(seq) {
+  if (!seq.length) return { level: 0, cens: true, hold: false, confirmed: false };
+  const top = seq.slice(-LEVEL_SESSIONS).reduce((best, x) => (x.C > best.C ? x : best));
+  const out = { level: top.C, cens: top.cens, hold: false, confirmed: false };
+  const li = seq.length - 1;
+  if (declineAt(seq, li)) {
+    if (declineAt(seq, li - 1)) { out.level = seq[li].C; out.cens = seq[li].cens; out.confirmed = true; }
+    else out.hold = true;
+  }
   return out;
+}
+
+/* ---- the whole rule ----
+   `now` and `brake` are arguments and not reads, so this stays a pure
+   function of (profile, block, ex, week): the brake is a fact about the
+   WHOLE day and is worked out once when the day is drawn, and the clock is
+   the one input a rule about layoffs cannot avoid. */
+function targetFor(profile, block, day, ex, week, now, brake) {
+  const lo = repRangeBottom(ex.reps), hi = repRangeTop(ex.reps);
+  if (!(lo > 0) || !(hi > 0) || hi < lo) return null;
+  const sessions = exHistoryCached(profile, block, ex, day && day.id, week);
+  if (!sessions.length) return null;
+
+  const last = sessions[sessions.length - 1];
+  const inc = incFor(ex);
+  const n = setsFor(ex, week, block);
+  const ladder = loadLadder(sessions);
+  const notes = [];
+  /* How many of the last six sessions read the first set rather than only
+     bounding it. Nothing downstream changes with it — it is what the
+     lifter needs in order to know how hard to argue with the number. */
+  const clear = sessions.slice(-TREND_SESSIONS).filter(s => !s.sets[0].cens).length;
+  const conf = clear <= 1 ? 'baja' : clear <= 3 ? 'media' : 'alta';
+  const t = { kind: 'objetivo', sets: [], conf: conf, notes: notes, dir: '',
+              from: last.sets[0].w, week: last.week, sessions: sessions.length };
+
+  /* A deload prescribes half the sets at the bottom of the range and about
+     60 % of the load — and 60 % of a stack is usually not a number the
+     stack has, so it is the first rung at or under it, walked down the same
+     ladder everything else moves on. */
+  if (deloadAt(block, week)) {
+    let w = last.sets[0].w;
+    const floor = w * 0.6;
+    for (let i = 0; i < 60 && w > floor + WEIGHT_EPS; i++) {
+      const down = prevLoad(ladder, w, inc);
+      if (!(down > 0)) break;
+      w = down;
+    }
+    t.kind = 'descarga';
+    t.dir = 'down';
+    for (let k = 0; k < n; k++) t.sets.push({ w: round2(w), r: lo, move: '' });
+    return t;
+  }
+
+  /* Back from a layoff: repeat the last session exactly. Three weeks off
+     does not cost a trained lifter maximal strength (Räntilä 2021), and
+     discounting it prescribes a week of work already owned — but neither
+     is it the week to add anything, so nothing moves and the set the plan
+     has gained since carries the last set's weight at the bottom of the
+     range. */
+  if (now && last.ts && now - last.ts > GAP_DAYS * DAY_MS) {
+    t.kind = 'vuelta';
+    notes.push('vuelta');
+    for (let k = 0; k < n; k++) {
+      const L = last.sets[k];
+      t.sets.push(L ? { w: round2(L.w), r: L.r, move: '' }
+                    : { w: round2(last.sets[last.sets.length - 1].w), r: lo, move: '' });
+    }
+    return t;
+  }
+
+  /* The segment is the run of sessions since the last layoff. The level is
+     rebuilt inside it — coming back at 90 % and being measured against the
+     best week of two months ago prices every set as a failure — while the
+     between-set decay below deliberately is NOT cut, because how much a
+     fourth set gives away is a property of the exercise and not of the
+     month. */
+  let start = 0;
+  for (let i = 1; i < sessions.length; i++) {
+    const a = sessions[i - 1].ts, b = sessions[i].ts;
+    if (a && b && b - a > GAP_DAYS * DAY_MS) start = i;
+  }
+  const seq = capSeq(sessions.slice(start));
+  const lv = levelOf(seq);
+  const level = lv.level, levelCens = lv.cens, hold = lv.hold;
+  const r1Last = last.sets[0].r, rhoLast = last.rho;
+  const rirWeek = weekRir(block, ex, week, rhoLast);
+
+  /* What the next session is expected to be worth, as a fraction of
+     capacity — and only for the sets that keep their weight, because going
+     up a rung IS the progression and adding a rep on top of it is asking
+     for both at once. The floor is always one more rep on the first set:
+     a flat trend still gets asked for a rep, and whether that ask keeps
+     failing is the Diagnóstico's question, not this one's. */
+  const oneRep = 1 / (EPLEY_A + r1Last + rhoLast);
+  let g;
+  if (hold || brake) g = 0;
+  else if (sessions.length <= LEARNING_SESSIONS) g = oneRep;
+  else {
+    const pts = seq.slice(-TREND_SESSIONS)
+      .map((s, i) => [i, s]).filter(p => !p[1].cens).map(p => [p[0], p[1].C]);
+    g = pts.length >= TREND_MIN_POINTS
+      ? Math.max(oneRep, Math.min(theilSen(pts) / level, MAX_SLOPE))
+      : oneRep;
+  }
+
+  /* ---- what is left by set k ----
+     Measured between CONSECUTIVE sets and in capacity rather than in reps,
+     which is what lets a back-off set at another weight count: 45×9
+     following 45×12 and 42,75×9 following 45×12 say the same thing about
+     fatigue, and only the ratio of the two capacities knows it. A censored
+     set says nothing about the drop INTO it (it is a floor, and the drop
+     could be anything above it) but it does bound the drop OUT of it from
+     above — the true capacity it came from was at least that high, so the
+     true ratio is at most this one.
+
+     This is also what prices the set `ex.add` brings in mid-block, which
+     has never been done at all. */
+  const obs = {}, upper = {}, allObs = [];
+  sessions.slice(-TREND_SESSIONS).forEach(s => {
+    for (let k = 1; k < s.sets.length; k++) {
+      const a = s.sets[k - 1], b = s.sets[k];
+      if (b.cens) continue;
+      const ratio = b.e / a.e;
+      if (a.cens) (upper[k] = upper[k] || []).push(ratio);
+      else { (obs[k] = obs[k] || []).push(ratio); allObs.push(ratio); }
+    }
+  });
+  const phi = [1];
+  for (let k = 1; k < n; k++) {
+    let psi = obs[k] ? median(obs[k]) : allObs.length ? median(allObs) : PSI_PRIOR;
+    if (upper[k]) psi = Math.min.apply(null, [psi].concat(upper[k]));
+    phi.push(phi[k - 1] * Math.min(1, Math.max(PSI_MIN, psi)));
+  }
+
+  /* ---- one decision per set ----
+     `base` is the better of two claims about this set: what it has actually
+     done (its own capacity last time) and what the level says it should be
+     good for. Taking the maximum is what keeps a pessimistic decay profile
+     — the kind a calibration week full of back-offs leaves behind — from
+     prescribing less than the set has already proved it can do.
+
+     A set never goes heavier than the set before it. That is not a
+     refinement, it is the difference between a prescription and a list of
+     numbers: sets get harder down a session, never easier. */
+  let prevW = Infinity;
+  for (let k = 0; k < n; k++) {
+    const L = last.sets[k];
+    const own = L ? L.e : -1, model = level * phi[k];
+    const base = Math.max(own, model);
+    /* One rep of slack when the number underneath is a floor rather than a
+       reading. Without it a set that always ends at the top of its range
+       can never go up — the estimate it is judged on is the very number
+       being under-read — which is the freeze the old RIR-0 veto produced
+       by a different route. */
+    const baseCens = L && own >= model ? L.cens : levelCens;
+    const slack = baseCens ? 1 : 0;
+    let W = null, r, move = '';
+
+    if (L && L.r >= hi && !hold && !brake) {
+      const up = nextLoad(ladder, L.w, inc);
+      const rp = repsAt(up, base, rirWeek);
+      if (rp >= lo - slack && up <= prevW + WEIGHT_EPS) {
+        W = up;
+        /* The bottom HALF of the range after a step up, never the top of
+           what the estimate allows: a jump priced off an optimistic
+           reading would otherwise earn the next jump on the same reading,
+           and two weeks later the weight is somewhere nobody lifted. */
+        r = Math.max(lo, Math.min(rp, lo + Math.floor((hi - lo) / 2)));
+        move = '↑';
+      } else if (k === 0 && rp < lo - slack) { notes.push('step'); t.step = round2(up); }
+    }
+    if (W === null) {
+      W = Math.min(L ? L.w : last.sets[last.sets.length - 1].w, prevW);
+      r = repsAt(W, base * (1 + g), rirWeek);
+      /* At the same weight the target never asks for less than was already
+         done, minus only what a stricter RIR this week honestly costs.
+         Anything else is the model contradicting the log. */
+      if (L && sameLoad(W, L.w)) r = Math.max(r, L.r - Math.max(0, rirWeek - rhoLast));
+      r = Math.min(r, hi);
+      /* Coming down needs the model AND that floor to agree the bottom of
+         the range is out of reach — three rungs at most, because past that
+         something other than the weight is wrong. */
+      for (let s = 0; r < lo && s < 3; s++) {
+        const down = prevLoad(ladder, W, inc);
+        if (!(down > 0)) break;
+        W = down;
+        r = Math.min(hi, repsAt(W, base * (1 + g), rirWeek));
+        move = '↓';
+      }
+    }
+    prevW = W;
+    t.sets.push({ w: round2(W), r: Math.max(1, r), move: move });
+  }
+
+  if (hold) notes.push('hold');
+  if (lv.confirmed) notes.push('confirmed');
+  if (rirWeek > rhoLast) notes.push('moreRir');
+  t.dir = t.sets.some(s => s.move === '↑') ? 'up' : t.sets.some(s => s.move === '↓') ? 'down' : '';
+  t.level = level; t.hold = hold; t.confirmed = lv.confirmed; t.brake = !!brake;
+  t.rirWeek = rirWeek; t.g = g; t.phi = phi;
+  return t;
+}
+
+/* ---- the global brake ----
+   Three exercises whose latest session is a real decline, inside a week, is
+   not three programming problems. Nothing goes up that day and every
+   exercise's expected gain drops to zero, which is the cheapest possible
+   way to be wrong about it: one week of repeating a session you can
+   certainly do. Worked out once when the day is drawn and handed to
+   targetFor, so the rule itself never reads the clock or the other
+   exercises. */
+function brakeOn(profile, block, week, now) {
+  let down = 0;
+  const seen = Object.create(null);
+  dayList(block).forEach(day => {
+    exList(day).forEach(ex => {
+      if (seen[ex.id]) return;
+      seen[ex.id] = 1;
+      const sessions = exHistoryCached(profile, block, ex, day.id, week);
+      if (sessions.length < 2) return;
+      const lastTs = sessions[sessions.length - 1].ts;
+      if (!lastTs || !now || now - lastTs > BRAKE_DAYS * DAY_MS) return;
+      const seq = capSeq(sessions);
+      if (declineAt(seq, seq.length - 1)) down++;
+    });
+  });
+  return down >= BRAKE_COUNT;
 }
 
 /* Deliberately the same voice and the same slot as the rep-decay warning:
    a line under the sets that you read, not a control you operate. The
-   greyed placeholder in the weight box is left exactly as it was — it has
-   a contract ("tick without typing takes that number") and that contract
-   is what makes copyPrev safe to press. */
-function targetLine(est) {
-  const u = ' ' + units();
-  const n = v => String(Math.round(v * 100) / 100).replace('.', ',');
-  if (est.kind === 'skip') {
-    return 'objetivo: sin estimar — por encima de ' + EST_MAX_REPS +
-      ' reps la estimación deja de valer';
-  }
-  const reps = est.reps.join('/');
-  if (est.kind === 'hold') {
-    /* An arrow only where something actually moves: holding the weight to
-       chase reps is progress, repeating the same set numbers is not, and
-       pulling back to the prescription is neither — compared over the
-       sets that have a last week to compare with, not the ones the plan
-       added since. */
-    const total = a => a.reduce((t, v) => t + v, 0);
-    const was = total(est.sets), now = total(est.reps.slice(0, est.sets.length));
-    const head = now > was ? '↗ objetivo: ' : now === was ? '→ objetivo: mantener ' : '→ objetivo: ';
-    return head + n(est.weight) + u + ' × ' + reps;
-  }
-  return (est.kind === 'up' ? '↗' : '↘') + ' objetivo: ' + n(est.weight) + u + ' × ' + reps;
+   greyed placeholder in each weight box now shows this rule's own weight
+   for that set — same contract as before ("tick without typing takes that
+   number"), a better number inside it. */
+function targetLine(t) {
+  const head = t.dir === 'up' ? '↗' : t.dir === 'down' ? '↘' : '→';
+  const what = t.kind === 'descarga' ? ' descarga: ' : ' objetivo: ';
+  return head + what + t.sets.map(s => loadText(s.w) + '×' + s.r).join(' · ');
 }
 
-/* The lines under the estimate, in order. Every one of them exists because
-   the number above it would otherwise be read as something it is not, and
-   more than one can be true at once — a set logged at another weight and a
-   RIR that will cost reps are independent facts about the same session. */
-function targetNotes(est) {
-  const out = [];
-  if (!est) return out;
+/* The lines under it, in the order they matter. Every one exists because
+   the numbers above would otherwise be read as something they are not, and
+   more than one can be true of the same session. */
+function targetNotes(t) {
+  if (!t) return [];
   const u = ' ' + units();
-  if (est.apart) {
-    out.push(est.apart === 1
-      ? 'una serie fue a otro peso y queda fuera: el objetivo va sobre las que hiciste a ' + est.from + u
-      : est.apart + ' series fueron a otro peso y quedan fuera: el objetivo va sobre las que hiciste a ' + est.from + u);
-  }
-  const rirWas = est.rir + ' RIR' + (est.assumed ? ' previstos' : '');
-  if (est.note === 'topFailure') {
-    out.push('tope del rango pero al fallo — mismo peso, ejecútalo a ' + est.rirThis + ' RIR');
-  } else if (est.note === 'topForced') {
-    out.push('tope del rango pero hubo que bajar peso — mismo peso, ejecútalo a ' + est.rirThis + ' RIR');
-  } else if (est.note === 'coarse') {
-    out.push('el siguiente escalón te deja en ~' + est.reps[0] + ' reps, por debajo del rango — ' +
-      'normal con stack grueso, sube en 1-2 semanas');
-  } else if (est.note === 'predUnder') {
-    out.push('la última fue a ' + rirWas + '; a ' + est.rirThis + ' RIR, ' + est.from + u +
-      ' se queda por debajo del rango en ' + est.missed + ' de ' + est.sets.length + ' series (~' +
-      est.pred.join('/') + '). Peso de más para lo que pide esta semana');
-  } else if (est.note === 'reset') {
-    out.push('reinicio: ' + est.stall + ' sesiones sin sumar reps a ' + est.from + u +
-      ' — un escalón abajo y a reconstruir hasta el tope del rango');
-  } else if (est.note === 'stallOne') {
-    out.push(est.stall + ' sesiones sin sumar reps a ' + est.from + u +
-      ': una rep más en total, en la primera serie con margen, y el resto igual');
-  } else if (est.note === 'stallLong') {
-    out.push(est.stall + ' sesiones sin sumar reps a ' + est.from + u +
-      ': si esta tampoco suma, baja un escalón o cambia el ejercicio');
-  }
-  if (est.pacing) {
-    /* The clamped sets, in the order they come, with the RIR each one will
-       land at. Said as pacing rather than as load because the first set
-       reaches the range at the prescription — it is the session that
-       falls away, not the weight that is wrong. */
-    const nums = est.short.map(x => x.set);
-    const list = nums.length === 1 ? String(nums[0]) : nums.slice(0, -1).join(', ') + ' y ' + nums[nums.length - 1];
-    const lands = est.short.map(x => '~' + Math.max(0, x.land));
-    const landTxt = lands.length === 1 ? lands[0] : lands.slice(0, -1).join(', ') + ' y ' + lands[lands.length - 1];
-    out.push('a ' + est.rirThis + ' RIR ' + (nums.length === 1 ? 'la serie ' : 'las series ') + list +
-      (nums.length === 1 ? ' no llega' : ' no llegan') + ' a ' + est.reps[nums[0] - 1] + ': ' +
-      (nums.length === 1 ? 'va' : 'van') + ' igualmente, y ' + (nums.length === 1 ? 'saldrá' : 'saldrán') +
-      ' a ' + landTxt + ' RIR. El peso lo aguanta la primera serie; lo que cae es el resto de la sesión');
-  } else if (est.rirDrop) {
-    out.push('ojo: la última fue a ' + rirWas + '; a ' + est.rirThis + ' RIR las mismas fuerzas dan ~' +
-      est.predLast + ' y no ' + est.fromReps + ' — el objetivo ya lo descuenta. No es retroceso.');
-  } else if (est.rirGain) {
-    out.push('la última fue a ' + rirWas + ' y esta semana pide ' + est.rirThis +
-      ': parte de las reps de más salen de ahí, no de ganar fuerza');
-  }
-  if (est.extra) {
-    const first = est.reps.length - est.extra + 1, lastIdx = est.reps.length;
-    out.push(est.extra === 1
-      ? 'la serie ' + first + ' no tiene referencia a ' + est.from + u + ': ~' + est.reps[est.reps.length - 1] +
-        ' reps es una extrapolación de la caída entre series'
-      : 'las series ' + first + '–' + lastIdx + ' no tienen referencia a ' + est.from + u +
-        ': sus reps son una extrapolación de la caída entre series');
-  }
-  return out;
+  const txts = {
+    vuelta: 'Vuelta de parón: repite la última sesión.',
+    hold: 'La última sesión bajó: hoy no sube la carga. Si vuelve a bajar, el nivel se ajusta.',
+    confirmed: 'Dos sesiones seguidas por debajo: el objetivo baja contigo.',
+    step: 'El siguiente escalón (' + loadText(t.step) + u + ') no cabe en el rango: micro-carga, medio escalón o más tempo.',
+    moreRir: 'Esta semana pide más RIR: las reps pueden bajar y no es retroceso.',
+  };
+  return ['vuelta', 'hold', 'confirmed', 'step', 'moreRir']
+    .filter(k => t.notes.indexOf(k) >= 0).map(k => txts[k]);
 }
+
+const TARGET_CONF_LABEL = { baja: 'confianza baja', media: 'confianza media', alta: 'confianza alta' };
 
 /* The progress chart lives in js/chart.js. */
 
@@ -3756,8 +4052,9 @@ const DEFAULT_BAR_WEIGHT = { kg: 20, lb: 45 };
 const DEFAULT_PLATES = { kg: [1.25, 2.5, 5, 10, 15, 20], lb: [2.5, 5, 10, 25, 35, 45] };
 const DEFAULT_STACK_INC = { kg: 5, lb: 10 };
 
-/* Shared: the calculator rounds a warm-up step with it, targetEstimate
-   rounds next week's weight with it. */
+/* The calculator rounds a warm-up step with it. The target rule does not:
+   it moves along the rungs this exercise has actually been logged at (see
+   loadLadder), because a plate stack is not a ruler. */
 const roundToStep = (v, step) => step > 0 ? Math.round(v / step) * step : v;
 
 /* The warm-up ramp and plate calculator live in js/calculator.js. */
@@ -4437,6 +4734,45 @@ function normalizeImportedRir(rawRir, rawBlock, normalized) {
     Object.keys(slotRir).forEach(rawExId => {
       const exId = exFor[rawExId];
       if (exId && RIR_OPTIONS.indexOf(slotRir[rawExId]) >= 0) kept[exId] = slotRir[rawExId];
+    });
+    if (Object.keys(kept).length) out[slot(w, dayId)] = kept;
+  });
+  return out;
+}
+
+/* The objetivo twin, re-keyed the same way. A record of what the rule put
+   on the screen — so nothing here is trusted past its own shape, and a
+   file that lost it entirely (every backup written before v3) restores
+   with none, which is exactly what a session nobody had a target for
+   looks like anyway. */
+function normalizeImportedObj(rawObj, rawBlock, normalized) {
+  if (!rawObj || typeof rawObj !== 'object' || Array.isArray(rawObj)) return {};
+  const { dayMap, exMap } = importIdMaps(rawBlock, normalized);
+
+  const out = {};
+  Object.keys(rawObj).slice(0, LOG_LIMITS.slots).forEach(key => {
+    const s = parseSlot(key);
+    if (!s) return;
+    const w = s.week;
+    if (!Number.isInteger(w) || w < 1 || w > MAX_WEEKS) return;
+    const dayId = dayMap[s.dayId];
+    if (!dayId) return;
+    const slotObj = rawObj[key];
+    if (!slotObj || typeof slotObj !== 'object' || Array.isArray(slotObj)) return;
+    const exFor = exMap[dayId] || Object.create(null);
+    const kept = {};
+    Object.keys(slotObj).forEach(rawExId => {
+      const exId = exFor[rawExId];
+      const rec = slotObj[rawExId];
+      if (!exId || !rec || typeof rec !== 'object' || !Array.isArray(rec.sets)) return;
+      const sets = rec.sets.slice(0, LOG_LIMITS.rows).map(x => ({
+        w: clampNum(x && x.w, 0, 9999, 0),
+        r: clampInt(x && x.r, 0, 999, 0),
+        m: (x && (x.m === '↑' || x.m === '↓')) ? x.m : '',
+      }));
+      if (!sets.length) return;
+      kept[exId] = { v: 3, at: clampInt(rec.at, 0, Number.MAX_SAFE_INTEGER, 0),
+                     conf: TARGET_CONF_LABEL[rec.conf] ? rec.conf : 'baja', sets: sets };
     });
     if (Object.keys(kept).length) out[slot(w, dayId)] = kept;
   });

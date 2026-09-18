@@ -73,14 +73,14 @@ function deleteBlocks(profile, ids) {
 
   snapshotForUndo(drop.size === 1 ? 'Bloque eliminado.' : drop.size + ' bloques eliminados.');
 
-  /* The log is not the only thing filed under a block id: rir, notes, energy
-     and order are four parallel maps with the same blockId key, and nothing
-     reads one without the block it belonged to. Leaving them behind grows the
-     log forever with data no screen can ever show — on a storage backend the
-     browser may evict when the phone fills up. */
+  /* The log is not the only thing filed under a block id: rir, notes,
+     energy, order and obj are five parallel maps with the same blockId key,
+     and nothing reads one without the block it belonged to. Leaving them
+     behind grows the log forever with data no screen can ever show — on a
+     storage backend the browser may evict when the phone fills up. */
   drop.forEach(id => {
     delete profile.blocks[id];
-    [profile.log, profile.rir, profile.notes, profile.energy, profile.order]
+    [profile.log, profile.rir, profile.notes, profile.energy, profile.order, profile.obj]
       .forEach(map => { if (map) delete map[id]; });
   });
   profile.blockOrder = keep;
@@ -286,6 +286,13 @@ function normalizeImportedBlock(raw, opts) {
         out.add = clampInt(av, 1, weeks, 1);
       }
       if (e.inc != null) { const v = clampNum(e.inc, INC_MIN, INC_MAX, 0, INC_STEP); if (v > 0) out.inc = v; }
+      /* `minRir` — the reserve this lift never goes under, whatever the
+         week's phase text asks for: a squat or a Romanian deadlift nobody
+         takes to failure. A week prescribing 0–1 RIR on one of those is a
+         number you are not going to follow, and a target solved for it is
+         a weight you cannot make. Clamped rather than rejected: it is an
+         advisory floor, not a program-defining integer like `add`. */
+      if (e.minRir != null) { const v = clampInt(e.minRir, 0, 5, 0); if (v > 0) out.minRir = v; }
       if (e.share) out.share = 1;
       if (e.ss) out.ss = 1;
       /* Freeform, same as everywhere else it's set — whoever built this
@@ -466,7 +473,8 @@ async function buildAiPrompt(opts) {
     '          "sets": número opcional 1-12 (por defecto 3),',
     '          "rest": número opcional — segundos de descanso 0-900 (por defecto 90; usa 0 si el ejercicio va encadenado en superserie),',
     '          "add": número entero opcional 1-weeks — desde esa semana se añade una serie extra (progresión de series; tiene que ser un entero o se rechaza todo el bloque),',
-    '          "inc": número opcional (en ' + units() + '), admite decimales, ' + INC_MIN + '-' + INC_MAX + ' — el escalón de peso más pequeño que se puede cargar en ese ejercicio: cuánto añade "copiar semana anterior" al llegar al tope del rango en todas las series, y a qué se redondea el objetivo de peso de cada semana. Si falta, se usa el incremento por defecto de los ajustes. Pon uno realista por ejercicio (mancuernas y poleas suelen subir de 1-2,5 en 2,5; prensas y hacks, de 5 en 5),',
+    '          "inc": número opcional (en ' + units() + '), admite decimales, ' + INC_MIN + '-' + INC_MAX + ' — el escalón de peso más pequeño que se puede cargar en ese ejercicio: lo que sube el objetivo cuando una serie llega al tope del rango, y el paso que se usa mientras no haya pesos registrados de los que leer la pila real de la máquina. Si falta, se usa el incremento por defecto de los ajustes. Pon uno realista por ejercicio (mancuernas y poleas suelen subir de 1-2,5 en 2,5; prensas y hacks, de 5 en 5),',
+    '          "minRir": número entero opcional 0-5 — el RIR mínimo de ese ejercicio: nunca se le pide menos reserva que esta, aunque la semana pida menos. Ponlo (1) en los ejercicios que no se llevan al fallo — sentadilla, peso muerto rumano, hip thrust pesado — y déjalo fuera en máquinas y aislamiento,',
     '          "alt": string opcional — alternativa (máx ' + L.alt + ' car.),',
     '          "cue": string opcional — indicación técnica, para todas las series (máx ' + L.cue + ' car.),',
     '          "setup": string opcional — ajustes de la máquina (altura de asiento, posición del respaldo…), no técnica (máx ' + SETUP_LIMIT + ' car.),',
@@ -1130,6 +1138,21 @@ function wireBlockEditor() {
       if (p.exId) purgeExLog(profile, peDraftBlock.id, p.dayId, p.exId);
       else purgeDayLog(profile, peDraftBlock.id, p.dayId);
     });
+    /* An exercise whose NAME changed is a different lift from today on —
+       "Elevaciones laterales en polea" became "Elevaciones en Y en polea
+       cruzada" and the two are not on the same loads. Recorded here
+       because this is the last moment the old name still exists: the log
+       keeps no copy of it, so once the draft lands the only way to know
+       where one variant ended is the date written now. See recordVariant
+       and variantSince in js/app.js. */
+    const liveBlock = profile.blocks[peDraftBlock.id];
+    if (liveBlock) {
+      const wasNamed = Object.create(null);
+      (liveBlock.days || []).forEach(d => (d.ex || []).forEach(e => { if (e && e.id) wasNamed[e.id] = e.n; }));
+      peDraftBlock.days.forEach(d => d.ex.forEach(e => {
+        if (e && e.id && wasNamed[e.id] != null) recordVariant(profile, e.id, wasNamed[e.id], e.n);
+      }));
+    }
     profile.blocks[peDraftBlock.id] = peDraftBlock;
     peDraftBlock = null; peDraftPurge = []; peDraftOriginalDay = new Map();
     commit();

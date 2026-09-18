@@ -7,7 +7,7 @@
    the current plan at once and sorts them worst first, then crosses each
    trend with the signals the log already carries — the RIR chip, the
    rep-decay flag, forced drops, the timestamps on every ticked row, the
-   kilos each session moved, and the target weight from targetEstimate().
+   kilos each session moved, and the target weight from targetFor().
    A stall on its own says nothing. A stall next to "RIR 2+ every week" and
    a stall next to "0 RIR and a forced drop" point at opposite fixes, which
    is exactly why guessing at it goes wrong.
@@ -491,7 +491,30 @@ function fitSlope(values) {
   return my ? slope / my : 0;
 }
 
-const diagSlope = points => fitSlope(points.map(p => p.e1rm));
+/* The trend the objetivo rule itself sees, rather than a second reading of
+   the same log with a different definition of "how strong is this today".
+
+   The line used to be fitted through the best e1RM of every session, and
+   that number disagrees with the target rule in public: a session that
+   ended 15/15/15 at the top of its range is a FLOOR under the capacity,
+   not a measurement of it, so reading it as one reported the pec deck as
+   "pierde fuerza" and the shoulder press, the incline press and the
+   Romanian deadlift as "planos" while the card right next to them was
+   putting the weight up. Fitted through the rule's own level instead —
+   the best of the last three sessions, which a censored session can only
+   raise — and handed straight to the rule's own verdict when it has
+   already confirmed a drop. One log, one definition, one answer. */
+function diagLevelTrend(profile, block, day, ex, scopeBlockId) {
+  const sessions = exHistory(profile, block, ex, day && day.id, MAX_WEEKS + 1, scopeBlockId);
+  if (!sessions.length) return null;
+  const seq = capSeq(sessions).slice(-DIAG_WINDOW);
+  const lv = levelOf(seq);
+  const series = seq.map((x, i) => levelOf(seq.slice(0, i + 1)).level);
+  return {
+    pct: fitSlope(series), confirmed: lv.confirmed, hold: lv.hold,
+    change: series[0] > 0 ? (series[series.length - 1] - series[0]) / series[0] : null,
+  };
+}
 
 /* Kilos per set, not kilos. The claim the verdict makes is about what a
    set is worth, and a block that adds a fourth set has not made the first
@@ -583,11 +606,10 @@ function diagVerdict(trend, sig) {
   }
   if (trend === 'up') {
     /* The row that stops this screen contradicting the session's own
-       target. targetEstimate() already refuses the jump when the top of
-       the range was reached at failure or with the weight stripped — it
-       returns MANTENER — and until now the diagnosis read that same
-       exercise as "Funciona · No toques nada". Two screens, one log,
-       opposite instructions.
+       target. targetFor() already holds the weight when the last session
+       came in under the level, or when three exercises fell at once — and
+       until now the diagnosis read that same exercise as "Funciona · No
+       toques nada". Two screens, one log, opposite instructions.
 
        It is not a stall: the reps really did climb. It is a rise bought
        with effort rather than with load, which is what a calibration week
@@ -596,9 +618,11 @@ function diagVerdict(trend, sig) {
        at the RIR the plan asked for. Checked before the volume row: what
        to do about this week's weight beats where to spend spare sets. */
     if (sig.held) {
-      return { lectura: 'Sube, pero la ficha manda MANTENER — el tope del rango ' +
-                 (sig.held === 'forced' ? 'llegó bajando el peso a mitad de serie' : 'llegó al fallo, no al RIR previsto'),
-               cambio: 'Mismo peso, ejecutado a ' + sig.heldRir + ' RIR. Si las reps aguantan ahí, entonces sube.' };
+      return { lectura: 'Sube, pero la ficha no sube el peso esta semana — ' +
+                 (sig.held === 'brake' ? 'hay varios ejercicios bajando a la vez' : 'la última sesión cayó por debajo del nivel'),
+               cambio: sig.held === 'brake'
+                 ? 'Mira sueño, comida y fatiga antes que el plan. Repite la sesión a ' + sig.heldRir + ' RIR y vuelve a mirarlo la semana que viene.'
+                 : 'Mismo peso, ejecutado a ' + sig.heldRir + ' RIR. Si las reps vuelven, sube; si vuelve a caer, el nivel se ajusta solo.' };
     }
     /* The one row of the matrix that needs the volume side: growing on
        fewer sets than the range asks for is not a problem, it is unused
@@ -636,7 +660,7 @@ function diagRows(profile, block, scope) {
       seen.add(ex.id);
       const all = diagPoints(profile, ex.id, useScope === 'all' ? '' : block.id);
       const points = all.slice(-DIAG_WINDOW);
-      const est = targetEstimate(profile, block, day, ex, profile.week);
+      const est = targetNow(profile, block, day, ex, profile.week);
       const last = points[points.length - 1];
       const recent = points.slice(-3);
       const sig = {
@@ -647,14 +671,15 @@ function diagRows(profile, block, scope) {
            picked wrong" — it is the target rule's own answer to the
            stall this screen is about to name, so it reads as the stall,
            not as a mis-chosen weight. */
-        estDown: !!est && est.kind === 'down' && est.note !== 'reset',
-        /* Not a fourth reading of the log: the target rule already crossed
-           the top of the range with the failure signals and came back with
-           MANTENER. Reading its note rather than re-deriving it is what
-           keeps the two screens saying the same thing. */
-        held: est && est.kind === 'hold' && (est.note === 'topFailure' || est.note === 'topForced')
-          ? (est.note === 'topForced' ? 'forced' : 'failure') : null,
-        heldRir: est ? est.rirThis : null,
+        estDown: !!est && est.dir === 'down',
+        /* Not a fourth reading of the log: the target rule has already
+           crossed the level with this week's sessions and come back with
+           "hold today" or with the whole day braked. Reading its answer
+           rather than re-deriving it is what keeps the two screens saying
+           the same thing. */
+        held: est && est.brake ? 'brake' : est && est.hold ? 'hold' : null,
+        heldRir: est ? est.rirWeek : null,
+        conf: est ? est.conf : null,
         gap: diagMedianGap(points),
       };
       /* Withheld unless the set count held still across the whole window.
@@ -677,11 +702,17 @@ function diagRows(profile, block, scope) {
         sig.volLow = vol.zone === 'under' || vol.zone === 'maint';
       }
       let trend = 'none', pct = 0, change = null;
-      if (points.length >= DIAG_MIN_SESSIONS) {
-        pct = diagSlope(points);
-        trend = pct >= DIAG_FLAT ? 'up' : pct <= -DIAG_FLAT ? 'down' : 'flat';
-        const first = points[0].e1rm;
-        if (first > 0) change = (last.e1rm - first) / first;
+      /* Still gated on the sessions this screen can SHOW — the verdict
+         text promises "N sesiones con peso y reps anotados" and the chart
+         under it plots exactly those. */
+      const lvt = points.length >= DIAG_MIN_SESSIONS ? diagLevelTrend(profile, block, day, ex, useScope === 'all' ? '' : block.id) : null;
+      if (lvt) {
+        pct = lvt.pct;
+        /* A confirmed decline is the rule's own verdict and outranks the
+           fitted line: two sessions in a row under the level is the thing
+           the line is trying to detect, already detected. */
+        trend = lvt.confirmed ? 'down' : pct >= DIAG_FLAT ? 'up' : pct <= -DIAG_FLAT ? 'down' : 'flat';
+        change = lvt.change;
       }
       rows.push(Object.assign({
         id: ex.id, name: ex.n, day: day.name, sessions: points.length,
