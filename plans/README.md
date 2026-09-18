@@ -47,7 +47,7 @@ below so it is not lost or re-audited.
 | 023 | [Every imported string in the AI round-trip document is delimited](023-ai-document-delimits-every-imported-string.md) | P1 | S | LOW | — | TODO |
 | 024 | [Every import rejection path flushes the pending autosave first, never through a two-tab conflict](024-import-preflight-flush-never-through-a-conflict.md) | P1 | S | LOW | — | TODO |
 | 025 | [`obj`/`variants` survive every purge, move and import; two v3 rule edges; the dead `'obj'` share entry goes](025-map-integrity-and-v3-edges.md) | P1 | M | LOW–MED | 026 (soft), 021 (soft: Step E) | TODO |
-| 026 | [The unit suite pins the v3 trend term, its untested branches and the `obj` validator — mutation-checked](026-pin-the-v3-rule.md) | P1 | M | LOW | — | TODO (land first — no bump, safety net for 021/025/027) |
+| 026 | [The unit suite pins the v3 trend term, its untested branches and the `obj` validator — mutation-checked](026-pin-the-v3-rule.md) | P1 | M | LOW | — | IN PROGRESS |
 | 027 | [A set tick reuses the render cache; the Diagnóstico reads through it; `diagPoints` groups once](027-tick-keeps-the-render-cache.md) | P2 | S | MED | 026 (soft) | TODO |
 | 028 | [A rename compares slugs and says what it cut](028-rename-compares-slugs-and-says-what-it-cut.md) | P2 | S | LOW–MED | — | TODO |
 | 029 | [Docs, briefing and self-description match the code; Node 22; gate regex; doc-link check; `.editorconfig`](029-docs-and-dx-sync.md) | P2 | S | LOW | 021 (soft: the `obj` bullet) | TODO |
