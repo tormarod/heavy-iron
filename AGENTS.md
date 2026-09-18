@@ -17,8 +17,8 @@ identical to an oversight unless someone writes down which it is:
 
 - **No build step, no bundler, no `package.json`, no TypeScript.** Plain
   HTML/CSS/JS, served by any static server. Do not add a build step.
-- **No modules.** Twelve `<script>` tags share one global scope — eleven of
-  them in a fixed order at the foot of `<body>` (`index.html`):
+- **No modules.** Thirteen `<script>` tags share one global scope — twelve
+  of them in a fixed order at the foot of `<body>` (`index.html`):
 
   ```html
   <script src="js/data.js"></script>
@@ -32,10 +32,13 @@ identical to an oversight unless someone writes down which it is:
   <script src="js/volume-sheet.js"></script>
   <script src="js/qr-transfer.js"></script>
   <script src="js/app.js"></script>
+  <script src="js/boot-guard.js"></script>
   ```
 
-  `js/app.js` loads last because it wires the others together and then calls
-  `load()`.
+  `js/app.js` loads after the ten it wires together and then calls
+  `load()`. `js/boot-guard.js` is the one tag after it, on purpose: it has
+  to run even when `app.js` could not, so it may depend on nothing else
+  (see the mixed-shell note below).
 
   One more script, `js/theme-init.js`, loads earlier still — in `<head>`,
   before `css/style.css` — so `data-theme` is set before the stylesheet is
@@ -73,14 +76,28 @@ identical to an oversight unless someone writes down which it is:
 
   1. **A symbol `app.js` itself reads either stays in `app.js` or is
      stubbed to a no-op there.** The split file may be missing from an old
-     cached shell, and `app.js` reaching for something that never loaded
-     is the stuck-loading screen above. `js/rest-timer.js` is stubbed for
+     cached shell (a precache hole), and `app.js` reaching for something
+     that never loaded is the stuck-loading screen above. `js/rest-timer.js` is stubbed for
      five, `js/chart.js` and `js/qr-transfer.js` for one each.
   2. **A symbol another split file reads stays in `app.js` outright** — a
      stub cannot help there, because a plausible-looking empty answer is
      worse than a dead button. That is why the volume arithmetic, the
      `blockShare*` builders and the `normalizeImported*` validators
      stayed behind while their screens left.
+
+  The mix the other way round — a *new* split file loading beside the
+  *old* cached `app.js`, both declaring the same top-level `const`/`let`,
+  so `app.js` fails to parse and nothing runs — shipped twice (commit
+  `5ed2906`, then the `js/chart.js` split). It came from `sw.js` serving
+  navigations network-first: a returning user got the new `index.html`
+  over old cached scripts, and the script tags the old cache had never
+  seen were fetched fresh. Since `sw.js` v55 the page comes from the same
+  precache as its scripts, so a normal deploy cannot produce that shell
+  any more; a release lands only through the "Actualizar" swap. What is
+  still possible is a precache hole, which the `typeof` guards cover, and
+  `js/boot-guard.js` is the last line either way: if nothing has drawn by
+  the time it runs, it hands over to the worker already waiting with a
+  complete shell and reloads.
 - **Spanish for everything a user sees; English for code comments.**
 
 ## The release rule
@@ -129,7 +146,7 @@ The whole suite by hand is warranted in three cases only: you edited
 `test/smoke.js` itself, you changed the script load order or `sw.js`, or
 the hook failed and you are checking the fix — and even then, iterate
 with `--only` on the failing section and let the hook do the final full
-pass. Only `test/unit.js` runs on GitHub. It loads the six source files into
+pass. Only `test/unit.js` runs on GitHub. It loads every shell script into
 one shared Node context — the same global scope the `<script>` tags create,
 in the same order — and is the fastest full check. A new file under `js/`
 goes into that list too, in the position its `<script>` tag has.

@@ -58,12 +58,13 @@ function loadApp() {
   ctx.globalThis = ctx;
 
   /* The same order as the <script> tags in index.html — theme-init.js first
-     because it loads in <head>, app.js last because it is the one that wires
-     the others and then calls load(). */
+     because it loads in <head>, app.js after the ten it wires and then calls
+     load() from, and boot-guard.js last, after app.js, because it is the one
+     script that has to run even when app.js could not. */
   ['js/theme-init.js', 'js/data.js', 'js/block-editor.js', 'js/diagnostics.js', 'js/review.js',
    'js/profile-transfer.js', 'js/calculator.js', 'js/rest-timer.js',
    'js/chart.js', 'js/volume-sheet.js', 'js/qr-transfer.js',
-   'js/app.js'].forEach(f => {
+   'js/app.js', 'js/boot-guard.js'].forEach(f => {
     vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f });
   });
   return ctx;

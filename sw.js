@@ -3,8 +3,10 @@
    caching rules are short:
 
    - The shell (page, CSS, JS, manifest, icon) is precached on install and
-     served from cache first. That is what makes the app open instantly in a
-     basement with no signal.
+     served from cache first — the page included, so the page and the scripts
+     it names always come from the same release (see the 'navigate' branch
+     below). That is what makes the app open instantly in a basement with no
+     signal.
    - Blocks are tried on the network first and fall back to the cached copy,
      because a block published to the repo today should show up today — but
      a block you have already seen should still be importable offline.
@@ -16,7 +18,7 @@
    are deleted on activate, and the app shows an "Actualizar" prompt rather
    than swapping the code under a session in progress. */
 
-const CACHE_VERSION = 'v54';
+const CACHE_VERSION = 'v55';
 const SHELL_CACHE = 'heavy-iron-shell-' + CACHE_VERSION;
 const RUNTIME_CACHE = 'heavy-iron-runtime-' + CACHE_VERSION;
 /* Bumped only when js/vendor/ itself changes (see js/vendor/README.md's
@@ -42,6 +44,7 @@ const SHELL = [
   'js/chart.js',
   'js/volume-sheet.js',
   'js/qr-transfer.js',
+  'js/boot-guard.js',
   'js/data.js',
   'manifest.webmanifest',
   'icon.svg',
@@ -71,14 +74,22 @@ const VENDOR = [
    (see the 'checkShell' message below), so a hole left by a bad first
    install heals itself the next time there is a connection, rather than
    sitting there until the next CACHE_VERSION bump. */
+/* Every precache request goes to the server, not the HTTP cache: GitHub
+   Pages serves the shell with max-age=600, and cache.add honours that, so a
+   worker installing within ten minutes of an earlier fetch could pair a
+   stale app.js with a fresh index.html — the mixed shell the 'navigate'
+   branch below exists to prevent, by another route. The cache key is still
+   the plain URL, so cache.match(url) finds these entries as before. */
+const fromServer = url => new Request(url, { cache: 'reload' });
+
 function precache(cacheName, urls) {
   return caches.open(cacheName)
-    .then(cache => Promise.all(urls.map(url => cache.add(url).catch(() => null))));
+    .then(cache => Promise.all(urls.map(url => cache.add(fromServer(url)).catch(() => null))));
 }
 
 function repairCache(cacheName, urls) {
   return caches.open(cacheName).then(cache => Promise.all(urls.map(url =>
-    cache.match(url).then(hit => (hit ? null : cache.add(url).catch(() => null)))
+    cache.match(url).then(hit => (hit ? null : cache.add(fromServer(url)).catch(() => null)))
   )));
 }
 
@@ -172,11 +183,27 @@ self.addEventListener('fetch', event => {
   const url = new URL(request.url);
   const sameOrigin = url.origin === self.location.origin;
 
-  /* Navigations go to the network first so a deploy lands on the next open,
-     and fall back to the cached page when there is nothing to reach. */
+  /* The page comes from the precache, like the scripts it names: the two
+     have to be the same release. It used to go to the network first "so a
+     deploy lands on the next open" — but a fresh index.html over the old
+     cached scripts is not a deploy landing, it is a shell mixed from two
+     releases. Twice now (commit 5ed2906, then the js/chart.js split) the
+     new page pulled in a script the old cache never had, that script and
+     the old app.js declared the same top-level names, app.js failed to
+     parse, and the app sat on "Cargando tu registro…" — with the "Actualizar"
+     offer dead inside the script that never ran. A deploy lands the way the
+     rest of the shell does: the new worker installs a complete precache, the
+     page offers "Actualizar", and the swap reloads onto it. Any other
+     in-scope navigation (a block JSON opened directly) is not the app page
+     and keeps the network-first path; so does the page when the precache
+     has no copy of it. */
   if (request.mode === 'navigate') {
+    const scopePath = new URL(self.registration.scope).pathname;
+    const isAppPage = sameOrigin && (url.pathname === scopePath || url.pathname === scopePath + 'index.html');
     event.respondWith(
-      networkFirst(request, SHELL_CACHE).catch(() => caches.match('index.html').then(hit => hit || caches.match('./')))
+      (isAppPage ? caches.match('index.html') : Promise.resolve(null))
+        .then(hit => hit || networkFirst(request, SHELL_CACHE))
+        .catch(() => caches.match('index.html').then(hit => hit || caches.match('./')))
     );
     return;
   }
