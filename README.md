@@ -1150,6 +1150,11 @@ done against sets prescribed from
 [the volume trend](#volume-across-the-block), the deload check, and your
 session notes. Priority muscles come first. It invents nothing; it gathers.
 
+Under the muscle rows, the exported text lists every exercise of the plan
+with its trend, the RIR chips you tapped and the reading Diagnóstico gives
+it — so whatever writes the next block knows which press stalled, not
+only that chest went nowhere.
+
 **The export is the feature.** *Copiar prompt con la revisión* hands you
 the same JSON-format prompt the import sheet gives out — with the evidence
 stapled underneath. Paste it into whatever writes your next block, paste
@@ -1284,6 +1289,12 @@ prompt describing the block JSON shape (field names, limits, a worked
 example) to the clipboard. They paste that into their own AI chat along
 with their goals, and paste the JSON it returns into **Importar JSON**'s
 text box.
+
+Once the app is set up, that prompt also carries your own current block as
+JSON — ids included, so the AI can keep the exercises it keeps — and the
+facts the app already knows: unit, default increment, bar and plates, days
+per week, block length and priority muscles. Only on a first run, before
+any setup, does it fall back to the shipped example.
 
 `blocks/index.json` is a flat list:
 

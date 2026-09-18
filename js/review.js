@@ -21,8 +21,19 @@
    one answers to. */
 const REVIEW_MAX_NOTES = 8;
 
+/* Worst first, like the Diagnóstico sheet, so a cap drops the exercises
+   that are going well — the ones the next block has least to change. */
+const REVIEW_MAX_EXERCISES = 40;
+
 const reviewPct = v => (v > 0 ? '+' : v < 0 ? '−' : '') +
   String(Math.abs(Math.round(v * 10) / 10)).replace('.', ',') + ' %';
+
+/* Exercise names, day names and muscle tags arrive from imports and go
+   into a document written for a language model. Delimited, so a name
+   cannot read as an instruction to the model; `txt()` already collapsed
+   whitespace on the way in, so the only characters to strip are the
+   delimiters themselves. */
+const reviewName = s => '«' + String(s == null ? '' : s).replace(/[«»]/g, '') + '»';
 
 /* The unit-converting volume rule is convertedSetVolume in js/app.js — an
    identical copy lived here until plans/011 made the two one. */
@@ -105,6 +116,23 @@ function buildBlockReview(profile, block) {
   });
   notes.sort((a, b) => b.week - a.week || a.day.localeCompare(b.day, 'es'));
 
+  /* The Diagnóstico sheet's own rows, scoped to this block whatever that
+     sheet's toggle says. The verdict text is what the reader needs; `est`
+     is a live object with functions behind it and stays out. */
+  const exercises = diagRows(profile, block, 'block').map(x => {
+    const rir = {};
+    RIR_OPTIONS.forEach(k => { rir[k] = 0; });
+    dayList(block).forEach(d => {
+      if (!exList(d).some(e => e.id === x.id)) return;
+      for (let w = 1; w <= weeks; w++) {
+        const chip = getRir(profile, block.id, w, d.id, x.id);
+        if (chip in rir) rir[chip]++;
+      }
+    });
+    return { name: x.name, day: x.day, trend: x.trend, trendLabel: DIAG_TRENDS[x.trend].label,
+             pct: x.pct, sessions: x.sessions, lectura: x.lectura, cambio: x.cambio, rir: rir };
+  });
+
   return {
     name: block.name,
     weeks: weeks,
@@ -121,6 +149,7 @@ function buildBlockReview(profile, block) {
       alta: { n: energy.alta.length, kg: mean(energy.alta) },
     },
     notes: notes,
+    exercises: exercises,
   };
 }
 
@@ -157,8 +186,25 @@ function reviewText(r) {
       bits.push('series/semana: ' + (Math.round((m.logSets || 0) * 10) / 10).toString().replace('.', ',') +
         ' hechas de ' + (Math.round(m.planSets * 10) / 10).toString().replace('.', ',') + ' previstas');
     }
-    L.push('- ' + m.tag + (m.priority ? ' (PRIORITARIO)' : '') + ': ' + bits.join(' · ') + '.');
+    L.push('- ' + reviewName(m.tag) + (m.priority ? ' (PRIORITARIO)' : '') + ': ' + bits.join(' · ') + '.');
   });
+  if (r.exercises && r.exercises.length) {
+    L.push('');
+    L.push('### Por ejercicio');
+    L.push('');
+    L.push('Tendencia = pendiente del 1RM estimado por sesión, sobre las últimas ' + DIAG_WINDOW +
+      ' sesiones de este bloque. La lectura y el cambio cruzan esa tendencia con el RIR marcado, las caídas de reps y las bajadas forzadas.');
+    L.push('');
+    r.exercises.slice(0, REVIEW_MAX_EXERCISES).forEach(x => {
+      const bits = [];
+      bits.push(x.trend === 'none'
+        ? 'sin tendencia (' + x.sessions + (x.sessions === 1 ? ' sesión' : ' sesiones') + ')'
+        : 'tendencia ' + x.trendLabel + ' ' + diagPct(x.pct) + ' por sesión sobre ' + x.sessions + ' sesiones');
+      const chips = RIR_OPTIONS.filter(k => x.rir[k]).map(k => k + '×' + x.rir[k]);
+      bits.push('RIR marcado: ' + (chips.length ? chips.join(', ') : 'ninguno'));
+      L.push('- ' + reviewName(x.name) + ' (' + reviewName(x.day) + '): ' + bits.join(' · ') + '. ' + x.lectura + '. Cambio: ' + x.cambio);
+    });
+  }
   const e = r.energy;
   if (e.baja.n || e.alta.n) {
     L.push('');
@@ -175,7 +221,7 @@ function reviewText(r) {
     L.push('### Notas de sesión');
     L.push('');
     r.notes.slice(0, REVIEW_MAX_NOTES).forEach(n => {
-      L.push('- Semana ' + n.week + ', ' + n.day + ': ' + n.text);
+      L.push('- Semana ' + n.week + ', ' + reviewName(n.day) + ': ' + n.text);
     });
   }
   L.push('');
@@ -289,7 +335,7 @@ function wireReview() {
     if (!reviewCache) return;
     setNote($('reviewStatus'), '', false);
     try {
-      const prompt = await buildAiPrompt();
+      const prompt = await buildAiPrompt({ withBlock: true });
       await copyText(prompt + '\n\n' + reviewText(reviewCache));
       setNote($('reviewStatus'), 'Prompt copiado con la revisión — pégaselo a tu IA y pega aquí el JSON que te devuelva', false);
     } catch (e) {
