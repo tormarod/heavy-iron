@@ -1609,6 +1609,21 @@ function setNoteText(profile, blockId, w, dayId, val) {
   }
 }
 
+/* The most recent note written on this same day of the block, before this
+   week — the walk lastTime does for the sets. A note is written once and,
+   until now, read back only by the block review weeks later; "rodilla
+   izquierda en la hack" typed in week 2 is exactly what week 5, standing at
+   the hack machine, needs in front of it. */
+function lastNote(profile, blockId, dayId, beforeWeek) {
+  const blk = profile.notes[blockId];
+  if (!blk) return null;
+  for (let w = beforeWeek - 1; w >= 1; w--) {
+    const text = blk[slot(w, dayId)];
+    if (text) return { week: w, text: text };
+  }
+  return null;
+}
+
 /* ---------- energy at session start ----------
    The same three-chip shape as RIR, asked once before you start rather
    than after: how you arrived. Optional, absent by default, and — unlike
