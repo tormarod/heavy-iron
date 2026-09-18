@@ -563,6 +563,102 @@ ok("...day A's sets land on day A's exercise", strictDayAwareLog.dayARow, strict
 ok("...and day B's on the renamed one, not day A's id",
    strictDayAwareLog.dayBRow, strictDayAwareLog.ids + ' - slot B has ' + strictDayAwareLog.sbKeys);
 
+/* 7. Every other field a block carries. The probes above each name the
+      field the bug was about, which is the problem: `off` was found because
+      plans/010 named it, and a field added to the editor next year would be
+      dropped on restore exactly the same way with nothing to catch it. So
+      this one names no fields at all — it walks whatever the fixture holds.
+
+      The invariant is containment, not equality: every own key whose stored
+      value is truthy must come back with that value. Deliberately not a
+      JSON.stringify compare — normalizeImportedBlock builds `out` in a
+      fixed key order that will not match the stored one, and it drops falsy
+      optionals on purpose (newExercise() ships alt: '', share: 0, ss: 0,
+      and a blank field is genuinely nothing to carry). */
+call(`
+  function restoreGaps(stored, restored, path, out) {
+    if (stored === null || stored === undefined) return out;
+    if (Array.isArray(stored)) {
+      if (!Array.isArray(restored)) { out.push(path + ': array -> ' + typeof restored); return out; }
+      if (restored.length !== stored.length) out.push(path + '.length: ' + stored.length + ' -> ' + restored.length);
+      stored.forEach((v, i) => restoreGaps(v, restored[i], path + '[' + i + ']', out));
+      return out;
+    }
+    if (typeof stored === 'object') {
+      if (!restored || typeof restored !== 'object') { out.push(path + ': object -> ' + typeof restored); return out; }
+      Object.keys(stored).forEach(k => restoreGaps(stored[k], restored[k], path + '.' + k, out));
+      return out;
+    }
+    if (!stored) return out;
+    if (restored !== stored) out.push(path + ': ' + JSON.stringify(stored) + ' -> ' + JSON.stringify(restored));
+    return out;
+  }
+  true;
+`);
+
+/* 7a. The two blocks nobody hand-wrote: the plan the app ships and the one
+       "Nuevo bloque" creates. They grow when the app grows, so a field added
+       to either is covered here without anyone remembering to add it. */
+const shippedFieldsSurvive = call(`
+  (function() {
+    state = defaultState(); migrate();
+    const profile = state.profiles.hombre;
+    const fresh = emptyBlock();
+    profile.blocks[fresh.id] = fresh;
+    profile.blockOrder.push(fresh.id);
+    const stored = JSON.parse(JSON.stringify(profile));
+    const after = normalizeImportedProfile(JSON.parse(JSON.stringify(profile)));
+    const gaps = [];
+    Object.keys(stored.blocks).forEach(k => restoreGaps(stored.blocks[k], after.blocks[k], k, gaps));
+    return { gaps: gaps.slice(0, 6), count: gaps.length, blocks: Object.keys(stored.blocks).length };
+  })()
+`);
+ok('both blocks in the fixture are actually there', shippedFieldsSurvive.blocks === 2,
+   String(shippedFieldsSurvive.blocks));
+ok('every truthy field on the blocks the app ships survives a restore',
+   shippedFieldsSurvive.count === 0, shippedFieldsSurvive.gaps.join(' | '));
+
+/* 7b. And the same walk over a block with every optional field the plan
+       editor can write set to something — the fields 7a's fixtures happen
+       not to use. Values are chosen to sit inside their own clamps (inc on
+       the 0.25 grid, add <= weeks, nothing over a txt() cap and no double
+       spaces for it to collapse), so anything this reports is a field being
+       dropped or rewritten, not a bound doing its job. */
+const everyFieldSurvives = call(`
+  (function() {
+    const block = {
+      id: 'block-ks', name: 'Bloque completo', createdAt: '2026-01-02T03:04:05.000Z',
+      weeks: 6, deload: 6,
+      days: [
+        { id: 'da', name: 'Día A', pair: 'A/B', ex: [
+          { id: 'sq', n: 'Sentadilla', reps: '5', sets: 5, rest: 180,
+            alt: 'Prensa', cue: 'Pecho arriba', setup: 'Barra a 1,40 m',
+            add: 2, inc: 2.5, share: 1, ss: 1,
+            muscle: 'cuádriceps', pattern: 'rodilla', type: 'compuesto' },
+          { id: 'sq-viejo', n: 'Retirado', reps: '10', sets: 3, rest: 90, off: 1 },
+        ] },
+        { id: 'db', name: 'Día B', off: 1, ex: [
+          { id: 'sq', n: 'Sentadilla', reps: '8', sets: 3, rest: 120 },
+        ] },
+      ],
+      phase: {
+        1: { r: '3', t: 'Acumulación' }, 2: { r: '2', t: 'Acumulación' },
+        3: { r: '2', t: 'Intensificación' }, 4: { r: '1', t: 'Intensificación' },
+        5: { r: '1', t: 'Pico' }, 6: { r: '4', t: 'Descarga' },
+      },
+      priority: ['cuádriceps'],
+    };
+    const p = { blocks: { 'block-ks': block }, blockOrder: ['block-ks'], activeBlock: 'block-ks',
+                log: {}, rir: {}, notes: {}, energy: {}, order: {} };
+    const stored = JSON.parse(JSON.stringify(p));
+    const after = normalizeImportedProfile(JSON.parse(JSON.stringify(p)));
+    const gaps = restoreGaps(stored.blocks['block-ks'], after.blocks['block-ks'], 'block', []);
+    return { gaps: gaps.slice(0, 6), count: gaps.length };
+  })()
+`);
+ok('every optional field the plan editor writes survives a restore',
+   everyFieldSurvives.count === 0, everyFieldSurvives.gaps.join(' | '));
+
 console.log('\n== render cache ==');
 const renderCacheProbe = `
   (function() {
