@@ -212,8 +212,16 @@ Grounded in the repo; effort estimates are coarse. Not ranked against bugs.
 - **`renderCache` never invalidated at render end.** Could not construct an
   input where a stale cache returns a wrong answer; smell, not finding.
 - **`importIdMaps` plain-object maps with a raw `__proto__` id.** Rows are
-  misfiled, nothing throws, nothing escapes. Plan 010 rewrites the function
-  and can fold a `safeKey` in.
+  misfiled, nothing throws, nothing escapes. Settled by plan 010's rewrite,
+  which builds both maps with `Object.create(null)` — no chain, so no
+  `safeKey` was needed there.
+- **`safeKey`'s three-name deny-list.** Out of scope for plan 012, and the
+  same bug one name over: any inherited `Object.prototype` name reads back
+  truthy off a fresh `{}`, so a Músculo of `toString` still threw out of
+  `strengthRows`. Fixed as a follow-up commit on 012 rather than as a plan
+  of its own — ten lines, one helper, fully covered in `test/unit.js`.
+  `safeKey` asks the chain now; `UNSAFE_KEYS` keeps only `prototype`,
+  which `'prototype' in {}` cannot see.
 - **`frame-ancestors` absent.** Ignored in a `<meta>` CSP; Pages sets no
   headers. Platform constraint (already recorded below).
 - **Blanket same-origin `cacheFirst` in `sw.js` + `pages.yml` `path: "."`.**
