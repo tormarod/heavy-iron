@@ -42,7 +42,7 @@ below so it is not lost or re-audited.
 | 018 | [The first week of a new block starts from what the previous block ended on](done/018-new-block-week-one-starts-from-previous.md) | P1 | M | MED | — (land after 019/020; all three edit `buildExCard`) | DONE |
 | 019 | [Last week's session note comes back on the same day; `nota`/`energia` in the CSV](done/019-session-note-returns-and-reaches-csv.md) | P2 | S | LOW | — | DONE (QR "plan + registro" carry of notes/energy deferred — see the plan's Maintenance notes) |
 | 020 | [A second RÉCORD for a new best estimated 1RM](done/020-record-badge-for-estimated-1rm.md) | P2 | S | LOW | — | DONE (one deviation from the plan text — see its Maintenance notes) |
-| 021 | [The objetivo record is written when a session starts, never by a draw; it says what kind of target it was](021-record-target-on-session-start.md) | P1 | S | LOW | 026 (soft) | TODO |
+| 021 | [The objetivo record is written when a session starts, never by a draw; it says what kind of target it was](021-record-target-on-session-start.md) | P1 | S | LOW | 026 (soft) | IN PROGRESS |
 | 022 | [The Diagnóstico and the review stop reading a deload target as a mis-chosen weight](022-deload-is-not-a-wrong-weight.md) | P1 | S | LOW | — | TODO |
 | 023 | [Every imported string in the AI round-trip document is delimited](023-ai-document-delimits-every-imported-string.md) | P1 | S | LOW | — | TODO |
 | 024 | [Every import rejection path flushes the pending autosave first, never through a two-tab conflict](024-import-preflight-flush-never-through-a-conflict.md) | P1 | S | LOW | — | TODO |
