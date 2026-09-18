@@ -30,18 +30,18 @@ below so it is not lost or re-audited.
 | 006 | [Four small correctness fixes](done/006-four-small-correctness-fixes.md) | P2 | S | LOW | — | DONE |
 | 007 | [Write `AGENTS.md`](done/007-agents-md.md) | P2 | S | LOW | — | DONE |
 | 008 | [Second audit: ranked findings and plan](done/008-audit-2026-09-17.md) | P1 | — | — | — | IN PROGRESS (items 1–20 and 22 done, 21 bullet 2 open, 23: two of six done — see "Third audit") |
-| 009 | [Architecture deepening: seven shallow seams, ranked](009-architecture-deepening.md) | P2 | L | MED | 008 items 13–14 (done) | DONE (items 2, 3 and 8 had already landed in 011/014/015; item 6 stopped on its own STOP condition and item 7 stays deferred — see its Maintenance notes) |
-| 010 | [A backup or profile file the app itself wrote always restores, exactly as it was](010-restore-round-trips-own-data.md) | P1 | M | MED | — | DONE |
-| 011 | [Every cross-session reader converts kg/lb per row; CSV formula guard](011-units-everywhere-and-csv-boundary.md) | P1 | M | LOW | — (overlaps 009 item 2) | DONE |
-| 012 | [Freeform tags, editor numbers and the setup import cannot crash, hang or alias](012-input-boundary-tags-clamps-aliasing.md) | P1 | S | LOW | — | DONE (+ `safeKey` widened as a follow-up — see its Maintenance notes) |
-| 013 | [Six small correctness fixes](013-six-small-correctness-fixes.md) | P2 | S | LOW | — (Step D overlaps 009 item 1) | DONE (two deviations from the plan text — see its Maintenance notes) |
-| 014 | [The harness checks the repo's own invariants; `--list` works again](014-harness-invariants.md) | P1 | S | LOW | — (Steps 2, 4 overlap 009 item 3) | DONE (Step 5's round-trip narrowed to the ids a file states — see its Maintenance notes) |
-| 015 | [Docs match the code; one-command `CACHE_VERSION` bump](015-docs-sync-and-release-helper.md) | P2 | S | LOW | 014 (soft); overlaps 009 item 8 | DONE (+ the `cache-version` regex narrowed to the shell's own extensions, out of the plan's scope but needed to land Step 4 — see its Maintenance notes) |
-| 016 | [The AI round-trip text carries what the app knows: own block in the prompt, per-exercise verdicts and RIR in the review](016-round-trip-text-carries-own-context.md) | P1 | S | LOW | — (017 edits `js/review.js` too) | DONE |
-| 017 | [The review sheet takes the JSON back](017-review-sheet-takes-the-json-back.md) | P1 | S | LOW | — (016 edits `js/review.js` too) | DONE |
-| 018 | [The first week of a new block starts from what the previous block ended on](018-new-block-week-one-starts-from-previous.md) | P1 | M | MED | — (land after 019/020; all three edit `buildExCard`) | DONE |
-| 019 | [Last week's session note comes back on the same day; `nota`/`energia` in the CSV](019-session-note-returns-and-reaches-csv.md) | P2 | S | LOW | — | DONE (QR "plan + registro" carry of notes/energy deferred — see the plan's Maintenance notes) |
-| 020 | [A second RÉCORD for a new best estimated 1RM](020-record-badge-for-estimated-1rm.md) | P2 | S | LOW | — | DONE (one deviation from the plan text — see its Maintenance notes) |
+| 009 | [Architecture deepening: seven shallow seams, ranked](done/009-architecture-deepening.md) | P2 | L | MED | 008 items 13–14 (done) | DONE (items 2, 3 and 8 had already landed in 011/014/015; item 6 stopped on its own STOP condition and item 7 stays deferred — see its Maintenance notes) |
+| 010 | [A backup or profile file the app itself wrote always restores, exactly as it was](done/010-restore-round-trips-own-data.md) | P1 | M | MED | — | DONE |
+| 011 | [Every cross-session reader converts kg/lb per row; CSV formula guard](done/011-units-everywhere-and-csv-boundary.md) | P1 | M | LOW | — (overlaps 009 item 2) | DONE |
+| 012 | [Freeform tags, editor numbers and the setup import cannot crash, hang or alias](done/012-input-boundary-tags-clamps-aliasing.md) | P1 | S | LOW | — | DONE (+ `safeKey` widened as a follow-up — see its Maintenance notes) |
+| 013 | [Six small correctness fixes](done/013-six-small-correctness-fixes.md) | P2 | S | LOW | — (Step D overlaps 009 item 1) | DONE (two deviations from the plan text — see its Maintenance notes) |
+| 014 | [The harness checks the repo's own invariants; `--list` works again](done/014-harness-invariants.md) | P1 | S | LOW | — (Steps 2, 4 overlap 009 item 3) | DONE (Step 5's round-trip narrowed to the ids a file states — see its Maintenance notes) |
+| 015 | [Docs match the code; one-command `CACHE_VERSION` bump](done/015-docs-sync-and-release-helper.md) | P2 | S | LOW | 014 (soft); overlaps 009 item 8 | DONE (+ the `cache-version` regex narrowed to the shell's own extensions, out of the plan's scope but needed to land Step 4 — see its Maintenance notes) |
+| 016 | [The AI round-trip text carries what the app knows: own block in the prompt, per-exercise verdicts and RIR in the review](done/016-round-trip-text-carries-own-context.md) | P1 | S | LOW | — (017 edits `js/review.js` too) | DONE |
+| 017 | [The review sheet takes the JSON back](done/017-review-sheet-takes-the-json-back.md) | P1 | S | LOW | — (016 edits `js/review.js` too) | DONE |
+| 018 | [The first week of a new block starts from what the previous block ended on](done/018-new-block-week-one-starts-from-previous.md) | P1 | M | MED | — (land after 019/020; all three edit `buildExCard`) | DONE |
+| 019 | [Last week's session note comes back on the same day; `nota`/`energia` in the CSV](done/019-session-note-returns-and-reaches-csv.md) | P2 | S | LOW | — | DONE (QR "plan + registro" carry of notes/energy deferred — see the plan's Maintenance notes) |
+| 020 | [A second RÉCORD for a new best estimated 1RM](done/020-record-badge-for-estimated-1rm.md) | P2 | S | LOW | — | DONE (one deviation from the plan text — see its Maintenance notes) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
@@ -625,7 +625,7 @@ Recorded so they are not re-audited next run.
 
 A third pass at commit `6def9fc`, using the `/codebase-design` vocabulary
 (deep vs. shallow modules, seams, locality, leverage) rather than a bug
-audit, is in [009-architecture-deepening.md](009-architecture-deepening.md).
+audit, is in [009-architecture-deepening.md](done/009-architecture-deepening.md).
 Seven ranked deepening candidates, one PR each: the sheet module (which also
 fixes Escape being dead on the diagnostics and review sheets), the three
 set-volume copies, two shell-list unit assertions, a log module owning the
