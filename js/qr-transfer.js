@@ -579,7 +579,6 @@ async function applyQrPayload(payload) {
    last script on the page. See the call site at the foot of that file. */
 function wireQrTransfer() {
   $('qrBtn').onclick = openQr;
-  $('qrClose').onclick = closeQr;
-  $('qrSheet').addEventListener('click', e => { if (e.target.id === 'qrSheet') closeQr(); });
+  registerSheet('qrSheet', { closeBtn: 'qrClose', onClose: closeQr });
   $('qrPause').onclick = () => { qrPaused = !qrPaused; renderQrFrame(); };
 }

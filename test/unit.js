@@ -128,7 +128,7 @@ console.log('\n== the harness ==');
 ok('every source file loads in one shared scope', call('typeof migrate') === 'function');
 ok('load() seeded a state object', call('!!state && !!state.profiles'));
 
-/* js/app.js:1942-1955 stubs the entry points of three split-out files so the
+/* js/app.js stubs the entry points of the split-out files it still names, so the
    app still boots when the worker serves an index.html whose script tag for
    one of them is not in the cache. Nothing exercised those stubs, because
    the harness always loaded all thirteen files — the defence against the
@@ -137,7 +137,10 @@ ok('load() seeded a state object', call('!!state && !!state.profiles'));
 console.log('\n== a precache hole: app.js boots without each split file (AGENTS.md rule 1) ==');
 [['js/rest-timer.js', ['startRest', 'stopRest', 'renderSoundBtn', 'askForNotifications', 'keepAliveStop']],
  ['js/chart.js', ['openChart']],
- ['js/qr-transfer.js', ['closeQr']]].forEach(([file, stubs]) => {
+ /* js/qr-transfer.js needs no stub since sheets register their own
+    teardown (plans/009 item 1) — nothing in app.js names closeQr now. The
+    file still gets its precache-hole pass: the shell must load without it. */
+ ['js/qr-transfer.js', []]].forEach(([file, stubs]) => {
   let partial = null, err = null;
   try { partial = loadApp([file]); } catch (e) { err = e; }
   ok('the shell loads without ' + file, !err && !!partial, err && err.message);
@@ -1794,37 +1797,216 @@ console.log('\n== the dialogs tell the truth about undo (plans/013) ==');
      JSON.stringify(claims));
 }
 
-console.log('\n== Escape reaches every sheet (plans/013) ==');
+console.log('\n== Escape reaches every sheet (plans/013, plans/009 item 1) ==');
 {
   /* reviewSheet and diagSheet were in the markup and opened by openSheet()
-     but never listed here, so Escape did nothing on them — the gap the
-     accessibility work was recorded as having closed. Checking the array
-     against index.html rather than against a second hand-written list is
-     what stops the next sheet reopening it. */
-  const sheetIds = call('SHEET_IDS');
+     but missing from the hand-kept SHEET_IDS array, so Escape did nothing on
+     them — the gap the accessibility work was recorded as having closed.
+     There is no array to forget any more: each sheet registers itself from
+     its own wire*(), and this checks the registry that registration builds
+     against index.html, in both directions. */
+  const registered = call('Object.keys(sheets)');
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const markup = Array.from(html.matchAll(/<div class="sheet" id="(\w+)"/g), m => m[1]);
 
   ok('the index.html scan found the sheets it is meant to check', markup.length >= 10, String(markup.length));
   /* askSheet is the confirm dialog's own; the Escape handler answers for it
-     before it ever looks at this list. */
-  const missing = markup.filter(id => id !== 'askSheet' && sheetIds.indexOf(id) === -1);
-  ok('every sheet in index.html except askSheet is in SHEET_IDS', missing.length === 0, missing.join(', '));
-  const stray = sheetIds.filter(id => markup.indexOf(id) === -1);
-  ok('and SHEET_IDS names no sheet that is not in the markup', stray.length === 0, stray.join(', '));
+     before it ever looks at the stack. */
+  const missing = markup.filter(id => id !== 'askSheet' && registered.indexOf(id) === -1);
+  ok('every sheet in index.html except askSheet calls registerSheet()', missing.length === 0, missing.join(', '));
+  const stray = registered.filter(id => markup.indexOf(id) === -1);
+  ok('and registerSheet() names no sheet that is not in the markup', stray.length === 0, stray.join(', '));
 
-  /* Order is what decides which sheet Escape closes when two are up. */
-  ok('reviewSheet sits after blocksSheet, which it opens over',
-     sheetIds.indexOf('reviewSheet') > sheetIds.indexOf('blocksSheet'),
-     JSON.stringify(Array.from(sheetIds)));
-  ok('diagSheet sits after blocksSheet too',
-     sheetIds.indexOf('diagSheet') > sheetIds.indexOf('blocksSheet'),
-     JSON.stringify(Array.from(sheetIds)));
-  ok('closeReview is a global, so the Escape handler can reach it',
-     call('typeof closeReview') === 'function');
+  /* Which sheet Escape closes used to depend on the order of SHEET_IDS —
+     a hand-kept guess at which sheet can open over which. The stack knows
+     the real order, and it has to survive an out-of-order close: the outer
+     sheet can be closed first while the inner one is still up. */
+  const nest = call(`(function () {
+    const base = sheetStack.length;
+    openSheet('blocksSheet'); openSheet('reviewSheet');
+    const top = sheetStack[sheetStack.length - 1].id;
+    closeSheet('blocksSheet');
+    const left = sheetStack.slice(base).map(s => s.id).join(',');
+    closeSheet('reviewSheet');
+    return top + '|' + left + '|' + (sheetStack.length - base);
+  })()`);
+  ok('the stack closes the sheet opened last, and an out-of-order close takes only its own entry',
+     nest === 'reviewSheet|reviewSheet|0', nest);
+
+  /* The point of the registry, beyond the list: a teardown that is not a
+     bare closeSheet reaches Escape without app.js naming the split file's
+     function. Losing closeReview would strand "+ Nuevo bloque", which waits
+     on the resume callback it runs. */
+  ok('the sheets with teardown carry it on their registration',
+     ['planSheet', 'setupSheet', 'qrSheet', 'reviewSheet']
+       .every(id => call(`typeof sheets['${id}'].onClose`) === 'function'),
+     JSON.stringify(registered.map(id => id + ':' + call(`typeof sheets['${id}'].onClose`))));
+  /* AGENTS.md rule (a): a symbol app.js reads stays in app.js or is stubbed
+     there. plans/013 added `else if (top === 'reviewSheet') closeReview()`,
+     which read js/review.js with no stub — a precache hole away from the
+     stuck-loading screen. Registration is what removed the read. */
+  /* Block comments stripped first: both names are still discussed there,
+     and what must be gone is a reference the engine would evaluate. */
+  const appCode = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  ok('app.js reads neither closeReview nor closeQr any more (AGENTS.md rule (a))',
+     !/\bcloseReview\b/.test(appCode) && !/\bcloseQr\b/.test(appCode));
 }
 
 console.log('\n== requestWakeLock: one rest, one lock — skipped mid-request, doubled up, or re-acquired (plans/008 item 15, plans/013) ==');
+console.log('\n== the log key has one reader as well as one builder (plans/009 item 4) ==');
+{
+  ok('parseSlot is the mirror of slot()', (() => {
+    const k = call(`slot(3, 'd1')`);
+    const s = call(`parseSlot('${k}')`);
+    return k === 'w3-d1' && s.week === 3 && s.dayId === 'd1';
+  })());
+  /* Day ids are uid()-shaped and carry hyphens of their own, so the dayId
+     half has to be greedy to the end of the key, not up to the next dash. */
+  ok('a day id with hyphens in it survives the round trip',
+     call(`parseSlot(slot(12, 'day-abc-1')).dayId`) === 'day-abc-1');
+  ok('a key that is not a slot reads as null, rather than as week NaN',
+     call(`parseSlot('notes')`) === null && call(`parseSlot('w-d1')`) === null);
+
+  /* The filter is what the purge walks use, and the w17 entry is the whole
+     point: the 1..MAX_WEEKS sweeps could not see it. */
+  const visited = call(`(function () {
+    const map = { b1: { 'w1-d1': 1, 'w2-d1': 2, 'w2-d2': 3, 'w17-d1': 4, notes: 5 } };
+    const out = [];
+    forEachSlot(map, 'b1', (k, w, d, v) => out.push(k + '=' + v), { dayId: 'd1' });
+    return out.sort().join(' ');
+  })()`);
+  ok('forEachSlot visits every week the day actually has, including one past MAX_WEEKS',
+     visited === 'w1-d1=1 w17-d1=4 w2-d1=2', visited);
+
+  const oneWeek = call(`(function () {
+    const map = { b1: { 'w1-d1': 1, 'w2-d1': 2, 'w2-d2': 3 } };
+    const out = [];
+    forEachSlot(map, 'b1', k => out.push(k), { dayId: 'd1', week: 2 });
+    return out.join(' ');
+  })()`);
+  ok('...and narrows to one week when asked', oneWeek === 'w2-d1', oneWeek);
+
+  /* purgeSessionMeta's onlyWeek is optional, and the sweep this replaced read
+     it with a plain truthiness check. A null that narrowed to nothing would
+     purge nothing, silently. */
+  const nullWeek = call(`(function () {
+    const map = { b1: { 'w1-d1': 1, 'w2-d1': 2, 'w2-d2': 3 } };
+    const out = [];
+    forEachSlot(map, 'b1', k => out.push(k), { dayId: 'd1', week: null });
+    return out.sort().join(' ');
+  })()`);
+  ok('a null week means every week, as the walk it replaced did', nullWeek === 'w1-d1 w2-d1', nullWeek);
+
+  ok('a block with no entries is not an error', call(`(function () {
+    let n = 0;
+    forEachSlot({}, 'nope', () => n++);
+    forEachSlot(undefined, 'b1', () => n++);
+    return n;
+  })()`) === 0);
+
+  /* The whole point of the pair is that the shape is written down once. A
+     reader that goes back to running the regex by hand is the drift this
+     catches — there were eleven of them across four files. Comments are
+     stripped first, because they still quote the regex to explain it. */
+  const handRolled = ['js/app.js', 'js/chart.js', 'js/diagnostics.js', 'js/review.js']
+    .map(rel => [rel, (fs.readFileSync(path.join(ROOT, rel), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').match(/\/\^w\(/g) || []).length])
+    .filter(([rel, n]) => n > (rel === 'js/app.js' ? 1 : 0));
+  ok('parseSlot() is the only place that runs the slot regex',
+     handRolled.length === 0, JSON.stringify(handRolled));
+
+  /* Object.keys() is a snapshot, which is what lets every purge below delete
+     the key it was just handed. */
+  ok('fn may delete the key it is given', call(`(function () {
+    const blk = { 'w1-d1': 1, 'w2-d1': 2 };
+    forEachSlot({ b1: blk }, 'b1', k => delete blk[k], { dayId: 'd1' });
+    return Object.keys(blk).length;
+  })()`) === 0);
+}
+
+console.log('\n== commit() is both halves, and installBlockData refuses a bad id (plans/009 item 5) ==');
+{
+  /* A blanket rename of the fifteen `save(); render();` sites rewrote this
+     function's own body into `function commit() { commit(); }` — infinite
+     recursion the suite could not see, because nothing here called it.
+     Now something does. */
+  const halves = call(`(function () {
+    const realSave = save, realRender = render;
+    let saved = 0, drawn = 0;
+    try {
+      globalThis.save = function () { saved++; };
+      globalThis.render = function () { drawn++; };
+      commit();
+    } finally { globalThis.save = realSave; globalThis.render = realRender; }
+    return saved + ',' + drawn;
+  })()`);
+  ok('commit() persists and redraws, once each', halves === '1,1', halves);
+
+  const installed = call(`(function () {
+    const p = { log: {}, rir: {}, order: {} };
+    const done = installBlockData(p, 'b1', { log: { 'w1-d1': { e1: [{ w: 1 }] } }, rir: { 'w1-d1': { e1: 2 } } });
+    return [done, JSON.stringify(p.log.b1), JSON.stringify(p.rir.b1), JSON.stringify(p.order)].join('|');
+  })()`);
+  ok('installBlockData files the maps it was given and leaves the rest alone',
+     installed === 'true|{"w1-d1":{"e1":[{"w":1}]}}|{"w1-d1":{"e1":2}}|{}', installed);
+
+  /* plans/008 item 2's class of key: a block id is a key on five maps, and a
+     hand-edited file can carry a name Object.prototype already answers for. */
+  const proto = call(`(function () {
+    const done = installBlockData({ log: {}, rir: {} }, '__proto__', { log: { 'w1-d1': {} } });
+    return done + '|' + ({}).hasOwnProperty('w1-d1');
+  })()`);
+  ok('installBlockData refuses __proto__ as a block id, and writes nothing at all',
+     proto === 'false|false', proto);
+}
+
+console.log('\n== "borrar registro" reaches a week past the cap (plans/009 item 4) ==');
+{
+  /* A block shortened, or a backup hand-edited, can hold a week above
+     MAX_WEEKS. The old sweeps rebuilt keys w1..w16 and looked each one up,
+     so anything filed above the cap was silently left behind — a deleted
+     day's rows came back if the block was ever lengthened again. */
+  const left = call(`(function () {
+    const p = { log: { b1: { 'w1-d1': { e1: [{}] }, 'w17-d1': { e1: [{}] }, 'w3-d2': { e1: [{}] } } },
+                rir: { b1: { 'w17-d1': { e1: 2 } } },
+                notes: { b1: { 'w17-d1': 'x' } },
+                energy: { b1: {} }, order: { b1: { 'w17-d1': ['e1'] } } };
+    purgeDayLog(p, 'b1', 'd1');
+    return [Object.keys(p.log.b1).join(','), Object.keys(p.rir.b1).length,
+            Object.keys(p.notes.b1).length, Object.keys(p.order.b1).length].join('|');
+  })()`);
+  ok('purgeDayLog takes the w17 rows, the chips, the note and the order with it, and leaves the other day alone',
+     left === 'w3-d2|0|0|0', left);
+
+  const ex = call(`(function () {
+    const p = { log: { b1: { 'w17-d1': { e1: [{}], e2: [{}] } } },
+                rir: { b1: { 'w17-d1': { e1: 2, e2: 3 } } } };
+    purgeExLog(p, 'b1', 'd1', 'e1');
+    return Object.keys(p.log.b1['w17-d1']).join(',') + '|' + Object.keys(p.rir.b1['w17-d1']).join(',');
+  })()`);
+  ok('purgeExLog reaches the same week, and takes only its own exercise', ex === 'e2|e2', ex);
+
+  const moved = call(`(function () {
+    const p = { log: { b1: { 'w17-d1': { e1: [{ w: 1 }] } } } };
+    moveExLog(p, 'b1', 'd1', 'd2', 'e1');
+    return JSON.stringify(p.log.b1);
+  })()`);
+  ok('moveExLog carries a week past the cap across to the other day',
+     moved === '{"w17-d2":{"e1":[{"w":1}]}}', moved);
+
+  /* moveExOrder's two halves are independent: the destination day can have a
+     recorded order in a week the source day has no entry for at all, and the
+     exercise still has to join it. Walking only the source's weeks would
+     miss that, which is why it walks the weeks either day has. */
+  const order = call(`(function () {
+    const p = { order: { b1: { 'w1-d1': ['e1', 'e2'], 'w1-d2': ['e9'], 'w17-d2': ['e9'] } } };
+    moveExOrder(p, 'b1', 'd1', 'd2', 'e1');
+    return JSON.stringify(p.order.b1);
+  })()`);
+  ok('moveExOrder drops the id from the source order and appends it to the destination, in every week either has',
+     order === '{"w1-d1":["e2"],"w1-d2":["e9","e1"],"w17-d2":["e9","e1"]}', order);
+}
+
 (async () => {
   /* A real WakeLockSentinel carries its own .released flag, and the guard
      added in plans/013 reads it — so the fake has to carry one as well. */

@@ -229,6 +229,5 @@ function drawVolumeTrend(profile, block, week, isLog, dimLabel) {
    last script on the page. See the call site at the foot of that file. */
 function wireVolumeSheet() {
   $('volumeBtn').onclick = openVolume;
-  $('volumeClose').onclick = () => closeSheet('volumeSheet');
-  $('volumeSheet').addEventListener('click', e => { if (e.target.id === 'volumeSheet') closeSheet('volumeSheet'); });
+  registerSheet('volumeSheet', { closeBtn: 'volumeClose' });
 }

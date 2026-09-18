@@ -102,6 +102,71 @@ const incFor = ex => {
    with the shuffle. */
 const slot = (w, dayId) => 'w' + w + '-' + dayId;
 
+/* The mirror of slot(), and with it the only pair that knows the key's
+   shape. Eleven readers across four files ran /^w(\d+)-(.+)$/ by hand, so
+   changing the shape meant finding all eleven; now it is these two lines. */
+function parseSlot(k) {
+  const m = /^w(\d+)-(.+)$/.exec(k);
+  return m ? { week: +m[1], dayId: m[2] } : null;
+}
+
+/* The one way imported rows reach a profile. Both routes that add an
+   imported block — the pasted/loaded JSON and a scanned QR — land in
+   installImportedBlock, which used to assign the maps by hand, each
+   assignment trusting that normalizeImported* had already applied the
+   guards the accessors below apply. Two write vocabularies that agreed by
+   convention; this is the one that does not have to.
+
+   safeKey is what the hand-written version was missing: a block id is a key
+   on five maps, and `__proto__` is a name a hand-edited file can carry
+   (plans/008 item 2). Returns false when it refuses, so a caller cannot
+   file a block and quietly lose its rows.
+
+   normalizeImportedProfile deliberately does not come through here: it
+   walks the *sender's* keys and re-keys every map afterwards, so it is a
+   normalization pass over an untrusted object, not an install into a live
+   profile. See plans/009 item 5. */
+function installBlockData(profile, blockId, data) {
+  const id = safeKey(blockId);
+  if (!id) return false;
+  const d = data || {};
+  ['log', 'rir', 'order', 'notes', 'energy'].forEach(name => {
+    if (!d[name]) return;
+    if (!profile[name]) profile[name] = {};
+    profile[name][id] = d[name];
+  });
+  return true;
+}
+
+/* Walk the slots one block of one of the four parallel maps actually holds,
+   in no particular order: fn(key, week, dayId, value), narrowed by `filter`
+   on dayId, week, or both.
+
+   The sweeps this replaces rebuilt every *possible* key from 1 to MAX_WEEKS
+   and looked each one up, which made "borrar registro" quietly mean "up to
+   week 16": a block shortened from 12 weeks to 6 still files rows under
+   weeks 7-12 — that part worked — but a hand-edited or older backup can
+   hold a week past the cap, and those were walked straight past and left
+   behind. Iterating what is there has no cap to be wrong about, and costs
+   one pass instead of sixteen lookups.
+
+   Object.keys() is a snapshot, so fn may delete the key it was handed. */
+function forEachSlot(map, blockId, fn, filter) {
+  const blk = map && map[blockId];
+  if (!blk) return;
+  const f = filter || {};
+  Object.keys(blk).forEach(key => {
+    const s = parseSlot(key);
+    if (!s) return;
+    /* != null, not !== undefined: the walk this replaced treated a missing
+       week as "every week" via a plain truthiness check, and a caller that
+       passes null would otherwise match nothing and silently purge nothing. */
+    if (f.dayId != null && s.dayId !== f.dayId) return;
+    if (f.week != null && s.week !== f.week) return;
+    fn(key, s.week, s.dayId, blk[key]);
+  });
+}
+
 let uidN = 0;
 const uid = prefix => prefix + '-' + Date.now().toString(36) + '-' + (uidN++);
 
@@ -734,10 +799,11 @@ function undoLast() {
    `if (!await ask(...)) return;`. Only one can be open at a time, which is
    already true of the confirm() they replace. */
 let askResolve = null;
-/* Its own variable, not the sheet stack's `sheetReturn` below: a confirm
-   raised from inside an open sheet (wipe, delete block) used to null that
-   shared variable on close, so when the sheet itself closed afterwards focus
-   had nowhere to return to. */
+/* Its own variable, not an entry on the sheet stack below: a confirm raised
+   from inside an open sheet (wipe, delete block) used to null the one shared
+   return target sheets had between them, so when the sheet itself closed
+   afterwards focus had nowhere to return to. The stack would survive that
+   now, but a confirm is still not a sheet and never goes on it. */
 let askReturn = null;
 
 function closeAsk(value) {
@@ -851,6 +917,75 @@ $('themeBtn').onclick = () => {
   save();
   mark('Tema ' + THEME_LABEL[p.theme]);
 };
+
+/* ---------- sheets ----------
+   Escape closes the top one, and focus goes into the dialog when it opens
+   and back to whatever opened it when it closes, so the whole app is usable
+   without a mouse. */
+/* One registration per sheet, made from the owning file's own wire*(), so a
+   new sheet is one call rather than four separate edits that had to agree: a
+   hand-kept id list, a branch in the Escape handler, and a copy of the
+   backdrop-click and close-button pair. The list and the branch are exactly
+   what went wrong — reviewSheet and diagSheet were opened by openSheet() but
+   missing from the list, and Escape did nothing on them (plans/013 fixed the
+   two; this is the shape that stops a third).
+
+   `onClose` is the teardown Escape and the backdrop must run instead of a
+   bare closeSheet: closePlanEditor, closeSetup, closeQr and closeReview each
+   do something on the way out that losing would be a bug — reviewSheet, for
+   one, carries the resume callback "+ Nuevo bloque" is waiting on.
+
+   Registering is optional on purpose. A precache hole — the worker serving
+   an index.html whose script tag for a split file was never cached — leaves
+   that file's registration unmade, and an unregistered sheet still opens and
+   still closes on Escape with the default closeSheet. That is what lets
+   app.js stop naming closeQr and closeReview at all: the structure now
+   covers the hole a no-op stub used to (AGENTS.md rule (a)). */
+const sheets = Object.create(null);   /* id -> { onClose } */
+const sheetStack = [];                /* [{ id, returnTo }], bottom to top */
+
+function registerSheet(id, opts) {
+  const o = opts || {};
+  sheets[id] = { onClose: o.onClose || null };
+  const close = () => (o.onClose ? o.onClose() : closeSheet(id));
+  if (o.closeBtn) $(o.closeBtn).onclick = close;
+  $(id).addEventListener('click', e => { if (e.target.id === id) close(); });
+}
+
+/* A stack, not the single slot this used to be: qrSheet opens on top of the
+   backup sheet and reviewSheet on top of the blocks sheet, and one shared
+   return target meant the inner sheet's close overwrote the outer one's — so
+   closing the outer sheet afterwards sent focus nowhere. */
+function openSheet(id) {
+  const el = $(id);
+  /* Opening a sheet that is already up must not stack a second entry, or
+     Escape would need two presses and the first return target would be
+     something inside the sheet itself. */
+  if (!el.classList.contains('up')) sheetStack.push({ id: id, returnTo: document.activeElement });
+  el.classList.add('up');
+  const box = el.querySelector('.sheet-box');
+  box.setAttribute('tabindex', '-1');
+  box.focus();
+}
+
+function closeSheet(id) {
+  $(id).classList.remove('up');
+  const i = sheetStack.map(s => s.id).lastIndexOf(id);
+  const back = i < 0 ? null : sheetStack.splice(i, 1)[0].returnTo;
+  /* isConnected: something opened under this sheet can have triggered a full
+     render() that recreated the button that opened it (the nav bar is
+     rebuilt on every render) — same reasoning as closeAsk, above. */
+  if (back && back.isConnected && back.focus) back.focus();
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (askResolve) { closeAsk($('askInput').hidden ? false : null); return; }
+  const top = sheetStack[sheetStack.length - 1];
+  if (!top) return;
+  const reg = sheets[top.id];
+  if (reg && reg.onClose) reg.onClose(); else closeSheet(top.id);
+});
 
 /* ---------- first-run setup / settings ----------
    The app used to open on somebody else's training plan, under somebody
@@ -1082,8 +1217,7 @@ function closeSetup() {
   setupDraft = null;
   closeSheet('setupSheet');
 }
-$('setupClose').onclick = closeSetup;
-$('setupSheet').addEventListener('click', e => { if (e.target.id === 'setupSheet') closeSetup(); });
+registerSheet('setupSheet', { closeBtn: 'setupClose', onClose: closeSetup });
 $('settings').onclick = () => openSetup(false);
 
 /* A block with one day and one blank exercise — somewhere to build from,
@@ -1709,35 +1843,31 @@ function loggedSets(profile, blockId, dayId, exId, weeks) {
 /* Rows filed under weeks past the end of a shortened block: kept, but out of
    reach until the block is made long enough to show them again. */
 function weeksBeyondEnd(profile, block) {
-  const blk = profile.log[block.id];
-  if (!blk) return 0;
   const weeks = blockWeeks(block);
   let n = 0;
-  Object.keys(blk).forEach(k => {
-    const m = /^w(\d+)-/.exec(k);
-    if (!m || +m[1] <= weeks) return;
-    const s = blk[k];
+  forEachSlot(profile.log, block.id, (k, w, d, s) => {
+    if (w <= weeks) return;
     Object.keys(s || {}).forEach(exId => { if (Array.isArray(s[exId])) n += s[exId].filter(rowUsed).length; });
   });
   return n;
 }
 
-/* These walk to MAX_WEEKS rather than the block's length on purpose: a block
-   shortened from 12 weeks to 6 still has rows filed under weeks 7-12, and
-   "borrar registro" has to mean all of it. */
+/* These walk every week the day actually has rather than the block's length,
+   on purpose: a block shortened from 12 weeks to 6 still has rows filed under
+   weeks 7-12, and "borrar registro" has to mean all of it. They used to walk
+   1..MAX_WEEKS for the same reason, which was the same intention with a cap
+   on it — a key above the cap, from a hand-edited or older backup, was left
+   behind to reappear if the block was ever lengthened again. */
 function purgeExLog(profile, blockId, dayId, exId) {
   purgeRir(profile, blockId, dayId, exId);
-  const blk = profile.log[blockId];
-  if (!blk) return;
-  for (let w = 1; w <= MAX_WEEKS; w++) { const s = blk[slot(w, dayId)]; if (s) delete s[exId]; }
+  forEachSlot(profile.log, blockId, (k, w, d, s) => { if (s) delete s[exId]; }, { dayId: dayId });
 }
 
 function purgeDayLog(profile, blockId, dayId) {
   purgeRir(profile, blockId, dayId);
   purgeSessionMeta(profile, blockId, dayId);
   const blk = profile.log[blockId];
-  if (!blk) return;
-  for (let w = 1; w <= MAX_WEEKS; w++) delete blk[slot(w, dayId)];
+  forEachSlot(profile.log, blockId, k => delete blk[k], { dayId: dayId });
 }
 
 /* The session-level maps are keyed by slot alone, with no exercise under
@@ -1749,8 +1879,7 @@ function purgeSessionMeta(profile, blockId, dayId, onlyWeek) {
   [profile.notes, profile.energy, profile.order].forEach(map => {
     const blk = map && map[blockId];
     if (!blk) return;
-    if (onlyWeek) { delete blk[slot(onlyWeek, dayId)]; return; }
-    for (let w = 1; w <= MAX_WEEKS; w++) delete blk[slot(w, dayId)];
+    forEachSlot(map, blockId, k => delete blk[k], { dayId: dayId, week: onlyWeek });
   });
 }
 
@@ -1761,12 +1890,11 @@ function purgeSessionMeta(profile, blockId, dayId, onlyWeek) {
 function purgeRir(profile, blockId, dayId, exId) {
   const blk = profile.rir && profile.rir[blockId];
   if (!blk) return;
-  for (let w = 1; w <= MAX_WEEKS; w++) {
-    const k = slot(w, dayId);
-    if (!blk[k]) continue;
-    if (exId) delete blk[k][exId];
+  forEachSlot(profile.rir, blockId, (k, w, d, s) => {
+    if (!s) return;
+    if (exId) delete s[exId];
     else delete blk[k];
-  }
+  }, { dayId: dayId });
 }
 
 /* "Send to another session" in the plan editor: the exercise moves between
@@ -1787,10 +1915,8 @@ function purgeRir(profile, blockId, dayId, exId) {
 function moveExKeyed(map, blockId, fromDayId, toDayId, exId) {
   const blk = map[blockId];
   if (!blk) return;
-  for (let w = 1; w <= MAX_WEEKS; w++) {
-    const fromKey = slot(w, fromDayId);
-    const from = blk[fromKey];
-    if (!from || from[exId] === undefined) continue;
+  forEachSlot(map, blockId, (fromKey, w, d, from) => {
+    if (!from || from[exId] === undefined) return;
     const toKey = slot(w, toDayId);
     if (!blk[toKey]) blk[toKey] = {};
     const dest = blk[toKey];
@@ -1801,7 +1927,7 @@ function moveExKeyed(map, blockId, fromDayId, toDayId, exId) {
     }
     delete from[exId];
     if (!Object.keys(from).length) delete blk[fromKey];
-  }
+  }, { dayId: fromDayId });
 }
 
 function moveExLog(profile, blockId, fromDayId, toDayId, exId) {
@@ -1821,7 +1947,13 @@ function moveExRir(profile, blockId, fromDayId, toDayId, exId) {
 function moveExOrder(profile, blockId, fromDayId, toDayId, exId) {
   const blk = profile.order[blockId];
   if (!blk) return;
-  for (let w = 1; w <= MAX_WEEKS; w++) {
+  /* The two halves are independent — the destination day can have a recorded
+     order in a week the source day has no entry for at all, and the exercise
+     still has to join it — so this walks the weeks *either* day has, not
+     just the source's. */
+  const weeks = new Set();
+  forEachSlot(profile.order, blockId, (k, w, d) => { if (d === fromDayId || d === toDayId) weeks.add(w); });
+  weeks.forEach(w => {
     const fromKey = slot(w, fromDayId), toKey = slot(w, toDayId);
     const fromIds = blk[fromKey];
     if (Array.isArray(fromIds)) {
@@ -1831,7 +1963,7 @@ function moveExOrder(profile, blockId, fromDayId, toDayId, exId) {
     }
     const toIds = blk[toKey];
     if (Array.isArray(toIds) && toIds.indexOf(exId) < 0) toIds.push(exId);
-  }
+  });
 }
 
 /* Everything logged anywhere in a block — the number that decides whether
@@ -1959,61 +2091,14 @@ if (typeof keepAliveStop !== 'function') globalThis.keepAliveStop = function () 
 
 /* Same again for js/chart.js, which owns one entry point: the "Progreso ↗"
    button on every card calls it from inside buildExCard, so an unguarded
-   call would throw inside a card rather than merely doing nothing. And for
-   js/qr-transfer.js, whose closeQr the Escape handler reaches for whenever
-   the QR sheet is the top one — a sheet that cannot exist without that
-   file, so the stub is only ever called in a world where it is right. */
+   call would throw inside a card rather than merely doing nothing.
+
+   js/qr-transfer.js needed one too until sheets registered their own
+   teardown: the Escape handler used to name closeQr directly. It does not
+   any more (see registerSheet below), and nothing outside that file can open
+   the QR sheet, so there is no longer a symbol to stub. */
 if (typeof openChart !== 'function') globalThis.openChart = function () {};
-if (typeof closeQr !== 'function') globalThis.closeQr = function () {};
 
-
-/* ---------- sheets ----------
-   Escape closes the top one, and focus goes into the dialog when it opens
-   and back to whatever opened it when it closes, so the whole app is usable
-   without a mouse. */
-/* Order matters: Escape closes whichever of these is open *last*, so a sheet
-   that can be opened on top of another (qrSheet, from the backup sheet;
-   reviewSheet, from "+ Nuevo bloque" on the blocks sheet) has to sit after
-   it here. Every .sheet in index.html belongs in this list except askSheet,
-   which the confirm dialog above already answers for — reviewSheet and
-   diagSheet were missing and Escape simply did nothing on them, so
-   test/unit.js now checks the list against the markup (plans/013). */
-const SHEET_IDS = ['setupSheet', 'sheet', 'planSheet', 'blocksSheet', 'reviewSheet', 'diagSheet', 'importSheet', 'chartSheet', 'calcSheet', 'volumeSheet', 'qrSheet'];
-let sheetReturn = null;
-
-function openSheet(id) {
-  sheetReturn = document.activeElement;
-  const el = $(id);
-  el.classList.add('up');
-  const box = el.querySelector('.sheet-box');
-  box.setAttribute('tabindex', '-1');
-  box.focus();
-}
-
-function closeSheet(id) {
-  $(id).classList.remove('up');
-  /* isConnected: something opened under this sheet can have triggered a full
-     render() that recreated the button that opened it (the nav bar is
-     rebuilt on every render) — same reasoning as closeAsk, above. */
-  if (sheetReturn && sheetReturn.isConnected && sheetReturn.focus) sheetReturn.focus();
-  sheetReturn = null;
-}
-
-document.addEventListener('keydown', e => {
-  if (e.key !== 'Escape') return;
-  if (askResolve) { closeAsk($('askInput').hidden ? false : null); return; }
-  const open = SHEET_IDS.filter(id => $(id).classList.contains('up'));
-  if (!open.length) return;
-  const top = open[open.length - 1];
-  if (top === 'planSheet') closePlanEditor();
-  else if (top === 'setupSheet') closeSetup();
-  else if (top === 'qrSheet') closeQr();
-  /* Not closeSheet: reviewSheet carries the resume callback that opened it
-     ("+ Nuevo bloque" waits for the review to be read), and only
-     closeReview runs it. */
-  else if (top === 'reviewSheet') closeReview();
-  else closeSheet(top);
-});
 
 /* ---------- profile / block bars ---------- */
 function renderProfiles() {
@@ -2029,7 +2114,7 @@ function renderProfiles() {
     b.className = 'profile-btn' + (key === state.activeProfile ? ' on' : '');
     b.textContent = p.label;
     b.setAttribute('aria-pressed', key === state.activeProfile ? 'true' : 'false');
-    b.onclick = () => { state.activeProfile = key; stopRest(); save(); render(); };
+    b.onclick = () => { state.activeProfile = key; stopRest(); commit(); };
     host.appendChild(b);
   });
   $('app').className = 'profile-' + accentOf(getProfile()) + (soloMode() ? ' solo' : '');
@@ -2178,7 +2263,7 @@ function renderNav() {
     b.setAttribute('aria-selected', w === profile.week ? 'true' : 'false');
     b.setAttribute('aria-label', 'Semana ' + w + (w === dl ? ', descarga' : ''));
     if (weekHasLog(profile, block, w)) { const dot = document.createElement('span'); dot.className = 'dot'; b.appendChild(dot); }
-    b.onclick = () => { profile.week = w; stopRest(); save(); render(); };
+    b.onclick = () => { profile.week = w; stopRest(); commit(); };
     $('weeks').appendChild(b);
   }
 
@@ -2192,7 +2277,7 @@ function renderNav() {
     b.setAttribute('role', 'tab');
     b.setAttribute('aria-selected', i === profile.day ? 'true' : 'false');
     b.setAttribute('aria-label', 'Día ' + (i + 1) + ': ' + d.name);
-    b.onclick = () => { profile.day = i; stopRest(); save(); render(); };
+    b.onclick = () => { profile.day = i; stopRest(); commit(); };
     $('days').appendChild(b);
   });
 }
@@ -2256,6 +2341,12 @@ function takeFocusMark(root) {
    Everything the app draws goes through here, so this is also the one place
    that has to survive bad data: if drawing throws, the recovery screen takes
    over instead of leaving a blank page and an unreachable log. */
+/* Persist and redraw, as one word, so a mutation that has to do both cannot
+   forget half: without save() the change is on screen and not on disk (plan
+   006 fix 1 was that bug, three times over), without render() it is the
+   other way round. A navigation-only change still calls render() alone. */
+function commit() { save(); render(); }
+
 function render() {
   if (!ready) return;
   try {
@@ -2566,7 +2657,7 @@ function buildExCard(ctx, ex, i) {
     btn.title = label;
     btn.onclick = () => {
       if (!moveSessionEx(profile, block, profile.week, day, ex.id, dir)) return;
-      save(); render();
+      commit();
     };
   });
 
@@ -2863,7 +2954,7 @@ function drawOrderNote(profile, block, day, sessionEx) {
   btn.textContent = 'Volver al orden del plan';
   btn.onclick = () => {
     setOrder(profile, block.id, profile.week, day.id, null);
-    save(); render();
+    commit();
     mark('Orden del plan restablecido');
   };
   host.appendChild(txtEl);
@@ -2988,7 +3079,7 @@ $('copyPrev').onclick = () => {
       stampRowUnit(r);
     });
   });
-  save(); render();
+  commit();
   mark('Pesos copiados de la semana ' + (profile.week - 1) +
     (leveled ? ' — ' + leveled + (leveled === 1 ? ' ejercicio sube' : ' ejercicios suben') + ' de peso (tope de rango la semana pasada)' : '') +
     (lowered ? ' — ' + lowered + (lowered === 1 ? ' ejercicio baja' : ' ejercicios bajan') + ' de peso (las series no llegan al rango a este peso)' : '') +
@@ -3009,7 +3100,7 @@ $('clearDay').onclick = async () => {
   if (profile.log[block.id]) delete profile.log[block.id][slot(profile.week, day.id)];
   if (profile.rir[block.id]) delete profile.rir[block.id][slot(profile.week, day.id)];
   purgeSessionMeta(profile, block.id, day.id, profile.week);
-  save(); render();
+  commit();
   mark('Día borrado');
 };
 
@@ -3030,7 +3121,7 @@ $('wipe').onclick = async () => {
   profile.notes = {};
   profile.energy = {};
   profile.order = {};
-  save(); render();
+  commit();
   mark('Registro de ' + profile.label + ' borrado');
 };
 
@@ -3591,13 +3682,9 @@ function blockTonnageByWeek(profile, block, volumeOf) {
   const vol = volumeOf || setVolume;
   const weeks = blockWeeks(block);
   const out = new Array(weeks).fill(0);
-  const blk = profile.log[block.id] || {};
-  Object.keys(blk).forEach(k => {
-    const m = /^w(\d+)-/.exec(k);
-    if (!m) return;
-    const w = +m[1];
+  forEachSlot(profile.log, block.id, (k, w, d, slotRows) => {
     if (w < 1 || w > weeks) return;
-    const s = blk[k] || {};
+    const s = slotRows || {};
     Object.keys(s).forEach(exId => {
       const rows = s[exId];
       if (Array.isArray(rows)) out[w - 1] += rows.reduce((t, r) => t + vol(r), 0);
@@ -4139,11 +4226,11 @@ function normalizeImportedLog(rawLog, rawBlock, normalized) {
 
   const out = {};
   Object.keys(rawLog).slice(0, LOG_LIMITS.slots).forEach(key => {
-    const m = /^w(\d+)-(.+)$/.exec(key);
-    if (!m) return;
-    const w = +m[1];
+    const s = parseSlot(key);
+    if (!s) return;
+    const w = s.week;
     if (!Number.isInteger(w) || w < 1 || w > MAX_WEEKS) return;
-    const dayId = dayMap[m[2]];
+    const dayId = dayMap[s.dayId];
     if (!dayId) return;
     const slotLog = rawLog[key];
     if (!slotLog || typeof slotLog !== 'object' || Array.isArray(slotLog)) return;
@@ -4183,11 +4270,11 @@ function normalizeImportedRir(rawRir, rawBlock, normalized) {
 
   const out = {};
   Object.keys(rawRir).slice(0, LOG_LIMITS.slots).forEach(key => {
-    const m = /^w(\d+)-(.+)$/.exec(key);
-    if (!m) return;
-    const w = +m[1];
+    const s = parseSlot(key);
+    if (!s) return;
+    const w = s.week;
     if (!Number.isInteger(w) || w < 1 || w > MAX_WEEKS) return;
-    const dayId = dayMap[m[2]];
+    const dayId = dayMap[s.dayId];
     if (!dayId) return;
     const slotRir = rawRir[key];
     if (!slotRir || typeof slotRir !== 'object' || Array.isArray(slotRir)) return;
@@ -4211,11 +4298,11 @@ function normalizeImportedOrder(rawOrder, rawBlock, normalized) {
 
   const out = {};
   Object.keys(rawOrder).slice(0, LOG_LIMITS.slots).forEach(key => {
-    const m = /^w(\d+)-(.+)$/.exec(key);
-    if (!m) return;
-    const w = +m[1];
+    const s = parseSlot(key);
+    if (!s) return;
+    const w = s.week;
     if (!Number.isInteger(w) || w < 1 || w > MAX_WEEKS) return;
-    const dayId = dayMap[m[2]];
+    const dayId = dayMap[s.dayId];
     if (!dayId) return;
     const ids = rawOrder[key];
     if (!Array.isArray(ids)) return;

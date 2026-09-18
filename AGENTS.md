@@ -78,12 +78,24 @@ identical to an oversight unless someone writes down which it is:
      stubbed to a no-op there.** The split file may be missing from an old
      cached shell (a precache hole), and `app.js` reaching for something
      that never loaded is the stuck-loading screen above. `js/rest-timer.js` is stubbed for
-     five, `js/chart.js` and `js/qr-transfer.js` for one each.
+     five and `js/chart.js` for one. `js/qr-transfer.js` needed one until
+     sheets registered their own teardown (plans/009 item 1): structure can
+     retire a stub, by removing the read rather than answering it.
   2. **A symbol another split file reads stays in `app.js` outright** — a
      stub cannot help there, because a plausible-looking empty answer is
      worse than a dead button. That is why the volume arithmetic, the
      `blockShare*` builders and the `normalizeImported*` validators
      stayed behind while their screens left.
+
+  Both rules have one exception, and it is older than the rules: `js/data.js`,
+  `js/block-editor.js` and `js/profile-transfer.js` predate the split and are
+  precached in every deployed shell, so a symbol defined in them is treated as
+  if it were in `app.js`. That is why `wireBlockEditor()` and
+  `wireProfileTransfer()` are the two unguarded calls in the list above
+  (`js/data.js` has no wiring of its own), why `app.js` may read
+  `normalizeImportedBlock` from `js/block-editor.js` with no stub, and why
+  `js/review.js` may read `buildAiPrompt` from it. A file split out *since*
+  then gets no such licence.
 
   The mix the other way round — a *new* split file loading beside the
   *old* cached `app.js`, both declaring the same top-level `const`/`let`,
@@ -235,3 +247,10 @@ this file.
 
 See `README.md`'s table under the `## Project layout` heading for the full
 map. It is the reference; this file is the briefing.
+
+One shape is worth naming here because it is read in four files: a log key
+is `slot(week, dayId)` and is read back by `parseSlot`, both in `js/app.js`,
+and nothing else runs the regex — `test/unit.js` fails if anything does.
+To walk one block of `log`/`rir`/`notes`/`energy`/`order`, use `forEachSlot`
+rather than rebuilding keys week by week: it visits the slots that exist,
+which is the only way a purge reaches a week filed above `MAX_WEEKS`.

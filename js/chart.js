@@ -99,11 +99,10 @@ function collectHistoryAll(profile, exId, metric) {
        output ordered. */
     const byWeek = new Map();
     Object.keys(blk).forEach(k => {
-      const m = /^w(\d+)-/.exec(k);
-      if (!m) return;
-      const w = +m[1];
-      if (!byWeek.has(w)) byWeek.set(w, []);
-      byWeek.get(w).push(k);
+      const s = parseSlot(k);
+      if (!s) return;
+      if (!byWeek.has(s.week)) byWeek.set(s.week, []);
+      byWeek.get(s.week).push(k);
     });
     Array.from(byWeek.keys()).sort((a, b) => a - b).forEach(w => {
       byWeek.get(w).forEach(k => {
@@ -275,6 +274,5 @@ function drawChart() {
 /* Every line here needs $(), which js/app.js defines — and js/app.js is the
    last script on the page. See the call site at the foot of that file. */
 function wireChart() {
-  $('chartClose').onclick = () => closeSheet('chartSheet');
-  $('chartSheet').addEventListener('click', e => { if (e.target.id === 'chartSheet') closeSheet('chartSheet'); });
+  registerSheet('chartSheet', { closeBtn: 'chartClose' });
 }
