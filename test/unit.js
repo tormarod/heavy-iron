@@ -1647,18 +1647,54 @@ console.log('\n== safeKey refuses every inherited Object.prototype name, not thr
   call('__pSK = null; __bSK = null;');
 }
 
-console.log('\n== requestWakeLock: a rest skipped mid-request releases instead of holding the lock (plans/008 item 15) ==');
+console.log('\n== requestWakeLock: one rest, one lock — skipped mid-request, doubled up, or re-acquired (plans/008 item 15, plans/013) ==');
 (async () => {
-  let released = false;
-  const fakeLock = { release: () => { released = true; return Promise.resolve(); } };
-  app.navigator.wakeLock = { request: () => Promise.resolve(fakeLock) };
-  await call('requestWakeLock()');
-  ok('no rest in flight: the lock is released, not stored', released === true && call('wakeLock') == null);
+  /* A real WakeLockSentinel carries its own .released flag, and the guard
+     added in plans/013 reads it — so the fake has to carry one as well. */
+  const makeLock = () => ({ released: false, release() { this.released = true; return Promise.resolve(); } });
+  let requests = 0, nextLock = makeLock();
+  app.navigator.wakeLock = { request: () => { requests++; return Promise.resolve(nextLock); } };
 
-  released = false;
+  let fakeLock = nextLock;
+  await call('requestWakeLock()');
+  ok('no rest in flight: the lock is released, not stored', fakeLock.released === true && call('wakeLock') == null);
+
+  nextLock = fakeLock = makeLock();
   call('tId = 1');
   await call('requestWakeLock()');
-  ok('a rest still running: the lock is kept', released === false && call('wakeLock') === fakeLock);
+  ok('a rest still running: the lock is kept', fakeLock.released === false && call('wakeLock') === fakeLock);
+
+  /* plans/013: a second rest started while one was live used to request a
+     second lock and overwrite the variable. The first reference went on the
+     floor, so "saltar" released only the one it could see and the screen
+     stayed on for the rest of the session. */
+  const held = fakeLock, before = requests;
+  nextLock = makeLock();
+  await call('requestWakeLock()');
+  ok('a lock already held: no second request, and the first one is still the one stored',
+     requests === before && call('wakeLock') === held && held.released === false,
+     'requests ' + requests + ', was ' + before);
+
+  /* ...but a sentinel the browser released while the tab was hidden is not a
+     held lock any more. The visibilitychange handler has to be able to get a
+     fresh one, which is why the guard tests .released and not bare truth. */
+  held.released = true;
+  const fresh = nextLock;
+  await call('requestWakeLock()');
+  ok('a lock the browser already released is replaced rather than treated as held',
+     requests === before + 1 && call('wakeLock') === fresh,
+     'requests ' + requests + ', was ' + before);
+
+  /* Both taps clear that guard before either request resolves, so the guard
+     alone cannot cover this one: the lock that lands second is released by
+     the call that asked for it. */
+  call('wakeLock = null');
+  const first = makeLock(), second = makeLock(), queue = [first, second];
+  app.navigator.wakeLock = { request: () => { requests++; return Promise.resolve(queue.shift()); } };
+  await Promise.all([call('requestWakeLock()'), call('requestWakeLock()')]);
+  ok('two rests started in the same tick end up holding exactly one lock',
+     call('wakeLock') === first && first.released === false && second.released === true,
+     JSON.stringify({ heldIsFirst: call('wakeLock') === first, first: first.released, second: second.released }));
   call('tId = null; wakeLock = null;');
 
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
