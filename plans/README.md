@@ -29,7 +29,7 @@ below so it is not lost or re-audited.
 | 005 | [Stop re-walking the whole log several times per render](done/005-memoize-render-scans.md) | P2 | S | LOW | — | DONE |
 | 006 | [Four small correctness fixes](done/006-four-small-correctness-fixes.md) | P2 | S | LOW | — | DONE |
 | 007 | [Write `AGENTS.md`](done/007-agents-md.md) | P2 | S | LOW | — | DONE |
-| 008 | [Second audit: ranked findings and plan](done/008-audit-2026-09-17.md) | P1 | — | — | — | IN PROGRESS (items 1–20 and 22 done, 21 bullet 2 open, 23: two of six done — see "Third audit") |
+| 008 | [Second audit: ranked findings and plan](done/008-audit-2026-09-17.md) | P1 | — | — | — | DONE (file moved to `done/` by `ed6aeaa`; the residue — item 21 bullet 2, the smoke sleeps, and four of item 23's six features — is carried forward in the fifth audit below, not open here) |
 | 009 | [Architecture deepening: seven shallow seams, ranked](done/009-architecture-deepening.md) | P2 | L | MED | 008 items 13–14 (done) | DONE (items 2, 3 and 8 had already landed in 011/014/015; item 6 stopped on its own STOP condition and item 7 stays deferred — see its Maintenance notes) |
 | 010 | [A backup or profile file the app itself wrote always restores, exactly as it was](done/010-restore-round-trips-own-data.md) | P1 | M | MED | — | DONE |
 | 011 | [Every cross-session reader converts kg/lb per row; CSV formula guard](done/011-units-everywhere-and-csv-boundary.md) | P1 | M | LOW | — (overlaps 009 item 2) | DONE |
@@ -42,6 +42,15 @@ below so it is not lost or re-audited.
 | 018 | [The first week of a new block starts from what the previous block ended on](done/018-new-block-week-one-starts-from-previous.md) | P1 | M | MED | — (land after 019/020; all three edit `buildExCard`) | DONE |
 | 019 | [Last week's session note comes back on the same day; `nota`/`energia` in the CSV](done/019-session-note-returns-and-reaches-csv.md) | P2 | S | LOW | — | DONE (QR "plan + registro" carry of notes/energy deferred — see the plan's Maintenance notes) |
 | 020 | [A second RÉCORD for a new best estimated 1RM](done/020-record-badge-for-estimated-1rm.md) | P2 | S | LOW | — | DONE (one deviation from the plan text — see its Maintenance notes) |
+| 021 | [The objetivo record is written when a session starts, never by a draw; it says what kind of target it was](021-record-target-on-session-start.md) | P1 | S | LOW | 026 (soft) | TODO |
+| 022 | [The Diagnóstico and the review stop reading a deload target as a mis-chosen weight](022-deload-is-not-a-wrong-weight.md) | P1 | S | LOW | — | TODO |
+| 023 | [Every imported string in the AI round-trip document is delimited](023-ai-document-delimits-every-imported-string.md) | P1 | S | LOW | — | TODO |
+| 024 | [Every import rejection path flushes the pending autosave first, never through a two-tab conflict](024-import-preflight-flush-never-through-a-conflict.md) | P1 | S | LOW | — | TODO |
+| 025 | [`obj`/`variants` survive every purge, move and import; two v3 rule edges; the dead `'obj'` share entry goes](025-map-integrity-and-v3-edges.md) | P1 | M | LOW–MED | 026 (soft), 021 (soft: Step E) | TODO |
+| 026 | [The unit suite pins the v3 trend term, its untested branches and the `obj` validator — mutation-checked](026-pin-the-v3-rule.md) | P1 | M | LOW | — | TODO (land first — no bump, safety net for 021/025/027) |
+| 027 | [A set tick reuses the render cache; the Diagnóstico reads through it; `diagPoints` groups once](027-tick-keeps-the-render-cache.md) | P2 | S | MED | 026 (soft) | TODO |
+| 028 | [A rename compares slugs and says what it cut](028-rename-compares-slugs-and-says-what-it-cut.md) | P2 | S | LOW–MED | — | TODO |
+| 029 | [Docs, briefing and self-description match the code; Node 22; gate regex; doc-link check; `.editorconfig`](029-docs-and-dx-sync.md) | P2 | S | LOW | 021 (soft: the `obj` bullet) | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
@@ -311,8 +320,8 @@ here so it is not re-audited.
 | 13 | Chart table shows one best set per session; the heatmap draws every trained day with no cell handler | MED | S-M | LOW | HIGH | `js/chart.js:32-42,230-236`, `js/diagnostics.js:271-322` | option |
 | 14 | All-time "Récords"/lifetime sheet: `bestByExercise` walks everything on every draw and powers one badge; lifetime totals exist only as the CSV loop | MED | M | LOW | HIGH | `js/app.js:2362-2388,4336-4394` | option (020's `{ w, e }` shape is what it needs) |
 | 15 | Review vs. previous block (prior, L): the cheaper shape is a per-exercise end-of-block e1RM delta via `diagPoints(profile, exId, null)`, rolled up by muscle | MED | M-L | MED | HIGH open / LOW-MED right | `js/review.js:33-42`, `js/diagnostics.js:72-116` | spike |
-| 16 | Calculator opens empty; `calcDraft = { mode, target, inc }` maps 1:1 onto `est.weight` / `incFor(ex)`; README states it "reads nothing from your log" as a description, not a decision | LOW-MED | S | LOW | HIGH | `js/calculator.js:93-99`, `README.md:799-801` | option (seed plans are machine-based; the ramp matters on a bar) |
-| 17 | Per-exercise "apply the objetivo" tap — a one-exercise `copyPrev` | LOW-MED | S | MED | HIGH | `js/app.js:2730-2732,2747,3069-3078` | option, **with tension**: README "never a number that gets logged for you"; an explicit tap is arguably the user logging it, but decide before building. Variant "objetivo as placeholder" is **rejected** (breaks the tick contract, `js/app.js:3502-3506`) |
+| 16 | Calculator opens empty; `calcDraft = { mode, target, inc }` maps 1:1 onto `est.weight` / `incFor(ex)`; README states it "reads nothing from your log" as a description, not a decision | LOW-MED | S | LOW | HIGH | `js/calculator.js:93-99`, `docs/guide.md` § "Warm-ups and plate maths" | option (seed plans are machine-based; the ramp matters on a bar) |
+| 17 | Per-exercise "apply the objetivo" tap — a one-exercise `copyPrev` | LOW-MED | S | MED | HIGH | `js/app.js:2730-2732,2747,3069-3078` | option, **with tension**: README "never a number that gets logged for you"; an explicit tap is arguably the user logging it, but decide before building. Variant "objetivo as placeholder" was **rejected** here and then **shipped by v3** (PR #92): the placeholder now shows the rule's own weight for that set (`js/app.js:2929-2936` at `4f7e037`) and `docs/guide.md` § "The weekly objetivo" → "One rule, one place" documents it as the tick contract — see the fifth audit |
 | 18 | Paste import installs with no confirmation while the QR route confirms with counts; no provenance (`source`/`basedOn`) survives `normalizeImportedBlock`; `blocks/index.json` carries only `file`/`label` | LOW-MED | M | LOW | HIGH | `js/block-editor.js:378-390`, `js/qr-transfer.js:552-565` | option |
 | 19 | Nothing is computed across the two profiles; `ex.share` is a badge; shared ids in the seed are a join key; the QR "perfil" kind already lands a snapshot in the other slot | MED? | M | MED | MED | `js/app.js:2634-2639`, `js/data.js:73,104` | spike (product call: is a partner band on JUNTOS cards wanted, and how is snapshot age shown) |
 | 20 | Equipment per profile (prior) | MED | M | MED | HIGH | `js/app.js:421-447` | spike (prefs travel in profile/QR payloads) |
@@ -347,8 +356,12 @@ smallest blast radius first, the one M plan last. 016 and 017 both edit
 - **A "skipped" set state** distinct from empty — `rowUsed` already
   separates "typed, not ticked" from "untouched" and every reader filters
   on `done`; a third state has no consumer.
-- **Objetivo as the weight-box placeholder** — contradicts the documented
-  tick contract (README "During the session"; `js/app.js:3502-3506`).
+- **Objetivo as the weight-box placeholder** — rejected here as contradicting
+  the documented tick contract, then **reversed by v3** (PR #92, outside any
+  plan): the placeholder now shows the rule's own weight for that set
+  (`js/app.js:2929-2936` at `4f7e037`) and `docs/guide.md` § "The weekly
+  objetivo" → "One rule, one place" documents that as the contract. Recorded
+  so the reversal is not re-litigated in either direction.
 - **Cross-block objetivo on week 1** — the previous block's last week is
   usually its deload and its phase table differs; 018 deliberately stops at
   the placeholder and the band.
@@ -373,6 +386,175 @@ of those). `js/vendor/`, `node_modules/`, `test/` and `tools/` internals,
 the training methodology in the seed plans and target rules, visual
 design. `README.md` was read in full but its "you can…" clauses were
 verified only where a lens pointed, not clause by clause.
+
+## Fifth audit (2026-09-19) — full pass after Peso objetivo v3
+
+A fifth pass at commit `4f7e037` (the merge of PR #94), `standard` depth, all
+nine categories, four parallel read-only subagents (correctness of the v3
+rule; security + dependencies + the import boundaries; performance + tests +
+tech debt; DX + docs + direction). **Every finding below was re-verified by
+opening the cited code at `4f7e037`**, and two were reproduced as mutation
+tests against a scratch copy of the suite (the trend term, and the PR gate's
+command regex). Baseline: `node test/unit.js` 356/356.
+
+The maintainer selected interactively: **all nine findings became plans
+021–029**, and three design calls were settled on the spot — on a hold day
+the *guide* changes to match the code (nothing goes up; a set out of range
+still comes down); a rename compares slugs and names its consequence in the
+status line, with no confirm dialog; and `obj` is **not** carried in the
+block share, so the dead `'obj'` entry in `installBlockData` is removed.
+Those decisions are written into plans 029, 028 and 025 respectively.
+
+Line numbers moved twice while the audit ran — PR #93 split the README into
+`README.md` + `docs/guide.md`, and PR #94 re-pointed comments and bumped
+`sw.js` to v68 — so every anchor in this section is at `4f7e037`.
+
+### Landed outside any plan since the fourth audit
+
+- **PR #92 / `55a8520` — Peso objetivo v3.** The one-answer-per-set rule at
+  `js/app.js:3391-4064` (`targetFor`, `exHistory`, `brakeOn`, `recordTarget`,
+  `recordVariant`, …), two new per-profile maps `obj` and `variants`
+  (`js/app.js:336-356`), `normalizeImportedObj` (`js/app.js:4752`), and the
+  per-set weight placeholder. Never audited before this pass; nine of the
+  findings below are in or next to it. It also reverses the fourth audit's
+  "objetivo as placeholder" rejection — that entry is annotated above.
+- **PR #93 / `2a045cc` + `ed6aeaa`** — README split into a technical
+  `README.md` and `docs/guide.md`; plans 009–020 moved into `plans/done/`.
+- **PR #94 / `aeadec4` + `62131ea`** — code comments re-pointed at
+  `docs/guide.md`; `CACHE_VERSION` v68. It fixed the three "README's own …"
+  comment pointers the docs pass had flagged, so they are not listed below.
+
+### Vetted findings, by leverage
+
+| # | Finding | Category | Impact | Effort | Risk | Conf. | Evidence (`4f7e037`) | Plan |
+|---|---|---|---|---|---|---|---|---|
+| 1 | Browsing a past week writes a **reconstructed** target into `obj`: `recordTarget` runs inside `buildExCard` for whatever week is drawn, gated only on the slot having rows, and with the live clock any week older than `GAP_DAYS` is recorded as `vuelta`. The map's own contract says rebuilding it later is "the one thing it must not do". Every pre-v3 session gets a fabricated "what was asked" record the first time it is scrolled past | correctness (v3) | HIGH | S | LOW | HIGH | `js/app.js:2770, 3671-3689, 2589, 3849` | 021 |
+| 2 | The Diagnóstico reads a **deload** target as "Peso mal elegido": `estDown` tests `est.dir === 'down'` and the `descarga` branch always sets `dir = 'down'`; the block review exports the same verdict into the AI prompt | correctness | HIGH | S | LOW | HIGH | `js/diagnostics.js:674, 552-554`; `js/review.js:122`; `js/app.js:3836-3837` | 022 |
+| 3 | The AI round-trip document embeds the block name, the priority tags and the volume verdict's muscle tag **undelimited**. Plan 016 recorded this invariant as closed; its own implementation added two of the sites | security | MED-HIGH | S | LOW | HIGH | `js/block-editor.js:522-524`; `js/review.js:163, 167, 205`; `js/diagnostics.js:632-634` | 023 |
+| 4 | The pre-flight `flushSave()` that `af2b99a` added to `restoreFromText` is missing from `loadProfileFromText` and `applyQrPayload` (same bug: "Guardado hh:mm" overwrites the rejection reason), and the one that exists **forces the write through a two-tab conflict**, silently answering the "Otra pestaña ha guardado" toast in this tab's favour | correctness | MED | S | LOW | HIGH / MED | `js/profile-transfer.js:282, 339-362`; `js/qr-transfer.js:529-542`; `js/app.js:626-632, 651-660` | 024 |
+| 5 | Map integrity around v3: `purgeExLog` and the `moveEx*` trio skip `obj` (the comment saying `rir` is "the one" per-exercise map is stale); `variants` is not re-keyed through the import id map; the `slugify(name)` id fallback bypasses `safeKey` in both `normalizeImportedBlock` and `migrate`; `conf` is validated by a truthy lookup on a plain object; `priorBlockSets` skips `deloadWeek()` where `exHistory` skips `deloadAt()` | correctness | MED | S | LOW | HIGH | `js/app.js:1911-1916, 1936, 1983-1997, 423, 4779, 2514-2516`; `js/block-editor.js:263, 1129-1131`; `js/profile-transfer.js:218-229` | 025 |
+| 6 | Two v3 rule edges: a row logged in the other unit becomes a **ladder rung** after conversion (`45,36 kg`), and the tick adopts the placeholder so the rung self-propagates into the log; the down-walk gives up after three rungs and prints reps below the range with no note, while the mirror-image `step` case has one | correctness (v3) | MED | S | MED (design) | HIGH | `js/app.js:3754-3764, 3566, 2929, 2951, 3970-3979` | 025 |
+| 7 | **The trend term is unasserted**: with `theilSen` stubbed to return 0 the suite passes 356/356, and with `MAX_SLOPE` at 0.5 it passes (mutation-tested). `normalizeImportedObj` has zero direct tests; `weekRir`'s prose-phase fallback, the post-gap segment restart, the `PSI_MIN` floor, the three-rung cap and the same-lift-two-days branch (smoke-only) are unpinned; one unit heading prints with no assertions under it | tests | MED-HIGH | M | LOW | HIGH | `test/unit.js:811-1044, 1251, 2142`; `js/app.js:3886-3890, 4752-4784` | 026 |
+| 8 | `drawCard` resets the render cache, so **every set tick re-runs `brakeOn`** over every exercise of the block, each re-walking the whole log: the tick is O(block × log) again, which plan 008 item 14 had bought back. `diagLevelTrend` calls `exHistory` directly, bypassing the cache; `diagPoints` still parses every key once per week (third audit #11) | perf | MED (a regression of a guarantee; not user-visible today) | S | MED | HIGH | `js/app.js:3081, 2548, 2580-2583, 3999-4018`; `js/diagnostics.js:508, 79-100` | 027 |
+| 9 | A rename — including a case or accent fix — **silently cuts the exercise's target history** (`recordVariant` compares raw `txt()` strings), the objetivo line disappears, and the status says "el registro se mantiene"; nothing shows the cut anywhere (chart, diagnostics, review) | correctness / UX (design) | MED | S–M | MED | HIGH | `js/block-editor.js:1152-1160`; `js/app.js:3656-3669, 3742` | 028 |
+| 10 | Docs and DX: `AGENTS.md` names five of the six slot-keyed maps and never mentions `obj`/`variants`; the guide disagrees with the code on hold semantics, on what `obj` stores, and on "the guardrails, in the order they apply"; "bloques de 8 semanas" in the manifest and `<meta name="description">`; `python3 … &` in the rung-3 recipe is a parse error in PowerShell and the PR gate hard-depends on `python3`; CI on end-of-life Node 20; the gate's regex is bypassed by `bash -c "gh pr create …"` (verified); nothing checks that the two docs' cross-links resolve; no `.editorconfig` | docs / dx | MED | S | LOW | HIGH | `AGENTS.md:261`; `docs/guide.md:656, 783-786, 798`; `manifest.webmanifest:4`; `index.html:15`; `.github/workflows/test.yml:31`; `tools/smoke-gate.sh:81-85` | 029 |
+| 11 | **Hold semantics** — the guide and the `levelOf` comment say one decline "holds every weight where it is for the day"; the code gates only the up-branch on `hold`, so a set that fell under the range still comes down a rung on a hold day. Doc or code is a maintainer call | correctness (design) | LOW-MED | S | LOW | MED | `js/app.js:3933, 3970-3976, 3776`; `docs/guide.md:656` | 025 (decision) |
+
+### Direction (fifth audit)
+
+- **`obj` is written every session and read by nothing.** Its stated purpose
+  is to measure the rule's own error; the join (asked vs. done, per set, on
+  the same key as `log`/`rir`) needs no new data. What is missing is
+  `kind`/`hold`/`brake` in the record, so a `descarga` or `vuelta` session
+  cannot be told apart later — and that is forward-only, so **plan 021 adds
+  those fields now**. The readout itself (metric definition, first-cohort
+  censoring, a CSV column vs. a screen) is a design spike and is not planned.
+  `js/app.js:336-342, 3679-3689`.
+- **A "same lift, new name" answer at rename time** — the confirm-dialog
+  half of finding 9; plan 028 carries the decision. `js/block-editor.js:1152-1160`.
+- **Carried forward unchanged from the fourth audit**: the file lane for
+  "plan + registro" (#7 there; `obj` and notes/energy would join it), copy a
+  block to the other profile (#8), the week-goal editor (#9), session
+  duration (#10), and the rest of that table.
+
+### Fifth audit — considered, recorded, not planned
+
+- **`brakeCached` is a single unkeyed slot** (`js/app.js:2548, 2580-2583`)
+  while every other cache entry is keyed. Every caller at HEAD asks about
+  `getBlock()` and `profile.week`, so it cannot go stale today; the first
+  caller that asks about another block or week gets the previous draw's
+  answer. Key it by `block.id + '|' + week` when anything does.
+- **The variant cut lands on midnight UTC of the rename day**, not the
+  rename (`js/app.js:3596, 3669, 3598-3602`): a session trained that morning
+  on the old machine still feeds the new variant. Bounded at one session;
+  fixing it means a millisecond field through three validators. Not worth
+  the shape change.
+- **`obj` does not travel with a block share** — `blockShare*` has no
+  `blockShareObj`, and `installBlockData`'s `'obj'` entry has no producer
+  (`js/app.js:133, 4451-4582`; `js/qr-transfer.js:436-437`). Maintainer
+  decision, carried by plan 025; the fourth audit's file lane is where a
+  carry would land.
+- **A unit switch *last week* still starts the next target from the
+  converted weight** (`js/app.js:3960`: `W` begins at `last.sets[k].w`,
+  which `exSession` has already converted). Plan 025 Step G keeps
+  converted rows off the *ladder*, which covers an older block in the
+  other unit; the one-session case after a switch would need the first
+  kg target to snap to the kg ladder — a rounding the rule otherwise
+  refuses, and a maintainer call. Recorded, not planned.
+- **`migrate()` repairs `obj` only shallowly** (`js/app.js:342`) — every
+  path that can put one into `state` validates first, and both readers
+  tolerate a malformed map. Leave it.
+- **`cens` uses today's `hi`** (`js/app.js:3577`) against sessions logged
+  under whatever range the plan had then, so widening a range un-censors old
+  topped-out sessions and can manufacture a "decline". Investigate if
+  mid-block range edits turn out to be common (`docs/guide.md` § "Editing a
+  block mid-way").
+- **Duplicate helpers**: the variant sanitizer exists twice
+  (`js/app.js:349-355`, `js/profile-transfer.js:218-229`), three medians
+  (`js/app.js:3507`; `js/diagnostics.js:193, 527`), seven inline ISO-day and
+  five inline `round2` copies. The sanitizer pair is one trust boundary in
+  two places; the rest is churn. Not planned.
+- **The objetivo section cannot leave `app.js`** under AGENTS.md's split
+  rules: `js/diagnostics.js` reads `exHistory`, `capSeq`, `levelOf`,
+  `targetNow`, `est1RM`, `hasReps`, `EST_MAX_REPS`; `js/chart.js` reads
+  `est1RM`/`hasReps`. Recorded so nobody plans the split.
+- **A `--only` for `test/unit.js`** — sections are bare `console.log`
+  banners in one top-level script; restructuring 2 480 order-dependent lines
+  for a sub-second suite is not worth it yet.
+- Carried forward and still present at `4f7e037`: `pruneLog` walks every
+  profile on every debounced save (`js/app.js:558-582, 603`); the parallel
+  maps are enumerated by hand at eight sites (`variants` is correctly absent
+  from the block-scoped ones); 206 fixed sleeps in `test/smoke.js`;
+  `copyPrev` has no confirm or snapshot (maintainer decision); plans/009
+  item 7 stays deferred (its trigger has not fired).
+- Verified clean, stated so nobody re-audits: all 66 `innerHTML` sinks
+  outside `js/vendor` escape or use `textContent`, and the only sink line
+  changed since `6def9fc` is a comment; the new UI of 018–020 and v3 uses
+  no HTML sink; QR "perfil", the profile file and the full backup carry
+  `obj` and `variants` whole, and `normalizeImportedProfile` re-keys `obj`
+  and validates `variants`; `normalizeImportedObj` bounds count, week, ids,
+  rows, `w`, `r`, `m` and `at`; the review-sheet paste runs the same
+  validator and the same install as the Importar sheet and nulls
+  `reviewAfterClose`; `restoreFromText`'s post-restore ordering is right;
+  download names go through `slugify`; `sw.js`'s message handlers are
+  same-origin by construction; vendor pins unchanged, no known advisory
+  reachable from a scan; CI actions SHA-pinned with `permissions: contents:
+  read`; no secrets, no prompt-injection content; no dead code (every
+  top-level symbol has a reader outside the tests); no unused v3 constant;
+  `test/smoke.js` asserts v3, not v2; `recordTarget`'s `save()` fires once
+  per session, not per draw; startup adds nothing O(history); `lastNote`,
+  `priorBlockSets` and `bestByExercise` are bounded or cached; unit sections
+  are order-independent in practice; zero, blank and NaN weights never reach
+  `repsAt`; `exHistory` converts per row; `theilSen` never divides by zero
+  (x is the index); `incFor` cannot return 0; the brake cannot count the
+  current session; no async hazard in the v3 rule; `AGENTS.md`'s script
+  lists, `wire*()` block and every quoted snippet match `4f7e037`; all 19
+  README→guide anchors and both guide→README anchors resolve.
+
+### Fifth audit — not audited
+
+`js/vendor/*.js` internals and `node_modules/`; `test/smoke.js` was never
+run (findings 2 and 6 are screen-text claims a smoke assertion would pin
+cheaply); `js/review.js` and `js/volume-sheet.js` were grepped, not read, by
+the perf/tests pass; profile-map keys (`state.profiles[key]`,
+`state.activeProfile`) from a crafted backup are not passed through
+`safeKey` and were not traced to closure; whether the PreToolUse hook's
+exact MCP matcher (`mcp__github__create_pull_request`) matches the tool
+name this environment exposes — run one PR through it and read
+`.smoke-gate.log`; performance figures are slot-count derivations, not
+measurements; the training methodology in the seed plans and the v3
+constants; visual design.
+
+### Landing order and the bump cascade
+
+026 first — it touches only `test/unit.js`, needs no bump, and is the safety
+net under the behaviour changes in 021 and 025. Then the `js/` plans one at
+a time, each bumping `CACHE_VERSION` from v68 and taking the highest version
+on conflict: **021, 022, 023, 024, 025, 027, 028**. 029's
+`manifest.webmanifest`, `AGENTS.md`, `docs/guide.md`, CI and `tools/` halves
+need no bump and can land any time; its one `index.html` line ("8 semanas")
+rides on whichever `js/` plan lands next rather than spending a whole-shell
+re-download on a description.
 
 ## Worth doing, not yet planned
 
@@ -535,7 +717,7 @@ is grounded in something already in the repo.
   multi-block baseline and on how differing block lengths normalise. Changing
   the index baseline changes numbers users have already read.
 - **Harden and productise the block registry the repo already is.**
-  `README.md:1157-1170` states the intent plainly — publishing a file to
+  `README.md` § "Publishing a block for one-click import" states the intent plainly — publishing a file to
   `blocks/` plus an index entry is "the intended path for a training agent with
   commit access". But `blocks/index.json` is hand-written, nothing checks that
   its entries exist or still satisfy `normalizeImportedBlock`, and
@@ -594,9 +776,11 @@ Recorded so they are not re-audited next run.
   does one pure function on `ImageData`, takes no network input, and has a
   documented refresh procedure. Pinning is the correct posture.
 - **Adding a build step, bundler, `package.json`, or TypeScript.** A stated,
-  load-bearing design decision (`README.md:1433-1447`). Not a gap.
+  load-bearing design decision (`README.md` § "How it's built"; `AGENTS.md`
+  § "Constraints that are decisions, not gaps"). Not a gap.
 - **The five documented limits** — Spanish only, no sync, one-way QR transfer,
-  single-level undo, two profiles (`README.md:1496-1516`). Settled decisions,
+  single-level undo, two profiles (`docs/guide.md` § "Known limits";
+  `README.md` § "Known limits"). Settled decisions,
   not defects.
 - **`pages.yml` uploads `path: "."`**, publishing `test/`, `tools/` and
   `.claude/settings.json` alongside the site. All are already public in the
