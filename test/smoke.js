@@ -501,7 +501,7 @@ const ok = (name, cond, extra) => {
       return r.remainder === 1 && r.plates.reduce((a, b) => a + b, 0) === 20;
     }));
     ok('warmupRamp never drops below the floor', await page.evaluate(() =>
-      JSON.stringify(warmupRamp(50, 2.5, 20)) === JSON.stringify([20, 30, 40])));
+      JSON.stringify(warmupRamp(50, 2.5, 20).map(r => r.weight)) === JSON.stringify([20, 30, 40])));
 
     await page.click('#calcBtn');
     ok('the calculator opens', await page.locator('#calcSheet.up').count() === 1);

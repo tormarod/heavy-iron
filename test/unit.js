@@ -1438,10 +1438,19 @@ ok('a target with no exact combination still reports the true shortfall',
    call('fitPlates(23, [20, 10, 5]).remainder') === 3,
    String(call('JSON.stringify(fitPlates(23, [20, 10, 5]))')));
 ok('warmupRamp collapses three identical rounded steps into one (target 15, increment 10)',
-   call('JSON.stringify(warmupRamp(15, 10, 0))') === '[10]',
+   call('JSON.stringify(warmupRamp(15, 10, 0).map(r => r.weight))') === '[10]',
    String(call('JSON.stringify(warmupRamp(15, 10, 0))')));
 ok('warmupRamp keeps three distinct steps when they are actually distinct',
    call('warmupRamp(100, 2.5, 0).length') === 3);
+/* The label travels with the row, so the surviving row of a collapsed ramp
+   is still the 40% step and not whatever the old positional labels array
+   happened to hold at that index (plans/013). */
+ok('the row that survives a collapse keeps its own label',
+   call('warmupRamp(15, 10, 0)[0].pct') === '40%',
+   String(call('JSON.stringify(warmupRamp(15, 10, 0))')));
+ok('an uncollapsed ramp labels its three rows 40/60/80',
+   call('JSON.stringify(warmupRamp(100, 2.5, 0).map(r => r.pct))') === '["40%","60%","80%"]',
+   String(call('JSON.stringify(warmupRamp(100, 2.5, 0).map(r => r.pct))')));
 
 console.log('\n== input boundary: unsafe tags, editor clamps, setup aliasing (plans/012) ==');
 {
