@@ -270,8 +270,7 @@ function closeReview() {
 }
 
 function wireReview() {
-  $('reviewClose').onclick = closeReview;
-  $('reviewSheet').addEventListener('click', e => { if (e.target.id === 'reviewSheet') closeReview(); });
+  registerSheet('reviewSheet', { closeBtn: 'reviewClose', onClose: closeReview });
 
   $('reviewCopy').onclick = async () => {
     if (!reviewCache) return;

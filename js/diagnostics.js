@@ -895,6 +895,5 @@ function openDiag() {
 
 function wireDiagnostics() {
   $('diagBtn').onclick = openDiag;
-  $('diagClose').onclick = () => closeSheet('diagSheet');
-  $('diagSheet').addEventListener('click', e => { if (e.target.id === 'diagSheet') closeSheet('diagSheet'); });
+  registerSheet('diagSheet', { closeBtn: 'diagClose' });
 }

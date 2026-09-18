@@ -994,6 +994,16 @@ const ok = (name, cond, extra) => {
     ok('CSV contains the logged set', csv.includes('22,5') || csv.includes('"22,5"'), csv.split('\r\n')[1]);
     ok('CSV quotes the comma decimal', csv.includes('"22,5"'));
     await page.keyboard.press('Escape');
+    /* No sleep: the Escape handler moves focus synchronously, and press()
+       resolves after the page has run it.
+       The backup sheet was opened from #backup and the QR sheet from a button
+       inside it. With one shared return slot (before plans/009 item 1) the QR
+       sheet overwrote it on open and nulled it on close, so closing the backup
+       sheet afterwards left focus on <body> and a keyboard user lost their
+       place. Each sheet carries its own return target now. */
+    ok('focus returns to the button that opened the backup sheet, after a sheet opened over it',
+       await page.evaluate(() => document.activeElement && document.activeElement.id) === 'backup',
+       await page.evaluate(() => document.activeElement && document.activeElement.id));
 
     console.log('\n== plan editor still works ==');
     await page.click('#editPlan');
@@ -1771,9 +1781,9 @@ const ok = (name, cond, extra) => {
     /* Same name on two days, two different exercises — one row each. */
     ok('dos ejercicios con el mismo nombre no se pisan',
        !!verdicts.lat1 && !!verdicts.lat2 && verdicts.lat1 !== verdicts.lat2);
-    await page.click('#diagClose');
+    await page.keyboard.press('Escape');
     await page.waitForTimeout(200);
-    ok('el diagnóstico se cierra', await page.locator('#diagSheet.up').count() === 0);
+    ok('Escape cierra el diagnóstico', await page.locator('#diagSheet.up').count() === 0);
 
     /* The case the screen used to read as "Funciona · No toques nada" while
        the session's own target said MANTENER: 45 kg for three weeks, reps
@@ -2750,9 +2760,9 @@ const ok = (name, cond, extra) => {
     await page.click('#askOk');
     await page.waitForTimeout(400);
     ok('choosing to read it opens the review', await page.locator('#reviewSheet.up').count() === 1);
-    await page.click('#reviewClose');
+    await page.keyboard.press('Escape');
     await page.waitForTimeout(400);
-    ok('and closing it picks the new-block flow back up',
+    ok('and closing it with Escape still picks the new-block flow back up',
        await page.locator('#askSheet.up').count() === 1 &&
        (await page.locator('#askT').textContent()).includes('Nuevo bloque'));
     await page.click('#askCancel');

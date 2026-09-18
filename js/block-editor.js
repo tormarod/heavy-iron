@@ -1014,9 +1014,7 @@ function wireBlockEditor() {
     mark(n + (n === 1 ? ' bloque eliminado' : ' bloques eliminados') + ' — el bloque actual intacto');
   };
 
-  $('blkClose').onclick = () => closeSheet('blocksSheet');
-
-  $('blocksSheet').addEventListener('click', e => { if (e.target.id === 'blocksSheet') closeSheet('blocksSheet'); });
+  registerSheet('blocksSheet', { closeBtn: 'blkClose' });
 
   $('importFromText').onclick = () => {
     setNote($('importError'), '', false);
@@ -1025,9 +1023,7 @@ function wireBlockEditor() {
     applyImportedBlock(raw, 'texto pegado');
   };
 
-  $('importClose').onclick = () => closeSheet('importSheet');
-
-  $('importSheet').addEventListener('click', e => { if (e.target.id === 'importSheet') closeSheet('importSheet'); });
+  registerSheet('importSheet', { closeBtn: 'importClose' });
 
   $('importDownloadTemplate').onclick = () => downloadBlockTemplate($('importError'));
 
@@ -1117,9 +1113,7 @@ function wireBlockEditor() {
     mark('Plan descargado — sin registro, listo para "Importar JSON" en otro sitio');
   };
 
-  $('peClose').onclick = closePlanEditor;
-
-  $('planSheet').addEventListener('click', e => { if (e.target.id === 'planSheet') closePlanEditor(); });
+  registerSheet('planSheet', { closeBtn: 'peClose', onClose: closePlanEditor });
 
   $('peDeleteBlock').onclick = async () => {
     const profile = getProfile();

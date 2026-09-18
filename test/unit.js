@@ -128,7 +128,7 @@ console.log('\n== the harness ==');
 ok('every source file loads in one shared scope', call('typeof migrate') === 'function');
 ok('load() seeded a state object', call('!!state && !!state.profiles'));
 
-/* js/app.js:1942-1955 stubs the entry points of three split-out files so the
+/* js/app.js stubs the entry points of the split-out files it still names, so the
    app still boots when the worker serves an index.html whose script tag for
    one of them is not in the cache. Nothing exercised those stubs, because
    the harness always loaded all thirteen files — the defence against the
@@ -137,7 +137,10 @@ ok('load() seeded a state object', call('!!state && !!state.profiles'));
 console.log('\n== a precache hole: app.js boots without each split file (AGENTS.md rule 1) ==');
 [['js/rest-timer.js', ['startRest', 'stopRest', 'renderSoundBtn', 'askForNotifications', 'keepAliveStop']],
  ['js/chart.js', ['openChart']],
- ['js/qr-transfer.js', ['closeQr']]].forEach(([file, stubs]) => {
+ /* js/qr-transfer.js needs no stub since sheets register their own
+    teardown (plans/009 item 1) — nothing in app.js names closeQr now. The
+    file still gets its precache-hole pass: the shell must load without it. */
+ ['js/qr-transfer.js', []]].forEach(([file, stubs]) => {
   let partial = null, err = null;
   try { partial = loadApp([file]); } catch (e) { err = e; }
   ok('the shell loads without ' + file, !err && !!partial, err && err.message);
@@ -1794,34 +1797,59 @@ console.log('\n== the dialogs tell the truth about undo (plans/013) ==');
      JSON.stringify(claims));
 }
 
-console.log('\n== Escape reaches every sheet (plans/013) ==');
+console.log('\n== Escape reaches every sheet (plans/013, plans/009 item 1) ==');
 {
   /* reviewSheet and diagSheet were in the markup and opened by openSheet()
-     but never listed here, so Escape did nothing on them — the gap the
-     accessibility work was recorded as having closed. Checking the array
-     against index.html rather than against a second hand-written list is
-     what stops the next sheet reopening it. */
-  const sheetIds = call('SHEET_IDS');
+     but missing from the hand-kept SHEET_IDS array, so Escape did nothing on
+     them — the gap the accessibility work was recorded as having closed.
+     There is no array to forget any more: each sheet registers itself from
+     its own wire*(), and this checks the registry that registration builds
+     against index.html, in both directions. */
+  const registered = call('Object.keys(sheets)');
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const markup = Array.from(html.matchAll(/<div class="sheet" id="(\w+)"/g), m => m[1]);
 
   ok('the index.html scan found the sheets it is meant to check', markup.length >= 10, String(markup.length));
   /* askSheet is the confirm dialog's own; the Escape handler answers for it
-     before it ever looks at this list. */
-  const missing = markup.filter(id => id !== 'askSheet' && sheetIds.indexOf(id) === -1);
-  ok('every sheet in index.html except askSheet is in SHEET_IDS', missing.length === 0, missing.join(', '));
-  const stray = sheetIds.filter(id => markup.indexOf(id) === -1);
-  ok('and SHEET_IDS names no sheet that is not in the markup', stray.length === 0, stray.join(', '));
+     before it ever looks at the stack. */
+  const missing = markup.filter(id => id !== 'askSheet' && registered.indexOf(id) === -1);
+  ok('every sheet in index.html except askSheet calls registerSheet()', missing.length === 0, missing.join(', '));
+  const stray = registered.filter(id => markup.indexOf(id) === -1);
+  ok('and registerSheet() names no sheet that is not in the markup', stray.length === 0, stray.join(', '));
 
-  /* Order is what decides which sheet Escape closes when two are up. */
-  ok('reviewSheet sits after blocksSheet, which it opens over',
-     sheetIds.indexOf('reviewSheet') > sheetIds.indexOf('blocksSheet'),
-     JSON.stringify(Array.from(sheetIds)));
-  ok('diagSheet sits after blocksSheet too',
-     sheetIds.indexOf('diagSheet') > sheetIds.indexOf('blocksSheet'),
-     JSON.stringify(Array.from(sheetIds)));
-  ok('closeReview is a global, so the Escape handler can reach it',
-     call('typeof closeReview') === 'function');
+  /* Which sheet Escape closes used to depend on the order of SHEET_IDS —
+     a hand-kept guess at which sheet can open over which. The stack knows
+     the real order, and it has to survive an out-of-order close: the outer
+     sheet can be closed first while the inner one is still up. */
+  const nest = call(`(function () {
+    const base = sheetStack.length;
+    openSheet('blocksSheet'); openSheet('reviewSheet');
+    const top = sheetStack[sheetStack.length - 1].id;
+    closeSheet('blocksSheet');
+    const left = sheetStack.slice(base).map(s => s.id).join(',');
+    closeSheet('reviewSheet');
+    return top + '|' + left + '|' + (sheetStack.length - base);
+  })()`);
+  ok('the stack closes the sheet opened last, and an out-of-order close takes only its own entry',
+     nest === 'reviewSheet|reviewSheet|0', nest);
+
+  /* The point of the registry, beyond the list: a teardown that is not a
+     bare closeSheet reaches Escape without app.js naming the split file's
+     function. Losing closeReview would strand "+ Nuevo bloque", which waits
+     on the resume callback it runs. */
+  ok('the sheets with teardown carry it on their registration',
+     ['planSheet', 'setupSheet', 'qrSheet', 'reviewSheet']
+       .every(id => call(`typeof sheets['${id}'].onClose`) === 'function'),
+     JSON.stringify(registered.map(id => id + ':' + call(`typeof sheets['${id}'].onClose`))));
+  /* AGENTS.md rule (a): a symbol app.js reads stays in app.js or is stubbed
+     there. plans/013 added `else if (top === 'reviewSheet') closeReview()`,
+     which read js/review.js with no stub — a precache hole away from the
+     stuck-loading screen. Registration is what removed the read. */
+  /* Block comments stripped first: both names are still discussed there,
+     and what must be gone is a reference the engine would evaluate. */
+  const appCode = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  ok('app.js reads neither closeReview nor closeQr any more (AGENTS.md rule (a))',
+     !/\bcloseReview\b/.test(appCode) && !/\bcloseQr\b/.test(appCode));
 }
 
 console.log('\n== requestWakeLock: one rest, one lock — skipped mid-request, doubled up, or re-acquired (plans/008 item 15, plans/013) ==');

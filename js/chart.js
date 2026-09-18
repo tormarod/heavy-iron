@@ -275,6 +275,5 @@ function drawChart() {
 /* Every line here needs $(), which js/app.js defines — and js/app.js is the
    last script on the page. See the call site at the foot of that file. */
 function wireChart() {
-  $('chartClose').onclick = () => closeSheet('chartSheet');
-  $('chartSheet').addEventListener('click', e => { if (e.target.id === 'chartSheet') closeSheet('chartSheet'); });
+  registerSheet('chartSheet', { closeBtn: 'chartClose' });
 }

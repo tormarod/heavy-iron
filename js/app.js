@@ -734,10 +734,11 @@ function undoLast() {
    `if (!await ask(...)) return;`. Only one can be open at a time, which is
    already true of the confirm() they replace. */
 let askResolve = null;
-/* Its own variable, not the sheet stack's `sheetReturn` below: a confirm
-   raised from inside an open sheet (wipe, delete block) used to null that
-   shared variable on close, so when the sheet itself closed afterwards focus
-   had nowhere to return to. */
+/* Its own variable, not an entry on the sheet stack below: a confirm raised
+   from inside an open sheet (wipe, delete block) used to null the one shared
+   return target sheets had between them, so when the sheet itself closed
+   afterwards focus had nowhere to return to. The stack would survive that
+   now, but a confirm is still not a sheet and never goes on it. */
 let askReturn = null;
 
 function closeAsk(value) {
@@ -851,6 +852,75 @@ $('themeBtn').onclick = () => {
   save();
   mark('Tema ' + THEME_LABEL[p.theme]);
 };
+
+/* ---------- sheets ----------
+   Escape closes the top one, and focus goes into the dialog when it opens
+   and back to whatever opened it when it closes, so the whole app is usable
+   without a mouse. */
+/* One registration per sheet, made from the owning file's own wire*(), so a
+   new sheet is one call rather than four separate edits that had to agree: a
+   hand-kept id list, a branch in the Escape handler, and a copy of the
+   backdrop-click and close-button pair. The list and the branch are exactly
+   what went wrong — reviewSheet and diagSheet were opened by openSheet() but
+   missing from the list, and Escape did nothing on them (plans/013 fixed the
+   two; this is the shape that stops a third).
+
+   `onClose` is the teardown Escape and the backdrop must run instead of a
+   bare closeSheet: closePlanEditor, closeSetup, closeQr and closeReview each
+   do something on the way out that losing would be a bug — reviewSheet, for
+   one, carries the resume callback "+ Nuevo bloque" is waiting on.
+
+   Registering is optional on purpose. A precache hole — the worker serving
+   an index.html whose script tag for a split file was never cached — leaves
+   that file's registration unmade, and an unregistered sheet still opens and
+   still closes on Escape with the default closeSheet. That is what lets
+   app.js stop naming closeQr and closeReview at all: the structure now
+   covers the hole a no-op stub used to (AGENTS.md rule (a)). */
+const sheets = Object.create(null);   /* id -> { onClose } */
+const sheetStack = [];                /* [{ id, returnTo }], bottom to top */
+
+function registerSheet(id, opts) {
+  const o = opts || {};
+  sheets[id] = { onClose: o.onClose || null };
+  const close = () => (o.onClose ? o.onClose() : closeSheet(id));
+  if (o.closeBtn) $(o.closeBtn).onclick = close;
+  $(id).addEventListener('click', e => { if (e.target.id === id) close(); });
+}
+
+/* A stack, not the single slot this used to be: qrSheet opens on top of the
+   backup sheet and reviewSheet on top of the blocks sheet, and one shared
+   return target meant the inner sheet's close overwrote the outer one's — so
+   closing the outer sheet afterwards sent focus nowhere. */
+function openSheet(id) {
+  const el = $(id);
+  /* Opening a sheet that is already up must not stack a second entry, or
+     Escape would need two presses and the first return target would be
+     something inside the sheet itself. */
+  if (!el.classList.contains('up')) sheetStack.push({ id: id, returnTo: document.activeElement });
+  el.classList.add('up');
+  const box = el.querySelector('.sheet-box');
+  box.setAttribute('tabindex', '-1');
+  box.focus();
+}
+
+function closeSheet(id) {
+  $(id).classList.remove('up');
+  const i = sheetStack.map(s => s.id).lastIndexOf(id);
+  const back = i < 0 ? null : sheetStack.splice(i, 1)[0].returnTo;
+  /* isConnected: something opened under this sheet can have triggered a full
+     render() that recreated the button that opened it (the nav bar is
+     rebuilt on every render) — same reasoning as closeAsk, above. */
+  if (back && back.isConnected && back.focus) back.focus();
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (askResolve) { closeAsk($('askInput').hidden ? false : null); return; }
+  const top = sheetStack[sheetStack.length - 1];
+  if (!top) return;
+  const reg = sheets[top.id];
+  if (reg && reg.onClose) reg.onClose(); else closeSheet(top.id);
+});
 
 /* ---------- first-run setup / settings ----------
    The app used to open on somebody else's training plan, under somebody
@@ -1082,8 +1152,7 @@ function closeSetup() {
   setupDraft = null;
   closeSheet('setupSheet');
 }
-$('setupClose').onclick = closeSetup;
-$('setupSheet').addEventListener('click', e => { if (e.target.id === 'setupSheet') closeSetup(); });
+registerSheet('setupSheet', { closeBtn: 'setupClose', onClose: closeSetup });
 $('settings').onclick = () => openSetup(false);
 
 /* A block with one day and one blank exercise — somewhere to build from,
@@ -1959,61 +2028,14 @@ if (typeof keepAliveStop !== 'function') globalThis.keepAliveStop = function () 
 
 /* Same again for js/chart.js, which owns one entry point: the "Progreso ↗"
    button on every card calls it from inside buildExCard, so an unguarded
-   call would throw inside a card rather than merely doing nothing. And for
-   js/qr-transfer.js, whose closeQr the Escape handler reaches for whenever
-   the QR sheet is the top one — a sheet that cannot exist without that
-   file, so the stub is only ever called in a world where it is right. */
+   call would throw inside a card rather than merely doing nothing.
+
+   js/qr-transfer.js needed one too until sheets registered their own
+   teardown: the Escape handler used to name closeQr directly. It does not
+   any more (see registerSheet below), and nothing outside that file can open
+   the QR sheet, so there is no longer a symbol to stub. */
 if (typeof openChart !== 'function') globalThis.openChart = function () {};
-if (typeof closeQr !== 'function') globalThis.closeQr = function () {};
 
-
-/* ---------- sheets ----------
-   Escape closes the top one, and focus goes into the dialog when it opens
-   and back to whatever opened it when it closes, so the whole app is usable
-   without a mouse. */
-/* Order matters: Escape closes whichever of these is open *last*, so a sheet
-   that can be opened on top of another (qrSheet, from the backup sheet;
-   reviewSheet, from "+ Nuevo bloque" on the blocks sheet) has to sit after
-   it here. Every .sheet in index.html belongs in this list except askSheet,
-   which the confirm dialog above already answers for — reviewSheet and
-   diagSheet were missing and Escape simply did nothing on them, so
-   test/unit.js now checks the list against the markup (plans/013). */
-const SHEET_IDS = ['setupSheet', 'sheet', 'planSheet', 'blocksSheet', 'reviewSheet', 'diagSheet', 'importSheet', 'chartSheet', 'calcSheet', 'volumeSheet', 'qrSheet'];
-let sheetReturn = null;
-
-function openSheet(id) {
-  sheetReturn = document.activeElement;
-  const el = $(id);
-  el.classList.add('up');
-  const box = el.querySelector('.sheet-box');
-  box.setAttribute('tabindex', '-1');
-  box.focus();
-}
-
-function closeSheet(id) {
-  $(id).classList.remove('up');
-  /* isConnected: something opened under this sheet can have triggered a full
-     render() that recreated the button that opened it (the nav bar is
-     rebuilt on every render) — same reasoning as closeAsk, above. */
-  if (sheetReturn && sheetReturn.isConnected && sheetReturn.focus) sheetReturn.focus();
-  sheetReturn = null;
-}
-
-document.addEventListener('keydown', e => {
-  if (e.key !== 'Escape') return;
-  if (askResolve) { closeAsk($('askInput').hidden ? false : null); return; }
-  const open = SHEET_IDS.filter(id => $(id).classList.contains('up'));
-  if (!open.length) return;
-  const top = open[open.length - 1];
-  if (top === 'planSheet') closePlanEditor();
-  else if (top === 'setupSheet') closeSetup();
-  else if (top === 'qrSheet') closeQr();
-  /* Not closeSheet: reviewSheet carries the resume callback that opened it
-     ("+ Nuevo bloque" waits for the review to be read), and only
-     closeReview runs it. */
-  else if (top === 'reviewSheet') closeReview();
-  else closeSheet(top);
-});
 
 /* ---------- profile / block bars ---------- */
 function renderProfiles() {

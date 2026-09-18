@@ -412,9 +412,7 @@ function wireProfileTransfer() {
     });
   };
 
-  $('bClose').onclick = () => closeSheet('sheet');
-
-  $('sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeSheet('sheet'); });
+  registerSheet('sheet', { closeBtn: 'bClose' });
 
   $('bDownload').onclick = () => {
     const payload = JSON.stringify({ app: STORAGE_KEY, v: 1, saved: new Date().toISOString(), data: state }, null, 2);

@@ -154,6 +154,5 @@ function wireCalculator() {
   $('calcTarget').addEventListener('input', e => { calcDraft.target = e.target.value; drawCalc(); });
   $('calcInc').addEventListener('input', e => { calcDraft.inc = e.target.value; drawCalc(); });
   $('calcBtn').onclick = openCalc;
-  $('calcClose').onclick = () => closeSheet('calcSheet');
-  $('calcSheet').addEventListener('click', e => { if (e.target.id === 'calcSheet') closeSheet('calcSheet'); });
+  registerSheet('calcSheet', { closeBtn: 'calcClose' });
 }
