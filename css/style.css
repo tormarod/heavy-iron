@@ -484,6 +484,13 @@ body {
 .set-row.pr .set-n { color: var(--amber); font-weight: 600; }
 .badge.pr { background: var(--amber); color: var(--on-share); }
 
+/* A set that beat the best estimated 1RM without beating the weight —
+   more reps at a load already lifted. Outlined where the weight record is
+   filled, so the two read as first and second rather than as equals. */
+.set-row.pr-e1rm .tick.on { background: var(--card); border-color: var(--amber); color: var(--amber); }
+.set-row.pr-e1rm .set-n { color: var(--amber); font-weight: 600; }
+.badge.pr-e1rm { background: transparent; color: var(--amber); border: 1px solid var(--amber); }
+
 /* ---- rest timer ---- */
 .timer {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;

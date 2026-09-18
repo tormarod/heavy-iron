@@ -1341,10 +1341,12 @@ const bestProbe = `
     const profile = defaultState().profiles.hombre;
     const blockId = profile.blockOrder[0];
     const day = profile.blocks[blockId].days[0];
-    const a = day.ex[0].id, b = day.ex[1].id;
+    const a = day.ex[0].id, b = day.ex[1].id, c = day.ex[2].id;
     profile.log[blockId] = {};
-    profile.log[blockId][slot(1, day.id)] = { [a]: [{ done: true, w: '60', r: '8' }],
-                                              [b]: [{ done: true, w: '30', r: '8' }] };
+    profile.log[blockId][slot(1, day.id)] = { [a]: [{ done: true, w: '60', r: '8' },
+                                                    { done: true, w: '50', r: '20' }],   /* > EST_MAX_REPS: must not win (50×20 would price 83) */
+                                              [b]: [{ done: true, w: '30', r: '8' }],
+                                              [c]: [{ done: true, w: '30', r: '20' }] }; /* only a high-rep set: weight yes, estimate no */
     profile.log[blockId][slot(2, day.id)] = { [a]: [{ done: true, w: '80', r: '8' },
                                                     { done: false, w: '200', r: '8' },
                                                     { done: true, w: 'x', r: '8' }] };
@@ -1353,9 +1355,12 @@ const bestProbe = `
     const one = bestForExercise(profile, a, blockId, here);
     const noSkip = bestForExercise(profile, a, blockId, 'w9-dz');
     return {
-      agreesWithSkip: one[a] === all[a],
-      skipped: one[a],
-      unskipped: noSkip[a],
+      agreesWithSkip: one[a].w === all[a].w && one[a].e === all[a].e,
+      skipped: one[a].w,
+      skippedE: one[a].e,
+      unskipped: noSkip[a].w,
+      unskippedE: noSkip[a].e,
+      highRepOnly: all[c] && { w: all[c].w, e: all[c].e },
       onlyOneKey: Object.keys(one).length,
       missingIsAbsent: (a + '|' + (a in bestForExercise(profile, 'nosuchexercise', blockId, here))),
     };
@@ -1373,6 +1378,13 @@ ok('an unticked set and an unparseable weight are both ignored',
 ok('it reports the one id and nothing else', bestResult.onlyOneKey === 1);
 ok('an exercise with no history is absent rather than zero',
    bestResult.missingIsAbsent.endsWith('|false'), bestResult.missingIsAbsent);
+ok('the same walk carries the best estimated 1RM, Epley over the set with reps — and a 20-rep set cannot win it',
+   Math.abs(bestResult.skippedE - 60 * (1 + 8 / 30)) < 1e-9, 'got ' + bestResult.skippedE);
+ok('an exercise logged only past EST_MAX_REPS has a best weight and no estimate',
+   bestResult.highRepOnly && bestResult.highRepOnly.w === 30 && bestResult.highRepOnly.e === null,
+   JSON.stringify(bestResult.highRepOnly));
+ok('and the estimate follows the drawn session in when it is not skipped',
+   Math.abs(bestResult.unskippedE - 80 * (1 + 8 / 30)) < 1e-9, 'got ' + bestResult.unskippedE);
 
 console.log('\n== pruneLog: browsing a week does not leave placeholder rows in storage (plans/008 item 14) ==');
 /* entry() pads the drawn session's rows in place, so paging through a block

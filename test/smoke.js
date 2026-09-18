@@ -396,6 +396,21 @@ const ok = (name, cond, extra) => {
     ok('PR counted in the note', (await page.textContent('#note')).includes('récord'));
     await page.click('#tskip');
 
+    console.log('\n== personal record on estimated 1RM ==');
+    /* Week 3, same 30 as the week-2 record but more reps: not a heavier
+       weight, so no RÉCORD — but a better estimate, so the outlined one. */
+    await page.locator('.wk').nth(2).click();
+    const first3 = page.locator('.ex').first();
+    await first3.locator('.set-row').first().locator('input').first().fill('30');
+    await first3.locator('.set-row').first().locator('input').nth(1).fill('12');
+    await first3.locator('.set-row').first().locator('.tick').click();
+    ok('the e1RM badge appears when reps beat the estimate at a weight already lifted',
+       await first3.locator('.badge.pr-e1rm').count() === 1);
+    ok('and the weight badge does not', await first3.locator('.badge.pr').count() === 0);
+    ok('the row is marked with its own class', await first3.locator('.set-row.pr-e1rm').count() === 1);
+    ok('and it counts as a record in the footer', (await page.textContent('#note')).includes('récord'));
+    await page.click('#tskip');
+
     console.log('\n== in-app dialogs ==');
     ok('no native dialog fired during the run', alertText === null, String(alertText));
     await page.click('#clearDay');

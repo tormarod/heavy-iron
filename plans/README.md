@@ -41,7 +41,7 @@ below so it is not lost or re-audited.
 | 017 | [The review sheet takes the JSON back](017-review-sheet-takes-the-json-back.md) | P1 | S | LOW | — (016 edits `js/review.js` too) | DONE |
 | 018 | [The first week of a new block starts from what the previous block ended on](018-new-block-week-one-starts-from-previous.md) | P1 | M | MED | — (land after 019/020; all three edit `buildExCard`) | DONE |
 | 019 | [Last week's session note comes back on the same day; `nota`/`energia` in the CSV](019-session-note-returns-and-reaches-csv.md) | P2 | S | LOW | — | DONE (QR "plan + registro" carry of notes/energy deferred — see the plan's Maintenance notes) |
-| 020 | [A second RÉCORD for a new best estimated 1RM](020-record-badge-for-estimated-1rm.md) | P2 | S | LOW | — | TODO |
+| 020 | [A second RÉCORD for a new best estimated 1RM](020-record-badge-for-estimated-1rm.md) | P2 | S | LOW | — | DONE (one deviation from the plan text — see its Maintenance notes) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)

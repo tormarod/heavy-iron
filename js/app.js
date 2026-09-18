@@ -2371,9 +2371,29 @@ function render() {
   }
 }
 
-/* The best weight ever completed on each exercise, across every block of the
-   profile — the bar a set has to clear to count as a personal record. The
-   session being drawn is excluded, or its own sets would beat themselves. */
+/* One rule for both scans below: the heaviest completed weight, and the
+   best estimated 1RM among the sets that can honestly carry one — reps
+   present and at or under EST_MAX_REPS, where Epley stops drifting. `e` is
+   null until a set with reps has been logged. Raw num(r.w), not
+   rowWeight(): the badge is judged against the number the row shows, the
+   decision the weight badge already made (plans/README.md, third audit
+   item 17). */
+function noteBest(best, exId, r) {
+  if (!r || !r.done) return;
+  const w = num(r.w);
+  if (isNaN(w)) return;
+  if (!(exId in best)) best[exId] = { w: w, e: null };
+  else if (w > best[exId].w) best[exId].w = w;
+  if (hasReps(r) && num(r.r) <= EST_MAX_REPS) {
+    const e = est1RM(w, num(r.r));
+    if (best[exId].e == null || e > best[exId].e) best[exId].e = e;
+  }
+}
+
+/* The best weight ever completed on each exercise, and the best estimated
+   1RM alongside it, across every block of the profile — the bar a set has
+   to clear to count as a personal record. The session being drawn is
+   excluded, or its own sets would beat themselves. */
 function bestByExercise(profile, skipBlockId, skipSlot) {
   /* Prototype-less for the same reason rowsFor's slot objects are: exercise
      ids arrive from storage and from imports, and `best['__proto__'] = 90`
@@ -2390,12 +2410,7 @@ function bestByExercise(profile, skipBlockId, skipSlot) {
       Object.keys(s).forEach(exId => {
         const rows = s[exId];
         if (!Array.isArray(rows)) return;
-        rows.forEach(r => {
-          if (!r || !r.done) return;
-          const w = num(r.w);
-          if (isNaN(w)) return;
-          if (!(exId in best) || w > best[exId]) best[exId] = w;
-        });
+        rows.forEach(r => noteBest(best, exId, r));
       });
     });
   });
@@ -2415,12 +2430,7 @@ function bestForExercise(profile, exId, skipBlockId, skipSlot) {
       if (bId === skipBlockId && k === skipSlot) return;
       const rows = blk[k] && blk[k][exId];
       if (!Array.isArray(rows)) return;
-      rows.forEach(r => {
-        if (!r || !r.done) return;
-        const w = num(r.w);
-        if (isNaN(w)) return;
-        if (!(exId in best) || w > best[exId]) best[exId] = w;
-      });
+      rows.forEach(r => noteBest(best, exId, r));
     });
   });
   return best;
@@ -2614,15 +2624,30 @@ function buildExCard(ctx, ex, i) {
   const parked = parkedRows(profile, block.id, profile.week, day.id, ex.id, n);
   const allDone = rows.every(r => r.done);
 
-  const isPr = r => r.done && !isNaN(num(r.w)) && (!(ex.id in best) || num(r.w) > best[ex.id]);
+  /* `bar`, not `prior`: this same function already declares `const prior`
+     for the previous block's sets (plans/018), and two consts of one name
+     in one scope is the parse failure that leaves every returning phone on
+     "Cargando…" (AGENTS.md). "The bar a set has to clear" is the phrase the
+     comment above bestByExercise already uses. */
+  const bar = best[ex.id];
+  const isPr = r => r.done && !isNaN(num(r.w)) && (!bar || num(r.w) > bar.w);
+  /* A new best estimated 1RM at a weight already lifted: the rep progress
+     double progression is made of, which the weight badge cannot see. Only
+     against an existing estimate — the first session of an exercise already
+     earns the weight badge, and two badges for one first set would devalue
+     both — and never past EST_MAX_REPS, where the estimate stops being one.
+     The weight badge wins when both apply. */
+  const isPrE = r => !isPr(r) && r.done && !!bar && bar.e != null && hasReps(r) &&
+    num(r.r) <= EST_MAX_REPS && !isNaN(num(r.w)) && est1RM(num(r.w), num(r.r)) > bar.e;
   const cardPr = rows.some(isPr);
+  const cardPrE = !cardPr && rows.some(isPrE);
 
   /* Everything the line under the session adds up, recorded here on the way
      past. `rows` is the live array, which is also what lets the tick handler
      below ask whether the whole day just became done. */
   const stat = {
     ex: ex, el: null, rows: rows, n: n,
-    done: rows.filter(r => r.done).length, tonnage: 0, pr: cardPr, lastTs: 0,
+    done: rows.filter(r => r.done).length, tonnage: 0, pr: cardPr || cardPrE, lastTs: 0,
   };
   dayCards[i] = stat;
 
@@ -2713,6 +2738,7 @@ function buildExCard(ctx, ex, i) {
   }
   if (ex.ss) { const s = document.createElement('span'); s.className = 'ss'; s.textContent = 'SS'; nameEl.appendChild(s); }
   if (cardPr) { const s = document.createElement('span'); s.className = 'badge pr'; s.textContent = 'RÉCORD'; nameEl.appendChild(s); }
+  else if (cardPrE) { const s = document.createElement('span'); s.className = 'badge pr-e1rm'; s.textContent = 'RÉCORD 1RM'; nameEl.appendChild(s); }
   if (ex.alt) card.querySelector('.ex-alt').textContent = ex.alt;
   if (ex.cue) card.querySelector('.ex-cue').textContent = ex.cue;
 
@@ -2787,7 +2813,7 @@ function buildExCard(ctx, ex, i) {
     }
 
     const row = document.createElement('div');
-    row.className = 'set-row' + (r.done ? ' done' : '') + (isPr(r) ? ' pr' : '');
+    row.className = 'set-row' + (r.done ? ' done' : '') + (isPr(r) ? ' pr' : '') + (isPrE(r) ? ' pr-e1rm' : '');
     /* text + inputmode rather than type=number: a Spanish keyboard sends a
        comma, and type=number throws the whole value away when it sees one,
        so "22,5" silently became an empty box. */
