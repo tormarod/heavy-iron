@@ -1566,8 +1566,8 @@ The fast half needs nothing at all:
 
     node test/unit.js
 
-It loads the six source files into one Node context — the same shared scope
-the `<script>` tags create — and asserts the parts that are arithmetic rather
+It loads every shell script into one Node context, in the same order as the
+`<script>` tags — the same shared scope they create — and asserts the parts that are arithmetic rather
 than interface: the schema repair in `migrate()`, the import validators, the
 statistics behind Diagnóstico.
 
@@ -1578,7 +1578,8 @@ broken data lands on the recovery screen instead of a blank page, and that
 the rest timer's controls fit on a 375px phone.
 
 ```
-npx playwright install chromium     # once
+npm install --no-save playwright@1.56.1   # once
+npx playwright install chromium           # once
 python3 -m http.server 8765 &
 node test/smoke.js
 ```
@@ -1626,12 +1627,12 @@ rule, and which of this project's absences are deliberate.
 | `js/chart.js` | the per-exercise progress sheet: the line chart and the table under it |
 | `js/volume-sheet.js` | the volume dashboard — the bars, the trends and the band behind them |
 | `js/qr-transfer.js` | the QR wire format and the sheet that shows and scans it |
-| `js/app.js` | everything else: state, rendering, QR transfer, volume dashboard |
+| `js/app.js` | everything else: state, storage and recovery, the session view, the progression estimate, sheets and navigation, settings, the share/import vocabulary, the CSV export |
 | `js/boot-guard.js` | the one script after `app.js`: if the shell did not boot, it hands over to the worker already waiting with a complete one |
 | `js/vendor/` | the two QR libraries, verbatim from npm — see the README in there |
 | `sw.js` | offline caching; bump `CACHE_VERSION` when releasing |
 | `manifest.webmanifest`, `icon.svg`, `icon-*.png` | what makes it installable |
-| `tools/render-icons.mjs` | re-exports the PNGs from `icon.svg` — run it after editing the artwork |
+| `tools/render-icons.mjs` | re-exports the PNGs from `icon.svg` — run it after editing the artwork (needs the same `playwright` module as the smoke suite) |
 | `blocks/` | blocks published for one-click import |
 | `test/unit.js` | headless assertions for pure logic — no server, no browser |
 | `test/smoke.js` | browser-driven smoke tests |
@@ -1640,7 +1641,7 @@ rule, and which of this project's absences are deliberate.
 
 Worth knowing before you plan around them:
 
-- **Spanish only.** Every string lives inline in `app.js`, so translating
+- **Spanish only.** Every string lives inline in the source, so translating
   is a real project rather than a patch. This is the biggest wall for
   anyone who finds the app and doesn't read Spanish.
 - **No sync.** By design — there is no server. Data can be carried between

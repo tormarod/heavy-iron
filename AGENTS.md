@@ -105,9 +105,16 @@ identical to an oversight unless someone writes down which it is:
 **Bump `CACHE_VERSION` in `sw.js` whenever `index.html`, `css/` or `js/`
 change**, and add any new shell file to the `SHELL` array in `sw.js`. The
 shell is served cache-first, so a new `app.js` beside an untouched `sw.js`
-leaves returning users on the old script indefinitely. CI enforces the
-version bump (the `cache-version` job in `.github/workflows/test.yml`) but
-**not** the `SHELL` array update — that half is on you.
+leaves returning users on the old script indefinitely. CI enforces both
+halves: the `cache-version` job in `.github/workflows/test.yml` fails a pull
+request whose shell changed without a bump, and its second step fails one
+whose `js/*.js` or `css/*.css` file is missing from `SHELL`. `test/unit.js`
+closes the rest of that circle — it asserts `index.html`, `SHELL` and
+`loadApp()` name the same files in the same order (plans/014).
+
+`tools/bump-cache-version.sh` does the bump, so a red `cache-version` run
+costs one command rather than a round-trip: `--dry-run` prints the current
+and next version without writing.
 
 ## How to verify a change
 
@@ -143,7 +150,7 @@ value surviving a reload, `sw.js`, the layout — and it is targeted:
 needs a static server on `:8765` (or `BASE=`) plus Playwright:
 
 ```
-npm install --no-save playwright@1.56.1  # once — the README omits this
+npm install --no-save playwright@1.56.1  # once
 npx playwright install chromium          # once
 python3 -m http.server 8765 &
 ```
@@ -167,10 +174,11 @@ smoke assertion costs Chromium time forever.
 
 Anything arriving from a file, a paste, `blocks/`, or a QR scan is
 untrusted. It goes through a `normalizeImported*` function
-(`js/block-editor.js:207` is the reference implementation) and is escaped
-with `esc` (`js/app.js:32`) on the way out. Limits are enforced in
-`IMPORT_LIMITS` (`js/app.js:2284`) — not just clamped, some values (like
-`ex.add`) reject the import outright rather than silently coercing it.
+(`normalizeImportedBlock` in `js/block-editor.js` is the reference
+implementation) and is escaped with `esc` (top of `js/app.js`) on the way
+out. Limits are enforced in `IMPORT_LIMITS` (grep for it in `js/app.js`)
+— not just clamped, some values (like `ex.add`) reject the import outright
+rather than silently coercing it.
 
 ## The CSP
 
@@ -225,5 +233,5 @@ this file.
 
 ## Where things live
 
-See `README.md`'s "Project layout" table (~line 1599) for the full map. It
-is the reference; this file is the briefing.
+See `README.md`'s table under the `## Project layout` heading for the full
+map. It is the reference; this file is the briefing.

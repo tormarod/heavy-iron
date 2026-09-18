@@ -239,3 +239,41 @@ required; simply confirm `node -e "require('playwright')"` still works.
 - Deferred, maintainer decision: whether the headless job should also run
   on `push` to `main` (direct pushes happen; the browser suite is
   hook-bound). Recorded in plans/README.md.
+
+### How this plan was followed (executed 2026-09-18)
+
+Three places where the plan text did not match the repo, and what was done
+instead:
+
+- **Step 4's verification command does not exist.** The plan closes the
+  vendor recipe with `node test/smoke.js --only QR`. `--only` matches
+  section names, and there is no QR section: the QR checks are sub-headings
+  inside `main session`, which `test/smoke.js:23` says explicitly because
+  they build on that page's state. `--only QR` would select nothing and the
+  suite would exit on its "matched no section" path. The recipe ships
+  `--only "main session"` with one clause saying why.
+- **The plan's "CI does not require a bump for these paths" is wrong for
+  `js/vendor/README.md`, so `.github/workflows/test.yml` was edited after
+  all.** The `cache-version` job gated on
+  `grep -qE '^(index\.html|css/|js/)'`, and that path starts with `js/` —
+  so Step 4, in a plan that forbids bumping `CACHE_VERSION`, was the one
+  edit here that turned the job red. The three options (bump anyway, narrow
+  the gate, drop Step 4) were put to the maintainer, who chose to narrow
+  it: the pattern is now anchored on the extension,
+  `^(index\.html|css/.*\.css|js/.*\.js)$`. That is identical to the old
+  one for every file the shell actually contains and stops the three
+  non-shell files under `js/vendor/` — `README.md`, `SHA256SUMS`, the
+  license — from asking for a bump. It is outside the plan's stated scope;
+  it is here because the plan's own Step 4 could not land without it. The
+  same commit drops a comment in that file quoting the AGENTS.md sentence
+  Step 2 deleted.
+- **Step 1 was half a check, as the Overlap note predicted.** The
+  `js/app.js:5437` citation and the "seven files" quote were already gone
+  (`40048a0`, `7762bcf`); only the three citations under "Untrusted input"
+  and the `~line 1599` pointer needed editing.
+
+Smaller drift, all anticipated by the plan's own header: `CACHE_VERSION` is
+`v60`, so the dry run prints `v60 -> v61`, not `v55 -> v56`; the
+`smoke-gate.sh` install line is 153, not 119. The done criterion
+`grep "ignore-scripts" tools/smoke-gate.sh` → 1 match is why the comment
+added there describes the flag rather than naming it twice.
