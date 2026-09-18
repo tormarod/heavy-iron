@@ -1564,10 +1564,19 @@ ok('a target with no exact combination still reports the true shortfall',
    call('fitPlates(23, [20, 10, 5]).remainder') === 3,
    String(call('JSON.stringify(fitPlates(23, [20, 10, 5]))')));
 ok('warmupRamp collapses three identical rounded steps into one (target 15, increment 10)',
-   call('JSON.stringify(warmupRamp(15, 10, 0))') === '[10]',
+   call('JSON.stringify(warmupRamp(15, 10, 0).map(r => r.weight))') === '[10]',
    String(call('JSON.stringify(warmupRamp(15, 10, 0))')));
 ok('warmupRamp keeps three distinct steps when they are actually distinct',
    call('warmupRamp(100, 2.5, 0).length') === 3);
+/* The label travels with the row, so the surviving row of a collapsed ramp
+   is still the 40% step and not whatever the old positional labels array
+   happened to hold at that index (plans/013). */
+ok('the row that survives a collapse keeps its own label',
+   call('warmupRamp(15, 10, 0)[0].pct') === '40%',
+   String(call('JSON.stringify(warmupRamp(15, 10, 0))')));
+ok('an uncollapsed ramp labels its three rows 40/60/80',
+   call('JSON.stringify(warmupRamp(100, 2.5, 0).map(r => r.pct))') === '["40%","60%","80%"]',
+   String(call('JSON.stringify(warmupRamp(100, 2.5, 0).map(r => r.pct))')));
 
 console.log('\n== input boundary: unsafe tags, editor clamps, setup aliasing (plans/012) ==');
 {
@@ -1764,19 +1773,121 @@ console.log('\n== safeKey refuses every inherited Object.prototype name, not thr
   call('__pSK = null; __bSK = null;');
 }
 
-console.log('\n== requestWakeLock: a rest skipped mid-request releases instead of holding the lock (plans/008 item 15) ==');
-(async () => {
-  let released = false;
-  const fakeLock = { release: () => { released = true; return Promise.resolve(); } };
-  app.navigator.wakeLock = { request: () => Promise.resolve(fakeLock) };
-  await call('requestWakeLock()');
-  ok('no rest in flight: the lock is released, not stored', released === true && call('wakeLock') == null);
+console.log('\n== the dialogs tell the truth about undo (plans/013) ==');
+{
+  /* Five confirm dialogs said "No se puede deshacer." and then took an undo
+     snapshot, so the people most likely to want the toast were the ones
+     told not to look for it. The one that still says it deletes a retired
+     exercise's log, which really has no snapshot behind it — so the count
+     is the assertion, not the absence. */
+  ok('UNDO_PROMISE is the single wording the snapshot dialogs share',
+     typeof call('UNDO_PROMISE') === 'string' && call('UNDO_PROMISE').length > 0,
+     String(call('UNDO_PROMISE')));
 
-  released = false;
+  const claims = ['js/app.js', 'js/block-editor.js', 'js/profile-transfer.js', 'js/qr-transfer.js', 'js/review.js']
+    /* The closing quote is part of the needle: it finds the claim where it
+       ends a string a dialog shows, and not where a comment quotes it. */
+    .map(rel => [rel, fs.readFileSync(path.join(ROOT, rel), 'utf8').split("No se puede deshacer.'").length - 1])
+    .filter(([, n]) => n > 0);
+  ok('exactly one dialog still claims there is no undo, and it is the one without a snapshot',
+     claims.length === 1 && claims[0][0] === 'js/block-editor.js' && claims[0][1] === 1,
+     JSON.stringify(claims));
+}
+
+console.log('\n== Escape reaches every sheet (plans/013) ==');
+{
+  /* reviewSheet and diagSheet were in the markup and opened by openSheet()
+     but never listed here, so Escape did nothing on them — the gap the
+     accessibility work was recorded as having closed. Checking the array
+     against index.html rather than against a second hand-written list is
+     what stops the next sheet reopening it. */
+  const sheetIds = call('SHEET_IDS');
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  const markup = Array.from(html.matchAll(/<div class="sheet" id="(\w+)"/g), m => m[1]);
+
+  ok('the index.html scan found the sheets it is meant to check', markup.length >= 10, String(markup.length));
+  /* askSheet is the confirm dialog's own; the Escape handler answers for it
+     before it ever looks at this list. */
+  const missing = markup.filter(id => id !== 'askSheet' && sheetIds.indexOf(id) === -1);
+  ok('every sheet in index.html except askSheet is in SHEET_IDS', missing.length === 0, missing.join(', '));
+  const stray = sheetIds.filter(id => markup.indexOf(id) === -1);
+  ok('and SHEET_IDS names no sheet that is not in the markup', stray.length === 0, stray.join(', '));
+
+  /* Order is what decides which sheet Escape closes when two are up. */
+  ok('reviewSheet sits after blocksSheet, which it opens over',
+     sheetIds.indexOf('reviewSheet') > sheetIds.indexOf('blocksSheet'),
+     JSON.stringify(Array.from(sheetIds)));
+  ok('diagSheet sits after blocksSheet too',
+     sheetIds.indexOf('diagSheet') > sheetIds.indexOf('blocksSheet'),
+     JSON.stringify(Array.from(sheetIds)));
+  ok('closeReview is a global, so the Escape handler can reach it',
+     call('typeof closeReview') === 'function');
+}
+
+console.log('\n== requestWakeLock: one rest, one lock — skipped mid-request, doubled up, or re-acquired (plans/008 item 15, plans/013) ==');
+(async () => {
+  /* A real WakeLockSentinel carries its own .released flag, and the guard
+     added in plans/013 reads it — so the fake has to carry one as well. */
+  const makeLock = () => ({ released: false, release() { this.released = true; return Promise.resolve(); } });
+  let requests = 0, nextLock = makeLock();
+  app.navigator.wakeLock = { request: () => { requests++; return Promise.resolve(nextLock); } };
+
+  let fakeLock = nextLock;
+  await call('requestWakeLock()');
+  ok('no rest in flight: the lock is released, not stored', fakeLock.released === true && call('wakeLock') == null);
+
+  nextLock = fakeLock = makeLock();
   call('tId = 1');
   await call('requestWakeLock()');
-  ok('a rest still running: the lock is kept', released === false && call('wakeLock') === fakeLock);
+  ok('a rest still running: the lock is kept', fakeLock.released === false && call('wakeLock') === fakeLock);
+
+  /* plans/013: a second rest started while one was live used to request a
+     second lock and overwrite the variable. The first reference went on the
+     floor, so "saltar" released only the one it could see and the screen
+     stayed on for the rest of the session. */
+  const held = fakeLock, before = requests;
+  nextLock = makeLock();
+  await call('requestWakeLock()');
+  ok('a lock already held: no second request, and the first one is still the one stored',
+     requests === before && call('wakeLock') === held && held.released === false,
+     'requests ' + requests + ', was ' + before);
+
+  /* ...but a sentinel the browser released while the tab was hidden is not a
+     held lock any more. The visibilitychange handler has to be able to get a
+     fresh one, which is why the guard tests .released and not bare truth. */
+  held.released = true;
+  const fresh = nextLock;
+  await call('requestWakeLock()');
+  ok('a lock the browser already released is replaced rather than treated as held',
+     requests === before + 1 && call('wakeLock') === fresh,
+     'requests ' + requests + ', was ' + before);
+
+  /* Both taps clear that guard before either request resolves, so the guard
+     alone cannot cover this one: the lock that lands second is released by
+     the call that asked for it. */
+  call('wakeLock = null');
+  const first = makeLock(), second = makeLock(), queue = [first, second];
+  app.navigator.wakeLock = { request: () => { requests++; return Promise.resolve(queue.shift()); } };
+  await Promise.all([call('requestWakeLock()'), call('requestWakeLock()')]);
+  ok('two rests started in the same tick end up holding exactly one lock',
+     call('wakeLock') === first && first.released === false && second.released === true,
+     JSON.stringify({ heldIsFirst: call('wakeLock') === first, first: first.released, second: second.released }));
   call('tId = null; wakeLock = null;');
+
+  console.log('\n== buildQrPayload leaves the backup nag alone (plans/013) ==');
+  call('state = defaultState(); migrate(); state.prefs.sessionsSinceBackup = 5;');
+  /* Building the payload is not sending it: drawQrShow can still refuse the
+     result as too many frames for a camera, and picking "perfil" in the
+     segmented control redraws through here every time. The counter is reset
+     where the frames go on screen, which needs a DOM — so what is asserted
+     here is that this half no longer touches it. */
+  const qrPayload = await call('buildQrPayload("profile", getProfile(), getBlock())');
+  ok('choosing "perfil" does not reset the sessions-since-backup counter',
+     call('state.prefs.sessionsSinceBackup') === 5,
+     String(call('state.prefs.sessionsSinceBackup')));
+  ok('...and the payload it builds is still the whole profile',
+     qrPayload.kind === 'profile' && !!qrPayload.profile && qrPayload.key === call('state.activeProfile'),
+     JSON.stringify({ kind: qrPayload.kind, key: qrPayload.key, hasProfile: !!qrPayload.profile }));
 
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);

@@ -688,6 +688,18 @@ $('toastDismiss').onclick = hideToast;
    soon as the next one replaces it. */
 let undoSnapshot = null;
 
+/* What the confirm dialog in front of a snapshot is allowed to promise,
+   kept next to the snapshot so the two cannot drift apart. Five dialogs
+   used to say "No se puede deshacer." and then call snapshotForUndo
+   anyway: anyone who believed the dialog never went looking for the toast,
+   which is the whole point of the feature (plans/013). The one dialog in
+   js/block-editor.js that still says it — deleting a retired exercise's
+   log from the editor — is right to, because that path has no snapshot
+   behind it until the editor's own save takes one.
+   Same scope rule as UNCLASSIFIED_LABEL above: defined here, read from the
+   files that load before this one, and only ever from inside a handler. */
+const UNDO_PROMISE = 'Podrás deshacerlo justo después, mientras no hagas otra cosa.';
+
 function snapshotForUndo(what) {
   try {
     undoSnapshot = JSON.stringify(state);
@@ -1960,9 +1972,13 @@ if (typeof closeQr !== 'function') globalThis.closeQr = function () {};
    and back to whatever opened it when it closes, so the whole app is usable
    without a mouse. */
 /* Order matters: Escape closes whichever of these is open *last*, so a sheet
-   that can be opened on top of another (qrSheet, from the backup sheet) has
-   to sit after it here. */
-const SHEET_IDS = ['setupSheet', 'sheet', 'planSheet', 'blocksSheet', 'importSheet', 'chartSheet', 'calcSheet', 'volumeSheet', 'qrSheet'];
+   that can be opened on top of another (qrSheet, from the backup sheet;
+   reviewSheet, from "+ Nuevo bloque" on the blocks sheet) has to sit after
+   it here. Every .sheet in index.html belongs in this list except askSheet,
+   which the confirm dialog above already answers for — reviewSheet and
+   diagSheet were missing and Escape simply did nothing on them, so
+   test/unit.js now checks the list against the markup (plans/013). */
+const SHEET_IDS = ['setupSheet', 'sheet', 'planSheet', 'blocksSheet', 'reviewSheet', 'diagSheet', 'importSheet', 'chartSheet', 'calcSheet', 'volumeSheet', 'qrSheet'];
 let sheetReturn = null;
 
 function openSheet(id) {
@@ -1992,6 +2008,10 @@ document.addEventListener('keydown', e => {
   if (top === 'planSheet') closePlanEditor();
   else if (top === 'setupSheet') closeSetup();
   else if (top === 'qrSheet') closeQr();
+  /* Not closeSheet: reviewSheet carries the resume callback that opened it
+     ("+ Nuevo bloque" waits for the review to be read), and only
+     closeReview runs it. */
+  else if (top === 'reviewSheet') closeReview();
   else closeSheet(top);
 });
 
@@ -4301,8 +4321,8 @@ $('bCsv').onclick = () => {
    parsing, regardless of load order. See js/block-editor.js,
    js/diagnostics.js and js/profile-transfer.js for why that matters. */
 wireBlockEditor();
-/* Guarded, unlike wireBlockEditor/wireProfileTransfer, because these
-   three files are newer than some already-deployed shells: a returning user
+/* Guarded, unlike wireBlockEditor/wireProfileTransfer, because the files
+   below are newer than some already-deployed shells: a returning user
    whose service worker still holds the previous index.html can be served
    this app.js against markup that has no script tag for them yet. An
    unguarded call would throw here, load() below would never run, and the

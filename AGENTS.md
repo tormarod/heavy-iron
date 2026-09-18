@@ -47,12 +47,12 @@ identical to an oversight unless someone writes down which it is:
   read of the theme preference, not DOM wiring — but it is still in `SHELL`
   and still loaded by `test/unit.js`'s `loadApp()`, first, ahead of this list.
 - **A file other than `app.js` must keep all its DOM wiring inside its own
-  `wire*()` function**, called from `app.js`'s tail (`js/app.js:5437`):
+  `wire*()` function**, called from `app.js`'s tail (at the foot of that file):
 
   ```js
   wireBlockEditor();
-  /* Guarded, unlike wireBlockEditor/wireProfileTransfer, because these
-     seven files are newer than some already-deployed shells: … */
+  /* Guarded, unlike wireBlockEditor/wireProfileTransfer, because the files
+     below are newer than some already-deployed shells: … */
   if (typeof wireDiagnostics === 'function') wireDiagnostics();
   if (typeof wireReview === 'function') wireReview();
   if (typeof wireCalculator === 'function') wireCalculator();

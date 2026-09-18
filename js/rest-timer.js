@@ -369,11 +369,24 @@ function clearRestNotification() {
 async function requestWakeLock() {
   try {
     if (!('wakeLock' in navigator)) return;
+    /* A second rest started while one is live (a superset, a set ticked
+       during the countdown) used to request a second lock and drop the
+       first reference on the floor; "saltar" then released only the one it
+       could see, and the screen stayed on for the whole session (plans/013).
+       The test is .released and not bare truth because the browser releases
+       the lock itself when the tab is hidden without telling this variable:
+       a plain `if (wakeLock)` would turn the visibilitychange re-acquire in
+       wireRestTimer() into a no-op and let the screen sleep instead. */
+    if (wakeLock && !wakeLock.released) return;
     const lock = await navigator.wakeLock.request('screen');
     /* stopRest() can run while the request above is in flight (tapping
        "saltar" mid-request); if the rest is already over by the time the
        lock resolves, release it instead of holding a lock with no timer. */
     if (!tId) { lock.release().catch(() => {}); return; }
+    /* Same again for two rests started in the same tick: both cleared the
+       guard above before either request resolved, so the one that lands
+       second lets go of its own lock rather than overwriting the first. */
+    if (wakeLock && !wakeLock.released) { lock.release().catch(() => {}); return; }
     wakeLock = lock;
   } catch (e) { /* not supported, or permission denied — countdown still self-corrects on tick */ }
 }

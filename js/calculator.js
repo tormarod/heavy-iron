@@ -21,10 +21,14 @@
    *that* has to fit the number you asked for, not a rounded stand-in. */
 /* Consecutive steps can round to the same loadable weight (target 15,
    increment 10 gives 10/10/10/15) — collapsing the duplicates rather than
-   drawing three identical rows the lifter has to notice are the same. */
+   drawing three identical rows the lifter has to notice are the same.
+   Each row carries its own label because of that: drawCalc used to pick
+   labels positionally out of ['40%', '60%', '80%', 'Objetivo'], so a
+   collapsed two-row ramp called the working weight "60%" and never showed
+   "Objetivo" at all (plans/013). */
 function warmupRamp(target, step, floor) {
-  const rows = [0.4, 0.6, 0.8].map(p => Math.max(floor || 0, roundToStep(target * p, step)));
-  return rows.filter((w, i) => i === 0 || w !== rows[i - 1]);
+  const rows = [0.4, 0.6, 0.8].map(p => ({ pct: Math.round(p * 100) + '%', weight: Math.max(floor || 0, roundToStep(target * p, step)) }));
+  return rows.filter((r, i) => i === 0 || r.weight !== rows[i - 1].weight);
 }
 
 /* Belt-and-braces alongside the PLATE_MIN/MAX clamp in migrate(): a plate
@@ -123,24 +127,23 @@ function drawCalc() {
     return;
   }
 
-  const labels = ['40%', '60%', '80%', 'Objetivo'];
   let rows;
   if (isBar) {
     const smallest = plates.length ? Math.min(...plates) : DEFAULT_PLATES[u][0];
     const step = smallest * 2;
-    const weights = warmupRamp(target, step, barWeight).concat([target]);
-    rows = weights.map((w, i) => {
-      const perSide = (w - barWeight) / 2;
+    const weights = warmupRamp(target, step, barWeight).concat([{ pct: 'Objetivo', weight: target }]);
+    rows = weights.map(row => {
+      const perSide = (row.weight - barWeight) / 2;
       const fit = fitPlates(perSide, plates);
       const plateTxt = fit.plates.length ? fit.plates.join(' + ') : '(vacía)';
       const remTxt = fit.remainder ? ' · falta ' + fit.remainder + ' ' + u : '';
-      return '<tr><td>' + labels[i] + '</td><td>' + (Math.round(w * 100) / 100) + ' ' + esc(u) + '</td><td>' + esc(plateTxt + remTxt) + '</td></tr>';
+      return '<tr><td>' + row.pct + '</td><td>' + (Math.round(row.weight * 100) / 100) + ' ' + esc(u) + '</td><td>' + esc(plateTxt + remTxt) + '</td></tr>';
     });
     out.innerHTML = '<table class="chart-table"><thead><tr><th>Paso</th><th>Peso total</th><th>Por lado</th></tr></thead><tbody>' + rows.join('') + '</tbody></table>';
   } else {
     const inc = num(calcDraft.inc) > 0 ? num(calcDraft.inc) : DEFAULT_STACK_INC[u];
-    const weights = warmupRamp(target, inc, 0).concat([target]);
-    rows = weights.map((w, i) => '<tr><td>' + labels[i] + '</td><td>' + (Math.round(w * 100) / 100) + ' ' + esc(u) + '</td></tr>');
+    const weights = warmupRamp(target, inc, 0).concat([{ pct: 'Objetivo', weight: target }]);
+    rows = weights.map(row => '<tr><td>' + row.pct + '</td><td>' + (Math.round(row.weight * 100) / 100) + ' ' + esc(u) + '</td></tr>');
     out.innerHTML = '<table class="chart-table"><thead><tr><th>Paso</th><th>Peso</th></tr></thead><tbody>' + rows.join('') + '</tbody></table>';
   }
 }
