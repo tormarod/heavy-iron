@@ -5,11 +5,20 @@ let ready = false;
 /* Exercise ids whose "Ajustes" (machine setup) box is expanded right now —
    in-memory only, so every fresh open of the app starts collapsed again. */
 const expandedSetup = new Set();
-/* Set by the ↓ button so the render it triggers can put the cursor straight
-   into the weight box of the drop it just created — the same trick the
-   "Ajustes" box uses, but for a field that does not exist until the render
-   after the click. Cleared as soon as it is honoured. */
+/* Set by the ↓ and ⚙ buttons so the draw they trigger can put the cursor
+   straight into a box that does not exist until that draw has run. Both are
+   honoured by takeFocusMark() once the card is in the document, because the
+   card is detached while it is being built and focus() on a detached element
+   is silently a no-op. Cleared as soon as they are honoured. */
 let focusDrop = '';
+let focusSetup = '';
+/* One entry per card currently on screen, in card order: the exercise, the
+   card element, the row array it is drawing (by reference, so the tick
+   handler can ask whether the whole day just became done), and the numbers
+   the line under the session adds up. Rebuilding one card replaces its entry
+   in place — that, rather than a fresh walk of the log, is what keeps the
+   footer honest after a single-card redraw. */
+let dayCards = [];
 let tId = null, tEndAt = 0, tTotal = 0, tOverNotified = false;
 let wakeLock = null;
 
@@ -416,6 +425,52 @@ function stampRowUnit(r) {
    out of the page flushes it: see the pagehide/visibilitychange handlers. */
 let saveT = null;
 let frozen = false;
+/* Which session the cards on screen are drawing — set by drawApp, read by
+   pruneLog, which must not cut the ground out from under it. */
+let drawnSlot = null;
+
+/* entry() pads a session's row arrays out to the plan's set count so that the
+   boxes on the card write into live objects. The side effect is that merely
+   *looking* at a week leaves a full set of blank rows behind for every
+   exercise on it, and every save from then on serialises them: page through a
+   twelve-week block once and the log carries eleven weeks of nothing, for
+   good.
+
+   They say nothing — every reader filters on done or rowUsed — so trailing
+   unused rows are dropped here, on the way to localStorage, along with the
+   exercise and slot containers that browsing alone created.
+
+   Every session except the one on screen. Those particular row objects are
+   the ones this draw's <input> handlers are holding by reference, and cutting
+   them out of the array would send a weight typed into the last set nowhere
+   at all. It is the only session that can be padded and live at once: entry()
+   is reached from drawApp and from copyPrev, and both work on the week and
+   day being shown. */
+function pruneLog() {
+  if (!state || !state.profiles) return;
+  Object.keys(state.profiles).forEach(pKey => {
+    const log = state.profiles[pKey] && state.profiles[pKey].log;
+    if (!log || typeof log !== 'object') return;
+    Object.keys(log).forEach(bId => {
+      const blk = log[bId];
+      if (!blk || typeof blk !== 'object') return;
+      Object.keys(blk).forEach(k => {
+        if (drawnSlot && drawnSlot.profile === pKey && drawnSlot.block === bId && drawnSlot.key === k) return;
+        const sl = blk[k];
+        if (!sl || typeof sl !== 'object') return;
+        Object.keys(sl).forEach(exId => {
+          const rows = sl[exId];
+          if (!Array.isArray(rows)) return;
+          let end = rows.length;
+          while (end > 0 && !rowUsed(rows[end - 1])) end--;
+          if (end < rows.length) rows.length = end;
+          if (!rows.length) delete sl[exId];
+        });
+        if (!Object.keys(sl).length) delete blk[k];
+      });
+    });
+  });
+}
 /* Set while a two-tab conflict toast is up (see the 'storage' handler below)
    and cleared by whichever of its two actions the user picks. The debounced
    path respects it so the write that caused the conflict cannot land behind
@@ -429,6 +484,7 @@ function writeState(force) {
   if (held && !force) return;
   held = false;
   try {
+    pruneLog();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     mark('Guardado ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
   } catch (e) {
@@ -2249,6 +2305,35 @@ function safeKey(id) {
 }
 
 /* ---------- nav ---------- */
+
+/* Something logged anywhere in this week of this block — what the dot on a
+   week button means. One home, because renderNav draws it for every week and
+   drawCard has to move it for the current one after a tick, and a rule with
+   two implementations is a rule that drifts. */
+function weekHasLog(profile, block, w) {
+  return dayList(block).some(d => {
+    const s = profile.log[block.id] && profile.log[block.id][slot(w, d.id)];
+    return !!s && Object.values(s).some(a => Array.isArray(a) && a.some(x => x && x.done));
+  });
+}
+
+/* The first ticked set of a week adds the dot and unticking the last one
+   removes it, so a card-local redraw still owes the nav this much. Moving
+   the one dot rather than calling renderNav(), which would rebuild every
+   week and day button to do it — the whole point of drawCard is to stop
+   rebuilding things that did not change. */
+function refreshWeekDot(profile, block) {
+  const host = $('weeks');
+  const btn = host && host.children[profile.week - 1];
+  if (!btn) return;
+  const dot = btn.querySelector('.dot');
+  if (weekHasLog(profile, block, profile.week)) {
+    if (!dot) { const el = document.createElement('span'); el.className = 'dot'; btn.appendChild(el); }
+  } else if (dot) {
+    dot.remove();
+  }
+}
+
 function renderNav() {
   const profile = getProfile();
   const block = getBlock();
@@ -2266,11 +2351,7 @@ function renderNav() {
     b.setAttribute('role', 'tab');
     b.setAttribute('aria-selected', w === profile.week ? 'true' : 'false');
     b.setAttribute('aria-label', 'Semana ' + w + (w === dl ? ', descarga' : ''));
-    const has = days.some(d => {
-      const s = profile.log[block.id] && profile.log[block.id][slot(w, d.id)];
-      return s && Object.values(s).some(a => a.some(x => x.done));
-    });
-    if (has) { const dot = document.createElement('span'); dot.className = 'dot'; b.appendChild(dot); }
+    if (weekHasLog(profile, block, w)) { const dot = document.createElement('span'); dot.className = 'dot'; b.appendChild(dot); }
     b.onclick = () => { profile.week = w; stopRest(); save(); render(); };
     $('weeks').appendChild(b);
   }
@@ -2290,6 +2371,61 @@ function renderNav() {
   });
 }
 
+/* ---------- keeping the keyboard's place across a redraw ----------
+   Redrawing anything destroys the control the keyboard was on, even when the
+   new markup has the same shape, and focus lands back on <body>: press an
+   RIR chip and the next Tab starts from the top of the page. These record
+   where it was as the chain of child indices from a root that survives the
+   redraw — "second child, third child, first child" — and put it back.
+
+   Indices rather than a selector because none of these controls carry a
+   stable id, and because a redraw that really did change the card's shape
+   (a drop segment added) then simply misses, which is the same no-op it
+   was before. The text cursor comes along too: a weight box rebuilt under
+   a half-typed number should not jump to the end of it. */
+function focusPathIn(root) {
+  const el = document.activeElement;
+  if (!el || el === root || !root || typeof root.contains !== 'function' || !root.contains(el)) return null;
+  const path = [];
+  let node = el;
+  while (node && node !== root) {
+    const p = node.parentNode;
+    if (!p) return null;
+    path.unshift(Array.prototype.indexOf.call(p.children, node));
+    node = p;
+  }
+  if (node !== root) return null;
+  let start = null, end = null;
+  /* selectionStart throws on input types that have no selection to report.
+     Every box in a card is type=text, but the guard costs nothing. */
+  try { start = el.selectionStart; end = el.selectionEnd; } catch (e) { start = null; }
+  return { path: path, start: start, end: end };
+}
+
+function applyFocusPath(root, at) {
+  let el = root;
+  at.path.forEach(i => { el = el && el.children && el.children[i]; });
+  if (!el || typeof el.focus !== 'function') return;
+  el.focus();
+  if (at.start == null || typeof el.setSelectionRange !== 'function') return;
+  try { el.setSelectionRange(at.start, at.end); } catch (e) { /* not a selectable input any more */ }
+}
+
+/* The other half: a box that did not exist before this draw, so there is no
+   old element to path back to — the ↓ button's new drop weight box, or the
+   ⚙ button's machine-settings box. The builder marks it and this claims it,
+   once the card is actually in the document. */
+function takeFocusMark(root) {
+  if (!focusDrop && !focusSetup) return;
+  focusDrop = ''; focusSetup = '';
+  const target = root.querySelector('[data-focus-mark]');
+  if (!target) return;
+  target.focus();
+  if (typeof target.setSelectionRange === 'function') {
+    try { target.setSelectionRange(target.value.length, target.value.length); } catch (e) { /* ignore */ }
+  }
+}
+
 /* ---------- main render ----------
    Everything the app draws goes through here, so this is also the one place
    that has to survive bad data: if drawing throws, the recovery screen takes
@@ -2307,7 +2443,11 @@ function render() {
    profile — the bar a set has to clear to count as a personal record. The
    session being drawn is excluded, or its own sets would beat themselves. */
 function bestByExercise(profile, skipBlockId, skipSlot) {
-  const best = {};
+  /* Prototype-less for the same reason rowsFor's slot objects are: exercise
+     ids arrive from storage and from imports, and `best['__proto__'] = 90`
+     on a plain {} is silently dropped, so that one exercise could never show
+     a RECORD badge however heavy the set. */
+  const best = Object.create(null);
   Object.keys(profile.log).forEach(bId => {
     const blk = profile.log[bId];
     if (!blk) return;
@@ -2324,6 +2464,30 @@ function bestByExercise(profile, skipBlockId, skipSlot) {
           if (isNaN(w)) return;
           if (!(exId in best) || w > best[exId]) best[exId] = w;
         });
+      });
+    });
+  });
+  return best;
+}
+
+/* The same answer for one exercise. Rebuilding a single card (drawCard)
+   needs one id's bar, and walking the other six exercises' history only to
+   throw it away is most of what made a set tick cost a whole render. The
+   full draw still asks for all of them, in the one pass above. */
+function bestForExercise(profile, exId, skipBlockId, skipSlot) {
+  const best = Object.create(null);
+  Object.keys(profile.log).forEach(bId => {
+    const blk = profile.log[bId];
+    if (!blk) return;
+    Object.keys(blk).forEach(k => {
+      if (bId === skipBlockId && k === skipSlot) return;
+      const rows = blk[k] && blk[k][exId];
+      if (!Array.isArray(rows)) return;
+      rows.forEach(r => {
+        if (!r || !r.done) return;
+        const w = num(r.w);
+        if (isNaN(w)) return;
+        if (!(exId in best) || w > best[exId]) best[exId] = w;
       });
     });
   });
@@ -2415,6 +2579,9 @@ function drawApp() {
   $('banner').appendChild(bannerDiv);
 
   const day = days[profile.day];
+  /* Before anything is drawn from it: pruneLog reads this to know which row
+     arrays are the live ones. */
+  drawnSlot = { profile: state.activeProfile, block: block.id, key: slot(profile.week, day.id) };
   drawEnergy(profile, block, day);
   drawDeloadCheck(profile, block);
   drawSessionNote(profile, block, day);
@@ -2424,312 +2591,23 @@ function drawApp() {
 
   const list = $('list');
   list.innerHTML = '';
-  let total = 0, doneN = 0, tonnage = 0, prs = 0, lastTs = 0;
-  const best = bestByExercise(profile, block.id, slot(profile.week, day.id));
-  /* Every exercise's row array for this day, by reference — so the tick
-     handler below can tell, after any one toggle, whether the whole day just
-     became fully done (see maybeNagBackup). */
-  const dayRowSets = [];
+  dayCards = [];
 
   /* Drawn in the order the session was actually done, which is the plan's
-     until somebody says otherwise — see orderedEx and the ↑/↓ buttons on
-     each card. Everything downstream still keys off ex.id, so nothing but
-     the sequence of the cards changes. */
+     until somebody says otherwise — see orderedEx and the arrows on each
+     card. Everything downstream still keys off ex.id, so nothing but the
+     sequence of the cards changes. */
   const sessionEx = orderedEx(profile, block, profile.week, day);
   drawOrderNote(profile, block, day, sessionEx);
 
-  sessionEx.forEach((ex, i) => {
-    const n = setsFor(ex, profile.week, block);
-    const rows = entry(profile, block.id, profile.week, day.id, ex.id, n);
-    dayRowSets.push(rows);
-    const parked = parkedRows(profile, block.id, profile.week, day.id, ex.id, n);
-    const allDone = rows.every(r => r.done);
-    total += n; doneN += rows.filter(r => r.done).length;
-
-    const isPr = r => r.done && !isNaN(num(r.w)) && (!(ex.id in best) || num(r.w) > best[ex.id]);
-    const cardPr = rows.some(isPr);
-    if (cardPr) prs++;
-
-    const card = document.createElement('div');
-    card.className = 'ex' + (allDone ? ' complete' : '') + (ex.share && !soloMode() ? ' shared' : '');
-
-    const prev = lastTimeCached(profile, block.id, day.id, ex.id, profile.week);
-    /* The same lift on another day of the block, shown UNDER this session's
-       own history rather than instead of it: the first band is what the
-       estimate further down was built from, and quietly swapping in another
-       session's numbers would leave that target looking like it came from
-       nowhere. Two bands, no comparison drawn — the reading is yours. */
-    const other = lastTimeOtherDay(profile, block, day, ex, profile.week);
-    const band = (cls, tag, sets) => '<div class="last' + cls + '"><span class="tag">' + esc(tag) +
-      '</span><span><b>' + sets.map(s => esc(setSummary(s))).join('</b> · <b>') + '</b></span></div>';
-    const prevTxt =
-      (prev ? band('', 'Sem. ' + prev.week, prev.sets) : '') +
-      (other ? band(' other', 'Sem. ' + other.week + ' · ' + dayTag(block, other.dayId), other.sets) : '');
-
-    const decay = repDecay(rows);
-    /* Read off the previous session, so it is the same number all week and
-       does not move as you tick sets. */
-    const est = targetEstimate(profile, block, day, ex, profile.week);
-    const setupOpen = expandedSetup.has(ex.id);
-
-    card.innerHTML =
-      '<div class="ex-head">' +
-        '<div class="ex-num">' +
-          '<button type="button" class="ex-ord up"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
-          '<span class="ex-ord-n">' + (i + 1) + '</span>' +
-          '<button type="button" class="ex-ord down"' + (i === sessionEx.length - 1 ? ' disabled' : '') + '>↓</button>' +
-        '</div>' +
-        '<div class="ex-body">' +
-          '<div class="ex-name"></div>' +
-          (ex.alt ? '<div class="ex-alt"></div>' : '') +
-          (ex.cue ? '<div class="ex-cue"></div>' : '') +
-        '</div>' +
-        '<div><div class="ex-target">' + n + ' × ' + esc(ex.reps) + '</div>' +
-        '<div class="ex-rest">' + (ex.rest ? 'desc. ' + (ex.rest >= 60 ? (ex.rest / 60).toFixed(ex.rest % 60 ? 1 : 0).replace('.0', '') + ' min' : ex.rest + 's') : 'superserie →') + '</div>' +
-        '<button class="ex-chart-btn" type="button">Progreso ↗</button></div>' +
-      '</div>' + prevTxt +
-      '<div class="ex-setup">' +
-        '<button type="button" class="ex-setup-btn"></button>' +
-        (setupOpen ? '<div class="ex-setup-box"><input type="text" class="ex-setup-in" maxlength="' + SETUP_LIMIT + '" autocomplete="off" placeholder="asiento 4, respaldo 2…"></div>' : '') +
-      '</div>' +
-      '<div class="sets"></div>' +
-      (decay ? '<div class="ex-decay"></div>' : '') +
-      (est ? '<div class="ex-est ' + est.kind + '"><span class="ex-est-l"></span>' +
-        targetNotes(est).map(() => '<span class="ex-est-n"></span>').join('') + '</div>' : '') +
-      '<div class="ex-rir"><span class="ex-rir-lbl">RIR último set</span><div class="rir-chips"></div></div>' +
-      (parked ? '<div class="ex-parked"></div>' : '');
-
-    if (decay) {
-      card.querySelector('.ex-decay').textContent = '⚠ caída de ' + decay + ' reps: ¿primera serie al fallo?';
-    }
-
-    if (est) {
-      card.querySelector('.ex-est-l').textContent = targetLine(est);
-      const noteEls = card.querySelectorAll('.ex-est-n');
-      targetNotes(est).forEach((t, i) => { if (noteEls[i]) noteEls[i].textContent = t; });
-    }
-
-    if (parked) {
-      card.querySelector('.ex-parked').textContent = parked === 1
-        ? 'Hay 1 serie registrada por encima de las que pide el plan. Se guarda: sube las series de este ejercicio para volver a verla.'
-        : 'Hay ' + parked + ' series registradas por encima de las que pide el plan. Se guardan: sube las series de este ejercicio para volver a verlas.';
-    }
-
-    const nameEl = card.querySelector('.ex-name');
-    nameEl.appendChild(document.createTextNode(ex.n));
-    if (!soloMode()) {
-      const s = document.createElement('span');
-      s.className = 'badge ' + (ex.share ? 'together' : 'solo');
-      s.textContent = ex.share ? 'JUNTOS' : 'SOLO';
-      nameEl.appendChild(s);
-    }
-    if (ex.ss) { const s = document.createElement('span'); s.className = 'ss'; s.textContent = 'SS'; nameEl.appendChild(s); }
-    if (cardPr) { const s = document.createElement('span'); s.className = 'badge pr'; s.textContent = 'RÉCORD'; nameEl.appendChild(s); }
-    if (ex.alt) card.querySelector('.ex-alt').textContent = ex.alt;
-    if (ex.cue) card.querySelector('.ex-cue').textContent = ex.cue;
-
-    card.querySelector('.ex-chart-btn').onclick = () => openChart(ex, day.id);
-
-    /* The number is the position this exercise was done in, and the two
-       arrows are how you correct it — the machine was taken, you did the
-       next one first, two taps and the card is where it belongs. Ends stay
-       rendered but disabled rather than hidden, so the column keeps its
-       width and the numbers do not shuffle sideways card to card. */
-    card.querySelectorAll('.ex-ord').forEach(btn => {
-      const dir = btn.classList.contains('up') ? -1 : 1;
-      const label = 'Hiciste ' + ex.n + (dir < 0 ? ' antes' : ' después') +
-        ': moverlo al puesto ' + (i + 1 + dir) + ' de la sesión';
-      btn.setAttribute('aria-label', label);
-      btn.title = label;
-      btn.onclick = () => {
-        if (!moveSessionEx(profile, block, profile.week, day, ex.id, dir)) return;
-        save(); render();
-      };
-    });
-
-    /* `ex.setup` — seat height, pin position: a plan field, not a log field,
-       so editing it here writes straight to the live exercise, the same way
-       the plan editor's own text fields do. Collapsed by default (folded
-       behind the ⚙ button) since it rarely changes and isn't what you came
-       to read mid-set; the button's own label previews it so you don't have
-       to open it just to check. */
-    const setupBtn = card.querySelector('.ex-setup-btn');
-    setupBtn.textContent = ex.setup ? '⚙ ' + (ex.setup.length > 28 ? ex.setup.slice(0, 28) + '…' : ex.setup) : '⚙ Ajustes';
-    setupBtn.setAttribute('aria-expanded', setupOpen ? 'true' : 'false');
-    setupBtn.setAttribute('aria-label', 'Ajustes de máquina de ' + ex.n);
-    setupBtn.onclick = () => {
-      if (setupOpen) expandedSetup.delete(ex.id); else expandedSetup.add(ex.id);
-      render();
-    };
-    if (setupOpen) {
-      const setupIn = card.querySelector('.ex-setup-in');
-      setupIn.value = ex.setup || '';
-      setupIn.setAttribute('aria-label', 'Ajustes de máquina de ' + ex.n);
-      setupIn.oninput = e => { const v = e.target.value; if (v) ex.setup = v; else delete ex.setup; save(); };
-      setupIn.focus();
-      setupIn.setSelectionRange(setupIn.value.length, setupIn.value.length);
-    }
-
-    const rirHost = card.querySelector('.rir-chips');
-    const rirVal = getRir(profile, block.id, profile.week, day.id, ex.id);
-    RIR_OPTIONS.forEach(opt => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'rir-chip' + (rirVal === opt ? ' on' : '');
-      b.textContent = opt;
-      b.setAttribute('aria-pressed', rirVal === opt ? 'true' : 'false');
-      b.setAttribute('aria-label', RIR_LABEL[opt] + ' en la última serie de ' + ex.n);
-      b.onclick = () => {
-        setRir(profile, block.id, profile.week, day.id, ex.id, rirVal === opt ? '' : opt);
-        save(); render();
-      };
-      rirHost.appendChild(b);
-    });
-
-    const box = card.querySelector('.sets');
-    rows.forEach((r, si) => {
-      if (r.done) {
-        tonnage += setVolume(r);
-        if (r.ts > lastTs) lastTs = r.ts;
-      }
-
-      const row = document.createElement('div');
-      row.className = 'set-row' + (r.done ? ' done' : '') + (isPr(r) ? ' pr' : '');
-      /* text + inputmode rather than type=number: a Spanish keyboard sends a
-         comma, and type=number throws the whole value away when it sees one,
-         so "22,5" silently became an empty box. */
-      const drops = dropsOf(r);
-      row.innerHTML =
-        '<div class="set-n">' + (si + 1) + '</div>' +
-        '<div class="fld"><input type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next"><u>' + esc(units()) + '</u></div>' +
-        '<div class="fld"><input type="text" inputmode="numeric" autocomplete="off" enterkeyhint="next"><u>rep</u></div>' +
-        '<button type="button" class="drop-add' + (drops.length ? ' on' : '') + '"' +
-          (drops.length >= MAX_DROPS ? ' disabled' : '') + '>↓</button>' +
-        '<button type="button" class="tick' + (r.done ? ' on' : '') + '" aria-pressed="' + (r.done ? 'true' : 'false') + '">✓</button>';
-
-      const [wIn, rIn] = row.querySelectorAll('input');
-      const hint = priorWeight(profile, block.id, profile.week, day.id, ex.id, si);
-      wIn.value = r.w; rIn.value = r.r;
-      wIn.placeholder = hint || '—';
-      rIn.placeholder = '—';
-      wIn.setAttribute('aria-label', 'Peso, serie ' + (si + 1) + ' de ' + ex.n);
-      rIn.setAttribute('aria-label', 'Repeticiones, serie ' + (si + 1) + ' de ' + ex.n);
-      wIn.oninput = e => { r.w = e.target.value.replace(/[^0-9.,]/g, ''); if (r.w !== e.target.value) e.target.value = r.w; stampRowUnit(r); save(); };
-      rIn.oninput = e => { r.r = e.target.value.replace(/[^0-9]/g, ''); if (r.r !== e.target.value) e.target.value = r.r; save(); };
-
-      const tick = row.querySelector('.tick');
-      tick.setAttribute('aria-label', (r.done ? 'Desmarcar' : 'Marcar') + ' serie ' + (si + 1) + ' de ' + ex.n);
-      tick.onclick = () => {
-        let adopted = '';
-        if (!r.done) {
-          /* Ticking a set whose weight box is still empty takes the greyed
-             number showing in it — last week's weight for this same set. It
-             is the common case, but it is also a guess, so it says so. */
-          if ((r.w === '' || r.w == null) && hint) { r.w = hint; adopted = hint; stampRowUnit(r); }
-          r.ts = Date.now();
-        }
-        r.done = !r.done;
-        if (r.done && ex.rest) startRest(ex.rest, ex.n + ' · serie ' + (si + 1));
-        if (r.done && !ex.rest) stopRest();
-        /* The tick that finishes the whole day counts as a session — see
-           maybeNagBackup. dayRowSets holds live references, so this reads
-           true only once every row across every exercise is done. */
-        if (r.done && dayRowSets.every(rs => rs.every(rr => rr.done))) {
-          state.prefs.sessionsSinceBackup++;
-          maybeNagBackup();
-        }
-        save(); render();
-        if (adopted) mark('Serie ' + (si + 1) + ' anotada con ' + adopted + ' ' + units() + ' (lo de la semana anterior) — cámbialo si no fue eso');
-      };
-
-      /* ↓ adds a segment rather than opening a panel: there is nothing to
-         configure before you have one, and mid-set — rest timer running,
-         hand on the stack — one tap and a cursor in the weight box is the
-         whole interaction. The segments are the panel. */
-      const dropAdd = row.querySelector('.drop-add');
-      dropAdd.setAttribute('aria-label', drops.length >= MAX_DROPS
-        ? 'Máximo de bajadas de peso alcanzado en la serie ' + (si + 1) + ' de ' + ex.n
-        : 'Añadir bajada de peso a la serie ' + (si + 1) + ' de ' + ex.n);
-      dropAdd.onclick = () => {
-        if (dropsOf(r).length >= MAX_DROPS) return;
-        if (!Array.isArray(r.d)) r.d = [];
-        r.d.push({ w: '', r: '' });
-        focusDrop = ex.id + '#' + si + '#' + (r.d.length - 1);
-        save(); render();
-      };
-      box.appendChild(row);
-
-      drops.forEach((d, di) => {
-        if (!d || typeof d !== 'object' || Array.isArray(d)) return;
-        const dRow = document.createElement('div');
-        dRow.className = 'drop-row' + (r.done ? ' done' : '');
-        dRow.innerHTML =
-          '<div class="drop-n">↳</div>' +
-          '<div class="fld"><input type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next"><u>' + esc(units()) + '</u></div>' +
-          '<div class="fld"><input type="text" inputmode="numeric" autocomplete="off" enterkeyhint="next"><u>rep</u></div>' +
-          '<span></span>' +
-          '<button type="button" class="drop-x">✕</button>';
-
-        const [dwIn, drIn] = dRow.querySelectorAll('input');
-        dwIn.value = d.w == null ? '' : d.w;
-        drIn.value = d.r == null ? '' : d.r;
-        dwIn.placeholder = '—';
-        drIn.placeholder = '—';
-        const where = 'bajada ' + (di + 1) + ', serie ' + (si + 1) + ' de ' + ex.n;
-        dwIn.setAttribute('aria-label', 'Peso tras bajar, ' + where);
-        drIn.setAttribute('aria-label', 'Repeticiones tras bajar, ' + where);
-        dwIn.oninput = e => { d.w = e.target.value.replace(/[^0-9.,]/g, ''); if (d.w !== e.target.value) e.target.value = d.w; stampRowUnit(r); save(); };
-        drIn.oninput = e => { d.r = e.target.value.replace(/[^0-9]/g, ''); if (d.r !== e.target.value) e.target.value = d.r; save(); };
-
-        const del = dRow.querySelector('.drop-x');
-        del.setAttribute('aria-label', 'Quitar ' + where);
-        del.onclick = () => {
-          r.d.splice(di, 1);
-          /* No segments left means no kind to remember either — the row goes
-             back to being exactly the {w,r,done,ts} it started as. */
-          if (!r.d.length) { delete r.d; delete r.dk; }
-          save(); render();
-        };
-
-        box.appendChild(dRow);
-
-        /* Marked now, focused at the end of the render: the card is still
-           detached from the document at this point, and focus() on a
-           detached element is silently a no-op. */
-        if (focusDrop === ex.id + '#' + si + '#' + di) dwIn.dataset.dropFocus = '1';
-      });
-
-      /* One kind per set, not per segment: a triple drop is one decision
-         about one set, and the two readings never mix inside it. */
-      if (drops.length) {
-        const kindRow = document.createElement('div');
-        kindRow.className = 'drop-kind';
-        const current = dropKind(r);
-        DROP_KINDS.forEach(k => {
-          const b = document.createElement('button');
-          b.type = 'button';
-          b.className = 'drop-chip ' + k + (current === k ? ' on' : '');
-          b.textContent = DROP_LABEL[k];
-          b.setAttribute('aria-pressed', current === k ? 'true' : 'false');
-          b.setAttribute('aria-label', DROP_HINT[k] + ' — serie ' + (si + 1) + ' de ' + ex.n);
-          b.title = DROP_HINT[k];
-          b.onclick = () => { r.dk = k; save(); render(); };
-          kindRow.appendChild(b);
-        });
-        box.appendChild(kindRow);
-      }
-    });
-
-    list.appendChild(card);
-  });
-
-  if (focusDrop) {
-    focusDrop = '';
-    const target = list.querySelector('[data-drop-focus]');
-    if (target) target.focus();
-  }
-
-  $('barfill').style.width = total ? (doneN / total * 100) + '%' : '0%';
+  /* One walk of the profile for every card's all-time best, since every card
+     is being built anyway. drawCard takes the other side of that trade. */
+  const ctx = {
+    profile: profile, block: block, day: day, days: days, sessionEx: sessionEx,
+    best: bestByExercise(profile, block.id, slot(profile.week, day.id)),
+  };
+  sessionEx.forEach((ex, i) => list.appendChild(buildExCard(ctx, ex, i)));
+  takeFocusMark(list);
 
   const stranded = weeksBeyondEnd(profile, block);
   $('beyond').textContent = stranded
@@ -2738,6 +2616,389 @@ function drawApp() {
         : 'Hay ' + stranded + ' series registradas en semanas por encima de las ' + blockWeeks(block) + ' que tiene ahora el bloque. Se guardan: alarga el bloque en "Editar plan" para volver a verlas.')
     : '';
   $('beyond').style.display = stranded ? 'block' : 'none';
+
+  drawSessionFoot(profile, days);
+}
+
+/* One exercise's card, built detached and handed back for the caller to put
+   in place: drawApp appends all of them, drawCard swaps one out. `ctx` is
+   everything that is the same for every card in the day, so the two callers
+   differ in exactly one thing — how they arrived at `best`. */
+function buildExCard(ctx, ex, i) {
+  const profile = ctx.profile, block = ctx.block, day = ctx.day;
+  const sessionEx = ctx.sessionEx, best = ctx.best;
+  const n = setsFor(ex, profile.week, block);
+  const rows = entry(profile, block.id, profile.week, day.id, ex.id, n);
+  const parked = parkedRows(profile, block.id, profile.week, day.id, ex.id, n);
+  const allDone = rows.every(r => r.done);
+
+  const isPr = r => r.done && !isNaN(num(r.w)) && (!(ex.id in best) || num(r.w) > best[ex.id]);
+  const cardPr = rows.some(isPr);
+
+  /* Everything the line under the session adds up, recorded here on the way
+     past. `rows` is the live array, which is also what lets the tick handler
+     below ask whether the whole day just became done. */
+  const stat = {
+    ex: ex, el: null, rows: rows, n: n,
+    done: rows.filter(r => r.done).length, tonnage: 0, pr: cardPr, lastTs: 0,
+  };
+  dayCards[i] = stat;
+
+  const card = document.createElement('div');
+  /* How drawCard finds this card again. */
+  card.dataset.ex = ex.id;
+  stat.el = card;
+  card.className = 'ex' + (allDone ? ' complete' : '') + (ex.share && !soloMode() ? ' shared' : '');
+
+  const prev = lastTimeCached(profile, block.id, day.id, ex.id, profile.week);
+  /* The same lift on another day of the block, shown UNDER this session's
+     own history rather than instead of it: the first band is what the
+     estimate further down was built from, and quietly swapping in another
+     session's numbers would leave that target looking like it came from
+     nowhere. Two bands, no comparison drawn — the reading is yours. */
+  const other = lastTimeOtherDay(profile, block, day, ex, profile.week);
+  const band = (cls, tag, sets) => '<div class="last' + cls + '"><span class="tag">' + esc(tag) +
+    '</span><span><b>' + sets.map(s => esc(setSummary(s))).join('</b> · <b>') + '</b></span></div>';
+  const prevTxt =
+    (prev ? band('', 'Sem. ' + prev.week, prev.sets) : '') +
+    (other ? band(' other', 'Sem. ' + other.week + ' · ' + dayTag(block, other.dayId), other.sets) : '');
+
+  const decay = repDecay(rows);
+  /* Read off the previous session, so it is the same number all week and
+     does not move as you tick sets. */
+  const est = targetEstimate(profile, block, day, ex, profile.week);
+  const setupOpen = expandedSetup.has(ex.id);
+
+  card.innerHTML =
+    '<div class="ex-head">' +
+      '<div class="ex-num">' +
+        '<button type="button" class="ex-ord up"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
+        '<span class="ex-ord-n">' + (i + 1) + '</span>' +
+        '<button type="button" class="ex-ord down"' + (i === sessionEx.length - 1 ? ' disabled' : '') + '>↓</button>' +
+      '</div>' +
+      '<div class="ex-body">' +
+        '<div class="ex-name"></div>' +
+        (ex.alt ? '<div class="ex-alt"></div>' : '') +
+        (ex.cue ? '<div class="ex-cue"></div>' : '') +
+      '</div>' +
+      '<div><div class="ex-target">' + n + ' × ' + esc(ex.reps) + '</div>' +
+      '<div class="ex-rest">' + (ex.rest ? 'desc. ' + (ex.rest >= 60 ? (ex.rest / 60).toFixed(ex.rest % 60 ? 1 : 0).replace('.0', '') + ' min' : ex.rest + 's') : 'superserie →') + '</div>' +
+      '<button class="ex-chart-btn" type="button">Progreso ↗</button></div>' +
+    '</div>' + prevTxt +
+    '<div class="ex-setup">' +
+      '<button type="button" class="ex-setup-btn"></button>' +
+      (setupOpen ? '<div class="ex-setup-box"><input type="text" class="ex-setup-in" maxlength="' + SETUP_LIMIT + '" autocomplete="off" placeholder="asiento 4, respaldo 2…"></div>' : '') +
+    '</div>' +
+    '<div class="sets"></div>' +
+    (decay ? '<div class="ex-decay"></div>' : '') +
+    (est ? '<div class="ex-est ' + est.kind + '"><span class="ex-est-l"></span>' +
+      targetNotes(est).map(() => '<span class="ex-est-n"></span>').join('') + '</div>' : '') +
+    '<div class="ex-rir"><span class="ex-rir-lbl">RIR último set</span><div class="rir-chips"></div></div>' +
+    (parked ? '<div class="ex-parked"></div>' : '');
+
+  if (decay) {
+    card.querySelector('.ex-decay').textContent = '⚠ caída de ' + decay + ' reps: ¿primera serie al fallo?';
+  }
+
+  if (est) {
+    card.querySelector('.ex-est-l').textContent = targetLine(est);
+    const noteEls = card.querySelectorAll('.ex-est-n');
+    targetNotes(est).forEach((t, i) => { if (noteEls[i]) noteEls[i].textContent = t; });
+  }
+
+  if (parked) {
+    card.querySelector('.ex-parked').textContent = parked === 1
+      ? 'Hay 1 serie registrada por encima de las que pide el plan. Se guarda: sube las series de este ejercicio para volver a verla.'
+      : 'Hay ' + parked + ' series registradas por encima de las que pide el plan. Se guardan: sube las series de este ejercicio para volver a verlas.';
+  }
+
+  const nameEl = card.querySelector('.ex-name');
+  nameEl.appendChild(document.createTextNode(ex.n));
+  if (!soloMode()) {
+    const s = document.createElement('span');
+    s.className = 'badge ' + (ex.share ? 'together' : 'solo');
+    s.textContent = ex.share ? 'JUNTOS' : 'SOLO';
+    nameEl.appendChild(s);
+  }
+  if (ex.ss) { const s = document.createElement('span'); s.className = 'ss'; s.textContent = 'SS'; nameEl.appendChild(s); }
+  if (cardPr) { const s = document.createElement('span'); s.className = 'badge pr'; s.textContent = 'RÉCORD'; nameEl.appendChild(s); }
+  if (ex.alt) card.querySelector('.ex-alt').textContent = ex.alt;
+  if (ex.cue) card.querySelector('.ex-cue').textContent = ex.cue;
+
+  card.querySelector('.ex-chart-btn').onclick = () => openChart(ex, day.id);
+
+  /* The number is the position this exercise was done in, and the two
+     arrows are how you correct it — the machine was taken, you did the
+     next one first, two taps and the card is where it belongs. Ends stay
+     rendered but disabled rather than hidden, so the column keeps its
+     width and the numbers do not shuffle sideways card to card. */
+  card.querySelectorAll('.ex-ord').forEach(btn => {
+    const dir = btn.classList.contains('up') ? -1 : 1;
+    const label = 'Hiciste ' + ex.n + (dir < 0 ? ' antes' : ' después') +
+      ': moverlo al puesto ' + (i + 1 + dir) + ' de la sesión';
+    btn.setAttribute('aria-label', label);
+    btn.title = label;
+    btn.onclick = () => {
+      if (!moveSessionEx(profile, block, profile.week, day, ex.id, dir)) return;
+      save(); render();
+    };
+  });
+
+  /* `ex.setup` — seat height, pin position: a plan field, not a log field,
+     so editing it here writes straight to the live exercise, the same way
+     the plan editor's own text fields do. Collapsed by default (folded
+     behind the ⚙ button) since it rarely changes and isn't what you came
+     to read mid-set; the button's own label previews it so you don't have
+     to open it just to check. */
+  const setupBtn = card.querySelector('.ex-setup-btn');
+  setupBtn.textContent = ex.setup ? '⚙ ' + (ex.setup.length > 28 ? ex.setup.slice(0, 28) + '…' : ex.setup) : '⚙ Ajustes';
+  setupBtn.setAttribute('aria-expanded', setupOpen ? 'true' : 'false');
+  setupBtn.setAttribute('aria-label', 'Ajustes de máquina de ' + ex.n);
+  setupBtn.onclick = () => {
+    if (setupOpen) expandedSetup.delete(ex.id);
+    else { expandedSetup.add(ex.id); focusSetup = ex.id; }
+    drawCard(ex.id);
+  };
+  if (setupOpen) {
+    const setupIn = card.querySelector('.ex-setup-in');
+    setupIn.value = ex.setup || '';
+    setupIn.setAttribute('aria-label', 'Ajustes de máquina de ' + ex.n);
+    setupIn.oninput = e => { const v = e.target.value; if (v) ex.setup = v; else delete ex.setup; save(); };
+    /* Marked, not focused, and only when this press is what opened it.
+       Focusing on every draw was a workaround for render() rebuilding the
+       card on every set tick; it also meant that leaving a settings box open
+       and moving to another day popped the keyboard up for a field nobody
+       had asked for. */
+    if (focusSetup === ex.id) setupIn.dataset.focusMark = '1';
+  }
+
+  const rirHost = card.querySelector('.rir-chips');
+  const rirVal = getRir(profile, block.id, profile.week, day.id, ex.id);
+  RIR_OPTIONS.forEach(opt => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'rir-chip' + (rirVal === opt ? ' on' : '');
+    b.textContent = opt;
+    b.setAttribute('aria-pressed', rirVal === opt ? 'true' : 'false');
+    b.setAttribute('aria-label', RIR_LABEL[opt] + ' en la última serie de ' + ex.n);
+    b.onclick = () => {
+      setRir(profile, block.id, profile.week, day.id, ex.id, rirVal === opt ? '' : opt);
+      save(); drawCard(ex.id);
+    };
+    rirHost.appendChild(b);
+  });
+
+  const box = card.querySelector('.sets');
+  rows.forEach((r, si) => {
+    if (r.done) {
+      stat.tonnage += setVolume(r);
+      if (r.ts > stat.lastTs) stat.lastTs = r.ts;
+    }
+
+    const row = document.createElement('div');
+    row.className = 'set-row' + (r.done ? ' done' : '') + (isPr(r) ? ' pr' : '');
+    /* text + inputmode rather than type=number: a Spanish keyboard sends a
+       comma, and type=number throws the whole value away when it sees one,
+       so "22,5" silently became an empty box. */
+    const drops = dropsOf(r);
+    row.innerHTML =
+      '<div class="set-n">' + (si + 1) + '</div>' +
+      '<div class="fld"><input type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next"><u>' + esc(units()) + '</u></div>' +
+      '<div class="fld"><input type="text" inputmode="numeric" autocomplete="off" enterkeyhint="next"><u>rep</u></div>' +
+      '<button type="button" class="drop-add' + (drops.length ? ' on' : '') + '"' +
+        (drops.length >= MAX_DROPS ? ' disabled' : '') + '>↓</button>' +
+      '<button type="button" class="tick' + (r.done ? ' on' : '') + '" aria-pressed="' + (r.done ? 'true' : 'false') + '">✓</button>';
+
+    const [wIn, rIn] = row.querySelectorAll('input');
+    const hint = priorWeight(profile, block.id, profile.week, day.id, ex.id, si);
+    wIn.value = r.w; rIn.value = r.r;
+    wIn.placeholder = hint || '—';
+    rIn.placeholder = '—';
+    wIn.setAttribute('aria-label', 'Peso, serie ' + (si + 1) + ' de ' + ex.n);
+    rIn.setAttribute('aria-label', 'Repeticiones, serie ' + (si + 1) + ' de ' + ex.n);
+    wIn.oninput = e => { r.w = e.target.value.replace(/[^0-9.,]/g, ''); if (r.w !== e.target.value) e.target.value = r.w; stampRowUnit(r); save(); };
+    rIn.oninput = e => { r.r = e.target.value.replace(/[^0-9]/g, ''); if (r.r !== e.target.value) e.target.value = r.r; save(); };
+
+    const tick = row.querySelector('.tick');
+    tick.setAttribute('aria-label', (r.done ? 'Desmarcar' : 'Marcar') + ' serie ' + (si + 1) + ' de ' + ex.n);
+    tick.onclick = () => {
+      let adopted = '';
+      if (!r.done) {
+        /* Ticking a set whose weight box is still empty takes the greyed
+           number showing in it — last week's weight for this same set. It
+           is the common case, but it is also a guess, so it says so. */
+        if ((r.w === '' || r.w == null) && hint) { r.w = hint; adopted = hint; stampRowUnit(r); }
+        r.ts = Date.now();
+      }
+      r.done = !r.done;
+      if (r.done && ex.rest) startRest(ex.rest, ex.n + ' · serie ' + (si + 1));
+      if (r.done && !ex.rest) stopRest();
+      /* The tick that finishes the whole day counts as a session — see
+         maybeNagBackup. dayCards holds every card's rows by live reference,
+         so this reads true only once every row across every exercise is
+         done — including the cards this redraw is not going to touch. */
+      if (r.done && dayCards.every(c => c.rows.every(rr => rr.done))) {
+        state.prefs.sessionsSinceBackup++;
+        maybeNagBackup();
+      }
+      save(); drawCard(ex.id);
+      if (adopted) mark('Serie ' + (si + 1) + ' anotada con ' + adopted + ' ' + units() + ' (lo de la semana anterior) — cámbialo si no fue eso');
+    };
+
+    /* ↓ adds a segment rather than opening a panel: there is nothing to
+       configure before you have one, and mid-set — rest timer running,
+       hand on the stack — one tap and a cursor in the weight box is the
+       whole interaction. The segments are the panel. */
+    const dropAdd = row.querySelector('.drop-add');
+    dropAdd.setAttribute('aria-label', drops.length >= MAX_DROPS
+      ? 'Máximo de bajadas de peso alcanzado en la serie ' + (si + 1) + ' de ' + ex.n
+      : 'Añadir bajada de peso a la serie ' + (si + 1) + ' de ' + ex.n);
+    dropAdd.onclick = () => {
+      if (dropsOf(r).length >= MAX_DROPS) return;
+      if (!Array.isArray(r.d)) r.d = [];
+      r.d.push({ w: '', r: '' });
+      focusDrop = ex.id + '#' + si + '#' + (r.d.length - 1);
+      save(); drawCard(ex.id);
+    };
+    box.appendChild(row);
+
+    drops.forEach((d, di) => {
+      if (!d || typeof d !== 'object' || Array.isArray(d)) return;
+      const dRow = document.createElement('div');
+      dRow.className = 'drop-row' + (r.done ? ' done' : '');
+      dRow.innerHTML =
+        '<div class="drop-n">↳</div>' +
+        '<div class="fld"><input type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next"><u>' + esc(units()) + '</u></div>' +
+        '<div class="fld"><input type="text" inputmode="numeric" autocomplete="off" enterkeyhint="next"><u>rep</u></div>' +
+        '<span></span>' +
+        '<button type="button" class="drop-x">✕</button>';
+
+      const [dwIn, drIn] = dRow.querySelectorAll('input');
+      dwIn.value = d.w == null ? '' : d.w;
+      drIn.value = d.r == null ? '' : d.r;
+      dwIn.placeholder = '—';
+      drIn.placeholder = '—';
+      const where = 'bajada ' + (di + 1) + ', serie ' + (si + 1) + ' de ' + ex.n;
+      dwIn.setAttribute('aria-label', 'Peso tras bajar, ' + where);
+      drIn.setAttribute('aria-label', 'Repeticiones tras bajar, ' + where);
+      dwIn.oninput = e => { d.w = e.target.value.replace(/[^0-9.,]/g, ''); if (d.w !== e.target.value) e.target.value = d.w; stampRowUnit(r); save(); };
+      drIn.oninput = e => { d.r = e.target.value.replace(/[^0-9]/g, ''); if (d.r !== e.target.value) e.target.value = d.r; save(); };
+
+      const del = dRow.querySelector('.drop-x');
+      del.setAttribute('aria-label', 'Quitar ' + where);
+      del.onclick = () => {
+        r.d.splice(di, 1);
+        /* No segments left means no kind to remember either — the row goes
+           back to being exactly the {w,r,done,ts} it started as. */
+        if (!r.d.length) { delete r.d; delete r.dk; }
+        save(); drawCard(ex.id);
+      };
+
+      box.appendChild(dRow);
+
+      /* Marked now, focused at the end of the render: the card is still
+         detached from the document at this point, and focus() on a
+         detached element is silently a no-op. */
+      if (focusDrop === ex.id + '#' + si + '#' + di) dwIn.dataset.focusMark = '1';
+    });
+
+    /* One kind per set, not per segment: a triple drop is one decision
+       about one set, and the two readings never mix inside it. */
+    if (drops.length) {
+      const kindRow = document.createElement('div');
+      kindRow.className = 'drop-kind';
+      const current = dropKind(r);
+      DROP_KINDS.forEach(k => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'drop-chip ' + k + (current === k ? ' on' : '');
+        b.textContent = DROP_LABEL[k];
+        b.setAttribute('aria-pressed', current === k ? 'true' : 'false');
+        b.setAttribute('aria-label', DROP_HINT[k] + ' — serie ' + (si + 1) + ' de ' + ex.n);
+        b.title = DROP_HINT[k];
+        b.onclick = () => { r.dk = k; save(); drawCard(ex.id); };
+        kindRow.appendChild(b);
+      });
+      box.appendChild(kindRow);
+    }
+  });
+
+  return card;
+}
+
+/* Redraw one exercise's card, and the few things outside it that a change
+   confined to that card can still move.
+
+   Ticking a set used to go through render(), which rebuilds the whole day —
+   about 400 nodes and 160 handlers for a seven-exercise session — on the
+   app's most frequent interaction. Everything else on screen was destroyed
+   and rebuilt identically, including the half-typed weight in another card's
+   box and wherever the keyboard happened to be.
+
+   What rides along is listed rather than left to a blanket redraw, because
+   each one is a thing that could otherwise silently go stale here:
+     - the line under the session: tonnage, records, the progress bar and the
+       "N de M series" count (drawSessionFoot, off dayCards)
+     - the dot on the week button, which the first ticked set of a week adds
+     - the deload comparison, when this is the week after a deload
+   Nothing else on screen reads one card's rows. The "weeks beyond the end of
+   the block" note does not, because a card only ever writes to the week
+   being drawn, which is inside the block by construction.
+
+   Anything that changes which cards exist, or the order they sit in —
+   navigation, reordering, retiring an exercise, an import — still goes
+   through render(). */
+function drawCard(exId) {
+  if (!ready) return;
+  const i = dayCards.findIndex(c => c.ex.id === exId);
+  const old = i < 0 ? null : dayCards[i].el;
+  /* The card is not on screen any more: something redrew the day under this
+     handler. A full draw is the right answer and costs nothing here, because
+     this is not the path being made cheap. */
+  if (!old || !old.parentNode) { render(); return; }
+  try {
+    resetRenderCache();
+    const profile = getProfile();
+    const block = getBlock();
+    const days = dayList(block);
+    const day = days[profile.day];
+    const sessionEx = orderedEx(profile, block, profile.week, day);
+    /* A different exercise at this index means the plan moved; same answer. */
+    if (!sessionEx[i] || sessionEx[i].id !== exId) { render(); return; }
+    const ctx = {
+      profile: profile, block: block, day: day, days: days, sessionEx: sessionEx,
+      best: bestForExercise(profile, exId, block.id, slot(profile.week, day.id)),
+    };
+    const at = focusPathIn(old);
+    const fresh = buildExCard(ctx, sessionEx[i], i);
+    old.replaceWith(fresh);
+    /* A box this press created outranks putting the keyboard back where it
+       was — creating it is what the press was for. */
+    if (focusDrop || focusSetup) takeFocusMark(fresh);
+    else if (at) applyFocusPath(fresh, at);
+    drawSessionFoot(profile, days);
+    refreshWeekDot(profile, block);
+    drawDeloadCheck(profile, block);
+  } catch (e) {
+    showRecovery(e, readRaw());
+  }
+}
+
+/* The progress bar and the line under the session are sums over the cards,
+   not over the log: each card recorded its own contribution as it was built,
+   so this costs one pass over dayCards whether it follows a full draw or a
+   single card being swapped. */
+function drawSessionFoot(profile, days) {
+  let total = 0, doneN = 0, tonnage = 0, prs = 0, lastTs = 0;
+  dayCards.forEach(c => {
+    total += c.n;
+    doneN += c.done;
+    tonnage += c.tonnage;
+    if (c.pr) prs++;
+    if (c.lastTs > lastTs) lastTs = c.lastTs;
+  });
+
+  $('barfill').style.width = total ? (doneN / total * 100) + '%' : '0%';
 
   const extra = [];
   if (tonnage > 0) extra.push('Volumen: ' + fmtKg(tonnage) + ' movidos');
@@ -2800,7 +3061,14 @@ function drawEnergy(profile, block, day) {
     b.setAttribute('aria-label', ENERGY_LABEL[opt]);
     b.onclick = () => {
       setEnergy(profile, block.id, profile.week, day.id, current === opt ? '' : opt);
-      save(); render();
+      save();
+      /* Just the strip: nothing else on screen reads how you arrived, and a
+         full render would take the whole session list down with it for the
+         sake of three chips — including the chip under your finger, which is
+         why the keyboard's place is carried across. */
+      const at = focusPathIn(host);
+      drawEnergy(profile, block, day);
+      if (at) applyFocusPath(host, at);
     };
     chips.appendChild(b);
   });
@@ -2840,10 +3108,16 @@ function deloadCheck(profile, block) {
 
 function drawDeloadCheck(profile, block) {
   const el = $('deloadCheck');
+  /* The week test before the comparison rather than after it: deloadCheck
+     walks every logged set of the block, drawCard calls this after every
+     tick, and on any week that is not the one after the deload the only
+     thing that walk can produce is display:none. */
+  const dl = deloadWeek(block);
+  if (!dl || profile.week !== dl + 1) { el.style.display = 'none'; return; }
   const d = deloadCheck(profile, block);
   /* Only where it is the news of the week — standing on the week after the
      deload. The block review carries it the rest of the time. */
-  if (!d || profile.week !== d.after) { el.style.display = 'none'; return; }
+  if (!d) { el.style.display = 'none'; return; }
   const pct = (d.change > 0 ? '+' : d.change < 0 ? '−' : '') +
     String(Math.abs(Math.round(d.change * 10) / 10)).replace('.', ',') + ' %';
   el.textContent = (d.change >= 1 ? '✓ La descarga funcionó: ' : d.change <= -1 ? '⚠ Tras la descarga has bajado: ' : '→ Tras la descarga estás igual: ') +

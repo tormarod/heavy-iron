@@ -838,6 +838,123 @@ ok('the raw setVolume() the session view uses is untouched — still blends the 
 ok('reviewSetVolume converts that same week to kg instead, so both weeks read as the same tonnage',
    Math.round(reviewUnitProbe.converted[0]) === Math.round(reviewUnitProbe.converted[1]), JSON.stringify(reviewUnitProbe));
 
+console.log('\n== bestForExercise: one id, same answer as the whole-profile scan (plans/008 item 14) ==');
+/* drawCard asks for one exercise's all-time best instead of every exercise's,
+   which is only safe while the two agree exactly — including on which session
+   they leave out, or a set would beat itself and every card would claim a
+   record. */
+const bestProbe = `
+  (function() {
+    const profile = defaultState().profiles.hombre;
+    const blockId = profile.blockOrder[0];
+    const day = profile.blocks[blockId].days[0];
+    const a = day.ex[0].id, b = day.ex[1].id;
+    profile.log[blockId] = {};
+    profile.log[blockId][slot(1, day.id)] = { [a]: [{ done: true, w: '60', r: '8' }],
+                                              [b]: [{ done: true, w: '30', r: '8' }] };
+    profile.log[blockId][slot(2, day.id)] = { [a]: [{ done: true, w: '80', r: '8' },
+                                                    { done: false, w: '200', r: '8' },
+                                                    { done: true, w: 'x', r: '8' }] };
+    const here = slot(2, day.id);
+    const all = bestByExercise(profile, blockId, here);
+    const one = bestForExercise(profile, a, blockId, here);
+    const noSkip = bestForExercise(profile, a, blockId, 'w9-dz');
+    return {
+      agreesWithSkip: one[a] === all[a],
+      skipped: one[a],
+      unskipped: noSkip[a],
+      onlyOneKey: Object.keys(one).length,
+      missingIsAbsent: (a + '|' + (a in bestForExercise(profile, 'nosuchexercise', blockId, here))),
+    };
+  })()
+`;
+const bestResult = call(bestProbe);
+ok('bestForExercise matches bestByExercise for the id it was asked about',
+   bestResult.agreesWithSkip, 'one=' + bestResult.skipped);
+ok('it excludes the session being drawn, exactly as the full scan does',
+   bestResult.skipped === 60, 'got ' + bestResult.skipped);
+ok('and includes that session when it is not the one being skipped',
+   bestResult.unskipped === 80, 'got ' + bestResult.unskipped);
+ok('an unticked set and an unparseable weight are both ignored',
+   bestResult.unskipped === 80);
+ok('it reports the one id and nothing else', bestResult.onlyOneKey === 1);
+ok('an exercise with no history is absent rather than zero',
+   bestResult.missingIsAbsent.endsWith('|false'), bestResult.missingIsAbsent);
+
+console.log('\n== pruneLog: browsing a week does not leave placeholder rows in storage (plans/008 item 14) ==');
+/* entry() pads the drawn session's rows in place, so paging through a block
+   used to persist a full set of blank rows for every week looked at. */
+const pruneProbe = `
+  (function() {
+    state = defaultState();
+    const profile = state.profiles[state.activeProfile];
+    const blockId = profile.blockOrder[0];
+    const day = profile.blocks[blockId].days[0];
+    const ex = day.ex[0].id, ex2 = day.ex[1].id;
+    const blank = () => ({ w: '', r: '', done: false });
+
+    profile.log[blockId] = {};
+    /* week 1: two real sets, then padding entry() added on the way past */
+    profile.log[blockId][slot(1, day.id)] = {
+      [ex]: [{ done: true, w: '60', r: '8' }, { w: '62,5', r: '', done: false }, blank(), blank()],
+      [ex2]: [blank(), blank()],
+    };
+    /* week 2: looked at, never trained */
+    profile.log[blockId][slot(2, day.id)] = { [ex]: [blank(), blank(), blank()] };
+    /* week 3: a blank row sitting BEFORE a real one — a gap, not padding */
+    profile.log[blockId][slot(3, day.id)] = { [ex]: [blank(), { done: true, w: '70', r: '5' }] };
+
+    drawnSlot = null;
+    pruneLog();
+    const w1 = profile.log[blockId][slot(1, day.id)];
+    const w3 = profile.log[blockId][slot(3, day.id)];
+    return {
+      trimmedPadding: w1[ex].length,
+      keptTypedWeight: w1[ex][1] && w1[ex][1].w,
+      droppedEmptyExercise: ex2 in w1,
+      droppedEmptySlot: slot(2, day.id) in profile.log[blockId],
+      keptGapBeforeRealRow: w3[ex].length,
+    };
+  })()
+`;
+const pruneResult = call(pruneProbe);
+ok('trailing untouched rows are dropped', pruneResult.trimmedPadding === 2,
+   'kept ' + pruneResult.trimmedPadding);
+ok('a row with only a weight typed into it is not untouched',
+   pruneResult.keptTypedWeight === '62,5', String(pruneResult.keptTypedWeight));
+ok('an exercise left with nothing goes with them', pruneResult.droppedEmptyExercise === false);
+ok('a week that was only ever looked at leaves no slot behind',
+   pruneResult.droppedEmptySlot === false);
+ok('a blank row between two real ones is a gap and stays put',
+   pruneResult.keptGapBeforeRealRow === 2, 'kept ' + pruneResult.keptGapBeforeRealRow);
+
+/* The session on screen is the exception: its padded rows are the objects the
+   <input> handlers are holding, so cutting them out would send a weight typed
+   into the last set nowhere. */
+const pruneLiveProbe = `
+  (function() {
+    state = defaultState();
+    const profile = state.profiles[state.activeProfile];
+    const blockId = profile.blockOrder[0];
+    const day = profile.blocks[blockId].days[0];
+    const ex = day.ex[0].id;
+    profile.log[blockId] = {};
+    profile.log[blockId][slot(1, day.id)] = { [ex]: [{ done: true, w: '60', r: '8' },
+                                                     { w: '', r: '', done: false }] };
+    profile.log[blockId][slot(2, day.id)] = { [ex]: [{ w: '', r: '', done: false }] };
+    drawnSlot = { profile: state.activeProfile, block: blockId, key: slot(1, day.id) };
+    pruneLog();
+    return {
+      liveKept: profile.log[blockId][slot(1, day.id)][ex].length,
+      otherPruned: slot(2, day.id) in profile.log[blockId],
+    };
+  })()
+`;
+const pruneLiveResult = call(pruneLiveProbe);
+ok('the session being drawn keeps its padding, handlers are holding those rows',
+   pruneLiveResult.liveKept === 2, 'kept ' + pruneLiveResult.liveKept);
+ok('every other session is still pruned', pruneLiveResult.otherPruned === false);
+
 console.log('\n== seed plans match their published block files (plans/008 item 12) ==');
 /* js/data.js:6-9 asks whoever edits the seed plans by hand to also
    regenerate blocks/hombre-bloque-1.json and blocks/mujer-bloque-1.json — a
