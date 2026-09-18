@@ -1161,8 +1161,69 @@ const reviewUnitProbe = call(`
 `);
 ok('the raw setVolume() the session view uses is untouched — still blends the lb number in as if it were kg',
    Math.round(reviewUnitProbe.raw[1]) === Math.round(220.462262185 * 5), JSON.stringify(reviewUnitProbe));
-ok('convertedSetVolume converts that same week to kg instead, so both weeks read as the same tonnage',
-   Math.round(reviewUnitProbe.converted[0]) === Math.round(reviewUnitProbe.converted[1]), JSON.stringify(reviewUnitProbe));
+ok('convertedSetVolume converts that same week to kg instead — both weeks read as the 500 kg actually lifted',
+   Math.abs(reviewUnitProbe.converted[0] - 500) < 1e-6 && Math.abs(reviewUnitProbe.converted[1] - 500) < 1e-6,
+   JSON.stringify(reviewUnitProbe));
+ok('convertedSetVolume reads a single lb-stamped set as the kilos it really moved',
+   Math.abs(call(`(function(){ state.prefs.units = 'kg'; return convertedSetVolume({ w: '220.462262185', r: '5', done: true, u: 'lb' }); })()`) - 500) < 1e-6);
+
+/* The chart is the third cross-session reader and the one that says "en kg"
+   on its own axis, so it converts too (plans/011). Same fixture as above: a
+   block whose second week was logged after a unit switch, at the identical
+   real weight. Raw, it would draw a 2,2x step that never happened. */
+const chartUnitProbe = call(`
+  (function() {
+    const profile = defaultState().profiles.hombre;
+    const blockId = profile.blockOrder[0];
+    const day = profile.blocks[blockId].days[0];
+    const exId = day.ex[0].id;
+    profile.log[blockId] = {};
+    profile.log[blockId][slot(1, day.id)] = { [exId]: [{ w: '100', r: '5', done: true }] };
+    profile.log[blockId][slot(2, day.id)] = { [exId]: [{ w: '220.462262185', r: '5', done: true, u: 'lb' }] };
+    state.prefs.units = 'kg';
+    const points = collectHistory(profile, blockId, day.id, exId, 8, 'weight');
+    state.prefs.units = 'kg';
+    return points.map(p => Math.round(p.weight * 100) / 100);
+  })()
+`);
+ok('collectHistory converts the lb-stamped week instead of stepping the line 2,2x',
+   JSON.stringify(chartUnitProbe) === JSON.stringify([100, 100]), JSON.stringify(chartUnitProbe));
+
+console.log('\n== the CSV is safe to open in a spreadsheet and says which unit each row is in (plans/011) ==');
+ok('csvCell prefixes a leading = so a name out of an imported file cannot be a formula',
+   call(`csvCell('=SUM(A1)')`) === "'=SUM(A1)", String(call(`csvCell('=SUM(A1)')`)));
+ok('csvCell prefixes a leading - too, which opens a formula just as well',
+   call(`csvCell('-5')`) === "'-5", String(call(`csvCell('-5')`)));
+ok('csvCell leaves a logged number alone — none of them start with an operator',
+   call(`csvCell('60')`) === '60', String(call(`csvCell('60')`)));
+ok('csvCell still quotes a cell holding a separator',
+   call(`csvCell('a;b')`) === '"a;b"', String(call(`csvCell('a;b')`)));
+
+/* Header and row are written in two different places, so asserting the
+   header alone would not catch the two drifting apart by a column. */
+const csvProbe = call(`
+  (function() {
+    const prev = state;
+    state = defaultState();
+    migrate();
+    const profile = state.profiles.hombre;
+    const blockId = profile.blockOrder[0];
+    const day = profile.blocks[blockId].days[0];
+    const exId = day.ex[0].id;
+    profile.log[blockId] = {};
+    profile.log[blockId][slot(1, day.id)] = { [exId]: [{ w: '220.462262185', r: '5', done: true, u: 'lb' }] };
+    const csv = buildCsv();
+    state = prev;
+    state.prefs.units = 'kg';
+    return csv;
+  })()
+`);
+const csvLines = csvProbe.split('\r\n');
+ok('the CSV header names the weight column and puts the unit beside it',
+   csvLines[0].indexOf(',peso,unidad,') >= 0, csvLines[0]);
+ok('a lb-stamped set exports the number as typed with its own unit next to it',
+   csvLines.some(l => l.indexOf(',220.462262185,lb,') >= 0),
+   csvLines.slice(1, 3).join(' | '));
 
 console.log('\n== bestForExercise: one id, same answer as the whole-profile scan (plans/008 item 14) ==');
 /* drawCard asks for one exercise's all-time best instead of every exercise's,
