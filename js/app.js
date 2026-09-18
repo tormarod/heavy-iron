@@ -4200,12 +4200,24 @@ function normalizeImportedOrder(rawOrder, rawBlock, normalized) {
    cannot: a spreadsheet, a chart, a coach's inbox. Deliberately one-way —
    the .json is what restores, and mixing the two up loses data. */
 function csvCell(v) {
-  const s = String(v == null ? '' : v);
+  let s = String(v == null ? '' : v);
+  /* A cell starting with = + - @ (or a tab/CR) is a formula to Excel,
+     LibreOffice and Sheets. Names in this file come from imported blocks
+     and profile files, so the file that travels to a coach must not be
+     able to carry one. A leading apostrophe is the conventional way to say
+     "text" — spreadsheets hide it. Logged numbers never start with these. */
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
   return /[",;\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
 function buildCsv() {
-  const rows = [['perfil', 'bloque', 'semana', 'dia', 'ejercicio', 'orden', 'serie', units(), 'reps', 'hecha', 'fecha', 'rir', 'bajadas', 'tipo_bajada']];
+  /* `peso` is the number exactly as it was typed and `unidad` is what that
+     number is in, taken from the row's own stamp. A fixed column name plus
+     an explicit unit is what makes a file holding both kg and lb rows — a
+     mid-block unit switch, a profile from a partner on the other unit —
+     readable at all; a header that just said "kg" was making a claim about
+     rows it could not make. */
+  const rows = [['perfil', 'bloque', 'semana', 'dia', 'ejercicio', 'orden', 'serie', 'peso', 'unidad', 'reps', 'hecha', 'fecha', 'rir', 'bajadas', 'tipo_bajada']];
   Object.keys(state.profiles).forEach(pk => {
     const profile = state.profiles[pk];
     profile.blockOrder.forEach(bId => {
@@ -4240,7 +4252,12 @@ function buildCsv() {
                  taken off this file stops matching the app's. */
               const used = dropsOf(r).filter(dropUsed);
               const drops = used.map(d => (d.w == null ? '' : d.w) + 'x' + (d.r == null ? '' : d.r)).join(' ');
-              rows.push([profile.label, block.name, w, day.name, ex.n, ordAt[w][ex.id] || '', i + 1, r.w, r.r,
+              /* The weight stays as typed, so a row here matches the card
+                 it was logged on rather than being converted to whichever
+                 unit happened to be selected at export time; `unidad` is
+                 what says which one it is. The drops share that stamp —
+                 they have none of their own. */
+              rows.push([profile.label, block.name, w, day.name, ex.n, ordAt[w][ex.id] || '', i + 1, r.w, rowUnit(r), r.r,
                          r.done ? 'si' : 'no', r.ts ? new Date(r.ts).toISOString().slice(0, 10) : '', rir,
                          drops, used.length ? DROP_LABEL[dropKind(r)] : '']);
             });
