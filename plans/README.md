@@ -37,6 +37,11 @@ below so it is not lost or re-audited.
 | 013 | [Six small correctness fixes](013-six-small-correctness-fixes.md) | P2 | S | LOW | — (Step D overlaps 009 item 1) | DONE (two deviations from the plan text — see its Maintenance notes) |
 | 014 | [The harness checks the repo's own invariants; `--list` works again](014-harness-invariants.md) | P1 | S | LOW | — (Steps 2, 4 overlap 009 item 3) | DONE (Step 5's round-trip narrowed to the ids a file states — see its Maintenance notes) |
 | 015 | [Docs match the code; one-command `CACHE_VERSION` bump](015-docs-sync-and-release-helper.md) | P2 | S | LOW | 014 (soft); overlaps 009 item 8 | DONE (+ the `cache-version` regex narrowed to the shell's own extensions, out of the plan's scope but needed to land Step 4 — see its Maintenance notes) |
+| 016 | [The AI round-trip text carries what the app knows: own block in the prompt, per-exercise verdicts and RIR in the review](016-round-trip-text-carries-own-context.md) | P1 | S | LOW | — (017 edits `js/review.js` too) | TODO |
+| 017 | [The review sheet takes the JSON back](017-review-sheet-takes-the-json-back.md) | P1 | S | LOW | — (016 edits `js/review.js` too) | TODO |
+| 018 | [The first week of a new block starts from what the previous block ended on](018-new-block-week-one-starts-from-previous.md) | P1 | M | MED | — (land after 019/020; all three edit `buildExCard`) | TODO |
+| 019 | [Last week's session note comes back on the same day; `nota`/`energia` in the CSV](019-session-note-returns-and-reaches-csv.md) | P2 | S | LOW | — | TODO |
+| 020 | [A second RÉCORD for a new best estimated 1RM](020-record-badge-for-estimated-1rm.md) | P2 | S | LOW | — | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
@@ -164,12 +169,15 @@ saying plainly, because it is the pattern to watch for in review:
 | Share-sheet export (`navigator.share`) | **DONE** | `js/app.js:1205-1215`, inside `downloadFile` |
 | Bodyweight / assisted exercises | open, not even the zero-weight message | `js/diagnostics.js:108,119,379` require `rowWeight(r) > 0`; only empty state is `:626` |
 | Equipment per profile | open | `js/app.js:356-389` all on global `state.prefs` |
-| Rep / e1RM PR badge | open | `js/app.js:2405` `isPr` compares weight only |
+| Rep / e1RM PR badge | **plan 020** (fourth audit) | `js/app.js:2552` `isPr` compares weight only |
 | Visible "última copia" date | open — **and the premise was wrong**: `sessionsSinceBackup` is a counter, no timestamp is stored | `js/app.js:389,3664,3669` |
 
 ### Direction — options for the maintainer (third audit)
 
 Grounded in the repo; effort estimates are coarse. Not ranked against bugs.
+**Superseded by the fourth audit below**, which re-verified each of these
+at `1838bf1` and planned two of them (the review round-trip → 016/017, the
+e1RM badge → 020); the rest are carried forward there.
 
 - **A second RÉCORD on a new best estimated 1RM.** `isPr` rewards weight
   alone (`js/app.js:2405`); `est1RM` already exists and is read in three
@@ -244,6 +252,127 @@ Grounded in the repo; effort estimates are coarse. Not ranked against bugs.
 the seed plans and target rules, visual design, and `.claude/worktrees/`
 (stale checkouts of merged branches). Performance magnitudes are derived
 from the code's own limits, not profiled on a device.
+
+## Fourth audit (2026-09-18) — direction only: new features
+
+A direction-only pass at commit `1838bf1` (the merge of PR #85), invoked as
+`/improve` for new features. Three parallel read-only subagents with
+distinct lenses — data recorded but never read / surface asymmetries;
+stated-but-undelivered intent (README vs. code, deferred-work comments,
+the AI prompt contract, the manifest); the adjacent possible (what the
+existing machinery makes cheap). **Every finding below was re-verified by
+opening the cited code at `1838bf1`** before it made the table; three
+agent findings were withdrawn on that check and are listed under
+"rejected". Baseline: `node --check` clean on all thirteen scripts,
+`node test/unit.js` green.
+
+No user was available to pick interactively, so the default applied: the
+top five by leverage became plans 016–020; everything else is recorded
+here so it is not re-audited.
+
+### The six options worth weighing (the variant's headline)
+
+1. **Close the AI round-trip for real** — the prompt hands over a
+   stranger's example and asks the user to retype facts the app holds;
+   the review export stops at muscle level and never carries RIR; the
+   sheet sends the user elsewhere to paste the answer. → **016 + 017**.
+2. **Week 1 of a new block should not start blind** — placeholder,
+   objetivo and *Copiar pesos* are all scoped to the current block; the
+   previous block's log is one `blockOrder` step away. → **018**.
+3. **The session note should come back on the day it describes**, and
+   notes/energy should reach the CSV — the one user-typed data that never
+   leaves the session it was typed in. → **019**.
+4. **A RÉCORD for a new best estimated 1RM** — double progression is rep
+   progress, and the badge only sees weight. → **020**.
+5. **A file lane for "plan + registro"** — the QR overflow message points
+   at the backup/profile exports, which *replace*; the block payload only
+   ever *adds*. `buildQrPayload`/`applyQrPayload` already exist. S. Not
+   planned this round; first in line.
+6. **Copy a block to the other profile** — the seed plans are a matched
+   pair with 15 shared ids, and the block manager can only delete. S–M.
+   Not planned this round.
+
+### Vetted direction findings, by leverage
+
+| # | Finding | Impact | Effort | Risk | Conf. | Evidence | Disposition |
+|---|---|---|---|---|---|---|---|
+| 1 | `buildAiPrompt` embeds `ejemplo-plantilla.json` as its only example, ends with a `[tu nivel, …]` placeholder for facts the app holds, never states the unit, never mentions `ex.id`, never says `phase` needs `r`+`t` together | HIGH | S | LOW | HIGH | `js/block-editor.js:444-500`, `:262`, `:321-323` | **016** |
+| 2 | `reviewText` stops at muscle rows; `diagRows` per-exercise verdicts and the RIR chips never reach the export; imported names undelimited (011's deferred item) | HIGH | S | LOW | HIGH | `js/review.js:132-186`, `js/diagnostics.js:621-690` | **016** |
+| 3 | The review sheet says "Pega el JSON en Importar JSON"; `reviewAfterClose` would create a second block if imported mid-`newBlock` | MED-HIGH | S | LOW | HIGH | `index.html:391`, `js/review.js:187-197,259-271`, `js/block-editor.js:366-390` | **017** |
+| 4 | Week 1 of a new block: `priorWeight` and `lastTimeCached` are block-scoped, `copyPrev` bails on week 1; `bestByExercise` and the chart already read across blocks | HIGH | M | MED | HIGH | `js/app.js:2415-2427,3053-3056`, `js/block-editor.js:157-194` | **018** |
+| 5 | `getNote` has one runtime reader (the current slot); the review caps at 8; no `nota`/`energia` CSV column; QR "plan + registro" carries neither | MED-HIGH | S | LOW | HIGH | `js/app.js:1596-1599,2994-3004,4343`, `js/qr-transfer.js:435-437` | **019** (CSV + card); QR carry deferred |
+| 6 | `isPr` compares weight only; `est1RM` is read in three files | MED | S | LOW | HIGH | `js/app.js:2362-2411,2552,2641,2716` | **020** |
+| 7 | No file lane for "plan + registro"; the overflow copy at `qr-transfer.js:396-398` redirects an additive transfer onto a replacing one | MED | S | LOW | HIGH | `js/qr-transfer.js:395-399,426,527-570`, `index.html:191-194` | not planned — next round |
+| 8 | No "copy block to other profile"; workaround is export → switch → import on a phone | MED | S-M | LOW | HIGH | `js/data.js:59-116`, `js/block-editor.js:101-150,340-357` | not planned — next round |
+| 9 | The week-goal table (`block.phase`) has no editor; it is the banner and the input to `phaseRir` → `targetEstimate`; only JSON import can set it | MED-HIGH | M | MED | HIGH | `js/block-editor.js:938-956`, `js/app.js:1573-1582,2486-2496` | not planned — design first (the `syncDraftFromForm` "still generic?" heuristic needs an explicit custom flag) |
+| 10 | Every tick stamps `r.ts` at ms precision; nothing reads finer than the calendar day — no session duration, no rest-vs-prescribed | MED | S (duration) / M (rest) | MED | HIGH on evidence, MED on value | `js/app.js:2712,2748,2909-2927`, `js/diagnostics.js:256-258` | spike — settle tick discipline first (four sets ticked at once = a 30-second "session") |
+| 11 | Duplicate exercise / duplicate day missing from an otherwise complete editor CRUD; `newBlock` shows the clone idiom | LOW-MED | S | LOW-MED | HIGH | `js/block-editor.js:668-735,791-800`, `js/app.js:2016-2021` (`sameLift` would merge two same-named rows on one day) | option |
+| 12 | Last backup date: only a session counter, no timestamp (prior) | LOW-MED | S | LOW | HIGH | `js/app.js:451-454,3806-3820`, `js/profile-transfer.js:377-397` | option |
+| 13 | Chart table shows one best set per session; the heatmap draws every trained day with no cell handler | MED | S-M | LOW | HIGH | `js/chart.js:32-42,230-236`, `js/diagnostics.js:271-322` | option |
+| 14 | All-time "Récords"/lifetime sheet: `bestByExercise` walks everything on every draw and powers one badge; lifetime totals exist only as the CSV loop | MED | M | LOW | HIGH | `js/app.js:2362-2388,4336-4394` | option (020's `{ w, e }` shape is what it needs) |
+| 15 | Review vs. previous block (prior, L): the cheaper shape is a per-exercise end-of-block e1RM delta via `diagPoints(profile, exId, null)`, rolled up by muscle | MED | M-L | MED | HIGH open / LOW-MED right | `js/review.js:33-42`, `js/diagnostics.js:72-116` | spike |
+| 16 | Calculator opens empty; `calcDraft = { mode, target, inc }` maps 1:1 onto `est.weight` / `incFor(ex)`; README states it "reads nothing from your log" as a description, not a decision | LOW-MED | S | LOW | HIGH | `js/calculator.js:93-99`, `README.md:799-801` | option (seed plans are machine-based; the ramp matters on a bar) |
+| 17 | Per-exercise "apply the objetivo" tap — a one-exercise `copyPrev` | LOW-MED | S | MED | HIGH | `js/app.js:2730-2732,2747,3069-3078` | option, **with tension**: README "never a number that gets logged for you"; an explicit tap is arguably the user logging it, but decide before building. Variant "objetivo as placeholder" is **rejected** (breaks the tick contract, `js/app.js:3502-3506`) |
+| 18 | Paste import installs with no confirmation while the QR route confirms with counts; no provenance (`source`/`basedOn`) survives `normalizeImportedBlock`; `blocks/index.json` carries only `file`/`label` | LOW-MED | M | LOW | HIGH | `js/block-editor.js:378-390`, `js/qr-transfer.js:552-565` | option |
+| 19 | Nothing is computed across the two profiles; `ex.share` is a badge; shared ids in the seed are a join key; the QR "perfil" kind already lands a snapshot in the other slot | MED? | M | MED | MED | `js/app.js:2634-2639`, `js/data.js:73,104` | spike (product call: is a partner band on JUNTOS cards wanted, and how is snapshot age shown) |
+| 20 | Equipment per profile (prior) | MED | M | MED | HIGH | `js/app.js:421-447` | spike (prefs travel in profile/QR payloads) |
+| 21 | Bodyweight / assisted exercises (prior) | MED | M-L | MED-HIGH | HIGH | `js/diagnostics.js:95,107,367` | spike; ship the S down-payment (a distinct empty state for "logged, all at zero") first |
+
+### Landing order and conflicts
+
+All five plans bump `CACHE_VERSION`; 018, 019 and 020 all edit `js/app.js`
+in and around `buildExCard`. Land one at a time and take the highest
+version on conflict. Suggested order: **016, 017, 020, 019, 018** —
+smallest blast radius first, the one M plan last. 016 and 017 both edit
+`js/review.js` (different functions) and are otherwise independent.
+
+### Fourth audit — considered and rejected
+
+- **Behaviour on the `ss` (superset) flag** — it is a badge and an editor
+  checkbox; the actual superset behaviour is carried by `rest: 0` on the
+  first half (`js/app.js:2751-2752`, every seeded pair). Building a timer or
+  navigation on adjacency would need `ss` to become a pair id; not worth
+  the data-model change.
+- **Manifest `shortcuts` / `file_handlers` / `share_target`** — there is
+  zero URL routing in the app (no `location.search`/`hash` reads, a
+  verified security positive), so a shortcut lands on the same screen and
+  `share_target` would have to add exactly the surface the app has none of;
+  all three are Android/desktop only, half the stated household. If the
+  round-trip (016/017) still feels long on Android after it lands, revisit
+  `share_target` as a spike that answers the CSP/URL question first.
+- **A `tools/publish-block.mjs` helper** for the `blocks/` registry — the
+  contract is already CI-enforced (`test/unit.js` validates every listed
+  block); three published blocks in a year do not justify authoring
+  tooling.
+- **A "skipped" set state** distinct from empty — `rowUsed` already
+  separates "typed, not ticked" from "untouched" and every reader filters
+  on `done`; a third state has no consumer.
+- **Objetivo as the weight-box placeholder** — contradicts the documented
+  tick contract (README "During the session"; `js/app.js:3502-3506`).
+- **Cross-block objetivo on week 1** — the previous block's last week is
+  usually its deload and its phase table differs; 018 deliberately stops at
+  the placeholder and the band.
+- Withdrawn on verification: "check bar/plates after a unit switch" (the
+  hint is already inline at `index.html:159`); "set `inc` yourself / add
+  calves in the editor" (one-time migration notes, not friction);
+  `blockShare*` walking `1..MAX_WEEKS` (correct — it carries sets hidden
+  above a shortened block).
+- Verified done, stated so nobody re-audits: `navigator.share` covers the
+  review `.txt` and the CSV (`downloadFile` prefers it for every caller);
+  muscle/pattern/type autocomplete from history exists
+  (`index.html:45-47`, `js/block-editor.js:821-826`); `ex.add`, drops,
+  `order`, `day.pair`, `ex.setup`, `ex.alt`, `ex.cue` each have the
+  readers they need; energy is deliberately confined to the review
+  (`js/app.js:1612-1620`).
+
+### Fourth audit — not audited
+
+Direction only: no correctness, security, performance, test, tech-debt,
+dependency, DX or docs pass this round (see the third audit for the last
+of those). `js/vendor/`, `node_modules/`, `test/` and `tools/` internals,
+the training methodology in the seed plans and target rules, visual
+design. `README.md` was read in full but its "you can…" clauses were
+verified only where a lens pointed, not clause by clause.
 
 ## Worth doing, not yet planned
 
