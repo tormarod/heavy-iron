@@ -157,6 +157,13 @@ fi
 # the person on a fresh Linux box.
 npx playwright install chromium >/dev/null 2>&1 || fail "could not install Chromium for Playwright"
 
+# --list is the documented way to find a section name, and it is one null
+# browser away from breaking: a section written as a bare `{ … }` block runs
+# its body in list mode and dies on browser.newContext(). It costs a second
+# here and it has been broken before. It needs playwright required, so it
+# sits below the install rather than up with the unit tests.
+node test/smoke.js --list >/dev/null 2>&1 || fail "test/smoke.js --list failed — a section is probably a bare block, not a section() call"
+
 # A free port, so this does not collide with a dev server already up on 8765.
 PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
 python3 -m http.server "$PORT" --bind 127.0.0.1 >/dev/null 2>&1 &

@@ -1320,8 +1320,7 @@ const ok = (name, cond, extra) => {
   });
 
   // ---------- published blocks stay importable offline ----------
-  {
-    console.log('\n== published blocks stay importable offline (plans/008 item 7) ==');
+  await section('published blocks stay importable offline (plans/008 item 7)', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     await page.goto(BASE, { waitUntil: 'networkidle' });
@@ -1355,7 +1354,7 @@ const ok = (name, cond, extra) => {
        (await page.textContent('#importError')) === '',
        await page.textContent('#importError'));
     await ctx.close();
-  }
+  });
 
   // ---------- corrupted data ----------
   await section('corrupt data recovery', async () => {
