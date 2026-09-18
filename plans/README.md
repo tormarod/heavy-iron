@@ -29,7 +29,7 @@ below so it is not lost or re-audited.
 | 005 | [Stop re-walking the whole log several times per render](done/005-memoize-render-scans.md) | P2 | S | LOW | — | DONE |
 | 006 | [Four small correctness fixes](done/006-four-small-correctness-fixes.md) | P2 | S | LOW | — | DONE |
 | 007 | [Write `AGENTS.md`](done/007-agents-md.md) | P2 | S | LOW | — | DONE |
-| 008 | [Second audit: ranked findings and plan](008-audit-2026-09-17.md) | P1 | — | — | — | IN PROGRESS (items 1–22 done, 23 remains) |
+| 008 | [Second audit: ranked findings and plan](008-audit-2026-09-17.md) | P1 | — | — | — | IN PROGRESS (items 1–20 and 22 done, 21 partial, 23 remains) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
@@ -184,26 +184,21 @@ leverage.
 - **CI downloads Chromium from scratch on every PR** (`.github/workflows/test.yml`).
   No `actions/cache` anywhere, though the Playwright version is already pinned,
   making the cache key trivially stable. Roughly 1.5-2.5 minutes per run.
-- **The dark palette is written out twice, verbatim** (`css/style.css:43-71`
-  and `:75-102`) — 25 custom properties duplicated, with a comment
-  acknowledging it, plus the accent overrides at `:116-127`. Collapsing it
-  means `applyTheme()` always writing an explicit `data-theme`, which needs an
-  inline preference read in `<head>` to avoid a light flash. The CSP forbids
-  inline scripts, so that read must go in a real file — check this constraint
-  before starting.
-- **Two functions are never called**: `reorderedDay` (`js/app.js:1244`) and
-  `loggedSetsDay` (`js/app.js:1369`). Verified by grep across `js/`,
-  `index.html` and `test/`. `reorderedDay` duplicates a check `drawOrderNote`
-  inlines at `js/app.js:2518`, so the "was this session reordered?" rule has
-  two homes and only one that matters.
-- **The plan editor rebuilds every exercise row on each keystroke** of the
-  weeks field (`js/block-editor.js:974-980`). Every other editor field mutates
-  the draft without re-rendering, so this is the outlier. The weeks value is
-  re-read and re-clamped on save, so the draft cannot drift.
-- **Three locals shadow the global `slot()` key builder** (`js/diagnostics.js:159`,
-  `:241`, `:336` vs `js/app.js:85`). Not a bug today — those functions parse
-  keys with a regex instead — but adding a single `slot(w, dayId)` call to any
-  of them produces a runtime `TypeError` with no build-time warning.
+- ~~**The dark palette is written out twice, verbatim** (`css/style.css:43-71`
+  and `:75-102`)~~ — done (008 item 20): `js/theme-init.js` resolves the theme
+  into an explicit `data-theme` in `<head>` before the stylesheet is applied,
+  so the tokens are declared once for the default and once for
+  `[data-theme="dark"]`.
+- ~~**Two functions are never called**: `reorderedDay` (`js/app.js:1244`) and
+  `loggedSetsDay` (`js/app.js:1369`)~~ — done (008 item 20): both deleted.
+  `drawOrderNote` keeps the rule it already inlined.
+- ~~**The plan editor rebuilds every exercise row on each keystroke** of the
+  weeks field (`js/block-editor.js:974-980`)~~ — done (008 item 20): `peWeeks`
+  splits `oninput` (draft and deload options only) from `onchange` (the full
+  `renderPlanEditor()`).
+- ~~**Three locals shadow the global `slot()` key builder** (`js/diagnostics.js:159`,
+  `:241`, `:336` vs `js/app.js:85`)~~ — done (008 item 20): all three renamed
+  to `slotRows`.
 
 **Tests / docs**
 
