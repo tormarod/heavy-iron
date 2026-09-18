@@ -2147,6 +2147,49 @@ console.log('\n== "borrar registro" reaches a week past the cap (plans/009 item 
      scoped === 2 && global > scoped, JSON.stringify({ scoped: scoped, global: global }));
   call('diagScope = "block"');
 
+  console.log('\n== priorBlockSets: the block before this one, last logged week, deload skipped (plans/018) ==');
+  const priorProbe = call(`
+    (function() {
+      state = defaultState(); migrate();
+      const pr = state.profiles.hombre;
+      const b1 = pr.blocks[pr.blockOrder[0]];      /* 8 weeks, deload on 8 */
+      const day = b1.days[0];
+      const ex = day.ex[0];
+      pr.log[b1.id] = {};
+      pr.log[b1.id][slot(6, day.id)] = { [ex.id]: [{ w: '60', r: '8', done: true }, { w: '60', r: '8', done: true }] };
+      pr.log[b1.id][slot(7, day.id)] = { [ex.id]: [{ w: '65', r: '8', done: true }, { w: '65', r: '7', done: true }] };
+      pr.log[b1.id][slot(8, day.id)] = { [ex.id]: [{ w: '40', r: '8', done: true }] };   /* the deload */
+      /* A second block, a copy with the same ids — what "+ Nuevo bloque" makes. */
+      const b2 = JSON.parse(JSON.stringify(b1)); b2.id = 'block-2'; b2.name = 'Bloque 2';
+      pr.blocks[b2.id] = b2; pr.blockOrder.push(b2.id); pr.activeBlock = b2.id;
+      /* A third, arrived as JSON: fresh ids, same name. */
+      const b3 = JSON.parse(JSON.stringify(b1)); b3.id = 'block-3'; b3.name = 'Bloque 3';
+      b3.days.forEach(d => d.ex.forEach(e => { e.id = 'imp-' + e.id; }));
+      pr.blocks[b3.id] = b3; pr.blockOrder.push(b3.id);
+      resetRenderCache();
+      const fromCopy = priorBlockSets(pr, b2, b2.days[0].ex[0]);
+      const fromJson = priorBlockSets(pr, b3, b3.days[0].ex[0]);
+      const unknown = priorBlockSets(pr, b2, { id: 'nope', n: 'Nada de esto' });
+      const first = priorBlockSets(pr, b1, ex);
+      /* Only the deload logged: nothing usable. */
+      delete pr.log[b1.id][slot(6, day.id)]; delete pr.log[b1.id][slot(7, day.id)];
+      const onlyDeload = priorBlockSets(pr, b2, b2.days[0].ex[0]);
+      return {
+        copy: fromCopy && { block: fromCopy.block.id, week: fromCopy.week, w: fromCopy.sets.map(s => s.w).join('/') },
+        json: fromJson && { block: fromJson.block.id, week: fromJson.week },
+        unknown: unknown, first: first, onlyDeload: onlyDeload,
+      };
+    })()
+  `);
+  ok('a copied block reads the previous block\'s last non-deload week',
+     priorProbe.copy && priorProbe.copy.block === 'block-1' && priorProbe.copy.week === 7 && priorProbe.copy.w === '65/65',
+     JSON.stringify(priorProbe.copy));
+  ok('a block that arrived as JSON with its own ids still finds the lift by name',
+     priorProbe.json && priorProbe.json.block === 'block-1' && priorProbe.json.week === 7, JSON.stringify(priorProbe.json));
+  ok('a lift the earlier blocks never planned gets nothing', priorProbe.unknown === null);
+  ok('the first block of a profile has nothing before it', priorProbe.first === null);
+  ok('a previous block whose only logged week is the deload is not used', priorProbe.onlyDeload === null);
+
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 })();
