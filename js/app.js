@@ -3675,13 +3675,19 @@ function recordVariant(profile, exId, oldName, newName, ts) {
    record is what was ASKED for, so a weight that came down mid-session has
    something to be compared against — the rule's own back-off, or a set the
    lifter had to strip. Rebuilding it later would only ever reproduce the
-   rule, which is the one thing it must not do. */
+   rule, which is the one thing it must not do.
+   `kind`, `hold` and `brake` are kept with it because a descarga or a
+   vuelta de parón is not a prescription the rule can be wrong about — it is
+   the rule deliberately asking for less — and a record that cannot say
+   which of the three it was turns every deload week into evidence the rule
+   overshot. */
 function recordTarget(profile, blockId, week, dayId, exId, t) {
   const k = slot(week, dayId);
   const blk = profile.obj[blockId] || (profile.obj[blockId] = Object.create(null));
   const sl = blk[k] || (blk[k] = Object.create(null));
   if (sl[exId]) return false;
-  sl[exId] = { v: 3, at: Date.now(), conf: t.conf,
+  sl[exId] = { v: 3, at: Date.now(), conf: t.conf, kind: t.kind,
+               hold: !!t.hold, brake: !!t.brake,
                sets: t.sets.map(x => ({ w: x.w, r: x.r, m: x.move })) };
   return true;
 }
@@ -4043,6 +4049,13 @@ function targetNotes(t) {
 }
 
 const TARGET_CONF_LABEL = { baja: 'confianza baja', media: 'confianza media', alta: 'confianza alta' };
+/* The same two vocabularies as lists, for the import validator. A plain
+   object literal answers truthily to every name it inherits from
+   Object.prototype, so 'constructor' would have passed a lookup on
+   TARGET_CONF_LABEL; a membership test is what RIR_OPTIONS and
+   ENERGY_OPTIONS already use for exactly that reason. */
+const TARGET_CONF_OPTIONS = ['baja', 'media', 'alta'];
+const TARGET_KIND_OPTIONS = ['objetivo', 'descarga', 'vuelta'];
 
 /* The progress chart lives in js/chart.js. */
 
@@ -4775,8 +4788,17 @@ function normalizeImportedObj(rawObj, rawBlock, normalized) {
         m: (x && (x.m === '↑' || x.m === '↓')) ? x.m : '',
       }));
       if (!sets.length) return;
-      kept[exId] = { v: 3, at: clampInt(rec.at, 0, Number.MAX_SAFE_INTEGER, 0),
-                     conf: TARGET_CONF_LABEL[rec.conf] ? rec.conf : 'baja', sets: sets };
+      /* A record written before plans/021 has no `kind`, and it stays
+         absent rather than being given a default: the missing field is the
+         only thing that tells the two generations apart, and some of the
+         older ones are reconstructions. `hold`/`brake` are stored only when
+         true, the same convention the log uses for `share`/`ss`/`u`. */
+      const keep = { v: 3, at: clampInt(rec.at, 0, Number.MAX_SAFE_INTEGER, 0),
+                     conf: TARGET_CONF_OPTIONS.indexOf(rec.conf) >= 0 ? rec.conf : 'baja', sets: sets };
+      if (TARGET_KIND_OPTIONS.indexOf(rec.kind) >= 0) keep.kind = rec.kind;
+      if (rec.hold === true) keep.hold = true;
+      if (rec.brake === true) keep.brake = true;
+      kept[exId] = keep;
     });
     if (Object.keys(kept).length) out[slot(w, dayId)] = kept;
   });
