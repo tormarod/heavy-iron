@@ -17,7 +17,7 @@ identical to an oversight unless someone writes down which it is:
 
 - **No build step, no bundler, no `package.json`, no TypeScript.** Plain
   HTML/CSS/JS, served by any static server. Do not add a build step.
-- **No modules.** Eight `<script>` tags share one global scope, in a fixed
+- **No modules.** Eleven `<script>` tags share one global scope, in a fixed
   order (`index.html`, the `<script>` block at the foot of `<body>`):
 
   ```html
@@ -28,6 +28,9 @@ identical to an oversight unless someone writes down which it is:
   <script src="js/profile-transfer.js"></script>
   <script src="js/calculator.js"></script>
   <script src="js/rest-timer.js"></script>
+  <script src="js/chart.js"></script>
+  <script src="js/volume-sheet.js"></script>
+  <script src="js/qr-transfer.js"></script>
   <script src="js/app.js"></script>
   ```
 
@@ -39,26 +42,38 @@ identical to an oversight unless someone writes down which it is:
   ```js
   wireBlockEditor();
   /* Guarded, unlike wireBlockEditor/wireProfileTransfer, because these
-     four files are newer than some already-deployed shells: … */
+     seven files are newer than some already-deployed shells: … */
   if (typeof wireDiagnostics === 'function') wireDiagnostics();
   if (typeof wireReview === 'function') wireReview();
   if (typeof wireCalculator === 'function') wireCalculator();
   if (typeof wireRestTimer === 'function') wireRestTimer();
+  if (typeof wireChart === 'function') wireChart();
+  if (typeof wireVolumeSheet === 'function') wireVolumeSheet();
+  if (typeof wireQrTransfer === 'function') wireQrTransfer();
   wireProfileTransfer();
   ```
 
   Any new file that can be added to an already-deployed shell needs the same
-  `typeof ... === 'function'` guard, not a bare call. `js/app.js` is being
-  split along its own section seams, one per pull request (plans/008 item
-  13), so expect this list to keep growing: each new file needs the script
-  tag *before* `js/app.js`, a `SHELL` entry in `sw.js`, a guarded
-  `wire*()` call here, its place in `loadApp()` in `test/unit.js`, and a
-  line in this list and in the README's layout table. A symbol `app.js`
-  itself reads either stays in `app.js` or is stubbed to a no-op there when
-  the file is missing (`js/rest-timer.js` does the latter for its five):
-  the split file may be missing from an old cached shell, and `app.js`
-  reaching for something that never loaded is the stuck-loading screen
-  above.
+  `typeof ... === 'function'` guard, not a bare call. `js/app.js` was split
+  along its own five section seams, one per pull request (plans/008 item 13,
+  now done); a further split follows the same recipe. Each new file needs
+  the script tag *before* `js/app.js`, a `SHELL` entry in `sw.js`, a
+  guarded `wire*()` call here, its place in `loadApp()` in
+  `test/unit.js`, and a line in this list and in the README's layout
+  table.
+
+  Two rules the five seams settled, and they are what keeps a split safe:
+
+  1. **A symbol `app.js` itself reads either stays in `app.js` or is
+     stubbed to a no-op there.** The split file may be missing from an old
+     cached shell, and `app.js` reaching for something that never loaded
+     is the stuck-loading screen above. `js/rest-timer.js` is stubbed for
+     five, `js/chart.js` and `js/qr-transfer.js` for one each.
+  2. **A symbol another split file reads stays in `app.js` outright** — a
+     stub cannot help there, because a plausible-looking empty answer is
+     worse than a dead button. That is why the volume arithmetic, the
+     `blockShare*` builders and the `normalizeImported*` validators
+     stayed behind while their screens left.
 - **Spanish for everything a user sees; English for code comments.**
 
 ## The release rule

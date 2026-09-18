@@ -61,6 +61,7 @@ function loadApp() {
      it is the one that wires the others and then calls load(). */
   ['js/data.js', 'js/block-editor.js', 'js/diagnostics.js', 'js/review.js',
    'js/profile-transfer.js', 'js/calculator.js', 'js/rest-timer.js',
+   'js/chart.js', 'js/volume-sheet.js', 'js/qr-transfer.js',
    'js/app.js'].forEach(f => {
     vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f });
   });
