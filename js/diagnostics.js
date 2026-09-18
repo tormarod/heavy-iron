@@ -618,7 +618,11 @@ function diagVerdict(trend, sig) {
 /* One row per exercise of the live plan. The verdict is computed over the
    window; the signals are read off the most recent sessions, since what you
    change on Monday answers to how last Monday went. */
-function diagRows(profile, block) {
+function diagRows(profile, block, scope) {
+  /* The sheet's own toggle by default; the block review passes 'block'
+     explicitly, because what it exports must not depend on whatever the
+     Diagnóstico sheet happened to be showing last. */
+  const useScope = scope || diagScope;
   const rows = [];
   const seen = new Set();
   /* Volume as actually logged, not as prescribed: "you have room to add
@@ -630,7 +634,7 @@ function diagRows(profile, block) {
     exList(day).forEach(ex => {
       if (seen.has(ex.id)) return;
       seen.add(ex.id);
-      const all = diagPoints(profile, ex.id, diagScope === 'all' ? '' : block.id);
+      const all = diagPoints(profile, ex.id, useScope === 'all' ? '' : block.id);
       const points = all.slice(-DIAG_WINDOW);
       const est = targetEstimate(profile, block, day, ex, profile.week);
       const last = points[points.length - 1];

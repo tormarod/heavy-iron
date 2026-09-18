@@ -2728,8 +2728,8 @@ const ok = (name, cond, extra) => {
     const text = await page.evaluate(() => reviewText(buildBlockReview(getProfile(), getBlock())));
     ok('the brief names the block', text.includes('"Bloque 1"'), text.slice(0, 80));
     ok('the brief carries strength, attendance and volume per muscle',
-       /Pecho \(PRIORITARIO\).*fuerza \+12,5 %.*sesiones 7\/\d+.*series\/semana/.test(text),
-       (text.match(/- Pecho.*/) || [''])[0]);
+       /«Pecho» \(PRIORITARIO\).*fuerza \+12,5 %.*sesiones 7\/\d+.*series\/semana/.test(text),
+       (text.match(/- «Pecho».*/) || [''])[0]);
     ok('the brief carries the energy summary', text.includes('### Energía al empezar'));
     ok('the brief carries the notes', text.includes('Dormí 5 h'));
     ok('and closes with instructions for whatever writes the next block',

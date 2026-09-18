@@ -2071,6 +2071,82 @@ console.log('\n== "borrar registro" reaches a week past the cap (plans/009 item 
      qrPayload.kind === 'profile' && !!qrPayload.profile && qrPayload.key === call('state.activeProfile'),
      JSON.stringify({ kind: qrPayload.kind, key: qrPayload.key, hasProfile: !!qrPayload.profile }));
 
+  console.log('\n== the round-trip text carries the app\'s own context (plans/016) ==');
+  call('state = defaultState(); migrate(); state.setupDone = true; state.prefs.units = "kg";');
+  const ownPrompt = await call('buildAiPrompt({ withBlock: true })');
+  const ownPlan = call('JSON.stringify(blockSharePlan(getBlock()))');
+  ok('with the app set up, the prompt carries the current block as JSON',
+     ownPrompt.indexOf('Mi bloque actual') >= 0 && ownPrompt.indexOf(ownPlan) >= 0,
+     ownPrompt.slice(-200));
+  ok('and the shipped example is left out', ownPrompt.indexOf('Ejemplo de referencia') < 0);
+  ok('it names the unit and the id field',
+     ownPrompt.indexOf('Peso en kg') >= 0 && ownPrompt.indexOf('"id": string opcional') >= 0 && ownPrompt.indexOf('"inc": número opcional (en kg)') >= 0);
+  ok('and says a phase week needs both keys', ownPrompt.indexOf('"r" y "t" juntos') >= 0);
+  ok('it still asks for what only the user knows', ownPrompt.indexOf('[tu nivel') >= 0);
+  const firstRunPrompt = await call('buildAiPrompt({ withBlock: false })');
+  ok('on a first run the prompt has no block of its own in it',
+     firstRunPrompt.indexOf('Mi bloque actual') < 0 && firstRunPrompt.indexOf('Mi contexto: [tu nivel') >= 0);
+
+  /* Three sessions of one exercise is the minimum diagRows needs for a
+     verdict; the RIR chips give the histogram something to count. */
+  call(`
+    (function() {
+      const pr = state.profiles.hombre;
+      const blockId = pr.blockOrder[0];
+      const day = pr.blocks[blockId].days[0];
+      const exId = day.ex[0].id;
+      pr.log[blockId] = {};
+      pr.rir[blockId] = {};
+      for (let w = 1; w <= 4; w++) {
+        pr.log[blockId][slot(w, day.id)] = { [exId]: [{ w: String(60 + w * 2.5), r: '8', done: true, ts: Date.now() - (5 - w) * 7 * 86400000 }] };
+      }
+      pr.rir[blockId][slot(2, day.id)] = { [exId]: '0' };
+      pr.rir[blockId][slot(3, day.id)] = { [exId]: '0' };
+      pr.rir[blockId][slot(4, day.id)] = { [exId]: '1' };
+      day.ex[0].n = 'Press «raro» de banca';
+      pr.week = 5;
+      resetRenderCache();
+    })()
+  `);
+  const review = call('reviewText(buildBlockReview(getProfile(), getBlock()))');
+  ok('the review lists the exercises under the muscles', review.indexOf('### Por ejercicio') >= 0, review.slice(0, 400));
+  ok('with the name delimited and the delimiters stripped from it',
+     review.indexOf('- «Press raro de banca» (') >= 0, (review.match(/- «Press.*/) || [''])[0]);
+  ok('a trend and a reading for an exercise with enough sessions',
+     /«Press raro de banca».*tendencia (subiendo|plano|bajando) [+−]?[\d,]+ % por sesión sobre 4 sesiones/.test(review),
+     (review.match(/- «Press.*/) || [''])[0]);
+  ok('and the RIR chips tapped, as a histogram',
+     review.indexOf('RIR marcado: 1×1, 0×2') >= 0, (review.match(/RIR marcado[^.]*/) || [''])[0]);
+  ok('muscle tags are delimited too', /^- «Pecho»/m.test(review), (review.match(/^- «.*/m) || [''])[0]);
+
+  /* The review must not inherit the Diagnóstico sheet's toggle. */
+  call(`
+    (function() {
+      const pr = state.profiles.hombre;
+      const b1 = pr.blocks[pr.blockOrder[0]];
+      const b2 = JSON.parse(JSON.stringify(b1));
+      b2.id = 'block-2'; b2.name = 'Bloque 2';
+      pr.blocks[b2.id] = b2; pr.blockOrder.push(b2.id); pr.activeBlock = b2.id;
+      const day = b2.days[0]; const exId = day.ex[0].id;
+      pr.log[b2.id] = {};
+      for (let w = 1; w <= 2; w++) {
+        pr.log[b2.id][slot(w, day.id)] = { [exId]: [{ w: '80', r: '8', done: true, ts: Date.now() - (3 - w) * 7 * 86400000 }] };
+      }
+      pr.week = 3;
+      diagScope = 'all';
+      resetRenderCache();
+    })()
+  `);
+  const scoped = call('diagRows(getProfile(), getBlock(), "block").find(r => r.id === getBlock().days[0].ex[0].id).sessions');
+  call('resetRenderCache()');
+  const global = call('diagRows(getProfile(), getBlock()).find(r => r.id === getBlock().days[0].ex[0].id).sessions');
+  /* `global` is the two blocks' sessions together (4 + 2), capped by
+     DIAG_WINDOW; asserted as "more than the scoped count" rather than as 6
+     so a change to that window cannot fail a test about scope. */
+  ok('diagRows scoped to the block counts only its own sessions while the sheet is on "Todos los bloques"',
+     scoped === 2 && global > scoped, JSON.stringify({ scoped: scoped, global: global }));
+  call('diagScope = "block"');
+
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 })();

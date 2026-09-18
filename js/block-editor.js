@@ -440,8 +440,11 @@ function openImportSheet() {
    sync with what normalizeImportedBlock actually accepts. The worked
    example is fetched from blocks/ejemplo-plantilla.json — the same file the
    download button offers — rather than duplicated inline, for the same
-   reason. Works with no network too: the example is just left out. */
-async function buildAiPrompt() {
+   reason. Works with no network too: the example is just left out. Once the
+   app is set up, the user's own block replaces the shipped example, so the
+   AI sees the material, the names and the ids it is meant to keep. */
+async function buildAiPrompt(opts) {
+  const withBlock = !!(opts && opts.withBlock);
   const L = IMPORT_LIMITS;
   const lines = [
     'Genera un bloque de entrenamiento como JSON para la app "Heavy Iron". Responde solo con el JSON, sin texto ni comentarios alrededor.',
@@ -458,11 +461,12 @@ async function buildAiPrompt() {
     '      "ex": [ // obligatorio, 1-' + L.ex + ' ejercicios',
     '        {',
     '          "n": string OBLIGATORIO — nombre del ejercicio (máx ' + L.exName + ' car.),',
+    '          "id": string opcional (máx 60 car.) — identificador estable del ejercicio. Si abajo te paso mi bloque actual, conserva el id de cada ejercicio que mantengas, para que su historial siga unido; un ejercicio nuevo puede ir sin id. El mismo ejercicio en dos días lleva el mismo nombre (no repitas el id en dos días: se renombraría),',
     '          "reps": string OBLIGATORIO — rango de reps, p.ej. "8-12" (máx ' + L.reps + ' car.),',
     '          "sets": número opcional 1-12 (por defecto 3),',
     '          "rest": número opcional — segundos de descanso 0-900 (por defecto 90; usa 0 si el ejercicio va encadenado en superserie),',
     '          "add": número entero opcional 1-weeks — desde esa semana se añade una serie extra (progresión de series; tiene que ser un entero o se rechaza todo el bloque),',
-    '          "inc": número opcional, admite decimales, ' + INC_MIN + '-' + INC_MAX + ' — el escalón de peso más pequeño que se puede cargar en ese ejercicio: cuánto añade "copiar semana anterior" al llegar al tope del rango en todas las series, y a qué se redondea el objetivo de peso de cada semana. Si falta, se usa el incremento por defecto de los ajustes. Pon uno realista por ejercicio (mancuernas y poleas suelen subir de 1-2,5 en 2,5; prensas y hacks, de 5 en 5),',
+    '          "inc": número opcional (en ' + units() + '), admite decimales, ' + INC_MIN + '-' + INC_MAX + ' — el escalón de peso más pequeño que se puede cargar en ese ejercicio: cuánto añade "copiar semana anterior" al llegar al tope del rango en todas las series, y a qué se redondea el objetivo de peso de cada semana. Si falta, se usa el incremento por defecto de los ajustes. Pon uno realista por ejercicio (mancuernas y poleas suelen subir de 1-2,5 en 2,5; prensas y hacks, de 5 en 5),',
     '          "alt": string opcional — alternativa (máx ' + L.alt + ' car.),',
     '          "cue": string opcional — indicación técnica, para todas las series (máx ' + L.cue + ' car.),',
     '          "setup": string opcional — ajustes de la máquina (altura de asiento, posición del respaldo…), no técnica (máx ' + SETUP_LIMIT + ' car.),',
@@ -480,23 +484,52 @@ async function buildAiPrompt() {
     '  ],',
     '  "phase": { // opcional — objetivo de cada semana, clave = número de semana',
     '    "1": { "r": string corto, p.ej. RIR objetivo (máx ' + L.phaseR + ' car.), "t": texto del objetivo de esa semana (máx ' + L.phaseT + ' car.) }',
+    '    // cada semana lleva "r" y "t" juntos: una semana con solo uno de los dos se sustituye por el objetivo genérico de la app',
     '  }',
     '}',
   ];
 
   let example = '';
-  try {
-    const r = await fetch(blocksBase() + '/ejemplo-plantilla.json', { cache: 'no-store' });
-    if (r.ok) example = JSON.stringify(JSON.parse(await r.text()));
-  } catch (e) { /* offline: the prompt still works without the embedded example */ }
-  if (example) lines.push('', 'Ejemplo de referencia (formato válido, contenido de muestra):', example);
+  /* The shipped example is for a device with nothing of its own yet. Once
+     the app is set up the user's own block is the example — it is what the
+     AI is being asked to write the next version of, and it carries the
+     machines, the names and the ids the reply should keep. */
+  if (!withBlock) {
+    try {
+      const r = await fetch(blocksBase() + '/ejemplo-plantilla.json', { cache: 'no-store' });
+      if (r.ok) example = JSON.stringify(JSON.parse(await r.text()));
+    } catch (e) { /* offline: the prompt still works without the embedded example */ }
+    if (example) lines.push('', 'Ejemplo de referencia (formato válido, contenido de muestra):', example);
+  }
 
-  lines.push(
-    '',
-    'Ahora genera un bloque para mí según mis objetivos. Mi contexto: [tu nivel, cuántos días a la semana, material del gimnasio disponible, qué músculos priorizar, si entrenas solo o en pareja, y cuántas semanas quieres el bloque].',
-    '',
-    'Responde solo con el JSON.',
-  );
+  if (withBlock) {
+    const block = getBlock();
+    const days = dayList(block);
+    const dl = deloadWeek(block);
+    const priority = blockPriority(block);
+    const p = state.prefs;
+    const ctx = [
+      'Entreno ' + (soloMode() ? 'solo' : 'en pareja') + '.',
+      'Peso en ' + units() + '. Incremento por defecto: ' + p.inc + ' ' + units() + '. Barra: ' + p.barWeight + ' ' + units() + '. Discos por lado: ' + p.plates.join(', ') + '.',
+      'Mi bloque actual, "' + block.name + '", tiene ' + days.length + (days.length === 1 ? ' día' : ' días') + ' por semana y ' +
+        blockWeeks(block) + ' semanas' + (dl ? ', con descarga en la semana ' + dl : ', sin descarga') + '.',
+      priority.length ? 'Músculos prioritarios: ' + priority.join(', ') + '.' : '',
+    ].filter(Boolean).join(' ');
+    lines.push(
+      '',
+      'Ahora genera el bloque siguiente para mí. Lo que la app ya sabe: ' + ctx,
+      'Lo que no sé decirte desde la app: [tu nivel, tus objetivos para este bloque, y cualquier cambio de material, de días o de semanas].',
+      '',
+      'Mi bloque actual (JSON, en el mismo formato — es mi material, mis nombres y mis ids; conserva lo que mantengas y cambia lo que haga falta):',
+      JSON.stringify(blockSharePlan(block)),
+    );
+  } else {
+    lines.push(
+      '',
+      'Ahora genera un bloque para mí según mis objetivos. Mi contexto: [tu nivel, cuántos días a la semana, material del gimnasio disponible, qué músculos priorizar, si entrenas solo o en pareja, y cuántas semanas quieres el bloque].',
+    );
+  }
+  lines.push('', 'Responde solo con el JSON.');
   return lines.join('\n');
 }
 
@@ -515,10 +548,10 @@ async function downloadBlockTemplate(noteEl) {
   }
 }
 
-async function copyBlockPrompt(noteEl) {
+async function copyBlockPrompt(noteEl, opts) {
   setNote(noteEl, '', false);
   try {
-    await copyText(await buildAiPrompt());
+    await copyText(await buildAiPrompt(opts));
     setNote(noteEl, 'Prompt copiado — pégaselo a tu IA junto con tus objetivos', false);
   } catch (e) {
     setNote(noteEl, 'No se pudo copiar el prompt: ' + e.message, true);
@@ -1025,11 +1058,14 @@ function wireBlockEditor() {
 
   $('importDownloadTemplate').onclick = () => downloadBlockTemplate($('importError'));
 
-  $('importCopyPrompt').onclick = () => copyBlockPrompt($('importError'));
+  $('importCopyPrompt').onclick = () => copyBlockPrompt($('importError'), { withBlock: true });
 
   $('setupDownloadTemplate').onclick = () => downloadBlockTemplate($('setupImportStatus'));
 
-  $('setupCopyPrompt').onclick = () => copyBlockPrompt($('setupImportStatus'));
+  /* On a first run there is no block of the user's own yet — only the
+     shipped plan — so the prompt keeps the generic example. Reopened from
+     "Ajustes" later, the block is real and goes in. */
+  $('setupCopyPrompt').onclick = () => copyBlockPrompt($('setupImportStatus'), { withBlock: !!state.setupDone });
 
   $('editPlan').onclick = () => {
     peDraftBlock = JSON.parse(JSON.stringify(getBlock()));
