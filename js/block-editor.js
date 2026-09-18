@@ -342,7 +342,14 @@ function blockFromNormalized(normalized) {
     id: 'block-' + Date.now(),
     name: normalized.name, createdAt: new Date().toISOString(),
     weeks: normalized.weeks, deload: normalized.deload,
-    days: normalized.days, phase: normalized.phase,
+    /* Cloned, not referenced: the first-run setup handler installs the same
+       normalized plan on both profiles by calling this once per profile,
+       and a shared `days` made an inline machine-setting edit on one
+       person's card write into the other's plan until the next reload
+       broke the aliasing (plans/012). `freshBlock` in js/data.js already
+       clones for the same reason; `priority` below is copied too. */
+    days: JSON.parse(JSON.stringify(normalized.days)),
+    phase: JSON.parse(JSON.stringify(normalized.phase)),
   };
   /* Absent unless there is one, same as on any other block. */
   if (normalized.priority && normalized.priority.length) block.priority = normalized.priority.slice();
