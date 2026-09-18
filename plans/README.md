@@ -29,7 +29,14 @@ below so it is not lost or re-audited.
 | 005 | [Stop re-walking the whole log several times per render](done/005-memoize-render-scans.md) | P2 | S | LOW | — | DONE |
 | 006 | [Four small correctness fixes](done/006-four-small-correctness-fixes.md) | P2 | S | LOW | — | DONE |
 | 007 | [Write `AGENTS.md`](done/007-agents-md.md) | P2 | S | LOW | — | DONE |
-| 008 | [Second audit: ranked findings and plan](008-audit-2026-09-17.md) | P1 | — | — | — | IN PROGRESS (items 1–20 and 22 done, 21 partial, 23 remains) |
+| 008 | [Second audit: ranked findings and plan](done/008-audit-2026-09-17.md) | P1 | — | — | — | IN PROGRESS (items 1–20 and 22 done, 21 bullet 2 open, 23: two of six done — see "Third audit") |
+| 009 | [Architecture deepening: seven shallow seams, ranked](009-architecture-deepening.md) | P2 | L | MED | 008 items 13–14 (done) | TODO |
+| 010 | [A backup or profile file the app itself wrote always restores, exactly as it was](010-restore-round-trips-own-data.md) | P1 | M | MED | — | TODO |
+| 011 | [Every cross-session reader converts kg/lb per row; CSV formula guard](011-units-everywhere-and-csv-boundary.md) | P1 | M | LOW | — (overlaps 009 item 2) | TODO |
+| 012 | [Freeform tags, editor numbers and the setup import cannot crash, hang or alias](012-input-boundary-tags-clamps-aliasing.md) | P1 | S | LOW | — | TODO |
+| 013 | [Six small correctness fixes](013-six-small-correctness-fixes.md) | P2 | S | LOW | — (Step D overlaps 009 item 1) | TODO |
+| 014 | [The harness checks the repo's own invariants; `--list` works again](014-harness-invariants.md) | P1 | S | LOW | — (Steps 2, 4 overlap 009 item 3) | TODO |
+| 015 | [Docs match the code; one-command `CACHE_VERSION` bump](015-docs-sync-and-release-helper.md) | P2 | S | LOW | 014 (soft); overlaps 009 item 8 | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
@@ -51,6 +58,23 @@ REJECTED (with one-line rationale)
   `js/app.js` and each bump `CACHE_VERSION` in `sw.js`, so expect merge
   conflicts on that one line. Land them sequentially, or resolve by taking the
   highest version.
+- **010–015 (third audit) are independent of each other**, but 010, 011,
+  012 and 013 all edit `js/app.js` and bump `CACHE_VERSION`; land them one at
+  a time. 014 and 015 touch no shell file and need no bump. Suggested order:
+  014 (cheap, and it gives every later plan a `--list` that works), 010,
+  012, 011, 013, 015.
+- **009 and the third-audit plans were written in parallel** on the same
+  day and overlap in four places. Whichever lands first makes the other's
+  step a no-op — the executor of the second one checks and skips:
+  009 item 1 ↔ 013 Step D (Escape on `diagSheet`/`reviewSheet`);
+  009 item 2 ↔ 011 Step 1 (one `convertedSetVolume`; 009 names it
+  differently — keep whichever name landed);
+  009 item 3 ↔ 014 Steps 2 and 4 (shell-list and storage-key assertions;
+  014's version also checks `js/` on disk and adds the stub and registry
+  tests, so run 014 even if 009 item 3 landed);
+  009 item 8 ↔ 015 Step 1 (AGENTS.md line references).
+  009 items 5–6 (import write path, one entry point per shape) touch the
+  same functions as 010 and 012; land 010 and 012 first, they are bug fixes.
 
 ## A rule that applies to every plan touching `index.html`, `css/` or `js/`
 
@@ -75,17 +99,156 @@ green", which the hook satisfies. See AGENTS.md, "How to verify a change".
 ## Second audit (2026-09-17)
 
 A second pass at commit `1f559ee`, after plans 001–007 landed, is in
-[008-audit-2026-09-17.md](008-audit-2026-09-17.md). It is one ranked
+[008-audit-2026-09-17.md](done/008-audit-2026-09-17.md). It is one ranked
 document rather than one file per finding: twenty-three items, most critical
 first, each with `file:line` evidence, a failure scenario and a plan. Its
 last section re-checks every entry in "Worth doing, not yet planned" below
 and says which are still present, so treat that list as superseded by 008.
 
+## Third audit (2026-09-18)
+
+A third pass at commit `6def9fc` (the merge of PR #76), `standard` depth,
+all nine categories, four parallel read-only subagents (correctness;
+security + dependencies; performance + tests + tech debt; DX + docs +
+direction). **Every finding below was re-verified by opening the cited code**
+before it made the table; six correctness items were additionally reproduced
+in the `test/unit.js` harness. Baseline at `6def9fc`: `node --check` clean
+on all thirteen scripts, `node test/unit.js` 177/177, vendor hashes match.
+
+No user was available to pick findings interactively, so the default applied:
+the highest-leverage findings became plans 010–015; everything else is
+recorded here.
+
+### What the second audit's fixes left behind
+
+Four of the findings are regressions from items marked DONE in 008 — worth
+saying plainly, because it is the pattern to watch for in review:
+
+- 008 item 4 (run backups through `normalizeImportedBlock`) made a
+  validator written for *foreign* JSON the gate for the app's *own* data.
+  Three consequences → **plan 010**.
+- 008 item 19 (collapse duplicate warm-up rows) left the labels positional
+  → **plan 013 A**.
+- 008 item 15 fixed one wake-lock race and left the other (second
+  `startRest` while live) → **plan 013 B**.
+- 008 item 21 bullet 1 (`section()` wrapper) missed one bare block, which
+  crashes `--list` → **plan 014 Step 1**.
+
+### Vetted findings, by leverage
+
+| # | Finding | Category | Impact | Effort | Risk | Evidence | Plan |
+|---|---|---|---|---|---|---|---|
+| 1 | A profile with one unnamed exercise (the empty starting plan ships one) cannot be restored by any route; retired items resurrect on restore; same-id-on-two-days loses one day's rows; `order` never re-keyed | correctness / data loss | HIGH | M | MED | `js/block-editor.js:238-250,288`, `js/profile-transfer.js:102,128-137`, `js/app.js:4045-4062` | 010 |
+| 2 | Chart, tonnage tile and CSV still blend kg/lb (`num(r.w)` raw) while labelling with `units()` | correctness | MED-HIGH | M | LOW | `js/chart.js:29-110`, `js/volume-sheet.js:87`, `js/app.js:4169,4204` | 011 |
+| 3 | A `__proto__` muscle/pattern/type tag throws inside `strengthRows`/`freqRows` after the host is cleared → empty Diagnóstico and review; silent undercount on the volume sheet. Typeable in the editor | security / robustness | MED-HIGH | S | LOW | `js/diagnostics.js:194-195,399-401`, `js/app.js:1263,1293-1294` | 012 |
+| 4 | Plan-editor Series/Descanso/`add` unclamped in the draft → 5000 set rows = same-device hang until reload | correctness | MED | S | LOW | `js/block-editor.js:809-815,899-928` | 012 |
+| 5 | Setup "import" installs one shared `days` object on both profiles (by-reference `blockFromNormalized`) | correctness | MED | S | LOW | `js/block-editor.js:311-321`, `js/app.js:1035-1047` | 012 |
+| 6 | `--list` crashes; one bare block runs under every `--only`; no test ties `index.html` ↔ `loadApp()` ↔ `SHELL` ↔ `js/`; stubs for a precache hole never exercised; `theme-init` key unchecked; `blocks/index.json` unchecked | tests | MED (verification baseline) | S | LOW | `test/smoke.js:1318-1353,583`, `test/unit.js:64-67`, `js/app.js:1904-1928` | 014 |
+| 7 | CSV cells have no formula guard; names are import-controlled and the file is meant to travel | security | MED | S | LOW | `js/app.js:4163-4166,4205` | 011 |
+| 8 | Warm-up labels misalign when steps collapse; second `startRest` leaks a wake lock; QR "perfil" resets the backup nag before any frame shows; Escape ignores `diagSheet`/`reviewSheet`; five dialogs say "No se puede deshacer" then snapshot; stale "three files" comment | correctness / a11y | LOW-MED each | S | LOW | `js/calculator.js:26-29,126-146`, `js/rest-timer.js:369-379`, `js/qr-transfer.js:417-423`, `js/app.js:1938`, `grep "No se puede deshacer"` | 013 |
+| 9 | AGENTS.md: two `file:line` anchors wrong (one past EOF), CI claim "not the SHELL array" now false; README: `app.js` row lists moved code, "six source files", rung-3 recipe omits `npm install playwright`; vendor README recipe never regenerates `SHA256SUMS` | docs | MED (agents read these first) | S | LOW | `AGENTS.md:50,109-110,140,164-166`, `README.md` (grep in plan), `js/vendor/README.md:8-9,24-35` | 015 |
+| 10 | Eight one-line `CACHE_VERSION` bump commits after red CI; no helper. Hook installs Playwright without `--ignore-scripts` | dx / supply chain | LOW-MED | S | LOW | `git log -- sw.js`, `tools/smoke-gate.sh:119` | 015 |
+| 11 | `diagPoints` re-walks every log key once per week (regex each); `js/chart.js:93-101` already groups by week once | perf | MED (grows with history; "Todos los bloques" tap) | S | LOW | `js/diagnostics.js:92-100` | not yet planned |
+| 12 | `pruneLog` walks the whole history on every debounced save (400 ms while typing) | perf | MED (derived, not profiled) | S | MED | `js/app.js:464-511` | not yet planned |
+| 13 | Five parallel maps updated in ten places; two different array literals pretend to be the abstraction | tech debt | MED | M | MED | `js/app.js:256-270,1689-1796,2953-2976`, `js/block-editor.js:83,331-340` | not yet planned (009 item 4 is adjacent) |
+| 14 | Review text interpolates imported names undelimited into a document written for an LLM | security (MED confidence) | LOW-MED | S | LOW | `js/review.js:149-201` | not yet planned |
+| 15 | `copyPrev` is the only mutating action with neither confirm nor undo snapshot | correctness (design call) | LOW-MED | S | LOW | `js/app.js:2906-2942` | maintainer decision |
+| 16 | 209 fixed sleeps (~86 s of the ~150 s suite), up from 205; `dismissSetup`/`answerDialog` multiply across sections | tests | MED | M | LOW-MED | `test/smoke.js` | 008 item 21 bullet 2 (open); 014 adds a ceiling |
+
+### 008 item 23 — status of the six features
+
+| Feature | Status | Evidence |
+|---|---|---|
+| Unit stamped per row | **DONE** | `js/app.js:424-435`, consumed in diagnostics and review |
+| Share-sheet export (`navigator.share`) | **DONE** | `js/app.js:1205-1215`, inside `downloadFile` |
+| Bodyweight / assisted exercises | open, not even the zero-weight message | `js/diagnostics.js:108,119,379` require `rowWeight(r) > 0`; only empty state is `:626` |
+| Equipment per profile | open | `js/app.js:356-389` all on global `state.prefs` |
+| Rep / e1RM PR badge | open | `js/app.js:2405` `isPr` compares weight only |
+| Visible "última copia" date | open — **and the premise was wrong**: `sessionsSinceBackup` is a counter, no timestamp is stored | `js/app.js:389,3664,3669` |
+
+### Direction — options for the maintainer (third audit)
+
+Grounded in the repo; effort estimates are coarse. Not ranked against bugs.
+
+- **A second RÉCORD on a new best estimated 1RM.** `isPr` rewards weight
+  alone (`js/app.js:2405`); `est1RM` already exists and is read in three
+  files. Double progression means most blocks are rep progress, so the badge
+  is silent for weeks. S. Trade-off: a badge that fires more often devalues
+  the weight one; cap at `EST_MAX_REPS` like diagnostics does or it will
+  celebrate a 20-rep back-off. Cleanest verification story of the four.
+- **Store and show the last backup date.** Needs a new `prefs.lastBackupTs`
+  written where `sessionsSinceBackup` resets (`js/app.js:3664`). S. Existing
+  users read "nunca" once; decide whether a restore counts (it should not).
+- **Equipment per profile.** Two people, one bar weight and plate set
+  (`js/app.js:356-389`). M. Cheaper variant: move only `barWeight`/`plates`/
+  `inc` and leave `units` global. Prefs travel in profile/QR payloads, so
+  `normalizeImportedProfile` must accept both shapes.
+- **Bodyweight / assisted exercises.** Seed plans list "o dominadas" as
+  alternatives the log cannot read. M-L, MED-HIGH risk (negative loads,
+  body weight changing over a block). Ship the S down-payment first: a
+  distinct empty state at `js/diagnostics.js:626` for "logged, all at zero".
+- **Close the review round-trip in the sheet.** `index.html:391` tells the
+  user to go paste the JSON in another sheet; a paste box wired to the
+  *existing* `applyImportedBlock` handler closes the loop. S. Deliberately
+  not the "app proposes the block itself" option recorded below as partly
+  contradicting a decision.
+- **Headless CI on `push` to `main`.** Direct pushes happen and the browser
+  suite is hook-bound; adding `push: branches: [main]` to the headless job
+  costs a duplicate run per merge (which `test.yml:6-8` avoids on purpose).
+  Maintainer call; recorded, not planned.
+
+### Third audit — considered and rejected
+
+- **Advisory watch for the vendored QR libs.** No manifest, so no ecosystem
+  audit tool will ever fire; a registry-polling CI step is the only option
+  and is more machinery than a pinned, hash-checked, single-purpose decoder
+  warrants. Keep the pin; re-check `jsqr` upstream when the vendor recipe
+  is next run.
+- **Removing the rest-timer/chart/QR stubs in `app.js`** now that `sw.js`
+  v55 serves the page from the precache. A precache hole is still reachable
+  (AGENTS.md says so; `sw.js:87` swallows per-URL failures). The honest gap
+  is that nothing tests them → plan 014 Step 3.
+- **`renderCache` never invalidated at render end.** Could not construct an
+  input where a stale cache returns a wrong answer; smell, not finding.
+- **`importIdMaps` plain-object maps with a raw `__proto__` id.** Rows are
+  misfiled, nothing throws, nothing escapes. Plan 010 rewrites the function
+  and can fold a `safeKey` in.
+- **`frame-ancestors` absent.** Ignored in a `<meta>` CSP; Pages sets no
+  headers. Platform constraint (already recorded below).
+- **Blanket same-origin `cacheFirst` in `sw.js` + `pages.yml` `path: "."`.**
+  Publishes `plans/`, `test/`, `.claude/settings.json`; all already public,
+  no secrets. Noise.
+- **Moving the QR wire-format assertions out of Chromium.** `qrPackFrames`
+  needs `CompressionStream`, which the vm context does not have, and the
+  unit shim must stay inert. Only `qrParseFrame` is movable; not worth it.
+- **`index.html`'s twelve dialog skeletons.** Consistent, already factored
+  through `openSheet`/`closeSheet`; templating buys nothing without a build.
+- **Structural duplication README ↔ AGENTS.md.** Looked for it; the README's
+  restatements are short and point at AGENTS.md. No finding.
+- Verified clean, stated so nobody re-audits: all 67 `innerHTML` sinks
+  outside `js/vendor/` escape or use `textContent`; zero `insertAdjacentHTML`/
+  `outerHTML`/`eval`/`new Function`; CSP exactly as documented and nothing
+  breaks under it; no `location.search`/`hash` reads; `notificationclick`
+  can only focus or open `./`; `blocks/index.json` entries are
+  filename-validated; CI permissions, SHA pins, `base_ref` via `env:` all
+  present; zero top-level name collisions across the thirteen scripts
+  (454 names diffed); no unreferenced top-level functions; no
+  read/write layout thrash on the tick path; no secrets; no
+  prompt-injection content.
+
+### Third audit — not audited
+
+`js/vendor/*.js` internals, `node_modules/`, the training methodology in
+the seed plans and target rules, visual design, and `.claude/worktrees/`
+(stale checkouts of merged branches). Performance magnitudes are derived
+from the code's own limits, not profiled on a device.
+
 ## Worth doing, not yet planned
 
 Verified findings that did not make the cut for a plan this round. Each is
 real and has `file:line` evidence; they were ranked below the seven above on
-leverage.
+leverage. **Superseded by 008 and then by the third audit above** — the
+"Vetted findings" table is the live list; this section is kept for history.
 
 **Correctness**
 
@@ -326,3 +489,16 @@ Recorded so they are not re-audited next run.
 - Visual and interaction design, and the training methodology encoded in the
   default plans and the weekly-target rules. Both are domain judgement, not
   code correctness.
+
+## Architecture review (2026-09-18)
+
+A third pass at commit `6def9fc`, using the `/codebase-design` vocabulary
+(deep vs. shallow modules, seams, locality, leverage) rather than a bug
+audit, is in [009-architecture-deepening.md](009-architecture-deepening.md).
+Seven ranked deepening candidates, one PR each: the sheet module (which also
+fixes Escape being dead on the diagnostics and review sheets), the three
+set-volume copies, two shell-list unit assertions, a log module owning the
+key shape, one write path for imported rows, one entry point per import
+shape, and a deferred `drawCard` residue. None moves a symbol out of
+`app.js`; plans/008 item 13's two split rules are respected throughout, and
+item 6 writes down the exception those rules already rely on.
