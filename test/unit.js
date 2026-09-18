@@ -1045,6 +1045,58 @@ ok('   two do not', call(brakeProbe)([60, 62, 55], 2) === false);
 ok('   and neither does a sequence that never really fell',
    call(brakeProbe)([60, 62, 62], 3) === false);
 
+/* ---- the trend term itself (plans/026) ----
+   The fifteen cases above cover the decisions and none of the arithmetic
+   that feeds them: at 4f7e037 the whole suite still passed with theilSen
+   stubbed to `return 0` and with MAX_SLOPE moved from 0,03 to 0,5. These
+   three assert on `g` — the expected gain, js/app.js's `t.g` — because a
+   third of a rep is what the trend is worth and Math.floor in repsAt eats
+   exactly that before it reaches the card. */
+
+/* T16 — a climb steeper than one rep a session: the trend is real and
+   MAX_SLOPE binds. Two reps a session at 40 kg is 2,67 of capacity per
+   session over a level of 57,33, i.e. 0,047 — clamped to 0,03. Every
+   session is uncensored (12 reps is neither past CENSOR_REPS nor at the
+   top of 6–15, and the chip is given), which `conf === 'alta'` witnesses. */
+t = target([
+  { sets: [[40, 4], [40, 4], [40, 4]], rir: '1' },
+  { sets: [[40, 6], [40, 6], [40, 6]], rir: '1' },
+  { sets: [[40, 8], [40, 8], [40, 8]], rir: '1' },
+  { sets: [[40, 10], [40, 10], [40, 10]], rir: '1' },
+  { sets: [[40, 12], [40, 12], [40, 12]], rir: '1' },
+], { range: '6–15', inc: 2.5, sets: 3, rirWeek: 1 });
+ok('T16 a steep climb reads as a trend and is clamped at MAX_SLOPE',
+   t && Math.abs(t.g - 0.03) < 1e-9, JSON.stringify(t));
+
+/* T17 — one rep a session is, by construction, exactly oneRep and tells
+   the trend term nothing: C = w(1 + (r + ρ)/30), so a rep a session is a
+   slope of w/30 and slope / level is 1 / (30 + r + ρ). This is why the
+   fifteen cases could not see theilSen at all. */
+t = target([
+  { sets: [[40, 6], [40, 6]], rir: '1' },
+  { sets: [[40, 7], [40, 7]], rir: '1' },
+  { sets: [[40, 8], [40, 8]], rir: '1' },
+  { sets: [[40, 9], [40, 9]], rir: '1' },
+  { sets: [[40, 10], [40, 10]], rir: '1' },
+], { range: '6–15', inc: 2.5, sets: 2, rirWeek: 1 });
+ok('T17 a one-rep-a-session climb is priced at exactly one more rep',
+   t && Math.abs(t.g - 1 / (30 + 10 + 1)) < 1e-9, JSON.stringify(t));
+
+/* T18 — a falling trend is discarded rather than extrapolated: the floor
+   is still one more rep. The last session recovers to 54,67 against a best
+   of 56, well inside DECLINE_DROP, so this is the trend arm and not the
+   hold arm — which would reach g = 0 by another route entirely. */
+t = target([
+  { sets: [[40, 12], [40, 12]], rir: '1' },
+  { sets: [[40, 11], [40, 11]], rir: '1' },
+  { sets: [[40, 10], [40, 10]], rir: '1' },
+  { sets: [[40, 9], [40, 9]], rir: '1' },
+  { sets: [[40, 10], [40, 10]], rir: '1' },
+], { range: '6–15', inc: 2.5, sets: 2, rirWeek: 1 });
+ok('T18 a falling trend never prices less than one more rep',
+   t && Math.abs(t.g - 1 / (30 + 10 + 1)) < 1e-9 && !t.notes.includes('hold'),
+   JSON.stringify(t));
+
 /* The pieces the cases above lean on, asserted on their own so a failure
    says which one moved. */
 ok('a censored session can never be read as a decline',
