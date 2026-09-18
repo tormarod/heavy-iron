@@ -47,8 +47,7 @@ identical to an oversight unless someone writes down which it is:
   read of the theme preference, not DOM wiring — but it is still in `SHELL`
   and still loaded by `test/unit.js`'s `loadApp()`, first, ahead of this list.
 - **A file other than `app.js` must keep all its DOM wiring inside its own
-  `wire*()` function**, called from `app.js`'s tail (at the foot of that
-  file — no line number here, it moves):
+  `wire*()` function**, called from `app.js`'s tail (at the foot of that file):
 
   ```js
   wireBlockEditor();
