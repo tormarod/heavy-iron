@@ -333,7 +333,19 @@ body {
 }
 .ex-est.up { color: var(--signal); }
 .ex-est.down { color: var(--amber); }
-.ex-est-l { display: block; }
+/* Inline so the confidence chip sits beside the numbers rather than under
+   them — "47,25×9 · 45×9  confianza media" reads as one sentence. */
+.ex-est-l { display: inline; }
+/* How hard to argue with the line, and nothing else: the rule does not
+   change with it. Only "alta" is coloured — a chip that shouts on every
+   card is a chip nobody reads. */
+.ex-est-c {
+  display: inline-block; margin-left: 6px; padding: 0 5px;
+  border: 1px solid var(--line); border-radius: 2px;
+  font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; color: var(--soft);
+  white-space: nowrap;
+}
+.ex-est-c.alta { color: var(--signal); border-color: var(--signal); }
 /* The second line always reads as the aside it is, whatever the verdict
    above it is coloured. */
 .ex-est-n { display: block; color: var(--soft); font-size: 10.5px; margin-top: 2px; }
@@ -359,6 +371,15 @@ body {
 }
 .deload-check.good { color: var(--signal); background: var(--signal-soft); }
 .deload-check.bad { color: var(--amber); background: var(--amber-soft); }
+
+/* ---- the global brake ----
+   Same box as the deload check, one notch louder: it is the only thing on
+   the screen that overrides every card's own answer. */
+.brake-note {
+  font-size: 11.5px; line-height: 1.45; color: var(--amber);
+  background: var(--amber-soft); border: 1px solid var(--line); border-radius: 2px;
+  padding: 8px 10px; margin: 0 0 10px;
+}
 
 /* ---- session note ---- */
 .ses-note { margin: 0 0 10px; }

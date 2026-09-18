@@ -808,134 +808,390 @@ ok('an upward trend with no signals reads as working as intended',
 ok('too few sessions is its own verdict',
    call('diagVerdict("none", {}).lectura') === 'Aún no hay suficientes sesiones');
 
-console.log('\n== objetivo: la tasa de progresión ==');
-/* The single-session cases live in smoke.js, next to the lines they draw.
-   What belongs here is the part of the rule that reads MORE than one
-   session: the effort-normalised targets and the progression rate the
-   block's own history at a weight sets. `weeks` is one array of reps per
-   logged week, all at `opts.w` (default 32) unless a set is given as
-   [weight, reps]; the target is asked for the week after the last one. */
-const estimateProbe = `
-  (function(weeks, opts) {
+console.log('\n== objetivo: los quince casos de la v3 ==');
+/* The fifteen cases the rule was specified against, in the order the spec
+   lists them. Every one of them reads MORE than one session — which is the
+   whole change from v2 — so they belong here rather than in smoke.js: a
+   browser adds nothing to arithmetic over six sessions, and these run on
+   every commit for free.
+
+   `sessions` is one entry per logged session, oldest first:
+   `{ sets: [[weight, reps], …], rir: '0'|'1'|'2+'|undefined, day }` where
+   `day` is days from an arbitrary Monday and defaults to one a week. The
+   target is asked for the week after the last one, at `day + 7`, unless
+   `opts.week` / `opts.now` say otherwise. */
+const targetProbe = `
+  (function (sessions, opts) {
     opts = opts || {};
+    const DAY = 86400000, T0 = Date.UTC(2026, 0, 5);
+    const week = opts.week || sessions.length + 1;
     const phase = {};
-    for (let i = 1; i <= weeks.length + 1; i++) {
-      phase[i] = { r: (opts.rirPlan && opts.rirPlan[i - 1] != null ? opts.rirPlan[i - 1] : 2) + ' RIR' };
-    }
-    const ex = { id: 'E', n: 'x', sets: opts.sets || weeks[0].length, reps: opts.range || '10–15', inc: opts.inc || 2 };
+    for (let i = 1; i <= week + 4; i++) phase[i] = { r: (opts.rirWeek != null ? opts.rirWeek : 2) + ' RIR' };
+    const ex = { id: 'E', n: 'x', sets: opts.sets || 3, reps: opts.range || '10–15', inc: opts.inc || 2.5 };
     if (opts.add) ex.add = opts.add;
-    const block = { id: 'B', name: 'B', weeks: 8, deload: 0, phase: phase, days: [{ id: 'D', name: 'D', ex: [ex] }] };
-    const profile = { log: { B: {} }, rir: { B: {} } };
-    weeks.forEach((sets, i) => {
-      profile.log.B['w' + (i + 1) + '-D'] = { E: sets.map(r => Array.isArray(r)
-        ? { w: String(r[0]), r: String(r[1]), done: true }
-        : { w: String(opts.w || 32), r: String(r), done: true }) };
-      if (opts.rir && opts.rir[i]) profile.rir.B['w' + (i + 1) + '-D'] = { E: opts.rir[i] };
+    if (opts.minRir) ex.minRir = opts.minRir;
+    const block = { id: 'B', name: 'B', weeks: 16, deload: opts.deload || 0, phase: phase,
+                    days: [{ id: 'D', name: 'D', ex: [ex] }] };
+    const profile = { log: { B: {} }, rir: { B: {} }, obj: {}, variants: {},
+                      blocks: { B: block }, blockOrder: ['B'] };
+    let lastDay = 0;
+    sessions.forEach(function (s, i) {
+      const d = s.day != null ? s.day : i * 7;
+      lastDay = d;
+      profile.log.B['w' + (i + 1) + '-D'] = { E: s.sets.map(function (p) {
+        return { w: String(p[0]), r: String(p[1]), done: true, ts: T0 + d * DAY };
+      }) };
+      if (s.rir) profile.rir.B['w' + (i + 1) + '-D'] = { E: s.rir };
     });
-    /* Same block/day/ex ids on every call, and no drawApp() between them
-       to reset the render cache — so reset it here or the second call
-       reads the first call's history. */
+    const now = T0 + (opts.now != null ? opts.now : lastDay + 7) * DAY;
+    /* Same block and exercise ids on every call and no draw in between, so
+       the history cache has to be dropped or the second call reads the
+       first call's log. */
     resetRenderCache();
-    const e = targetEstimate(profile, block, block.days[0], ex, weeks.length + 1);
-    return e && { kind: e.kind, note: e.note || '', stall: e.stall, weight: e.weight,
-                  reps: e.reps.join('/'), line: targetLine(e), notes: targetNotes(e).join(' | ') };
+    const t = targetFor(profile, block, block.days[0], ex, week, now, !!opts.brake);
+    if (!t) return null;
+    return {
+      kind: t.kind, conf: t.conf, dir: t.dir, notes: t.notes.join(','),
+      show: t.sets.map(function (x) {
+        return String(Math.round(x.w * 100) / 100).replace('.', ',') + '×' + x.r + x.move;
+      }).join(' · '),
+      line: targetLine(t), says: targetNotes(t).join(' | '),
+      phi: t.phi ? t.phi.map(function (v) { return v.toFixed(3); }).join(' ') : '',
+    };
   })
 `;
-const estimate = (weeks, opts) => call(estimateProbe)(weeks, opts);
-const flat = [12, 12, 10, 10];
+const target = (sessions, opts) => call(targetProbe)(sessions, opts);
 
-/* The effort-normalised line: the number on the line is the number the
-   note used to contradict. 12 at 0 RIR is 10 at 2 RIR; plus the week's
-   rep is 11, and that is what the line says. */
-let e = estimate([[15, 15, 12, 12]], { rir: ['0'] });
-ok('a set taken to failure is priced at this week\'s RIR on the line itself',
-   e.kind === 'hold' && e.reps === '14/14/11/11' && e.line.indexOf('→ objetivo: 32 kg') === 0, JSON.stringify(e));
-ok('and the note says the line already discounts it',
-   e.notes.includes('~10 y no 12') && e.notes.includes('ya lo descuenta'), e.notes);
-e = estimate([[11, 11, 10, 10]], { rirPlan: [3, 2] });
-ok('a week that prescribed more reserve than this one gives those reps back',
-   e.reps === '13/13/12/12', JSON.stringify(e));
-ok('and says where the extra reps come from', e.notes.includes('no de ganar fuerza'), e.notes);
-e = estimate([[11, 11, 10, 10]], { rirPlan: [3, 0] });
-ok('but never more than two reps over last week on one set', e.reps === '13/13/12/12', JSON.stringify(e));
-/* A middle set that did fewer reps than the last one did not have less in
-   it — the last set came after it. 14×15/11/12 at 0 RIR: set two is
-   floored at the last set's 12, so it reads 11 at 2 RIR, not 10. */
-e = estimate([[[14, 15], [14, 11], [14, 12]]], { rir: ['0'], w: 14, inc: 1 });
-ok('a middle set is never read as weaker than the set that came after it',
-   e.kind === 'hold' && e.reps === '14/11/11', JSON.stringify(e));
+/* T1 — the pec deck. The topped-out 39×15/15/15 cannot lower the level, so
+   the target is still priced off the 52×12 two sessions earlier; set 1
+   earned the next rung of a very coarse stack (39 → 45, `inc` 6) and sets
+   2 and 3 cannot reach the range there, so they stay and chase reps. */
+let t = target([
+  { sets: [[45, 15], [45, 12], [45, 10], [39, 12]], rir: '0' },
+  { sets: [[52, 12], [45, 12], [45, 10], [39, 12]], rir: '0' },
+  { sets: [[39, 15], [39, 15], [39, 15]], rir: '1' },
+], { range: '12–15', inc: 6, sets: 3, rirWeek: 1 });
+ok('T1 a topped-out session does not lower the level, and the stack is climbed by its own rungs',
+   t.show === '45×13↑ · 39×15 · 39×15' && t.conf === 'baja', JSON.stringify(t));
 
-/* The weight that cannot reach the range at this week's RIR — on MOST of
-   its sets. 12/11/10/10 at 0 RIR reads 10/9/8/8 at 2 RIR: three of four
-   under a 10–15 range, so the weight is the answer, priced so that every
-   set lands back inside the range and shown per set. */
-e = estimate([[12, 11, 10, 10]], { rir: ['0'] });
-ok('sets inside the range at 0 RIR that would mostly fall under it at 2 RIR mean the weight is too heavy',
-   e.kind === 'down' && e.note === 'predUnder' && e.weight === 30 && e.reps === '13/12/11/11', JSON.stringify(e));
-ok('and the note counts the sets that miss and prices each at this week\'s RIR',
-   e.notes.includes('3 de 4 series') && e.notes.includes('~10/9/8/8'), e.notes);
-e = estimate([[16, 16, 16, 16]], { rir: ['0'], range: '16–20', w: 12, inc: 1 });
-ok('past the Epley ceiling that case says sin estimar rather than guessing', e.kind === 'skip', JSON.stringify(e));
-/* The report that changed the rule: 45 × 12/10/9/8 at 0 RIR on 8–12, next
-   week at 2 RIR, used to come out as "42,75 × 8". Two sets short at the
-   prescription, two not, and the first set has the top of the range in it:
-   the weight is owned, the session fell away. Hold, clamp the short sets
-   at the bottom, and say where they will land. */
-e = estimate([[12, 10, 9, 8]], { rir: ['0'], w: 45, range: '8–12', inc: 0.25 });
-ok('half the sets short at the prescription is pacing, not load: the weight holds',
-   e.kind === 'hold' && e.weight === 45 && e.reps === '11/9/8/8', JSON.stringify(e));
-ok('and the short sets are named with the RIR they will land at',
-   e.notes.includes('las series 3 y 4 no llegan a 8') && e.notes.includes('~1 y ~0 RIR') &&
-   !e.notes.includes('No es retroceso'), e.notes);
-e = estimate([[12, 8, 8, 8]], { rir: ['0'], w: 45, range: '8–12', inc: 0.25 });
-ok('but three of four sets short is the weight, and the line shows every set at the lighter one',
-   e.kind === 'down' && e.weight === 42.75 && e.reps === '12/8/8/8', JSON.stringify(e));
-/* An actual set under the range keeps its case, and now shows the sets —
-   priced at the weight the step grid allows, which is a shade under the
-   exact one, so the reps come out a shade over the bottom. */
-e = estimate([[12, 10, 9, 8]], { rir: ['0'] });
-ok('a set under the range prices every set at the weight that puts the last one back at the bottom',
-   e.kind === 'down' && e.note === '' && e.weight === 28 && e.reps === '15/13/12/11', JSON.stringify(e));
+/* T2 — the one v2 froze solid: every set at the top of the range with the
+   last one at 0 RIR was a veto, so 25 kg never moved again. There is no
+   veto now; the RIR is already inside the capacity the step is priced on. */
+const contractora = [
+  { sets: [[25, 15], [25, 15], [25, 15], [25, 15]], rir: '1' },
+  { sets: [[25, 20], [25, 20], [25, 20]], rir: '0' },
+];
+t = target(contractora, { range: '15–20', inc: 1, sets: 3, rirWeek: 1 });
+ok('T2 the top of the range at 0 RIR no longer freezes the exercise',
+   t.show === '26×17↑ · 26×17↑ · 26×17↑' && t.conf === 'baja' && t.notes.includes('moreRir'), JSON.stringify(t));
+ok('   and the line reads the way the spec writes it',
+   t.line === '↗ objetivo: 26×17 · 26×17 · 26×17', t.line);
+ok('   with the RIR the week asks for said out loud',
+   t.says.includes('Esta semana pide más RIR'), t.says);
 
-/* The progression rate. */
-e = estimate([flat, [13, 13, 11, 11]]);
-ok('a session that gained reps keeps the full rate: one more on every set',
-   e.stall === 0 && e.reps === '14/14/12/12', JSON.stringify(e));
-e = estimate([flat, flat]);
-ok('one flat session is noise — the full rate holds through it',
-   e.stall === 1 && e.reps === '13/13/11/11' && e.note === '', JSON.stringify(e));
-e = estimate([flat, flat, flat]);
-ok('two flat sessions shrink the ask to one rep in total, on the first set with room',
-   e.stall === 2 && e.note === 'stallOne' && e.reps === '13/12/10/10', JSON.stringify(e));
-ok('and say so', e.notes.includes('2 sesiones sin sumar reps a 32 kg'), e.notes);
-e = estimate([flat, flat, flat, flat]);
-ok('three flat sessions reset: one step down, the reps rebuilt off the same e1RM',
-   e.kind === 'down' && e.note === 'reset' && e.stall === 3 && e.weight === 30 && e.reps === '15/15/13/13', JSON.stringify(e));
-ok('and the line points down with the reset named', e.line.indexOf('↘ objetivo: 30 kg') === 0 && e.notes.includes('reinicio'), JSON.stringify(e));
-e = estimate([flat, flat, flat, flat], { rirPlan: [3, 2, 2, 1, 1] });
-ok('holding the reps while the plan turns the RIR down is a stall, not a hold',
-   e.note === 'reset', JSON.stringify(e));
-e = estimate([[10, 10, 10, 10], [10, 10, 10, 10], [10, 10, 10, 10], [11, 11, 10, 10]]);
-ok('one rep gained anywhere ends the streak', e.stall === 0 && e.reps === '12/12/11/11', JSON.stringify(e));
-e = estimate([[[30, 14], [30, 14], [30, 12], [30, 12]], flat, flat, flat]);
-ok('a session at another weight ends the walk — the streak is this weight\'s own',
-   e.stall === 2 && e.note === 'stallOne', JSON.stringify(e));
-e = estimate([flat, flat, flat, flat, [[30, 15], [30, 15], [30, 13], [30, 13]]]);
-ok('so the week after a reset starts a fresh run at the lighter weight',
-   e.kind === 'hold' && e.stall === 0 && e.reps === '15/15/14/14', JSON.stringify(e));
-const long = [18, 17, 16, 16];
-e = estimate([long, long, long, long], { range: '12–20', w: 12, inc: 1 });
-ok('past the Epley ceiling a stall cannot be priced, so it is said in words instead',
-   e.kind === 'hold' && e.note === 'stallLong' && e.reps === '19/17/16/16', JSON.stringify(e));
+/* T3/T4/T9 — the chest press, with a back-off week, a twenty-day layoff and
+   the set `ex.add` brings in at week 5. */
+const chest = [
+  { sets: [[42.75, 11], [42.75, 10], [42.75, 9], [42.75, 8]], rir: '0', day: 0 },
+  { sets: [[45, 11], [45, 10], [45, 9], [45, 8]], rir: '0', day: 7 },
+  { sets: [[45, 12], [45, 10], [45, 9], [45, 8]], rir: '0', day: 14 },
+];
+const chestOpts = { range: '8–12', inc: 2.25, sets: 4, add: 5, rirWeek: 1 };
+t = target(chest, Object.assign({ now: 34 }, chestOpts));
+ok('T3 twenty days off repeats the last session rather than discounting it',
+   t.kind === 'vuelta' && t.show === '45×12 · 45×10 · 45×9 · 45×8', JSON.stringify(t));
+ok('   and says why', t.says.includes('Vuelta de parón'), t.says);
 
-/* The sets the plan asks for this week, not the sets logged last time. */
-e = estimate([[15, 15, 12, 12]], { rir: ['2+'], add: 2 });
-ok('a set the plan adds this week gets the tail of the observed decay',
-   e.reps === '15/15/13/13/12' && e.notes.includes('la serie 5 no tiene referencia'), JSON.stringify(e));
-e = estimate([flat, flat, flat, flat], { add: 5 });
-ok('and a reset prices the added set too', e.note === 'reset' && e.reps === '15/15/13/13/12', JSON.stringify(e));
-e = estimate([[15, 15, 15, 15]], { rir: ['2+'], add: 2 });
-ok('a jump prices one number for every set and does not extend', e.kind === 'up' && e.reps === '12', JSON.stringify(e));
+const chest4 = chest.concat([{ sets: [[45, 12], [45, 10], [45, 9], [45, 8]], rir: '0', day: 34 }]);
+t = target(chest4, Object.assign({ now: 41 }, chestOpts));
+ok('T4 five sets, one up, one down, and the added set priced off the decay',
+   t.show === '47,25×9↑ · 45×9 · 45×8 · 42,75×9↓ · 42,75×8' && t.conf === 'media', JSON.stringify(t));
+ok('   the line is the one the spec prints',
+   t.line === '↗ objetivo: 47,25×9 · 45×9 · 45×8 · 42,75×9 · 42,75×8', t.line);
+/* The number the spec states for this exercise, and the one thing in the
+   rule that is measured rather than assumed. */
+ok('   and the decay profile is 1 · 0,952 · 0,929 · 0,904',
+   t.phi.indexOf('1.000 0.952 0.929 0.905') === 0, t.phi);
+/* 45 × 0,6 is 27, and the 2,25 ladder from 45 lands on it exactly. */
+t = target(chest4, Object.assign({ now: 41, week: 8, deload: 8 }, chestOpts));
+ok('T9 a deload is half the sets at the bottom of the range, on the first rung under 60 %',
+   t.kind === 'descarga' && t.show === '27×8 · 27×8 · 27×8', JSON.stringify(t));
+
+/* T5 — the shoulder press, where the stack the log knows about (18 and 23)
+   must not be read as "the next rung after 18 is 23": 23 is more than one
+   and a half steps away, so the micro-plate wins. */
+t = target([
+  { sets: [[18, 12], [18, 12], [18, 12], [18, 11]], rir: '0' },
+  { sets: [[23, 10], [23, 9], [18, 10], [18, 10]], rir: '0' },
+  { sets: [[18, 12], [18, 12], [18, 12]], rir: '2+' },
+], { range: '8–12', inc: 1, sets: 3, rirWeek: 1 });
+ok('T5 the next rung is the micro-step, not the far heavier weight also in the history',
+   t.show === '19×10↑ · 19×10↑ · 19×10↑' && t.conf === 'baja', JSON.stringify(t));
+
+/* T6 — the session that named the v2 rule, and the clearest case for
+   deciding per set: 32×15/15/12/12 was "mantener" as one weight, and is
+   two sets up and two sets chasing reps as four. */
+t = target([
+  { sets: [[32, 10], [27, 10], [27, 10], [27, 10]], rir: '1' },
+  { sets: [[32, 15], [32, 15], [32, 12], [32, 12]], rir: '1' },
+], { range: '10–15', inc: 2.25, sets: 4, rirWeek: 2 });
+ok('T6 the two sets that reached the top go up; the two that did not keep the weight',
+   t.show === '34,25×10↑ · 34,25×10↑ · 32×11 · 32×11' && t.conf === 'baja', JSON.stringify(t));
+
+/* T7 — the slack. Set 1 prices out at 11 reps on a 12–15 range, one under
+   the bottom; the base it was read off is a floor (the set ended at the
+   top), so one rep of slack lets it move. Without it the exercise is
+   frozen exactly the way the old RIR-0 veto froze T2. */
+t = target([
+  { sets: [[27, 12], [27, 12], [27, 12], [27, 12]], rir: '0' },
+  { sets: [[27, 15], [27, 15], [27, 13], [27, 12]], rir: '0' },
+  { sets: [[27, 15], [27, 15], [27, 13]], rir: '1' },
+], { range: '12–15', inc: 2.25, sets: 3, rirWeek: 1 });
+ok('T7 one rep of slack on a censored base is what stops a topped-out set freezing',
+   t.show === '29,25×12↑ · 29,25×12↑ · 27×15' && t.conf === 'baja', JSON.stringify(t));
+
+/* T8 — a light exercise with no `inc` of its own: the default 2,5 step is
+   a third of the weight, so nothing can go up and the answer is to say so
+   rather than to prescribe a jump nobody can make. */
+t = target([
+  { sets: [[6.8, 20], [6.8, 20], [6.8, 18], [6.8, 16]], rir: '1' },
+  { sets: [[6.8, 20], [6.8, 20], [6.8, 20], [6.8, 20]], rir: '1' },
+  { sets: [[6.8, 20], [6.8, 20], [6.8, 20], [6.8, 20]], rir: '1' },
+  { sets: [[6.8, 20], [6.8, 20], [6.8, 20], [6.8, 20]], rir: '1' },
+], { range: '12–20', inc: 2.5, sets: 4, rirWeek: 1 });
+ok('T8 a step too big for the range holds the weight and names the step',
+   t.show === '6,8×20 · 6,8×20 · 6,8×20 · 6,8×20' && t.notes.includes('step'), JSON.stringify(t));
+ok('   and the note gives the weight that would not fit',
+   t.says.includes('9,3 kg') && t.says.includes('micro-carga'), t.says);
+
+/* T10 — the same history as T2 with the brake on: nothing goes up and the
+   expected gain is zero, so every set repeats what it already did. */
+t = target(contractora, { range: '15–20', inc: 1, sets: 3, rirWeek: 1, brake: true });
+ok('T10 the global brake stops every rise, including the ones already earned',
+   t.show === '25×19 · 25×19 · 25×19' && t.conf === 'baja', JSON.stringify(t));
+
+/* T11/T12 — one bad session is a bad session; two in a row is the level. */
+const declining = [
+  { sets: [[40, 10], [40, 9], [40, 8]], rir: '1' },
+  { sets: [[40, 11], [40, 10], [40, 9]], rir: '1' },
+  { sets: [[40, 8], [40, 8], [40, 7]], rir: '1' },
+];
+t = target(declining, { range: '8–12', inc: 2.5, sets: 3, rirWeek: 1 });
+ok('T11 the first session under the level holds the weight without lowering it',
+   t.show === '40×11 · 40×10 · 40×8' && t.conf === 'media' && t.notes.includes('hold'), JSON.stringify(t));
+ok('   and says it is one session, not a verdict',
+   t.says.includes('hoy no sube la carga'), t.says);
+t = target(declining.concat([{ sets: [[40, 8], [40, 7], [40, 7]], rir: '1' }]),
+           { range: '8–12', inc: 2.5, sets: 3, rirWeek: 1 });
+ok('T12 the second one in a row moves the level down with it',
+   t.show === '40×9 · 40×8 · 37,5×10↓' && t.conf === 'alta' && t.notes.includes('confirmed'), JSON.stringify(t));
+ok('   and says the objetivo came down too',
+   t.says.includes('el objetivo baja contigo'), t.says);
+
+/* T13 — no chip anywhere. Every session is read as a floor, which is why
+   the confidence is low and why the estimate stays on the safe side. */
+t = target([
+  { sets: [[50, 10], [50, 9], [50, 8]] },
+  { sets: [[50, 11], [50, 10], [50, 9]] },
+], { range: '8–12', inc: 2.5, sets: 3, rirWeek: 2 });
+ok('T13 with no RIR marked every session is a minimum and the confidence says so',
+   t.show === '50×10 · 50×8 · 47,5×10↓' && t.conf === 'baja' && t.notes.includes('moreRir'), JSON.stringify(t));
+
+/* T14 */
+ok('T14 no history at all is no line, not a guess',
+   target([], { range: '8–12', inc: 2.5, sets: 3, rirWeek: 1 }) === null);
+
+/* T15 — the brake itself. Three exercises whose latest session is a real
+   decline inside the last seven days; two is not enough. */
+const brakeProbe = `
+  (function (caps, nEx) {
+    const DAY = 86400000, T0 = Date.UTC(2026, 0, 5);
+    const phase = {}; for (let i = 1; i <= 8; i++) phase[i] = { r: '2 RIR' };
+    const ex = [];
+    for (let e = 0; e < nEx; e++) ex.push({ id: 'E' + e, n: 'x' + e, sets: 3, reps: '8–20', inc: 2.5 });
+    const block = { id: 'B', name: 'B', weeks: 8, deload: 0, phase: phase, days: [{ id: 'D', name: 'D', ex: ex }] };
+    const profile = { log: { B: {} }, rir: { B: {} }, obj: {}, variants: {}, blocks: { B: block }, blockOrder: ['B'] };
+    caps.forEach(function (C, i) {
+      const rows = {};
+      /* 10 reps at 1 RIR, so the set is neither past CENSOR_REPS nor at the
+         top of the range: the weight is whatever makes the capacity C. */
+      ex.forEach(function (e) {
+        rows[e.id] = [{ w: String(C * 30 / 41), r: '10', done: true, ts: T0 + i * 3 * DAY }];
+      });
+      profile.log.B['w' + (i + 1) + '-D'] = rows;
+      profile.rir.B['w' + (i + 1) + '-D'] = ex.reduce(function (o, e) { o[e.id] = '1'; return o; }, {});
+    });
+    resetRenderCache();
+    return brakeOn(profile, block, caps.length + 1, T0 + (caps.length * 3 + 2) * DAY);
+  })
+`;
+ok('T15 three exercises declining inside a week turn the brake on',
+   call(brakeProbe)([60, 62, 55], 3) === true);
+ok('   two do not', call(brakeProbe)([60, 62, 55], 2) === false);
+ok('   and neither does a sequence that never really fell',
+   call(brakeProbe)([60, 62, 62], 3) === false);
+
+/* The pieces the cases above lean on, asserted on their own so a failure
+   says which one moved. */
+ok('a censored session can never be read as a decline',
+   call('declineAt([{C:60,cens:false},{C:62,cens:false},{C:50,cens:true}], 2)') === false);
+ok('repsAt lands on the integer it should: 63 over 47,25 is 9 reps, not 8',
+   call('repsAt(47.25, 63, 1)') === 9);
+ok('the load ladder climbs by the rungs the log knows and falls back to the step',
+   call('nextLoad([18, 23], 18, 1)') === 19 && call('nextLoad([39, 45, 52], 39, 6)') === 45 &&
+   call('prevLoad([42.75, 45], 45, 2.25)') === 42.75);
+
+console.log('\n== el objetivo guardado, las variantes y minRir ==');
+
+/* `ex.minRir` is the reserve a lift never goes under, whatever the phase
+   text asks for — and it can only ever make the target easier, which is
+   the direction it exists to be wrong in. */
+let a = target([{ sets: [[40, 10], [40, 9], [40, 8]], rir: '1' },
+                { sets: [[40, 11], [40, 10], [40, 9]], rir: '1' }],
+               { range: '8–12', inc: 2.5, sets: 3, rirWeek: 0 });
+let b = target([{ sets: [[40, 10], [40, 9], [40, 8]], rir: '1' },
+                { sets: [[40, 11], [40, 10], [40, 9]], rir: '1' }],
+               { range: '8–12', inc: 2.5, sets: 3, rirWeek: 0, minRir: 2 });
+ok('minRir floors the week\'s RIR, so the target asks for fewer reps, never more',
+   a.show !== b.show && b.notes.includes('moreRir'), a.show + '  vs  ' + b.show);
+ok('and a block imported with minRir keeps it',
+   call(`normalizeImportedBlock({ name: 'B', days: [{ ex: [{ n: 'x', reps: '8-12', minRir: 1 }] }] }).days[0].ex[0].minRir`) === 1);
+ok('while a nonsense one is dropped rather than rejecting the block',
+   call(`'minRir' in normalizeImportedBlock({ name: 'B', days: [{ ex: [{ n: 'x', reps: '8-12', minRir: 'mucho' }] }] }).days[0].ex[0]`) === false);
+
+/* A deload halves the week the plan actually asks for, `ex.add` included:
+   the target line prices ceil(n/2) sets and the card has to draw the same
+   number of rows or the two contradict each other on screen. */
+ok('setsFor halves the added set too on a deload week',
+   call(`setsFor({ sets: 4, add: 5 }, 8, { deload: 8, weeks: 8, phase: {} })`) === 3);
+ok('and a hand-written "Descarga" phase halves its week as well',
+   call(`setsFor({ sets: 4 }, 3, { deload: 0, weeks: 8, phase: { 3: { r: 'Descarga' } } })`) === 2 &&
+   call(`deloadAt({ deload: 0, weeks: 8, phase: { 3: { r: 'Descarga' } } }, 3)`) === true);
+
+/* The objetivo that was shown is written once and never rewritten: the
+   record is what was ASKED for, so a weight that came down mid-session has
+   something to be compared against. */
+const objRecord = call(`
+  (function () {
+    const p = { obj: {} };
+    const t = { conf: 'media', sets: [{ w: 45, r: 9, move: '\\u2191' }, { w: 42.75, r: 8, move: '' }] };
+    const first = recordTarget(p, 'B', 3, 'D', 'E', t);
+    const again = recordTarget(p, 'B', 3, 'D', 'E', { conf: 'alta', sets: [{ w: 99, r: 1, move: '' }] });
+    const rec = p.obj.B['w3-D'].E;
+    return { first: first, again: again, v: rec.v, conf: rec.conf, w: rec.sets[0].w, m: rec.sets[0].m, n: rec.sets.length };
+  })()
+`);
+ok('the target shown is recorded once, with its moves and its confidence',
+   objRecord.first === true && objRecord.v === 3 && objRecord.conf === 'media' &&
+   objRecord.w === 45 && objRecord.m === '↑' && objRecord.n === 2, JSON.stringify(objRecord));
+ok('and a second draw of the same session does not overwrite it',
+   objRecord.again === false, JSON.stringify(objRecord));
+
+/* A rename is the only evidence there is that the lift changed, because the
+   log never stored the name a session was done under. */
+const variants = call(`
+  (function () {
+    const p = { variants: {} };
+    recordVariant(p, 'lat1', 'Elevaciones laterales en polea', 'Elevaciones en Y en polea cruzada', Date.UTC(2026, 5, 1));
+    recordVariant(p, 'lat1', 'Elevaciones en Y en polea cruzada', 'Pájaros en polea', Date.UTC(2026, 7, 3));
+    recordVariant(p, 'lat1', 'Pájaros en polea', 'Pájaros en polea', Date.UTC(2026, 8, 9));
+    return { list: p.variants.lat1, since: variantSince(p, 'lat1') };
+  })()
+`);
+ok('the first rename records the name that was running before it, undated',
+   variants.list.length === 3 && variants.list[0].since === '1970-01-01', JSON.stringify(variants.list));
+ok('every rename after it carries the day it happened',
+   variants.list[1].since === '2026-06-01' && variants.list[2].since === '2026-08-03', JSON.stringify(variants.list));
+ok('a save that changed no name records nothing', variants.list.length === 3, JSON.stringify(variants.list));
+ok('and the cut is the last one', variants.since === Date.parse('2026-08-03T00:00:00Z'), String(variants.since));
+
+/* What the cut is FOR: the loads before a rename belong to another lift. */
+const cutHistory = call(`
+  (function () {
+    const DAY = 86400000, T0 = Date.UTC(2026, 0, 5);
+    const phase = {}; for (let i = 1; i <= 6; i++) phase[i] = { r: '1 RIR' };
+    const ex = { id: 'E', n: 'x', sets: 3, reps: '8–12', inc: 2.5 };
+    const block = { id: 'B', name: 'B', weeks: 8, deload: 0, phase: phase, days: [{ id: 'D', name: 'D', ex: [ex] }] };
+    const p = { log: { B: {} }, rir: { B: {} }, obj: {}, variants: {}, blocks: { B: block }, blockOrder: ['B'] };
+    [0, 7, 14].forEach(function (d, i) {
+      p.log.B['w' + (i + 1) + '-D'] = { E: [{ w: '40', r: '10', done: true, ts: T0 + d * DAY }] };
+      p.rir.B['w' + (i + 1) + '-D'] = { E: '1' };
+    });
+    resetRenderCache();
+    const before = exHistory(p, block, ex, 'D', 4).length;
+    p.variants.E = [{ n: 'viejo', since: '1970-01-01' }, { n: 'nuevo', since: '2026-01-15' }];
+    resetRenderCache();
+    return { before: before, after: exHistory(p, block, ex, 'D', 4).length };
+  })()
+`);
+ok('a variant change cuts the sessions logged before it out of the history',
+   cutHistory.before === 3 && cutHistory.after === 1, JSON.stringify(cutHistory));
+
+/* Both records are profile data, so both have to survive the three routes
+   that carry a profile: "Cargar copia", "Importar perfil" and the QR. */
+const recordsRoundTrip = call(`
+  (function () {
+    state = defaultState(); migrate();
+    const p = JSON.parse(JSON.stringify(state.profiles.hombre));
+    p.log['block-1'] = { 'w1-d0': { chestpress: [{ w: '60', r: '10', done: true }] } };
+    p.obj = { 'block-1': { 'w1-d0': { chestpress: { v: 3, at: 123, conf: 'alta', sets: [{ w: 60, r: 10, m: '\\u2191' }] } } } };
+    p.variants = { chestpress: [{ n: 'Press viejo', since: '1970-01-01' }, { n: 'Press nuevo', since: '2026-03-04' }],
+                   bogus: [{ n: 'x', since: 'cuando sea' }] };
+    const after = normalizeImportedProfile(JSON.parse(JSON.stringify(p)));
+    const rec = after.obj['block-1'] && after.obj['block-1']['w1-d0'] && after.obj['block-1']['w1-d0'].chestpress;
+    return { conf: rec && rec.conf, w: rec && rec.sets[0].w, m: rec && rec.sets[0].m,
+             variant: after.variants.chestpress && after.variants.chestpress.length,
+             since: after.variants.chestpress && after.variants.chestpress[1].since,
+             bogus: !!after.variants.bogus };
+  })()
+`);
+ok('a restored profile keeps the objetivo it was shown',
+   recordsRoundTrip.conf === 'alta' && recordsRoundTrip.w === 60 && recordsRoundTrip.m === '↑', JSON.stringify(recordsRoundTrip));
+ok('and its variant history, with an undatable entry dropped rather than guessed at',
+   recordsRoundTrip.variant === 2 && recordsRoundTrip.since === '2026-03-04' && recordsRoundTrip.bogus === false,
+   JSON.stringify(recordsRoundTrip));
+
+/* Every backup written before v3 has neither map. */
+ok('a profile that carries neither map migrates to empty ones rather than throwing',
+   call(`
+     (function () {
+       state = defaultState();
+       delete state.profiles.hombre.obj; delete state.profiles.hombre.variants;
+       migrate();
+       const p = state.profiles.hombre;
+       return typeof p.obj === 'object' && typeof p.variants === 'object';
+     })()
+   `) === true);
+ok('and a profile file with neither restores the same way',
+   call(`
+     (function () {
+       state = defaultState(); migrate();
+       const p = JSON.parse(JSON.stringify(state.profiles.hombre));
+       delete p.obj; delete p.variants;
+       const after = normalizeImportedProfile(p);
+       return typeof after.variants === 'object' && !Object.keys(after.variants).length;
+     })()
+   `) === true);
+
+/* The one-off for the three lateral-raise slots: the names are recorded,
+   and the date is the oldest session there is, so nothing is cut. */
+const latSeed = call(`
+  (function () {
+    state = defaultState(); migrate();
+    const p = state.profiles.hombre;
+    const day = p.blocks['block-1'].days[0];
+    const lat = day.ex.find(function (e) { return e.id === 'lat1'; });
+    lat.n = 'Elevaciones en Y en polea cruzada';
+    p.log['block-1'] = { 'w1-d0': { lat1: [{ w: '6.8', r: '20', done: true, ts: Date.UTC(2026, 2, 2) }] } };
+    delete p.variants.lat1;
+    migrate();
+    return p.variants.lat1;
+  })()
+`);
+ok('the lateral-raise rename is seeded with both names',
+   latSeed.length === 2 && latSeed[0].n === 'Elevaciones laterales en polea', JSON.stringify(latSeed));
+ok('dated at the oldest session it has, so it cuts nothing',
+   latSeed[1].since === '2026-03-02', JSON.stringify(latSeed));
 
 console.log('\n== __proto__ / constructor / prototype ids are never trusted as keys (plans/008 item 2) ==');
 ok('safeKey blocks __proto__', call("safeKey('__proto__')") === '');

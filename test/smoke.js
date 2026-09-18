@@ -1254,8 +1254,9 @@ const ok = (name, cond, extra) => {
     r = await storedRow();
     ok('the last drop leaving takes its kind with it', r.d === undefined && r.dk === undefined, JSON.stringify(r));
 
-    /* Double progression: a week at the top of the range normally earns the
-       increment, and a set the weight had to come off to finish does not. */
+    /* Double progression: a week at the top of the range earns the next
+       rung, and the sets the weight had to come off in are simply not
+       working sets — they never reach the estimate to be vetoed. */
     const seed = forced => page.evaluate(f => {
       const p = state.profiles.hombre, bl = p.blocks['block-1'];
       const ex = bl.days[0].ex[0];
@@ -1275,21 +1276,31 @@ const ok = (name, cond, extra) => {
     /* The rest timer the tick above started sits over the footer buttons. */
     if (await page.locator('#timer.up').count()) await page.click('#tskip');
 
+    const filled = () => page.waitForFunction(() =>
+      (document.getElementById('status').textContent || '').includes('Objetivo escrito'));
+
     await seed(false);
     await page.click('#copyPrev');
-    await page.waitForTimeout(300);
-    /* 60×10 at the top of a 6–10 range, logged at the week's prescribed
-       3 RIR, prices out at ~67,9 and rounds to 67,5 — and the predicted 6,2
-       reps there still lands inside the range, so it stands. The button
-       used to add exactly one increment (62,5) no matter what the set
-       cost; it now calls the same estimate the session line shows. */
-    ok('top of range levels up by what the set paid for (60 → 67.5)', await week2First() === '67.5', await week2First());
+    await filled();
+    /* One session, 60×10 at the top of a 6–10 range and no RIR chip: that
+       is a FLOOR under what the set was worth, not a reading of it, so it
+       can raise the level and nothing more. 60 is also the only weight
+       this exercise has ever been logged at, so the ladder has one rung
+       and `ex.inc` has to supply the next. */
+    ok('top of the range earns the next rung of the stack (60 → 62,5)',
+       await week2First() === '62,5', await week2First());
 
     await seed(true);
     await page.click('#copyPrev');
-    await page.waitForTimeout(300);
-    ok('a forced drop holds the increment back', await week2First() === '60', await week2First());
-    ok('and says why', /bajar peso/.test(await page.textContent('#status')), await page.textContent('#status'));
+    await filled();
+    /* A set the weight had to come off to finish used to veto the rise
+       outright. It no longer does, and nothing is lost: the reps done at
+       60 are what the level is read from and the stripped ones were never
+       working sets to begin with. What a forced drop still does is flag
+       the session in the Diagnóstico, which is where "why did this
+       happen" belongs. */
+    ok('a forced drop no longer vetoes the rise — only the sets that happened count',
+       await week2First() === '62,5', await week2First());
 
     await page.evaluate(() => {
       const p = state.profiles.hombre;
@@ -1299,8 +1310,8 @@ const ok = (name, cond, extra) => {
       save(); render();
     });
     await page.click('#copyPrev');
-    await page.waitForTimeout(300);
-    ok('a planned dropset does not hold it back', await week2First() === '67.5', await week2First());
+    await filled();
+    ok('and a planned dropset never did', await week2First() === '62,5', await week2First());
 
     await page.evaluate(() => {
       const p = state.profiles.hombre;
@@ -1587,177 +1598,126 @@ const ok = (name, cond, extra) => {
     await dismissSetup(page);
     await page.waitForTimeout(400);
 
-    /* The spec's own table, in the app. Base: 32 kg, range 10–15,
-       rirThis = 2, inc = 2 — every case is a different verdict or a
-       different reason, which is the point of having three of them. */
-    const target = (sets, rir, inc) => page.evaluate(([sets, rir, inc]) => {
-      const block = { id: 'B', name: 'B', weeks: 8, deload: 0,
-        phase: { 1: { r: '2 RIR' }, 2: { r: '2 RIR' } },
-        days: [{ id: 'D', name: 'D', ex: [{ id: 'E', n: 'x', sets: sets.length, reps: '10–15', inc: inc }] }] };
-      const profile = { log: { B: { 'w1-D': { E: sets.map(r => ({ w: '32', r: String(r), done: true })) } } },
-        rir: rir ? { B: { 'w1-D': { E: rir } } } : {} };
-      /* This helper builds a fresh synthetic profile every call but reuses
-         the same block/day/ex ids, so the render-scoped cache (keyed on
-         those ids, not the profile) would otherwise serve the first call's
-         stale answer to every call after it — there is no real drawApp()
-         render in between to reset it for us. */
-      resetRenderCache();
-      const e = targetEstimate(profile, block, block.days[0], block.days[0].ex[0], 2);
-      return { kind: e && e.kind, line: e ? targetLine(e) : null, note: e ? targetNotes(e).join(' | ') : '' };
-    }, [sets, rir, inc]);
+    /* The arithmetic itself is asserted in test/unit.js — the fifteen cases
+       the rule was specified against, all of which read several sessions and
+       none of which a browser can see anything extra about. What is left
+       here is the part only a browser can answer: that the line reaches the
+       card, that the confidence chip and the notes come with it, and that
+       the greyed placeholder in every weight box carries the same number the
+       line shows — which is the contract that makes ticking a set without
+       typing safe.
 
-    /* Case 1 — the report that started this. Two sets of 15 already owned,
-       so the answer is one more rep per set at the same weight, NOT a jump
-       that restarts him at the bottom of a range he never finished. */
-    let t = await target([15, 15, 12, 12], '2+', 2);
-    ok('reps short of the top hold the weight and chase a rep per set',
-       t.kind === 'hold' && t.line === '↗ objetivo: 32 kg × 15/15/13/13', JSON.stringify(t));
-    ok('and with the RIR it was logged at, there is nothing to warn about', t.note === '', t.note);
+       The history is the spec's own chest-press case: three sessions, the
+       last one ending at the top of the range, so set 1 earns the next rung
+       and set 4 comes down one. */
+    /* localStorage is written behind the app's back here, so the app's own
+       debounced save has to have drained first or it lands on top of the
+       seed — the same wait "primera semana de un bloque nuevo" documents. */
+    const seedChest = () => page.waitForFunction(() => !saveT && !held).then(() => page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      const p = s.profiles.hombre;
+      const DAY = 86400000, start = Date.now() - 21 * DAY;
+      const ex = p.blocks['block-1'].days[0].ex[0];   /* chestpress */
+      ex.reps = '8–12'; ex.inc = 2.25; ex.sets = 4; delete ex.add;
+      p.log['block-1'] = {}; p.rir['block-1'] = {};
+      [[42.75, [11, 10, 9, 8]], [45, [11, 10, 9, 8]], [45, [12, 10, 9, 8]]].forEach((wk, i) => {
+        p.log['block-1']['w' + (i + 1) + '-d0'] = {
+          chestpress: wk[1].map(r => ({ w: String(wk[0]), r: String(r), done: true, ts: start + i * 7 * DAY })),
+        };
+        p.rir['block-1']['w' + (i + 1) + '-d0'] = { chestpress: '0' };
+      });
+      p.week = 4; p.day = 0;
+      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+    }));
+    await seedChest();
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForSelector('.ex .ex-est-l');
 
-    /* The same sets at a harder RIR mean less capacity, so this week's
-       prescription will produce fewer reps — which is not a loss. The line
-       prices that in rather than asking for a rep on top of a number the
-       note underneath then takes back: 12 at 1 RIR is 11 at 2, plus the
-       week's rep is 12 again. */
-    t = await target([15, 15, 12, 12], '1', 2);
-    ok('a harder last set holds the weight and the reps, at this week\'s RIR',
-       t.line === '→ objetivo: mantener 32 kg × 15/15/12/12', t.line);
-    ok('and says that pulling back to the prescription is what ate the rep',
-       t.note.includes('~11 y no 12') && t.note.includes('No es retroceso'), t.note);
-    t = await target([15, 15, 12, 12], '0', 2);
-    ok('and a set taken to failure comes down further, and warns harder',
-       t.line === '→ objetivo: 32 kg × 14/14/11/11' && t.note.includes('~10 y no 12'), JSON.stringify(t));
-    t = await target([15, 15, 12, 12], '', 2);
-    ok('with no chip the plan’s own prescription stands in, and agrees',
-       t.line === '↗ objetivo: 32 kg × 15/15/13/13' && t.note === '', JSON.stringify(t));
+    const card = page.locator('.ex').first();
+    ok('la línea de objetivo da una respuesta por serie',
+       (await card.locator('.ex-est-l').textContent()) === '↗ objetivo: 47,25×9 · 45×9 · 45×8 · 42,75×9',
+       await card.locator('.ex-est-l').textContent());
+    ok('con el chip de confianza al lado',
+       (await card.locator('.ex-est-c').textContent()) === 'confianza media',
+       await card.locator('.ex-est-c').textContent());
+    ok('y el aviso de que la semana pide más RIR',
+       (await card.locator('.ex-est').textContent()).includes('Esta semana pide más RIR'),
+       await card.locator('.ex-est').textContent());
+    /* The whole reason the line is per set: the boxes are per set too. */
+    const hints = await card.locator('.set-row')
+      .evaluateAll(els => els.map(e => e.querySelector('input').placeholder));
+    ok('cada casilla de peso muestra el peso que el objetivo pide para ESA serie',
+       hints.join(' · ') === '47,25 · 45 · 45 · 42,75', hints.join(' · '));
 
-    /* Case 2 — every set at the top. The jump is earned, and e1RM sizes
-       it: not "one increment", but the step the set actually paid for. */
-    t = await target([15, 15, 15, 15], '2+', 2);
-    ok('top of the range on every set earns the jump',
-       t.kind === 'up' && t.line === '↗ objetivo: 34 kg × 12', JSON.stringify(t));
-    t = await target([15, 15, 15, 15], '1', 2);
-    ok('and the RIR it cost changes what to expect at the new weight',
-       t.line === '↗ objetivo: 34 kg × 11', t.line);
-    t = await target([15, 15, 15, 15], '0', 2);
-    ok('the top of the range reached at 0 RIR is not owned yet',
-       t.kind === 'hold' && t.line === '→ objetivo: mantener 32 kg × 15/15/15/15', JSON.stringify(t));
-    ok('and it says to run the same weight at the prescribed RIR instead',
-       t.note.includes('tope del rango pero al fallo'), t.note);
+    await card.locator('.set-row').first().locator('.tick').click();
+    await page.waitForFunction(() => (document.getElementById('status').textContent || '').includes('el objetivo de esta semana'));
+    ok('marcar sin escribir toma el número del objetivo',
+       await card.locator('.set-row').first().locator('input').first().inputValue() === '47,25',
+       await card.locator('.set-row').first().locator('input').first().inputValue());
+    ok('y dice de dónde salió',
+       (await page.textContent('#status')).includes('el objetivo de esta semana'), await page.textContent('#status'));
+    if (await page.locator('#timer.up').count()) await page.click('#tskip');
 
-    /* A coarse stack cannot land inside the range, and the old ±10 %/week
-       clamp would have frozen the exercise forever rather than say so. */
-    t = await target([15, 15, 15, 15], '1', 4);
-    ok('a coarse stack still gets its one step', t.line === '↗ objetivo: 36 kg × 9', t.line);
-    ok('and is told the step overshoots the range on purpose',
-       t.note.includes('stack grueso'), t.note);
+    /* The record of what was shown — the one thing that can later tell a
+       back-off the rule asked for from a weight that had to come off. */
+    ok('el objetivo que se mostró queda guardado con la sesión', await page.evaluate(() => {
+      const rec = getProfile().obj['block-1']['w4-d0'].chestpress;
+      return rec.v === 3 && rec.conf === 'media' && rec.sets.length === 4 &&
+             rec.sets[0].w === 47.25 && rec.sets[0].m === '↑' && rec.sets[3].m === '↓';
+    }));
 
-    /* The weight is not always constant across the sets, and the rule reads
-       a rep count per set — so taking one set's weight and every set's reps
-       mixed them into nonsense. Reported from a real session: 14×15, 14×11,
-       9×12 came out as "9 kg × 15/12/13", fifteen reps at a weight two of
-       the three sets were nowhere near. */
-    const mixed = (rows, rir) => page.evaluate(([rows, rir]) => {
-      const block = { id: 'B', name: 'B', weeks: 8, deload: 0,
-        phase: { 1: { r: '2 RIR' }, 2: { r: '2 RIR' } },
-        days: [{ id: 'D', ex: [{ id: 'E', n: 'x', sets: rows.length, reps: '10–15', inc: 1 }] }] };
-      const profile = { log: { B: { 'w1-D': { E: rows.map(x => ({ w: x[0], r: x[1], done: true })) } } },
-        rir: rir ? { B: { 'w1-D': { E: rir } } } : {} };
-      resetRenderCache();
-      const e = targetEstimate(profile, block, block.days[0], block.days[0].ex[0], 2);
-      return { line: targetLine(e), from: e.from, sets: e.sets, notes: targetNotes(e) };
-    }, [rows, rir]);
+    /* "Rellenar con el objetivo" writes exactly what the line above it
+       says, set by set — one rule, one number, and no second implementation
+       of double progression to drift away from it. */
+    await page.click('#copyPrev');
+    await page.waitForFunction(() => (document.getElementById('status').textContent || '').includes('Objetivo escrito'));
+    const written = await card.locator('.set-row')
+      .evaluateAll(els => els.map(e => e.querySelector('input').value));
+    ok('"Rellenar con el objetivo" escribe el peso de cada serie',
+       written.join(' · ') === '47,25 · 45 · 45 · 42,75', written.join(' · '));
+    ok('y cuenta lo que se movió',
+       (await page.textContent('#status')).includes('sube de peso en alguna serie') &&
+       (await page.textContent('#status')).includes('baja de peso en alguna serie'),
+       await page.textContent('#status'));
 
-    let m = await mixed([['14', '15'], ['14', '11'], ['9', '12']], '0');
-    ok('the working weight is the one most sets were done at',
-       m.from === 14 && m.line === '↗ objetivo: 14 kg × 15/12', JSON.stringify(m));
-    ok('and the set at another weight is left out, not folded in',
-       m.sets.join() === '15,11' && m.notes[0].includes('una serie fue a otro peso'), JSON.stringify(m));
-    /* The chip records the last set of the session. That set was the 9 kg
-       one, so it is not evidence about the 14 kg sets this rests on. */
-    ok('a RIR chip describing a set at another weight is not used',
-       !m.notes.join(' ').includes('No es retroceso'), JSON.stringify(m.notes));
-
-    m = await mixed([['14', '15'], ['14', '11'], ['14', '12']], '0');
-    ok('a constant weight is untouched by any of that',
-       m.from === 14 && m.line === '→ objetivo: 14 kg × 14/11/11' &&
-       m.notes[0].includes('No es retroceso'), JSON.stringify(m));
-
-    /* A back-off set after the working sets must not drag the verdict down
-       with it — every set at the working weight hit the top here. */
-    m = await mixed([['14', '15'], ['14', '15'], ['14', '15'], ['9', '20']], '');
-    ok('a back-off set does not cost the jump the working sets earned',
-       m.line === '↗ objetivo: 15 kg × 12', JSON.stringify(m));
-
-    /* Every set at its own weight: the heaviest breaks the tie, which is
-       the top set, and it fell under the range. The reps are what the
-       floored weight predicts, a shade over the bottom, not the bottom
-       itself. */
-    m = await mixed([['12', '14'], ['14', '11'], ['16', '9']], '');
-    ok('with no repeated weight the heaviest set decides',
-       m.from === 16 && m.line === '↘ objetivo: 15 kg × 12', JSON.stringify(m));
-
-    /* Case 3 — the answer copyPrev could never give at all. */
-    t = await target([12, 10, 9, 8], '0', 2);
-    ok('sets under the bottom of the range mean the weight was too heavy',
-       t.kind === 'down' && t.line === '↘ objetivo: 28 kg × 15/13/12/11', JSON.stringify(t));
-
-    /* A deload prescribes no RIR to solve for, and is not a progression
-       week in the first place. */
-    ok('the deload week proposes nothing', await page.evaluate(() => {
-      const block = { id: 'B', name: 'B', weeks: 8, deload: 2,
-        phase: { 1: { r: '2 RIR' }, 2: { r: 'Descarga' } },
-        days: [{ id: 'D', ex: [{ id: 'E', n: 'x', sets: 1, reps: '10–15', inc: 2 }] }] };
-      const profile = { log: { B: { 'w1-D': { E: [{ w: '32', r: '12', done: true }] } } }, rir: {} };
-      resetRenderCache();
-      return targetEstimate(profile, block, block.days[0], block.days[0].ex[0], 2);
-    }) === null);
-
-    /* "2–3 RIR" is a week you are meant to be able to take to 2; reading
-       it as 3 quietly under-loads every estimate built on it. */
-    ok('a prescribed RIR range reads as its hard end', await page.evaluate(() =>
-      phaseRir({ phase: { 1: { r: '2–3 RIR' }, 2: { r: '0–1 RIR' } } }, 1) === 2 &&
-      phaseRir({ phase: { 1: { r: '2–3 RIR' }, 2: { r: '0–1 RIR' } } }, 2) === 0));
-
-    /* The rep ceiling gates the two cases that have to price a weight, and
-       only those. Holding to chase reps is rep arithmetic, so a 12–20 range
-       — which spends most of its life above 15 reps — still gets an answer
-       rather than being silenced on the work it applies to most. */
-    const high = (sets, all) => page.evaluate(([sets, all]) => {
-      const block = { id: 'B', name: 'B', weeks: 8, deload: 0,
-        phase: { 1: { r: '2 RIR' }, 2: { r: '2 RIR' } },
-        days: [{ id: 'D', ex: [{ id: 'E', n: 'x', sets: sets.length, reps: '12–20', inc: 1 }] }] };
-      const profile = { log: { B: { 'w1-D': { E: sets.map(r => ({ w: '12', r: String(r), done: true })) } } },
-        rir: all ? { B: { 'w1-D': { E: '2+' } } } : {} };
-      resetRenderCache();
-      const e = targetEstimate(profile, block, block.days[0], block.days[0].ex[0], 2);
-      return { kind: e.kind, line: targetLine(e) };
-    }, [sets, all]);
-    let h = await high([18, 17, 16, 16], false);
-    ok('a long set short of the top still holds and chases reps',
-       h.kind === 'hold' && h.line === '↗ objetivo: 12 kg × 19/18/17/17', JSON.stringify(h));
-    /* Pricing a jump off an 18-rep set is what Epley cannot do. */
-    h = await high([20, 20, 20, 20], true);
-    ok('but a jump off a long set is still refused rather than guessed',
-       h.kind === 'skip' && h.line.includes('sin estimar'), JSON.stringify(h));
-
-    /* The rep-decay flag, on the numbers: the same 3-rep drop means
-       different things at 15 reps and at 8. */
-    const decay = await page.evaluate(() => {
-      const rows = a => a.map(r => ({ w: '32', r: String(r), done: true }));
-      return {
-        taper: repDecay(rows([15, 15, 12, 12])),
-        collapse: repDecay(rows([15, 12, 10, 8])),
-        lowStart: repDecay(rows([8, 7, 6, 5])),
-        highTaper: repDecay(rows([20, 19, 17, 16])),
-        tiny: repDecay(rows([12, 12, 11, 11])),
-      };
+    /* Three exercises falling inside a week is a fact about the lifter, so
+       it is said before the cards rather than inferred from twenty of them
+       quietly declining to move. */
+    await page.waitForFunction(() => !saveT && !held);
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      const p = s.profiles.hombre;
+      const DAY = 86400000, start = Date.now() - 9 * DAY;
+      p.log['block-1'] = {}; p.rir['block-1'] = {};
+      p.blocks['block-1'].days[0].ex.forEach(ex => { ex.reps = '8–12'; ex.sets = 3; delete ex.add; });
+      [[10, 9, 8], [11, 10, 9], [8, 8, 7]].forEach((reps, i) => {
+        const slotRows = {}, slotRir = {};
+        p.blocks['block-1'].days[0].ex.slice(0, 3).forEach(ex => {
+          slotRows[ex.id] = reps.map(r => ({ w: '40', r: String(r), done: true, ts: start + i * 3 * DAY }));
+          slotRir[ex.id] = '1';
+        });
+        p.log['block-1']['w' + (i + 1) + '-d0'] = slotRows;
+        p.rir['block-1']['w' + (i + 1) + '-d0'] = slotRir;
+      });
+      p.week = 4; p.day = 0;
+      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
     });
-    ok('15·15·12·12 es fatiga normal, no un fallo', decay.taper === 0, JSON.stringify(decay));
-    ok('15·12·10·8 sí es un desplome', decay.collapse === 7, JSON.stringify(decay));
-    ok('8·7·6·5 también, con la misma caída de 3 reps', decay.lowStart === 3, JSON.stringify(decay));
-    ok('20·19·17·16 no, por la misma razón que 15·15·12·12', decay.highTaper === 0, JSON.stringify(decay));
-    ok('y una caída de una o dos reps nunca cuenta', decay.tiny === 0, JSON.stringify(decay));
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForFunction(() => {
+      const el = document.getElementById('brakeNote');
+      return el && el.style.display === 'block';
+    });
+    ok('el freno global se anuncia arriba del día',
+       (await page.textContent('#brakeNote')).includes('no sube nada') &&
+       await page.locator('#brakeNote').isVisible(), await page.textContent('#brakeNote'));
+    ok('y con el freno puesto ninguna ficha sube de peso',
+       await page.evaluate(() => {
+         const block = getBlock();
+         return exList(block.days[0]).slice(0, 3).every(ex => {
+           const t = targetNow(getProfile(), block, block.days[0], ex, 4);
+           return t && t.brake === true && t.sets.every(x => x.move !== '↑');
+         });
+       }));
 
     /* Three sessions climbing, three flat: the whole point of the screen is
        telling those two apart without opening a chart per exercise. */
@@ -1801,20 +1761,23 @@ const ok = (name, cond, extra) => {
     ok('Escape cierra el diagnóstico', await page.locator('#diagSheet.up').count() === 0);
 
     /* The case the screen used to read as "Funciona · No toques nada" while
-       the session's own target said MANTENER: 45 kg for three weeks, reps
-       walking 8 → 10 → 12 up a 6–10 range, every session logged at 0 RIR in
-       weeks that prescribed 2–3. The reps really did climb, so the trend is
-       genuinely `subiendo` — what is wrong is what it was bought with. */
+       the session's own target was holding the weight: three sessions at
+       40 kg, the last one a real decline under the level. The reps over the
+       window still climbed, so the trend is genuinely `subiendo` — what is
+       wrong is that today is not the day to act on it, and the two screens
+       have to agree about that. */
     await page.evaluate(() => {
       const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
       const p = s.profiles.hombre;
       const DAY = 86400000, start = Date.now() - 21 * DAY;
-      const four = (w, r, ts) => [0, 1, 2, 3].map(() => ({ w: String(w), r: String(r), done: true, ts: ts }));
+      const ex = p.blocks['block-1'].days[0].ex[0];   /* chestpress */
+      ex.reps = '8–12'; ex.sets = 3; delete ex.add;
       p.log['block-1'] = {};
       p.rir['block-1'] = {};
-      [8, 10, 12].forEach((r, i) => {
-        p.log['block-1']['w' + (i + 1) + '-d0'] = { chestpress: four(45, r, start + i * 7 * DAY) };
-        p.rir['block-1']['w' + (i + 1) + '-d0'] = { chestpress: '0' };
+      [[10, 9, 8], [11, 10, 9], [8, 8, 7]].forEach((reps, i) => {
+        p.log['block-1']['w' + (i + 1) + '-d0'] = {
+          chestpress: reps.map(r => ({ w: '40', r: String(r), done: true, ts: start + i * 7 * DAY })) };
+        p.rir['block-1']['w' + (i + 1) + '-d0'] = { chestpress: '1' };
       });
       p.week = 4;
       p.day = 0;
@@ -1829,15 +1792,15 @@ const ok = (name, cond, extra) => {
       return { cls: r.className, read: r.querySelector('.diag-read').textContent,
                do: r.querySelector('.diag-do').textContent };
     });
-    ok('subir a base de fallo sigue siendo subir', held.cls.includes('up'), JSON.stringify(held));
+    ok('una racha al alza con una sesión mala sigue saliendo como subiendo', held.cls.includes('up'), JSON.stringify(held));
     ok('pero el diagnóstico ya no dice que no toques nada',
-       held.read.includes('MANTENER') && !held.do.includes('No toques nada'), JSON.stringify(held));
+       held.read.includes('no sube el peso esta semana') && !held.do.includes('No toques nada'), JSON.stringify(held));
     /* The point of the row: it says the same thing as the session's target,
-       because it reads that target's own note rather than re-deriving it. */
+       because it reads that target's own answer rather than re-deriving it. */
     ok('y coincide con lo que manda el objetivo de la semana', await page.evaluate(() => {
-      const block = getBlock(), day = block.days[0];
-      const est = targetEstimate(getProfile(), block, day, day.ex.find(e => e.id === 'chestpress'), 4);
-      return est.kind === 'hold' && est.note === 'topFailure';
+      const block = getBlock();
+      const t = targetNow(getProfile(), block, block.days[0], block.days[0].ex.find(e => e.id === 'chestpress'), 4);
+      return t.hold === true && t.sets.every(x => x.move !== '↑');
     }), JSON.stringify(held));
     ok('y pide el RIR que prescribe la semana en curso', held.do.includes('1 RIR'), JSON.stringify(held));
     await page.click('#diagClose');
@@ -1870,7 +1833,8 @@ const ok = (name, cond, extra) => {
         const r = document.querySelector('#diagHost .diag-row[data-ex="chestpress"]');
         const pts = diagPoints(getProfile(), 'chestpress', getBlock().id);
         return { cls: r.className, read: r.querySelector('.diag-read').textContent,
-                 e1rm: diagSlope(pts), work: diagWorkSlope(pts), sets: pts.map(p => p.sets) };
+                 e1rm: diagLevelTrend(getProfile(), getBlock(), getBlock().days[0], getBlock().days[0].ex[0], getBlock().id).pct,
+                 work: diagWorkSlope(pts), sets: pts.map(p => p.sets) };
       });
       await page.click('#diagClose');
       await page.waitForTimeout(150);
@@ -2478,11 +2442,13 @@ const ok = (name, cond, extra) => {
     ok('but the target still comes from this session alone',
        await page.evaluate(() => {
          const b = getBlock(), day = b.days[0];
-         const est = targetEstimate(getProfile(), b, day, day.ex.find(e => e.id === 'chestpress'), 2);
-         return est && est.from === 40;
+         resetRenderCache();
+         const t = targetFor(getProfile(), b, day, day.ex.find(e => e.id === 'chestpress'), 2, Date.now(), false);
+         return t && t.from === 40;
        }), await page.evaluate(() => {
          const b = getBlock(), day = b.days[0];
-         return JSON.stringify(targetEstimate(getProfile(), b, day, day.ex.find(e => e.id === 'chestpress'), 2));
+         resetRenderCache();
+         return JSON.stringify(targetFor(getProfile(), b, day, day.ex.find(e => e.id === 'chestpress'), 2, Date.now(), false));
        }));
 
     /* The chart is where the two sessions do meet. */
@@ -2900,7 +2866,13 @@ const ok = (name, cond, extra) => {
 
     const card = page.locator('.ex').first();
     const wIn = card.locator('.set-row').first().locator('input').first();
-    ok('week 1 of the new block shows the previous block\'s last working week as the hint',
+    /* The rule reads its history by exercise id across blocks, so week 1 of
+       a new block is a week with seven sessions behind it like any other:
+       there IS an objetivo, and the hint is its own weight for set 1. */
+    ok('week 1 of the new block already has an objetivo, built on the block before it',
+       (await card.locator('.ex-est-l').textContent()).startsWith('↘ objetivo: 75×'),
+       await card.locator('.ex-est-l').textContent());
+    ok('and the hint in every box is that objetivo, set by set',
        await wIn.getAttribute('placeholder') === '75', 'got ' + await wIn.getAttribute('placeholder'));
     ok('under a band that names the block and the week it came from',
        (await card.locator('.last.prior .tag').textContent()).includes('Bloque 1') &&
@@ -2912,20 +2884,20 @@ const ok = (name, cond, extra) => {
        await page.locator('.ex').nth(1).locator('.set-row').first().locator('input').first().getAttribute('placeholder') === '—');
 
     await card.locator('.set-row').first().locator('.tick').click();
-    await page.waitForFunction(() => (document.getElementById('status').textContent || '').includes('semana 7'));
+    await page.waitForFunction(() => (document.getElementById('status').textContent || '').includes('objetivo'));
     ok('ticking the empty box adopts the hint', await wIn.inputValue() === '75');
-    ok('and the status line says which block it came from',
-       (await page.textContent('#status')).includes('"Bloque 1", semana 7'), await page.textContent('#status'));
+    ok('and the status line says where the number came from',
+       (await page.textContent('#status')).includes('el objetivo de esta semana'), await page.textContent('#status'));
     await page.click('#tskip');
 
     await page.click('#copyPrev');
-    await page.waitForFunction(() => (document.getElementById('status').textContent || '').includes('sin subir'));
-    ok('"Copiar pesos" on week 1 copies the previous block\'s numbers across',
-       await card.locator('.set-row').nth(1).locator('input').first().inputValue() === '75');
-    ok('and says so, with no increment applied',
-       (await page.textContent('#status')).includes('"Bloque 1"') && (await page.textContent('#status')).includes('sin subir'),
-       await page.textContent('#status'));
-    ok('the objetivo line stays silent on week 1', await card.locator('.ex-est').count() === 0);
+    await page.waitForFunction(() => (document.getElementById('status').textContent || '').includes('Objetivo escrito'));
+    /* The last block ended two sets deep at 75; the deeper sets of a
+       four-set week have no reference at that weight and come down the
+       ladder rather than being asked for reps nobody has done. */
+    ok('"Rellenar con el objetivo" writes week 1 from the block before it',
+       await card.locator('.set-row').nth(1).locator('input').first().inputValue() === '72,5',
+       await card.locator('.set-row').nth(1).locator('input').first().inputValue());
     await ctx.close();
   });
 
