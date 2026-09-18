@@ -1107,6 +1107,28 @@ ok('the load ladder climbs by the rungs the log knows and falls back to the step
    call('nextLoad([18, 23], 18, 1)') === 19 && call('nextLoad([39, 45, 52], 39, 6)') === 45 &&
    call('prevLoad([42.75, 45], 45, 2.25)') === 42.75);
 
+/* ...and the rest of them (plans/026), so that a helper the cases only
+   reach through six sessions of arithmetic can fail by name. */
+ok('theilSen of nothing, or of one point, is a flat line', call('theilSen([])') === 0 && call('theilSen([[0, 5]])') === 0);
+/* [0,1] and [0,2] share an x and are skipped; the two remaining pairs give
+   slopes (3-1)/1 = 2 and (3-2)/1 = 1, whose median is 1,5. Two sets logged
+   in the same session is exactly that shape, which is why it is not an
+   Infinity waiting to be divided. */
+ok('theilSen skips pairs with the same x rather than dividing by zero',
+   call('theilSen([[0, 1], [0, 2], [1, 3]])') === 1.5);
+/* Six pairwise slopes: 1, 1, 10, 1, 14,5, 28 → sorted 1, 1, 1, 10, 14,5, 28
+   → even-length median (1 + 10) / 2 = 5,5. A least-squares line through the
+   same points would be steered by the outlier; the median is not, which is
+   the whole reason the rule uses this and not a regression. */
+ok('theilSen is the median of the pairwise slopes, not a least-squares fit',
+   call('theilSen([[0, 0], [1, 1], [2, 2], [3, 30]])') === 5.5);
+ok('median of an odd and an even list', call('median([3, 1, 2])') === 2 && call('median([4, 1, 3, 2])') === 2.5);
+ok('loadLadder dedupes to float tolerance and sorts',
+   JSON.stringify(call('loadLadder([{ sets: [{ w: 45 }, { w: 40 }] }, { sets: [{ w: 45.0000000001 }, { w: 42.5 }] }])')) === '[40,42.5,45]');
+ok('nextLoad takes the first rung within one and a half steps, else the step',
+   call('nextLoad([40, 41, 45], 40, 2.5)') === 41 && call('nextLoad([40, 45], 40, 2.5)') === 42.5);
+ok('prevLoad mirrors it', call('prevLoad([35, 39, 40], 40, 2.5)') === 39 && call('prevLoad([30, 40], 40, 2.5)') === 37.5);
+
 console.log('\n== el objetivo guardado, las variantes y minRir ==');
 
 /* `ex.minRir` is the reserve a lift never goes under, whatever the phase
