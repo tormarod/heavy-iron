@@ -1615,6 +1615,26 @@ console.log('\n== safeKey refuses every inherited Object.prototype name, not thr
   ok('...and gives each a usable generated id instead',
      !!normalizedIds.days[0].id && !!normalizedIds.days[0].ex[0].id,
      JSON.stringify([normalizedIds.days[0].id, normalizedIds.days[0].ex[0].id]));
+
+  /* The same two ids on the other road in — already-stored data, repaired
+     on load rather than validated on import. An empty safeKey() falls into
+     the existing "no id or a duplicate" branch, so the day gets 'd<i>' and
+     the exercise a slug of its name; neither keeps the inherited name. */
+  call('state = defaultState();'
+     + ' state.profiles.hombre.blocks["block-1"].days[0].id = "toString";'
+     + ' state.profiles.hombre.blocks["block-1"].days[0].ex[0].id = "valueOf";'
+     + ' migrate();');
+  ok('migrate() refuses a stored day id of "toString"',
+     call('state.profiles.hombre.blocks["block-1"].days[0].id') !== 'toString',
+     String(call('state.profiles.hombre.blocks["block-1"].days[0].id')));
+  ok('migrate() refuses a stored exercise id of "valueOf"',
+     call('state.profiles.hombre.blocks["block-1"].days[0].ex[0].id') !== 'valueOf',
+     String(call('state.profiles.hombre.blocks["block-1"].days[0].ex[0].id')));
+  ok('...and both come back with a usable id rather than an empty one',
+     !!call('state.profiles.hombre.blocks["block-1"].days[0].id')
+     && !!call('state.profiles.hombre.blocks["block-1"].days[0].ex[0].id'),
+     JSON.stringify([call('state.profiles.hombre.blocks["block-1"].days[0].id'),
+                     call('state.profiles.hombre.blocks["block-1"].days[0].ex[0].id')]));
   call('__pSK = null; __bSK = null;');
 }
 

@@ -33,7 +33,7 @@ below so it is not lost or re-audited.
 | 009 | [Architecture deepening: seven shallow seams, ranked](009-architecture-deepening.md) | P2 | L | MED | 008 items 13–14 (done) | TODO |
 | 010 | [A backup or profile file the app itself wrote always restores, exactly as it was](010-restore-round-trips-own-data.md) | P1 | M | MED | — | DONE |
 | 011 | [Every cross-session reader converts kg/lb per row; CSV formula guard](011-units-everywhere-and-csv-boundary.md) | P1 | M | LOW | — (overlaps 009 item 2) | DONE |
-| 012 | [Freeform tags, editor numbers and the setup import cannot crash, hang or alias](012-input-boundary-tags-clamps-aliasing.md) | P1 | S | LOW | — | DONE |
+| 012 | [Freeform tags, editor numbers and the setup import cannot crash, hang or alias](012-input-boundary-tags-clamps-aliasing.md) | P1 | S | LOW | — | DONE (+ `safeKey` widened as a follow-up — see its Maintenance notes) |
 | 013 | [Six small correctness fixes](013-six-small-correctness-fixes.md) | P2 | S | LOW | — (Step D overlaps 009 item 1) | TODO |
 | 014 | [The harness checks the repo's own invariants; `--list` works again](014-harness-invariants.md) | P1 | S | LOW | — (Steps 2, 4 overlap 009 item 3) | TODO |
 | 015 | [Docs match the code; one-command `CACHE_VERSION` bump](015-docs-sync-and-release-helper.md) | P2 | S | LOW | 014 (soft); overlaps 009 item 8 | TODO |
@@ -215,13 +215,6 @@ Grounded in the repo; effort estimates are coarse. Not ranked against bugs.
   misfiled, nothing throws, nothing escapes. Settled by plan 010's rewrite,
   which builds both maps with `Object.create(null)` — no chain, so no
   `safeKey` was needed there.
-- **`safeKey`'s three-name deny-list.** Out of scope for plan 012, and the
-  same bug one name over: any inherited `Object.prototype` name reads back
-  truthy off a fresh `{}`, so a Músculo of `toString` still threw out of
-  `strengthRows`. Fixed as a follow-up commit on 012 rather than as a plan
-  of its own — ten lines, one helper, fully covered in `test/unit.js`.
-  `safeKey` asks the chain now; `UNSAFE_KEYS` keeps only `prototype`,
-  which `'prototype' in {}` cannot see.
 - **`frame-ancestors` absent.** Ignored in a `<meta>` CSP; Pages sets no
   headers. Platform constraint (already recorded below).
 - **Blanket same-origin `cacheFirst` in `sw.js` + `pages.yml` `path: "."`.**
