@@ -1609,6 +1609,9 @@ rule, and which of this project's absences are deliberate.
 | `js/profile-transfer.js` | backup/restore and moving one profile between phones as a file |
 | `js/calculator.js` | the warm-up ramp and plate-loading calculator sheet |
 | `js/rest-timer.js` | the rest countdown, its alarm, and the lock-screen card that keeps it audible from a pocket |
+| `js/chart.js` | the per-exercise progress sheet: the line chart and the table under it |
+| `js/volume-sheet.js` | the volume dashboard — the bars, the trends and the band behind them |
+| `js/qr-transfer.js` | the QR wire format and the sheet that shows and scans it |
 | `js/app.js` | everything else: state, rendering, QR transfer, volume dashboard |
 | `js/vendor/` | the two QR libraries, verbatim from npm — see the README in there |
 | `sw.js` | offline caching; bump `CACHE_VERSION` when releasing |
