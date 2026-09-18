@@ -84,10 +84,10 @@ function normalizeImportedProfile(p) {
      carries reads back off the plain {} above as a block that is already
      there, and `__proto__` sets its prototype instead of adding a property
      (see safeKey, js/app.js, and plans/008 item 2), so a key like that gets
-     a fresh id here. Every other block-id-keyed thing
-     below (log/rir/notes/energy/order, blockOrder, activeBlock) has to
-     follow the same rename, or the block comes back with everything except
-     its own history.
+     a fresh id here. Every other block-id-keyed thing below
+     (log/rir/notes/energy/order, blockOrder, activeBlock) has to follow the
+     same rename, or the block comes back with everything except its own
+     history.
 
      A Map, not a plain object: the raw key is exactly the untrusted string
      this whole function exists to defend against, and `plainObj[bk] = id`
