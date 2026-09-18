@@ -1301,6 +1301,8 @@ const csvProbe = call(`
     const exId = day.ex[0].id;
     profile.log[blockId] = {};
     profile.log[blockId][slot(1, day.id)] = { [exId]: [{ w: '220.462262185', r: '5', done: true, u: 'lb' }] };
+    setNoteText(profile, blockId, 1, day.id, '=dormí 5 h; lleno');
+    setEnergy(profile, blockId, 1, day.id, 'baja');
     const csv = buildCsv();
     state = prev;
     state.prefs.units = 'kg';
@@ -1313,6 +1315,21 @@ ok('the CSV header names the weight column and puts the unit beside it',
 ok('a lb-stamped set exports the number as typed with its own unit next to it',
    csvLines.some(l => l.indexOf(',220.462262185,lb,') >= 0),
    csvLines.slice(1, 3).join(' | '));
+ok('the CSV header ends with the session note and the energy chip',
+   /,nota,energia$/.test(csvLines[0]), csvLines[0]);
+ok('a session\'s note and energy repeat on its rows, formula-guarded and quoted',
+   csvLines.some(l => /,"'=dormí 5 h; lleno",baja$/.test(l)), csvLines.slice(1, 3).join(' | '));
+ok('and lastNote walks back to the most recent earlier note on the same day',
+   JSON.stringify(call(`
+     (function() {
+       const pr = state.profiles.hombre;
+       const blockId = pr.blockOrder[0];
+       const day = pr.blocks[blockId].days[0];
+       setNoteText(pr, blockId, 2, day.id, 'semana dos');
+       setNoteText(pr, blockId, 4, day.id, 'semana cuatro');
+       return [lastNote(pr, blockId, day.id, 5), lastNote(pr, blockId, day.id, 3), lastNote(pr, blockId, day.id, 1)];
+     })()
+   `)) === JSON.stringify([{ week: 4, text: 'semana cuatro' }, { week: 2, text: 'semana dos' }, null]));
 
 console.log('\n== bestForExercise: one id, same answer as the whole-profile scan (plans/008 item 14) ==');
 /* drawCard asks for one exercise's all-time best instead of every exercise's,
