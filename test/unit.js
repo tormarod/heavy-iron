@@ -2436,7 +2436,6 @@ console.log('\n== Escape reaches every sheet (plans/013, plans/009 item 1) ==');
      !/\bcloseReview\b/.test(appCode) && !/\bcloseQr\b/.test(appCode));
 }
 
-console.log('\n== requestWakeLock: one rest, one lock — skipped mid-request, doubled up, or re-acquired (plans/008 item 15, plans/013) ==');
 console.log('\n== the log key has one reader as well as one builder (plans/009 item 4) ==');
 {
   ok('parseSlot is the mirror of slot()', (() => {
@@ -2592,6 +2591,7 @@ console.log('\n== "borrar registro" reaches a week past the cap (plans/009 item 
 }
 
 (async () => {
+  console.log('\n== requestWakeLock: one rest, one lock — skipped mid-request, doubled up, or re-acquired (plans/008 item 15, plans/013) ==');
   /* A real WakeLockSentinel carries its own .released flag, and the guard
      added in plans/013 reads it — so the fake has to carry one as well. */
   const makeLock = () => ({ released: false, release() { this.released = true; return Promise.resolve(); } });
