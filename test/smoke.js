@@ -1666,6 +1666,27 @@ const ok = (name, cond, extra) => {
              rec.sets[0].w === 47.25 && rec.sets[0].m === '↑' && rec.sets[3].m === '↓';
     }));
 
+    /* A week that was logged before the record existed gets no record from
+       being looked at: a rebuilt target is the one thing the map must not
+       hold, and the rule reads the live clock, so a week logged two months
+       ago would come back filed as a "vuelta de parón". Week 2 is one of
+       the three the seed above logged, and it has no record of its own. */
+    ok('mirar una semana ya registrada no fabrica su objetivo', await page.evaluate(() => {
+      const blk = getProfile().obj['block-1'] || {};
+      delete blk['w2-d0'];
+      return !blk['w2-d0'];
+    }));
+    await page.locator('.wk').nth(1).click();
+    await page.waitForFunction(() => getProfile().week === 2);
+    await page.waitForTimeout(150);
+    ok('   ni después de dibujarla', await page.evaluate(() => {
+      const blk = getProfile().obj['block-1'] || {};
+      return !blk['w2-d0'];
+    }));
+    await page.locator('.wk').nth(3).click();   /* back to the week the section works in */
+    await page.waitForFunction(() => getProfile().week === 4);
+    await page.waitForSelector('.ex .ex-est-l');
+
     /* "Rellenar con el objetivo" writes exactly what the line above it
        says, set by set — one rule, one number, and no second implementation
        of double progression to drift away from it. */
