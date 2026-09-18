@@ -1441,6 +1441,50 @@ ok('blocks/mujer-bloque-1.json phase matches DEFAULT_PHASE_PAREJA',
 ok('blocks/mujer-bloque-1.json priority matches DEFAULT_PRIORITY_PAREJA',
    JSON.stringify(call('DEFAULT_PRIORITY_PAREJA')) === JSON.stringify(mujerBlockFile.priority));
 
+/* blocks/index.json is what "Importar JSON" offers, and the only thing that
+   checked it was a person noticing the list was short. A file dropped into
+   blocks/ without an entry is invisible; an entry pointing at a missing or
+   invalid file is a dead row in the sheet. The round-trip is the sharper
+   half: a published block that normalizeImportedBlock rewrites is one a
+   user cannot import back to what the file says. */
+console.log('\n== blocks/index.json is a contract: every entry exists, validates, and round-trips ==');
+const blockIndex = JSON.parse(fs.readFileSync(path.join(ROOT, 'blocks/index.json'), 'utf8'));
+ok('index.json is a non-empty array', Array.isArray(blockIndex) && blockIndex.length > 0);
+const blockDir = fs.readdirSync(path.join(ROOT, 'blocks')).filter(f => f.endsWith('.json') && f !== 'index.json');
+ok('every .json in blocks/ (except index.json) is listed in index.json',
+   blockDir.every(f => blockIndex.some(e => e.file === f)),
+   JSON.stringify(blockDir.filter(f => !blockIndex.some(e => e.file === f))));
+blockIndex.forEach(entry => {
+  /* js/block-editor.js:369-373 is the importer's filename guard; an entry it
+     would reject is a row nobody can click. */
+  ok(entry.file + ': filename is one the importer accepts',
+     /^[A-Za-z0-9._-]+\.json$/.test(entry.file) && !entry.file.includes('..'));
+  ok(entry.file + ': has a label', typeof entry.label === 'string' && entry.label.trim().length > 0);
+  ok(entry.file + ': exists', fs.existsSync(path.join(ROOT, 'blocks', entry.file)));
+  let raw = null, normalized = null, err = null;
+  try { raw = readBlockFile(entry.file); normalized = call('normalizeImportedBlock(' + JSON.stringify(raw) + ')'); }
+  catch (e) { err = e; }
+  ok(entry.file + ': passes normalizeImportedBlock', !err, err && err.message);
+  if (!normalized) return;
+  ok(entry.file + ': normalizing changes no exercise name',
+     JSON.stringify(normalized.days.map(d => d.ex.map(e => e.n)))
+     === JSON.stringify(raw.days.map(d => d.ex.map(e => e.n))));
+  /* Stated ids only. The two seed blocks spell out all 22; ejemplo-plantilla
+     states none on purpose — it is the minimal-schema example, and deriving
+     an id from the name is the importer doing its job, not drift. What would
+     be drift is an id the file *does* state coming back different, so that
+     is what this compares. The count is in the name so a reader can see the
+     assertion is vacuous for the template rather than silently weak. */
+  const allEx = raw.days.flatMap(d => d.ex);
+  const statedIds = allEx.map(e => e.id).filter(id => id !== undefined);
+  const keptIds = raw.days
+    .flatMap((d, i) => d.ex.map((e, j) => (e.id === undefined ? undefined : normalized.days[i].ex[j].id)))
+    .filter(id => id !== undefined);
+  ok(entry.file + ': normalizing rewrites no exercise id the file states ('
+       + statedIds.length + '/' + allEx.length + ' stated)',
+     JSON.stringify(statedIds) === JSON.stringify(keptIds));
+});
+
 console.log('\n== phaseRir: the number next to "RIR" wins, not the lowest digit anywhere (plans/008 item 17) ==');
 ok('a week number ahead of the RIR phrase no longer wins',
    call('phaseRir({ phase: [{ r: "Semana 1: 2-3 RIR" }] }, 0)') === 2);

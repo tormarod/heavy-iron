@@ -25,6 +25,8 @@
  * section or not at all.
  */
 const { chromium } = require('playwright');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const BASE = process.env.BASE || 'http://127.0.0.1:8765';
 let pass = 0, fail = 0, skipped = 0;
@@ -585,7 +587,12 @@ const ok = (name, cond, extra) => {
     ok('invalid JSON rejected', (await page.textContent('#importError')).includes('JSON'));
 
     console.log('\n== the blocks published in this repo still validate ==');
-    for (const f of ['hombre-bloque-1.json', 'mujer-bloque-1.json', 'ejemplo-plantilla.json']) {
+    // Read from the registry rather than a copy of it: a fourth published
+    // block is then covered the moment it is listed, and a list that has
+    // drifted from blocks/ fails in test/unit.js instead of quietly
+    // testing two of three files here.
+    const blockIndex = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'blocks/index.json'), 'utf8'));
+    for (const f of blockIndex.map(e => e.file)) {
       const body = await (await fetch(BASE + '/blocks/' + f)).text();
       // a successful import closes the sheet, so reopen it each time round
       if (await page.locator('#importSheet.up').count() === 0) await page.click('#blockbar >> text=Importar JSON');
