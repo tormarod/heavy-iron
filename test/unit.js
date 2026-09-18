@@ -1443,6 +1443,112 @@ ok('warmupRamp collapses three identical rounded steps into one (target 15, incr
 ok('warmupRamp keeps three distinct steps when they are actually distinct',
    call('warmupRamp(100, 2.5, 0).length') === 3);
 
+console.log('\n== input boundary: unsafe tags, editor clamps, setup aliasing (plans/012) ==');
+{
+  /* A freeform tag is a plain-object key in three places downstream
+     (byMuscle in diagnostics, totals on the volume sheet, muscleOf itself),
+     and "__proto__" reads the inherited Object.prototype as "already
+     there" — truthy, not an array — so the init is skipped and the next
+     .push throws, after the sheet's host was already cleared: an empty
+     Diagnóstico with no message. Typeable in the editor's Músculo box, so
+     this is not only an import problem. */
+  call('state = defaultState(); migrate();');
+  call('__p012 = state.profiles.hombre; __b012 = __p012.blocks[__p012.activeBlock];');
+  call('__b012.days[0].ex[0].muscle = "__proto__";');
+  call('__p012.log[__b012.id] = { [slot(1, __b012.days[0].id)]: '
+     + '{ [__b012.days[0].ex[0].id]: [{ done: 1, w: 100, r: 5, u: "kg", ts: 1758000000000 }] } };');
+
+  let strengthErr = null;
+  try { call('strengthRows(__p012, __b012)'); } catch (e) { strengthErr = e.message; }
+  ok('a "__proto__" muscle tag does not throw out of strengthRows', strengthErr === null, strengthErr);
+
+  /* freqRows reaches the same buckets by a different road and only
+     misfiles today; asserted so it stays that way. */
+  let freqErr = null;
+  try { call('freqRows(__p012, __b012, 1)'); } catch (e) { freqErr = e.message; }
+  ok('a "__proto__" muscle tag does not throw out of freqRows', freqErr === null, freqErr);
+
+  ok('muscleTag refuses an unsafe key and falls back to "Sin clasificar"',
+     call('muscleTag({ muscle: "__proto__" })') === call('UNCLASSIFIED_LABEL'),
+     JSON.stringify(call('muscleTag({ muscle: "__proto__" })')));
+  ok('patternTag refuses an unsafe key in either of its two sources',
+     call('patternTag({ pattern: "__proto__", type: "constructor" })') === call('UNCLASSIFIED_LABEL'),
+     JSON.stringify(call('patternTag({ pattern: "__proto__", type: "constructor" })')));
+  ok('typeTag refuses an unsafe key',
+     call('typeTag({ type: "prototype" })') === call('UNCLASSIFIED_LABEL'),
+     JSON.stringify(call('typeTag({ type: "prototype" })')));
+  ok('cleanPriority drops an unsafe key and keeps the real muscle',
+     call('JSON.stringify(cleanPriority(["__proto__", "Pecho"]))') === '["Pecho"]',
+     call('JSON.stringify(cleanPriority(["__proto__", "Pecho"]))'));
+
+  /* Stored data is cleaned too, on both routes in: an empty result already
+     means "absent" on each of these sites. */
+  ok('migrate() drops an unsafe muscle tag rather than storing it',
+     call('state = defaultState(); state.profiles.hombre.blocks["block-1"].days[0].ex[0].muscle = "__proto__";'
+        + ' migrate(); state.profiles.hombre.blocks["block-1"].days[0].ex[0].muscle') === undefined,
+     JSON.stringify(call('state.profiles.hombre.blocks["block-1"].days[0].ex[0].muscle')));
+  const unsafeTagBlock = {
+    name: 'T', weeks: 8, deload: 8,
+    days: [{ name: 'D', ex: [{ n: 'E', sets: 3, reps: '10-15', muscle: '__proto__', pattern: 'constructor', type: 'prototype' }] }],
+  };
+  ok('normalizeImportedBlock strips unsafe muscle/pattern/type instead of storing them',
+     call('JSON.stringify(normalizeImportedBlock(' + JSON.stringify(unsafeTagBlock)
+        + ').days[0].ex[0]).indexOf("__proto__")') < 0
+     && call('normalizeImportedBlock(' + JSON.stringify(unsafeTagBlock) + ').days[0].ex[0].pattern') === undefined
+     && call('normalizeImportedBlock(' + JSON.stringify(unsafeTagBlock) + ').days[0].ex[0].type') === undefined,
+     call('JSON.stringify(normalizeImportedBlock(' + JSON.stringify(unsafeTagBlock) + ').days[0].ex[0])'));
+}
+
+{
+  /* migrate() clamps these on the *next* load, but the session draws from
+     the draft as saved: 5000 in Series is 5000 set rows built on the spot,
+     a same-device hang until a forced reload. syncDraftFromForm is the
+     save gate both "Guardar cambios" and the export button go through.
+     (The inert DOM stub returns '' for every field, so the draft's weeks
+     comes back as 1 here — the `add` bound is still the block's own.) */
+  call('state = defaultState(); migrate();');
+  call('peDraftBlock = JSON.parse(JSON.stringify(state.profiles.hombre.blocks["block-1"]));');
+  call('peDraftBlock.days[0].ex[0].sets = 5000;');
+  call('peDraftBlock.days[0].ex[0].rest = 99999;');
+  call('peDraftBlock.days[0].ex[0].add = 40;');
+  ok('syncDraftFromForm accepts the draft', call('syncDraftFromForm()') === null,
+     String(call('syncDraftFromForm()')));
+  ok('...and clamps sets to the same 12 migrate() uses',
+     call('peDraftBlock.days[0].ex[0].sets') === 12,
+     String(call('peDraftBlock.days[0].ex[0].sets')));
+  ok('...and clamps rest to the same 900 migrate() uses',
+     call('peDraftBlock.days[0].ex[0].rest') === 900,
+     String(call('peDraftBlock.days[0].ex[0].rest')));
+  ok('...and clamps "+1 serie desde" to the weeks the block actually has',
+     call('peDraftBlock.days[0].ex[0].add') <= call('peDraftBlock.weeks'),
+     'add=' + call('peDraftBlock.days[0].ex[0].add') + ' weeks=' + call('peDraftBlock.weeks'));
+  /* A cleared box has to stay cleared. clampInt('') is 0 raised to its low
+     bound, so an `add` clamped from 1 would come back as week 1 and could
+     never be removed again — clamped from 0 and deleted when falsy. */
+  call('peDraftBlock.days[0].ex[0].add = 0; syncDraftFromForm();');
+  ok('a zeroed "+1 serie desde" is removed, not clamped up to week 1',
+     call('peDraftBlock.days[0].ex[0].add') === undefined,
+     String(call('peDraftBlock.days[0].ex[0].add')));
+  call('peDraftBlock = null;');
+}
+
+{
+  /* The setup handler calls blockFromNormalized once per profile with the
+     same normalized object, so a by-reference `days` made an inline
+     machine-setting edit on one person's card write into the other's plan
+     until the next reload broke the aliasing. */
+  const ejemplo = JSON.parse(fs.readFileSync(path.join(ROOT, 'blocks/ejemplo-plantilla.json'), 'utf8'));
+  call('__n012 = normalizeImportedBlock(' + JSON.stringify(ejemplo) + ');');
+  call('__a012 = blockFromNormalized(__n012); __c012 = blockFromNormalized(__n012);');
+  ok('two blocks from one normalized import do not share days',
+     call('__a012.days !== __c012.days'));
+  ok('...nor phase', call('__a012.phase !== __c012.phase'));
+  call('__a012.days[0].ex[0].setup = "x";');
+  ok('...so an inline edit on one profile leaves the other untouched',
+     call('__c012.days[0].ex[0].setup') !== 'x',
+     JSON.stringify(call('__c012.days[0].ex[0].setup')));
+}
+
 console.log('\n== requestWakeLock: a rest skipped mid-request releases instead of holding the lock (plans/008 item 15) ==');
 (async () => {
   let released = false;
