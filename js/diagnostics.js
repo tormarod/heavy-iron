@@ -99,10 +99,11 @@ function diagPoints(profile, exId, onlyBlockId) {
         /* The work side of the same session, and it counts every ticked
            set — EST_MAX_REPS and all. That ceiling is a statement about
            Epley, not about kilos: a 20-rep set moved weight whether or not
-           an estimate can honestly be read off it. convertedSetVolume() mirrors
-           setVolume() (app.js) — "one definition of kilos moved" still
-           holds for the session view; this is the unit-converted read of
-           the same rule, for a screen that spans sessions. */
+           an estimate can honestly be read off it. convertedSetVolume()
+           mirrors setVolume() (both in app.js) — "one definition of kilos
+           moved" still holds for the session view; this is the
+           unit-converted read of the same rule, for a screen that spans
+           sessions. */
         const worked = rows.filter(r => r && r.done && hasReps(r) && rowWeight(r) > 0);
         out.push({
           label: block.name + ' · S' + w,
