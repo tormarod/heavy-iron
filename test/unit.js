@@ -50,7 +50,11 @@ const SHELL_SCRIPTS = [
   'js/app.js', 'js/boot-guard.js',
 ];
 
-function loadApp() {
+/* `omit` drops files from the load, which is how the no-op stubs in app.js
+   get exercised: a returning user's service worker can serve an index.html
+   whose script tag for a split-out file is missing from the cache, and the
+   stubs are the only thing between that and a recovery screen. */
+function loadApp(omit = []) {
   const store = {};
   const ctx = vm.createContext({
     document: {
@@ -71,7 +75,7 @@ function loadApp() {
   ctx.window.self = ctx.window;
   ctx.globalThis = ctx;
 
-  SHELL_SCRIPTS.forEach(f => {
+  SHELL_SCRIPTS.filter(f => !omit.includes(f)).forEach(f => {
     vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f });
   });
   return ctx;
@@ -123,6 +127,25 @@ const throws = expr => { try { call(expr); return false; } catch (e) { return tr
 console.log('\n== the harness ==');
 ok('every source file loads in one shared scope', call('typeof migrate') === 'function');
 ok('load() seeded a state object', call('!!state && !!state.profiles'));
+
+/* js/app.js:1942-1955 stubs the entry points of three split-out files so the
+   app still boots when the worker serves an index.html whose script tag for
+   one of them is not in the cache. Nothing exercised those stubs, because
+   the harness always loaded all thirteen files — the defence against the
+   third stuck-loading crash was itself untested. Each pass here is a
+   precache hole survived. */
+console.log('\n== a precache hole: app.js boots without each split file (AGENTS.md rule 1) ==');
+[['js/rest-timer.js', ['startRest', 'stopRest', 'renderSoundBtn', 'askForNotifications', 'keepAliveStop']],
+ ['js/chart.js', ['openChart']],
+ ['js/qr-transfer.js', ['closeQr']]].forEach(([file, stubs]) => {
+  let partial = null, err = null;
+  try { partial = loadApp([file]); } catch (e) { err = e; }
+  ok('the shell loads without ' + file, !err && !!partial, err && err.message);
+  if (!partial) return;
+  const c = expr => vm.runInContext(expr, partial);
+  stubs.forEach(name => ok(file + ' absent: ' + name + ' is a callable stub', c('typeof ' + name) === 'function'));
+  ok(file + ' absent: load() still seeded state', c('!!state && !!state.profiles'));
+});
 
 console.log('\n== pure arithmetic ==');
 ok('est1RM matches the Epley formula by hand', call('est1RM(100, 5)') === 100 * (1 + 5 / 30));
