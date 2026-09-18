@@ -5,20 +5,17 @@ byte-identical to what npm publishes — so they can be diffed against upstream
 without a build step, which is the same reason the rest of the app has no
 build step either.
 
-Neither is loaded on startup. `js/app.js` injects them with a `<script>` tag
-the first time you open **Compartir por QR**, so opening the app costs exactly
-what it cost before this feature existed. Both are precached by `sw.js`, so
-that first open works with no signal.
+Neither is loaded on startup. `js/qr-transfer.js` injects them with a
+`<script>` tag the first time you open **Compartir por QR**, so opening the
+app costs exactly what it cost before this feature existed. Both are
+precached by `sw.js`, so that first open works with no signal.
 
 | File | Package | Version | License |
 |---|---|---|---|
 | `qrcode.js` | [`qrcode-generator`](https://www.npmjs.com/package/qrcode-generator) | 1.4.4 | MIT |
 | `jsQR.js` | [`jsqr`](https://www.npmjs.com/package/jsqr) | 1.4.0 | Apache-2.0 |
 
-```
-sha256  18ae399f81182bc9de916e9c77b195df20cc58d6f2d55a62b085a299f1bf1780  qrcode.js
-sha256  bc40c8a15196236b2314db0856f72ca0b49980cd5413b8c852a7349f5fee0859  jsQR.js
-```
+The digests live in `SHA256SUMS`, which CI verifies on every pull request.
 
 To refresh either one:
 
@@ -29,9 +26,14 @@ cp package/qrcode.js js/vendor/qrcode.js
 npm pack jsqr@1.4.0 && tar xzf jsqr-1.4.0.tgz
 cp package/dist/jsQR.js js/vendor/jsQR.js
 cp package/LICENSE     js/vendor/jsQR-LICENSE.txt
+
+(cd js/vendor && sha256sum qrcode.js jsQR.js > SHA256SUMS)
 ```
 
-Then re-run `node test/smoke.js` and bump `CACHE_VERSION` in `sw.js`.
+Then regenerate `SHA256SUMS` as above, bump `VENDOR_VERSION` **and**
+`CACHE_VERSION` in `sw.js`, and run the QR smoke section — which is part of
+`main session`, because the QR checks build on that page's state:
+`node test/smoke.js --only "main session"`.
 
 ## Licenses
 
