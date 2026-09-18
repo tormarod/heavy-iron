@@ -388,11 +388,15 @@
       <p class="sheet-d" id="reviewSub"></p>
       <div id="reviewHost"></div>
       <div class="sheet-hr"></div>
-      <p class="sheet-d">Cópiate el prompt con esta revisión dentro y pásaselo a tu IA: el bloque que te devuelva estará escrito contra lo que pasó, no contra lo que recuerdes. Pega el JSON en "Importar JSON".</p>
+      <p class="sheet-d">Cópiate el prompt con esta revisión dentro y pásaselo a tu IA: el bloque que te devuelva estará escrito contra lo que pasó, no contra lo que recuerdes. Pega aquí el JSON que te devuelva y entra como bloque nuevo, sin tocar este.</p>
       <div class="sheet-btns">
         <button class="sm key" id="reviewPrompt">Copiar prompt con la revisión</button>
         <button class="sm" id="reviewCopy">Copiar solo la revisión</button>
         <button class="sm" id="reviewDownload">Descargar (.txt)</button>
+      </div>
+      <textarea id="reviewBlob" spellcheck="false" aria-label="JSON del bloque siguiente" placeholder='{"name":"Bloque 2","days":[...],"phase":{...}}'></textarea>
+      <div class="sheet-btns">
+        <button class="sm" id="reviewImport">Importar el bloque siguiente</button>
         <button class="sm" id="reviewClose">Cerrar</button>
       </div>
       <div id="reviewStatus" class="status u-status-left"></div>

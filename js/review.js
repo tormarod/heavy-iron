@@ -304,6 +304,7 @@ function drawReview() {
 
 function openReview(afterClose) {
   reviewAfterClose = typeof afterClose === 'function' ? afterClose : null;
+  $('reviewBlob').value = '';
   drawReview();
   openSheet('reviewSheet');
 }
@@ -349,5 +350,30 @@ function wireReview() {
       new Date().toISOString().slice(0, 10) + '.txt';
     downloadFile(name, reviewText(reviewCache), 'text/plain;charset=utf-8');
     setNote($('reviewStatus'), 'Revisión descargada', false);
+  };
+
+  /* The return leg of the loop the prompt button opens. The JSON the AI
+     hands back lands here, on the sheet where the prompt was copied,
+     instead of a trip through "Importar JSON" — the same validator and
+     the same installer as that sheet, so arriving here is not a way to
+     get a looser import. applyImportedBlock is not reused on purpose: it
+     reports into the import sheet's own note and closes that sheet,
+     neither of which is up. */
+  $('reviewImport').onclick = () => {
+    setNote($('reviewStatus'), '', false);
+    let raw;
+    try { raw = JSON.parse($('reviewBlob').value); } catch (e) { setNote($('reviewStatus'), 'Eso no es JSON válido.', true); return; }
+    let normalized;
+    try { normalized = normalizeImportedBlock(raw); } catch (e) { setNote($('reviewStatus'), e.message, true); return; }
+    /* Opened from "+ Nuevo bloque", closing this sheet resumes creating a
+       block by copying the old plan. The block just pasted IS the next
+       block, so that continuation is dropped before the sheet closes —
+       or the user is asked to name a second, empty one on top of it. */
+    reviewAfterClose = null;
+    installImportedBlock(normalized);
+    $('reviewBlob').value = '';
+    closeReview();
+    flushSave();
+    mark('Bloque "' + normalized.name + '" importado desde la revisión en ' + getProfile().label);
   };
 }

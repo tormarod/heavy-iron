@@ -38,7 +38,7 @@ below so it is not lost or re-audited.
 | 014 | [The harness checks the repo's own invariants; `--list` works again](014-harness-invariants.md) | P1 | S | LOW | — (Steps 2, 4 overlap 009 item 3) | DONE (Step 5's round-trip narrowed to the ids a file states — see its Maintenance notes) |
 | 015 | [Docs match the code; one-command `CACHE_VERSION` bump](015-docs-sync-and-release-helper.md) | P2 | S | LOW | 014 (soft); overlaps 009 item 8 | DONE (+ the `cache-version` regex narrowed to the shell's own extensions, out of the plan's scope but needed to land Step 4 — see its Maintenance notes) |
 | 016 | [The AI round-trip text carries what the app knows: own block in the prompt, per-exercise verdicts and RIR in the review](016-round-trip-text-carries-own-context.md) | P1 | S | LOW | — (017 edits `js/review.js` too) | DONE |
-| 017 | [The review sheet takes the JSON back](017-review-sheet-takes-the-json-back.md) | P1 | S | LOW | — (016 edits `js/review.js` too) | TODO |
+| 017 | [The review sheet takes the JSON back](017-review-sheet-takes-the-json-back.md) | P1 | S | LOW | — (016 edits `js/review.js` too) | DONE |
 | 018 | [The first week of a new block starts from what the previous block ended on](018-new-block-week-one-starts-from-previous.md) | P1 | M | MED | — (land after 019/020; all three edit `buildExCard`) | TODO |
 | 019 | [Last week's session note comes back on the same day; `nota`/`energia` in the CSV](019-session-note-returns-and-reaches-csv.md) | P2 | S | LOW | — | TODO |
 | 020 | [A second RÉCORD for a new best estimated 1RM](020-record-badge-for-estimated-1rm.md) | P2 | S | LOW | — | TODO |
