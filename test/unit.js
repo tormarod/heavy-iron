@@ -1154,14 +1154,14 @@ const reviewUnitProbe = call(`
     profile.log[blockId][slot(2, day.id)] = { [exId]: [{ w: '220.462262185', r: '5', done: true, u: 'lb' }] };
     state.prefs.units = 'kg';
     const byWeekRaw = blockTonnageByWeek(profile, block);
-    const byWeekConverted = blockTonnageByWeek(profile, block, reviewSetVolume);
+    const byWeekConverted = blockTonnageByWeek(profile, block, convertedSetVolume);
     state.prefs.units = 'kg';
     return { raw: byWeekRaw.slice(0, 2), converted: byWeekConverted.slice(0, 2) };
   })()
 `);
 ok('the raw setVolume() the session view uses is untouched — still blends the lb number in as if it were kg',
    Math.round(reviewUnitProbe.raw[1]) === Math.round(220.462262185 * 5), JSON.stringify(reviewUnitProbe));
-ok('reviewSetVolume converts that same week to kg instead, so both weeks read as the same tonnage',
+ok('convertedSetVolume converts that same week to kg instead, so both weeks read as the same tonnage',
    Math.round(reviewUnitProbe.converted[0]) === Math.round(reviewUnitProbe.converted[1]), JSON.stringify(reviewUnitProbe));
 
 console.log('\n== bestForExercise: one id, same answer as the whole-profile scan (plans/008 item 14) ==');

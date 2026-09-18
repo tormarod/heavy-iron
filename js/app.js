@@ -1629,6 +1629,26 @@ function setVolume(r) {
   return ((isNaN(w) || isNaN(reps)) ? 0 : w * reps) + dropVolume(r);
 }
 
+/* setVolume with every weight read through rowWeight(): a block trained
+   partly in kg and partly in lb — a mid-block unit switch, or a backup
+   restored from a partner on the other unit — would otherwise be summed in
+   two units at once. Used by every screen that adds up more than one
+   session (diagnostics, the block review, the tonnage tile); the session
+   view keeps setVolume, raw, on purpose — see rowWeight's comment. A drop
+   shares its row's unit stamp; drops have none of their own. Lived as two
+   identical copies in js/diagnostics.js and js/review.js until plans/011. */
+function convertedSetVolume(r) {
+  if (!r || !r.done) return 0;
+  const toUnit = units();
+  const from = rowUnit(r);
+  const w = convertWeight(num(r.w), from, toUnit), reps = num(r.r);
+  const dropsVol = dropsOf(r).filter(dropUsed).reduce((t, d) => {
+    const dw = convertWeight(num(d.w), from, toUnit), dr = num(d.r);
+    return t + ((isNaN(dw) || isNaN(dr)) ? 0 : dw * dr);
+  }, 0);
+  return ((isNaN(w) || isNaN(reps)) ? 0 : w * reps) + dropsVol;
+}
+
 /* Kilos in the unit the app is showing, grouped the Spanish way: the
    numbers here run to five digits by mid-block, and "45320 kg" is a number
    you have to count digits on. */
@@ -3528,9 +3548,9 @@ function volumeRows(totals) {
    them — the "series en semanas por encima" notice is what speaks for
    those. */
 /* `volumeOf` defaults to setVolume (raw, unconverted — the session view's
-   own definition), but the block review passes a unit-converting one of
-   its own: see reviewSetVolume in review.js and the comment by rowWeight,
-   above, for why the two must stay separate functions. */
+   own definition), but every reader that spans sessions passes
+   convertedSetVolume (above) instead: see the comment by rowWeight for why
+   the two must stay separate functions. */
 function blockTonnageByWeek(profile, block, volumeOf) {
   const vol = volumeOf || setVolume;
   const weeks = blockWeeks(block);
