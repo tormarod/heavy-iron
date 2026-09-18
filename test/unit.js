@@ -1520,6 +1520,73 @@ ok('normalizeImportedLog rejects a row array past LOG_ROW_HARD_CAP rather than s
 ok('normalizeImportedRir keeps a value in RIR_OPTIONS', logProbe.rirOk, JSON.stringify(logProbe));
 ok('normalizeImportedRir drops a value outside RIR_OPTIONS', logProbe.badRirDropped, JSON.stringify(logProbe));
 
+console.log('\n== normalizeImportedObj: the rule\'s own record, re-keyed like its twins (plans/026) ==');
+/* The one v3 function that takes untrusted bytes, and the only one of the
+   four normalizeImported* twins with no test of its own. A record of what
+   the rule put on the screen is not evidence about anything, so nothing in
+   it is trusted past its own shape — which is exactly the kind of code
+   that rots quietly. Built like logProbe above: one raw block, normalized,
+   then one slot at a time through the validator. */
+const objProbe = call(`
+  (function() {
+    const rawBlock = { name: 'B', weeks: 8, deload: 0, days: [{ id: 'd0', name: 'D', ex: [{ id: 'e1', n: 'Ex', sets: 3, reps: '10-15' }] }] };
+    const normalized = normalizeImportedBlock(rawBlock);
+    const dayId = normalized.days[0].id, exId = normalized.days[0].ex[0].id;
+
+    const run = function (key, id, rec) {
+      const raw = {}; raw[key] = {}; raw[key][id] = rec;
+      return normalizeImportedObj(raw, rawBlock, normalized);
+    };
+    const rec = function (over) {
+      const r = { v: 3, at: 1, conf: 'media', sets: [{ w: 45, r: 9, m: '↑' }] };
+      for (const k in over) r[k] = over[k];
+      return r;
+    };
+    const kept = function (out) { const k = 'w1-' + dayId; return (out[k] && out[k][exId]) || null; };
+    const empty = function (out) { return Object.keys(out).length === 0; };
+
+    const good = kept(run('w1-' + dayId, exId, rec()));
+    /* Everything wrong at once, because each field is clamped on its own
+       and a record only has to be rejected whole when its sets are. */
+    const bad = kept(run('w1-' + dayId, exId,
+      rec({ at: 'yesterday', conf: 'nonsense', sets: [{ w: 99999, r: -5, m: 'x' }] })));
+    return {
+      roundTrip: !!good && good.sets[0].w === 45 && good.sets[0].r === 9 &&
+                 good.sets[0].m === '↑' && good.conf === 'media' && good.at === 1 && good.v === 3,
+      weekZero: empty(run('w0-' + dayId, exId, rec())),
+      weekPastCap: empty(run('w17-' + dayId, exId, rec())),
+      unknownDay: empty(run('w1-no-such-day', exId, rec())),
+      unknownEx: empty(run('w1-' + dayId, 'no-such-ex', rec())),
+      setsNotAnArray: empty(run('w1-' + dayId, exId, rec({ sets: 'nope' }))),
+      setsEmpty: empty(run('w1-' + dayId, exId, rec({ sets: [] }))),
+      clampedW: !!bad && bad.sets[0].w === 9999,
+      clampedR: !!bad && bad.sets[0].r === 0,
+      droppedMove: !!bad && bad.sets[0].m === '',
+      confFallback: !!bad && bad.conf === 'baja',
+      atFallback: !!bad && bad.at === 0,
+    };
+  })()
+`);
+ok('normalizeImportedObj keeps a well-formed record whole', objProbe.roundTrip, JSON.stringify(objProbe));
+ok('a week of 0 is no week', objProbe.weekZero, JSON.stringify(objProbe));
+ok('a week past MAX_WEEKS is dropped rather than filed above the cap', objProbe.weekPastCap, JSON.stringify(objProbe));
+ok('a day id this block does not have is dropped', objProbe.unknownDay, JSON.stringify(objProbe));
+ok('an exercise id that day does not have is dropped', objProbe.unknownEx, JSON.stringify(objProbe));
+ok('a record whose sets are not an array is dropped, not coerced', objProbe.setsNotAnArray, JSON.stringify(objProbe));
+ok('...and neither is a record with no sets left in it kept', objProbe.setsEmpty, JSON.stringify(objProbe));
+ok('a weight past the cap clamps instead of rejecting the record', objProbe.clampedW, JSON.stringify(objProbe));
+ok('a negative rep count clamps to zero', objProbe.clampedR, JSON.stringify(objProbe));
+ok('a move marker that is neither arrow becomes no marker', objProbe.droppedMove, JSON.stringify(objProbe));
+ok('a confidence normalizeImportedObj does not recognise reads as "baja"', objProbe.confFallback, JSON.stringify(objProbe));
+ok('a timestamp that is not a number reads as 0', objProbe.atFallback, JSON.stringify(objProbe));
+/* Not asserted here on purpose: at this HEAD `conf` is checked with a
+   truthy lookup on a plain object, so 'constructor' passes it. plans/021
+   and plans/025 replace that with a TARGET_CONF_OPTIONS membership test,
+   and the assertions for it — 'constructor' rejected, `kind` and `hold`
+   round-tripping — belong with whichever of them lands. Writing them now
+   would fail on purpose. `grep -n TARGET_CONF_OPTIONS js/app.js` finds
+   nothing at 4f7e037; when it does, add them. */
+
 console.log('\n== normalizeImportedProfile: a restore runs the same per-row limits QR already had (plans/008 item 4) ==');
 const restoreProbe = call(`
   (function() {
