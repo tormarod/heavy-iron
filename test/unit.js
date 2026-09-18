@@ -36,7 +36,25 @@ const inert = () => ({
   get value() { return ''; }, set value(v) {},
 });
 
-function loadApp() {
+/* The same order as the <script> tags in index.html — theme-init.js first
+   because it loads in <head>, app.js after the ten it wires and then calls
+   load() from, and boot-guard.js last, after app.js, because it is the one
+   script that has to run even when app.js could not.
+
+   Hoisted out of loadApp() because the section below asserts index.html and
+   sw.js agree with it; a second copy would be a fourth list to keep in step. */
+const SHELL_SCRIPTS = [
+  'js/theme-init.js', 'js/data.js', 'js/block-editor.js', 'js/diagnostics.js', 'js/review.js',
+  'js/profile-transfer.js', 'js/calculator.js', 'js/rest-timer.js',
+  'js/chart.js', 'js/volume-sheet.js', 'js/qr-transfer.js',
+  'js/app.js', 'js/boot-guard.js',
+];
+
+/* `omit` drops files from the load, which is how the no-op stubs in app.js
+   get exercised: a returning user's service worker can serve an index.html
+   whose script tag for a split-out file is missing from the cache, and the
+   stubs are the only thing between that and a recovery screen. */
+function loadApp(omit = []) {
   const store = {};
   const ctx = vm.createContext({
     document: {
@@ -57,14 +75,7 @@ function loadApp() {
   ctx.window.self = ctx.window;
   ctx.globalThis = ctx;
 
-  /* The same order as the <script> tags in index.html — theme-init.js first
-     because it loads in <head>, app.js after the ten it wires and then calls
-     load() from, and boot-guard.js last, after app.js, because it is the one
-     script that has to run even when app.js could not. */
-  ['js/theme-init.js', 'js/data.js', 'js/block-editor.js', 'js/diagnostics.js', 'js/review.js',
-   'js/profile-transfer.js', 'js/calculator.js', 'js/rest-timer.js',
-   'js/chart.js', 'js/volume-sheet.js', 'js/qr-transfer.js',
-   'js/app.js', 'js/boot-guard.js'].forEach(f => {
+  SHELL_SCRIPTS.filter(f => !omit.includes(f)).forEach(f => {
     vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f });
   });
   return ctx;
@@ -76,6 +87,39 @@ const ok = (name, cond, extra) => {
   else { fail++; console.log('  FAIL  ' + name + (extra ? '  → ' + extra : '')); }
 };
 
+/* Before loadApp() runs, so that a file missing from disk is reported as a
+   failed assertion here rather than as an exception that takes the suite
+   down before it can say which list is wrong.
+
+   AGENTS.md asks for four things to move together when a js/ file is added:
+   the <script> tag in index.html, the SHELL entry in sw.js, a guarded wire*()
+   call, and the file's place in loadApp(). CI enforces exactly one of them
+   (js/*.js ⊆ SHELL); the rest were prose, and this repo has shipped two
+   stuck-loading crashes from getting them wrong. */
+console.log('\n== the four script lists agree (AGENTS.md: index.html, sw.js SHELL, loadApp, js/) ==');
+const indexHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+const indexScripts = [...indexHtml.matchAll(/<script src="(js\/[^"]+)"><\/script>/g)].map(m => m[1]);
+const swSrc = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+/* Comments stripped first: SHELL carries a prose note, and a single
+   apostrophe in it — "the worker's" — would otherwise read as the opening
+   quote of a filename and swallow the rest of the list. */
+const shellBlock = /const SHELL = \[([\s\S]*?)\];/.exec(swSrc)[1].replace(/\/\*[\s\S]*?\*\//g, '');
+const shellFiles = [...shellBlock.matchAll(/'([^']+)'/g)].map(m => m[1]);
+/* Not recursive: js/vendor/ holds bundled libraries that are deliberately
+   not shell scripts and have no tag of their own. */
+const jsFiles = fs.readdirSync(path.join(ROOT, 'js')).filter(f => f.endsWith('.js')).map(f => 'js/' + f);
+ok('index.html loads exactly the files loadApp() loads, in the same order',
+   JSON.stringify(indexScripts) === JSON.stringify(SHELL_SCRIPTS), JSON.stringify(indexScripts));
+ok('every index.html script is in sw.js SHELL',
+   indexScripts.every(f => shellFiles.includes(f)),
+   JSON.stringify(indexScripts.filter(f => !shellFiles.includes(f))));
+ok('every js/*.js file is a script tag in index.html',
+   jsFiles.every(f => indexScripts.includes(f)),
+   JSON.stringify(jsFiles.filter(f => !indexScripts.includes(f))));
+ok('every js/ entry in SHELL exists on disk',
+   shellFiles.filter(f => f.startsWith('js/')).every(f => fs.existsSync(path.join(ROOT, f))),
+   JSON.stringify(shellFiles.filter(f => f.startsWith('js/') && !fs.existsSync(path.join(ROOT, f)))));
+
 const app = loadApp();
 const call = expr => vm.runInContext(expr, app);
 const throws = expr => { try { call(expr); return false; } catch (e) { return true; } };
@@ -83,6 +127,44 @@ const throws = expr => { try { call(expr); return false; } catch (e) { return tr
 console.log('\n== the harness ==');
 ok('every source file loads in one shared scope', call('typeof migrate') === 'function');
 ok('load() seeded a state object', call('!!state && !!state.profiles'));
+
+/* js/app.js:1942-1955 stubs the entry points of three split-out files so the
+   app still boots when the worker serves an index.html whose script tag for
+   one of them is not in the cache. Nothing exercised those stubs, because
+   the harness always loaded all thirteen files — the defence against the
+   third stuck-loading crash was itself untested. Each pass here is a
+   precache hole survived. */
+console.log('\n== a precache hole: app.js boots without each split file (AGENTS.md rule 1) ==');
+[['js/rest-timer.js', ['startRest', 'stopRest', 'renderSoundBtn', 'askForNotifications', 'keepAliveStop']],
+ ['js/chart.js', ['openChart']],
+ ['js/qr-transfer.js', ['closeQr']]].forEach(([file, stubs]) => {
+  let partial = null, err = null;
+  try { partial = loadApp([file]); } catch (e) { err = e; }
+  ok('the shell loads without ' + file, !err && !!partial, err && err.message);
+  if (!partial) return;
+  const c = expr => vm.runInContext(expr, partial);
+  stubs.forEach(name => ok(file + ' absent: ' + name + ' is a callable stub', c('typeof ' + name) === 'function'));
+  ok(file + ' absent: load() still seeded state', c('!!state && !!state.profiles'));
+});
+
+/* A ratchet, not a target. Fixed sleeps are why the browser suite takes
+   four minutes and why it flakes on a slow machine; plans/008 item 21 owns
+   replacing them with waits on a condition. This only stops the number
+   going up. Whoever removes some lowers the ceiling in the same commit. */
+const smokeSrc = fs.readFileSync(path.join(ROOT, 'test/smoke.js'), 'utf8');
+const sleeps = (smokeSrc.match(/waitForTimeout\(/g) || []).length;
+ok('test/smoke.js does not gain fixed sleeps (plans/008 item 21: ' + sleeps + ' now; replace, do not add)',
+   sleeps <= 209, String(sleeps));
+
+/* js/theme-init.js runs in <head>, before app.js defines anything, so it has
+   to spell the storage key out as a literal. Its own comment says a renamed
+   STORAGE_KEY would silently bring back the flash of the wrong theme the
+   file exists to prevent, "with nothing to catch the drift". This is that. */
+console.log('\n== theme-init.js reads the same storage key as app.js ==');
+const themeInitSrc = fs.readFileSync(path.join(ROOT, 'js/theme-init.js'), 'utf8');
+ok('the literal in js/theme-init.js matches STORAGE_KEY',
+   themeInitSrc.includes("getItem('" + call('STORAGE_KEY') + "')"),
+   themeInitSrc.match(/getItem\([^)]*\)/)[0] + ' vs ' + call('STORAGE_KEY'));
 
 console.log('\n== pure arithmetic ==');
 ok('est1RM matches the Epley formula by hand', call('est1RM(100, 5)') === 100 * (1 + 5 / 30));
@@ -1367,6 +1449,50 @@ ok('blocks/mujer-bloque-1.json phase matches DEFAULT_PHASE_PAREJA',
    JSON.stringify(call('DEFAULT_PHASE_PAREJA')) === JSON.stringify(mujerBlockFile.phase));
 ok('blocks/mujer-bloque-1.json priority matches DEFAULT_PRIORITY_PAREJA',
    JSON.stringify(call('DEFAULT_PRIORITY_PAREJA')) === JSON.stringify(mujerBlockFile.priority));
+
+/* blocks/index.json is what "Importar JSON" offers, and the only thing that
+   checked it was a person noticing the list was short. A file dropped into
+   blocks/ without an entry is invisible; an entry pointing at a missing or
+   invalid file is a dead row in the sheet. The round-trip is the sharper
+   half: a published block that normalizeImportedBlock rewrites is one a
+   user cannot import back to what the file says. */
+console.log('\n== blocks/index.json is a contract: every entry exists, validates, and round-trips ==');
+const blockIndex = JSON.parse(fs.readFileSync(path.join(ROOT, 'blocks/index.json'), 'utf8'));
+ok('index.json is a non-empty array', Array.isArray(blockIndex) && blockIndex.length > 0);
+const blockDir = fs.readdirSync(path.join(ROOT, 'blocks')).filter(f => f.endsWith('.json') && f !== 'index.json');
+ok('every .json in blocks/ (except index.json) is listed in index.json',
+   blockDir.every(f => blockIndex.some(e => e.file === f)),
+   JSON.stringify(blockDir.filter(f => !blockIndex.some(e => e.file === f))));
+blockIndex.forEach(entry => {
+  /* js/block-editor.js:369-373 is the importer's filename guard; an entry it
+     would reject is a row nobody can click. */
+  ok(entry.file + ': filename is one the importer accepts',
+     /^[A-Za-z0-9._-]+\.json$/.test(entry.file) && !entry.file.includes('..'));
+  ok(entry.file + ': has a label', typeof entry.label === 'string' && entry.label.trim().length > 0);
+  ok(entry.file + ': exists', fs.existsSync(path.join(ROOT, 'blocks', entry.file)));
+  let raw = null, normalized = null, err = null;
+  try { raw = readBlockFile(entry.file); normalized = call('normalizeImportedBlock(' + JSON.stringify(raw) + ')'); }
+  catch (e) { err = e; }
+  ok(entry.file + ': passes normalizeImportedBlock', !err, err && err.message);
+  if (!normalized) return;
+  ok(entry.file + ': normalizing changes no exercise name',
+     JSON.stringify(normalized.days.map(d => d.ex.map(e => e.n)))
+     === JSON.stringify(raw.days.map(d => d.ex.map(e => e.n))));
+  /* Stated ids only. The two seed blocks spell out all 22; ejemplo-plantilla
+     states none on purpose — it is the minimal-schema example, and deriving
+     an id from the name is the importer doing its job, not drift. What would
+     be drift is an id the file *does* state coming back different, so that
+     is what this compares. The count is in the name so a reader can see the
+     assertion is vacuous for the template rather than silently weak. */
+  const allEx = raw.days.flatMap(d => d.ex);
+  const statedIds = allEx.map(e => e.id).filter(id => id !== undefined);
+  const keptIds = raw.days
+    .flatMap((d, i) => d.ex.map((e, j) => (e.id === undefined ? undefined : normalized.days[i].ex[j].id)))
+    .filter(id => id !== undefined);
+  ok(entry.file + ': normalizing rewrites no exercise id the file states ('
+       + statedIds.length + '/' + allEx.length + ' stated)',
+     JSON.stringify(statedIds) === JSON.stringify(keptIds));
+});
 
 console.log('\n== phaseRir: the number next to "RIR" wins, not the lowest digit anywhere (plans/008 item 17) ==');
 ok('a week number ahead of the RIR phrase no longer wins',

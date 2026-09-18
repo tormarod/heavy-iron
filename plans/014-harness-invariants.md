@@ -270,3 +270,14 @@ lowers the number as they go.
 - Adding a fourth published block requires an `index.json` entry, and the
   smoke suite picks it up automatically.
 - The sleep ceiling is a ratchet: lower it in the same PR that removes sleeps.
+- **Step 5 as implemented differs from the plan above.** The round-trip
+  assertion was written to compare `[id, n]` pairs, and that fails on
+  `blocks/ejemplo-plantilla.json` — not through drift, but because that file
+  is the minimal-schema example and states no exercise ids at all (0 of 5,
+  against 22 of 22 in each seed), so `normalizeImportedBlock` derives them
+  from the names. That is the importer doing its job, so the STOP condition
+  was not taken. The shipped assertion compares names, plus only those ids a
+  file actually states, and prints the stated/total count in the assertion
+  name so the weaker case is visible rather than silent. No block file was
+  changed. Tighten it back in one line if a published template should be
+  required to spell its ids out.
