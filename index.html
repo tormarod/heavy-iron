@@ -493,5 +493,10 @@
 <script src="js/volume-sheet.js"></script>
 <script src="js/qr-transfer.js"></script>
 <script src="js/app.js"></script>
+<!-- Last on purpose, and the one script that must not need any other: if
+     app.js failed to parse, this is what gets a returning phone off
+     "Cargando tu registro…" by switching to the worker already waiting
+     with a complete shell — see js/boot-guard.js. -->
+<script src="js/boot-guard.js"></script>
 </body>
 </html>

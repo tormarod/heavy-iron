@@ -3033,6 +3033,70 @@ const ok = (name, cond, extra) => {
     await ctx.close();
   });
 
+  // ---------- a shell that did not boot hands over to the waiting worker ----------
+  /* Twice a returning phone has been left on "Cargando tu registro…" by a
+     shell mixed from two releases: the old cached app.js and a newly split
+     file declared the same top-level name, app.js failed to parse, and the
+     "Actualizar" offer inside it never ran. js/boot-guard.js is the script
+     after app.js that runs anyway: it hands over to the worker already
+     waiting with a complete shell. The worker is blocked here so the page's
+     own requests are routable; the registration is stood in for. */
+  await section('arranque roto: el guardián cambia al worker en espera', async () => {
+    const standIn = async (page, waiting) => {
+      await page.addInitScript(w => {
+        window.__skipped = null;
+        window.__updates = 0;
+        const reg = {
+          waiting: w ? { postMessage: m => { window.__skipped = m; } } : null,
+          installing: null,
+          addEventListener() {},
+          update() { window.__updates++; return Promise.resolve(); },
+        };
+        navigator.serviceWorker.getRegistration = () => Promise.resolve(reg);
+      }, waiting);
+    };
+    /* The old app.js of a mixed shell: a top-level name js/chart.js has
+       already declared. A parse error, so nothing of it runs — the same
+       "Identifier 'e1rmValue' has already been declared" that shipped. */
+    const brokenAppJs = page => page.route('**/js/app.js', route =>
+      route.fulfill({ status: 200, contentType: 'text/javascript', body: 'const e1rmValue = 1;\n' }));
+
+    const ctx = await browser.newContext({ serviceWorkers: 'block' });
+
+    const stuck = await ctx.newPage();
+    await standIn(stuck, true);
+    await brokenAppJs(stuck);
+    await stuck.goto(BASE, { waitUntil: 'load' });
+    await stuck.waitForTimeout(600);
+    ok('the broken shell really did not boot',
+       await stuck.evaluate(() => typeof load === 'undefined' && !!document.querySelector('#list .skel')));
+    ok('the guard tells the waiting worker to take over',
+       await stuck.evaluate(() => window.__skipped === 'skipWaiting'), await stuck.evaluate(() => String(window.__skipped)));
+    await stuck.close();
+
+    const alone = await ctx.newPage();
+    await standIn(alone, false);
+    await brokenAppJs(alone);
+    await alone.goto(BASE, { waitUntil: 'load' });
+    await alone.waitForTimeout(600);
+    ok('with nothing waiting it asks for an update instead',
+       await alone.evaluate(() => window.__skipped === null && window.__updates === 1));
+    ok('and still says "Cargando" while a swap could yet come',
+       (await alone.textContent('#list .skel')).includes('Cargando'));
+    await alone.waitForTimeout(4000);
+    ok('after a fair wait it says the app did not start, and what to do',
+       (await alone.textContent('#list .skel')).includes('no ha podido arrancar'), await alone.textContent('#list .skel'));
+    await alone.close();
+
+    const healthy = await ctx.newPage();
+    await standIn(healthy, true);
+    await healthy.goto(BASE, { waitUntil: 'load' });
+    await healthy.waitForTimeout(600);
+    ok('a shell that booted is left alone, waiting worker or not',
+       await healthy.evaluate(() => window.__skipped === null && !document.querySelector('#list .skel')));
+    await ctx.close();
+  });
+
   // ---------- which version is running ----------
   /* "Did it update?" used to be answerable only by reasoning about service
      workers. The footer line answers it, and it has to come from the worker

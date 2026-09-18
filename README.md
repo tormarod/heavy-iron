@@ -355,7 +355,11 @@ somebody's default serif.
 
 The app registers a service worker that caches the page, styles, script
 and fonts, so after the first visit it opens with no connection at all —
-which is the normal state of a gym basement. Blocks published in `blocks/`
+which is the normal state of a gym basement. The page and its scripts
+always come from the same cached release: a new release installs behind
+the one you are on and shows an **Actualizar** prompt, and taking it up
+reloads onto the new one. Should a shell ever fail to start anyway, the
+last script on the page switches to that waiting release by itself. Blocks published in `blocks/`
 are fetched from the network first and fall back to the cached copy, so
 the list is fresh when you have signal and still works when you don't.
 
@@ -1614,6 +1618,7 @@ rule, and which of this project's absences are deliberate.
 | `js/volume-sheet.js` | the volume dashboard — the bars, the trends and the band behind them |
 | `js/qr-transfer.js` | the QR wire format and the sheet that shows and scans it |
 | `js/app.js` | everything else: state, rendering, QR transfer, volume dashboard |
+| `js/boot-guard.js` | the one script after `app.js`: if the shell did not boot, it hands over to the worker already waiting with a complete one |
 | `js/vendor/` | the two QR libraries, verbatim from npm — see the README in there |
 | `sw.js` | offline caching; bump `CACHE_VERSION` when releasing |
 | `manifest.webmanifest`, `icon.svg`, `icon-*.png` | what makes it installable |
