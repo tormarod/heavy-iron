@@ -4468,7 +4468,7 @@ function buildCsv() {
      mid-block unit switch, a profile from a partner on the other unit —
      readable at all; a header that just said "kg" was making a claim about
      rows it could not make. */
-  const rows = [['perfil', 'bloque', 'semana', 'dia', 'ejercicio', 'orden', 'serie', 'peso', 'unidad', 'reps', 'hecha', 'fecha', 'rir', 'bajadas', 'tipo_bajada']];
+  const rows = [['perfil', 'bloque', 'semana', 'dia', 'ejercicio', 'orden', 'serie', 'peso', 'unidad', 'reps', 'hecha', 'fecha', 'rir', 'bajadas', 'tipo_bajada', 'nota', 'energia']];
   Object.keys(state.profiles).forEach(pk => {
     const profile = state.profiles[pk];
     profile.blockOrder.forEach(bId => {
@@ -4495,6 +4495,11 @@ function buildCsv() {
                repeats on every row of that exercise/week rather than
                belonging to any one of them. */
             const rir = getRir(profile, bId, w, day.id, ex.id);
+            /* Per session, not per set — like the RIR chip, repeated on every
+               row of that session so a spreadsheet filter on the column finds
+               the whole session. */
+            const note = getNote(profile, bId, w, day.id);
+            const energy = getEnergy(profile, bId, w, day.id);
             arr.forEach((r, i) => {
               if (!rowUsed(r)) return;
               /* Drops stay on their set's own row, as "45x5 30x4", rather
@@ -4510,7 +4515,7 @@ function buildCsv() {
                  they have none of their own. */
               rows.push([profile.label, block.name, w, day.name, ex.n, ordAt[w][ex.id] || '', i + 1, r.w, rowUnit(r), r.r,
                          r.done ? 'si' : 'no', r.ts ? new Date(r.ts).toISOString().slice(0, 10) : '', rir,
-                         drops, used.length ? DROP_LABEL[dropKind(r)] : '']);
+                         drops, used.length ? DROP_LABEL[dropKind(r)] : '', note, energy]);
             });
           }
         });
