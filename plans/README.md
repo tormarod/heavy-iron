@@ -32,7 +32,7 @@ below so it is not lost or re-audited.
 | 008 | [Second audit: ranked findings and plan](done/008-audit-2026-09-17.md) | P1 | — | — | — | IN PROGRESS (items 1–20 and 22 done, 21 bullet 2 open, 23: two of six done — see "Third audit") |
 | 009 | [Architecture deepening: seven shallow seams, ranked](009-architecture-deepening.md) | P2 | L | MED | 008 items 13–14 (done) | TODO |
 | 010 | [A backup or profile file the app itself wrote always restores, exactly as it was](010-restore-round-trips-own-data.md) | P1 | M | MED | — | DONE |
-| 011 | [Every cross-session reader converts kg/lb per row; CSV formula guard](011-units-everywhere-and-csv-boundary.md) | P1 | M | LOW | — (overlaps 009 item 2) | TODO |
+| 011 | [Every cross-session reader converts kg/lb per row; CSV formula guard](011-units-everywhere-and-csv-boundary.md) | P1 | M | LOW | — (overlaps 009 item 2) | DONE |
 | 012 | [Freeform tags, editor numbers and the setup import cannot crash, hang or alias](012-input-boundary-tags-clamps-aliasing.md) | P1 | S | LOW | — | TODO |
 | 013 | [Six small correctness fixes](013-six-small-correctness-fixes.md) | P2 | S | LOW | — (Step D overlaps 009 item 1) | TODO |
 | 014 | [The harness checks the repo's own invariants; `--list` works again](014-harness-invariants.md) | P1 | S | LOW | — (Steps 2, 4 overlap 009 item 3) | TODO |
@@ -159,7 +159,7 @@ saying plainly, because it is the pattern to watch for in review:
 
 | Feature | Status | Evidence |
 |---|---|---|
-| Unit stamped per row | **DONE** | `js/app.js:424-435`, consumed in diagnostics and review |
+| Unit stamped per row | **DONE** | `js/app.js:424-435`, consumed by every cross-session reader — diagnostics, the review, the chart and the tonnage tile — via `convertedSetVolume`; the CSV carries it per row as `unidad` (011) |
 | Share-sheet export (`navigator.share`) | **DONE** | `js/app.js:1205-1215`, inside `downloadFile` |
 | Bodyweight / assisted exercises | open, not even the zero-weight message | `js/diagnostics.js:108,119,379` require `rowWeight(r) > 0`; only empty state is `:626` |
 | Equipment per profile | open | `js/app.js:356-389` all on global `state.prefs` |
