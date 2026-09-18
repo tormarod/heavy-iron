@@ -435,3 +435,29 @@ Stop and report back (do not improvise) if:
   best weight and best estimate (an all-time "Récords" view) would read
   `bestByExercise` directly; the shape this plan gives it is what that
   sheet needs.
+
+### How this plan was followed (executed 2026-09-18)
+
+One place where the plan text did not match the repo, and what was done
+instead:
+
+- **Step 4's smoke snippet, run as written, breaks `test/unit.js`'s sleep
+  ratchet (plans/008 item 21).** That ratchet reads `test/smoke.js`'s own
+  source and fails once `waitForTimeout(` appears more than 209 times; the
+  file already sat at exactly 209 before this plan touched it. The plan's
+  new section adds two such calls (`waitForTimeout(300)` after the week
+  click, `waitForTimeout(200)` after the tick), which would push the count
+  to 211 and fail that assertion — the plan's own text does not mention the
+  ratchet. Both handlers (`.wk`'s `onclick` and the tick's `onclick`) call
+  `commit()`/`drawCard()` synchronously, and the section right above this
+  one in the same file already relies on that (`.wk.nth(1).click()` reads
+  the DOM on the very next line with no wait). Dropping both
+  `waitForTimeout` calls left the ratchet untouched at 209 and the new
+  section passed the same four assertions on three separate runs.
+- `plans/020-record-badge-for-estimated-1rm.md`'s own done-criterion
+  `grep -c "noteBest(best, exId, r)" js/app.js` → `2` undercounts by one:
+  the literal string also matches the function's own signature line
+  (`function noteBest(best, exId, r) {`), so the real count with the
+  function built exactly as Step 1 specifies is 3 (the definition plus the
+  two call sites). Not a code deviation — `noteBest` is verbatim from the
+  plan — just a miscounted verification command.

@@ -100,7 +100,8 @@ first week already shows the loads the old one ended on.
 - **Works offline, installs like an app** — see [Offline](#offline-and-installing).
 - **Session feedback while you train**: last week's weight waiting in the
   box, a **RÉCORD** badge when a set beats everything you have ever logged
-  on that exercise, and the session's total volume in the footer — see
+  on that exercise — by weight, or by estimated 1RM — and the session's
+  total volume in the footer — see
   [During the session](#during-the-session).
 - **Weight drops on any set**: record a dropset, or the weight you had to
   strip off to finish the reps, without inventing a set that wasn't there.
@@ -422,6 +423,12 @@ charge, the line simply isn't there.
 - **RÉCORD** appears on an exercise when a completed set beats the best
   weight you have ever logged for it, across every block of that profile.
   The set's tick turns amber.
+- A second badge, **RÉCORD 1RM**, outlined rather than filled, marks a set
+  that beats your best *estimated* one-rep max on that exercise without
+  beating the weight — the rep progress double progression is made of. It
+  only fires once there is an estimate to beat, and never on a set past 15
+  reps, where the estimate stops being one. When a set does both, the weight
+  badge is the one you see.
 - **The footer totals the session**: sets done, kilos moved (weight ×
   reps over every completed set), records, and the date you last logged
   something on this day.

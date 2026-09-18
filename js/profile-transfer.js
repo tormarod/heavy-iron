@@ -245,6 +245,13 @@ function countBackupSets(data) {
 }
 
 async function restoreFromText(text) {
+  /* A set ticked just before this runs leaves a debounced save() pending
+     (js/app.js, 400 ms). Left alone, that timer can fire after one of the
+     mark() calls below and silently overwrite "no se puede usar…" with
+     "Guardado hh:mm" — the rejection reason disappears exactly when it
+     matters most. Flushing first means any autosave lands before this
+     function's own message, never after. */
+  flushSave();
   let parsed;
   try {
     parsed = JSON.parse(String(text).trim());
