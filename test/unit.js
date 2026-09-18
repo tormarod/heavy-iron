@@ -1129,6 +1129,100 @@ ok('nextLoad takes the first rung within one and a half steps, else the step',
    call('nextLoad([40, 41, 45], 40, 2.5)') === 41 && call('nextLoad([40, 45], 40, 2.5)') === 42.5);
 ok('prevLoad mirrors it', call('prevLoad([35, 39, 40], 40, 2.5)') === 39 && call('prevLoad([30, 40], 40, 2.5)') === 37.5);
 
+/* ---- the arms of targetFor the fifteen never entered (plans/026) ----
+   Every case above is a block with one day, a numbered phase, one segment
+   and a set count that never changes, which leaves five branches of the
+   rule reachable only from test/smoke.js or from nothing at all. */
+
+/* A phase somebody wrote in their own words has no number in it, so the
+   week cannot say what reserve it wants and the reserve the last session
+   was left at stands in — which asks for no change rather than inventing
+   one. `phaseRir` falls back to the lowest digit ANYWHERE in the text, so
+   the prose here has to carry none. */
+t = target([
+  { sets: [[40, 10], [40, 9]], rir: '2+' },
+  { sets: [[40, 10], [40, 9]], rir: '2+' },
+  { sets: [[40, 11], [40, 9]], rir: '2+' },
+], { range: '6–15', inc: 2.5, sets: 2, phase: { r: 'Semana de técnica' } });
+ok('a phase with no number in it falls back to the reserve the last session was left at',
+   t && t.rirWeek === 2, JSON.stringify(t));
+t = target([
+  { sets: [[40, 10], [40, 9]], rir: '0' },
+  { sets: [[40, 10], [40, 9]], rir: '0' },
+  { sets: [[40, 11], [40, 9]], rir: '0' },
+], { range: '6–15', inc: 2.5, sets: 2, phase: { r: 'Semana de técnica' } });
+ok('...including a zero, which is a reserve and not a missing one',
+   t && t.rirWeek === 0, JSON.stringify(t));
+t = target([
+  { sets: [[40, 10], [40, 9]], rir: '0' },
+  { sets: [[40, 10], [40, 9]], rir: '0' },
+  { sets: [[40, 11], [40, 9]], rir: '0' },
+], { range: '6–15', inc: 2.5, sets: 2, minRir: 1, phase: { r: 'Semana de técnica' } });
+ok('...and ex.minRir still floors what the fallback came back with',
+   t && t.rirWeek === 1, JSON.stringify(t));
+
+/* A layoff restarts the segment the level is read off: three sessions at
+   50 kg, twenty days away, three at 45. Measured against the whole run the
+   last three would still be the 45 kg ones, so the level alone cannot tell
+   the two apart — what can is that the run 50 → 45 reads as two declines
+   in a row, i.e. a CONFIRMED loss of the level, and inside the segment
+   there is no fall at all. */
+t = target([
+  { sets: [[50, 10]], rir: '1' },
+  { sets: [[50, 10]], rir: '1' },
+  { sets: [[50, 10]], rir: '1' },
+  { sets: [[45, 10]], rir: '1', day: 34 },
+  { sets: [[45, 10]], rir: '1', day: 41 },
+  { sets: [[45, 10]], rir: '1', day: 48 },
+], { range: '6–15', inc: 2.5, sets: 1, rirWeek: 1 });
+ok('a layoff restarts the segment, so coming back at 45 is the level and not a decline',
+   t && Math.abs(t.level - 45 * (1 + 11 / 30)) < 1e-6 && !t.notes.includes('confirmed'),
+   JSON.stringify(t));
+
+/* A second set that collapses from twelve reps to two is a ratio of 0,767,
+   under PSI_MIN — and the floor is there because a drop that size is a
+   mistyped row or a set done at a weight the rule could not see, not a
+   measurement of what the second set is worth. */
+t = target([
+  { sets: [[40, 12], [40, 2]], rir: '1' },
+  { sets: [[40, 12], [40, 2]], rir: '1' },
+  { sets: [[40, 12], [40, 2]], rir: '1' },
+  { sets: [[40, 12], [40, 2]], rir: '1' },
+], { range: '6–15', inc: 2.5, sets: 2, rirWeek: 1 });
+ok('a second set that collapses is floored at PSI_MIN rather than believed',
+   t && t.phi === '1.000 0.800', JSON.stringify(t));
+
+/* Four reps where the plan asks for ten, on a machine whose only logged
+   rung is 100: the walk down invents rungs of 3 and stops after three of
+   them, at 91, whether or not the bottom of the range is in reach yet. */
+t = target([
+  { sets: [[100, 4], [100, 3], [100, 3]] },
+  { sets: [[100, 4], [100, 3], [100, 2]] },
+], { range: '10–15', inc: 3, sets: 3, rirWeek: 1 });
+ok('coming down stops after three rungs, whether or not the range is back in reach',
+   t && t.show === '91×7↓ · 82×10↓ · 79×10↓', JSON.stringify(t));
+/* At 4f7e037 a set that ran out of rungs says nothing about it; plans/025
+   adds a "floor" note. Pinned as it stands so that plan has to move it. */
+ok('...and nothing yet marks the set that ran out of rungs (plans/025)',
+   t && !t.notes.includes('floor'), JSON.stringify(t));
+
+/* Back from a layoff the last session is repeated exactly — and the set
+   the plan has gained since was never done at all, so it takes the last
+   set's weight at the bottom of the range. */
+t = target([
+  { sets: [[40, 10], [35, 8]], rir: '1' },
+  { sets: [[40, 10], [35, 8]], rir: '1' },
+  { sets: [[40, 10], [35, 8]], rir: '1' },
+], { range: '6–15', inc: 2.5, sets: 3, rirWeek: 1, now: 34 });
+ok('a vuelta repeats the last session and gives a set gained since the last weight at the bottom of the range',
+   t && t.kind === 'vuelta' && t.show === '40×10 · 35×8 · 35×6', JSON.stringify(t));
+
+/* A rep range is the one field the rule cannot work around, and a plan
+   that arrived as JSON can say anything at all in it. */
+ok('a rep range written backwards, or with no numbers in it, is no target at all',
+   target([{ sets: [[40, 10]], rir: '1' }, { sets: [[40, 10]], rir: '1' }], { range: '15–10' }) === null &&
+   target([{ sets: [[40, 10]], rir: '1' }, { sets: [[40, 10]], rir: '1' }], { range: 'AMRAP' }) === null);
+
 console.log('\n== el objetivo guardado, las variantes y minRir ==');
 
 /* `ex.minRir` is the reserve a lift never goes under, whatever the phase
