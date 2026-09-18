@@ -274,10 +274,11 @@ $('typeSuggestions').innerHTML = TYPE_SUGGESTIONS.map(m => '<option value="' + e
    there to grow (hack squat and leg press both go to Cuádriceps, RDL and leg
    curl both go to Isquios) — not by equipment or by movement pattern, which
    is what `pattern`/`type` are for instead. Shoulder press is deliberately
-   absent: the README's own volume breakdown folds front-delt work into press
-   volume rather than tracking it as its own line, and leaving it out of this
-   table reproduces that exactly — it shows up as unclassified in the
-   dashboard, same as a genuinely untagged custom exercise. Applied once in
+   absent: the guide's own volume breakdown (docs/guide.md, "Los planes por
+   defecto") folds front-delt work into press volume rather than tracking it
+   as its own line, and leaving it out of this table reproduces that exactly
+   — it shows up as unclassified in the dashboard, same as a genuinely
+   untagged custom exercise. Applied once in
    migrate() to backfill data saved before this field existed; js/data.js and
    the bundled block JSON files carry the same tags directly, so a fresh
    install never needs the backfill. */
@@ -646,8 +647,9 @@ document.addEventListener('visibilitychange', () => {
 
    Cancelling the pending timer here is the fix: it used to keep running and
    fire up to 400 ms later regardless, landing before anyone could have read
-   the toast, let alone answered it — the two-tab guarantee the README sells
-   was really just a message that arrived after the fact. */
+   the toast, let alone answered it — the two-tab guarantee the guide sells
+   (docs/guide.md, "When the data goes wrong") was really just a message that
+   arrived after the fact. */
 window.addEventListener('storage', e => {
   if (e.key !== STORAGE_KEY || frozen || !ready) return;
   if (saveT || held) {
@@ -4060,12 +4062,13 @@ const roundToStep = (v, step) => step > 0 ? Math.round(v / step) * step : v;
 /* The warm-up ramp and plate calculator live in js/calculator.js. */
 
 /* ---------- volume dashboard ----------
-   A weekly hard-sets-per-tag view: the same kind of count the README's own
-   volume analysis reasons about in prose, made visible in the app. The tag
-   can come from any of VOLUME_DIMENSIONS (muscle/pattern/type) — "what does
-   this hit" and "what shape is this movement" are different, orthogonal
-   questions, and a plan that looks balanced on one can still be lopsided on
-   the other (e.g. plenty of press volume but almost all of it isolation). */
+   A weekly hard-sets-per-tag view: the same kind of count the guide's own
+   volume analysis (docs/guide.md, "Weekly volume") reasons about in prose,
+   made visible in the app. The tag can come from any of VOLUME_DIMENSIONS
+   (muscle/pattern/type) — "what does this hit" and "what shape is this
+   movement" are different, orthogonal questions, and a plan that looks
+   balanced on one can still be lopsided on the other (e.g. plenty of press
+   volume but almost all of it isolation). */
 
 /* The tags actually in play for this block on one dimension, in
    first-seen order — there is no fixed list any more, so the row set a bar
@@ -4248,12 +4251,13 @@ function volumeTrendRows(scope, profile, block, dim) {
 /* The dashboard that draws all of this lives in js/volume-sheet.js. */
 
 /* ---------- backup nag ----------
-   "A lost phone with no backup is a lost history" per the README's own
-   Known Limits, and nothing used to remind you. Sessions-since-last-export
-   is computable from data the app already has, so this rides on top of it
-   rather than asking for anything new: a day's sets going from incomplete
-   to complete (see the tick handler in drawApp) is close enough to "a
-   session happened" for a gentle nag, not a precise ledger. */
+   "A lost phone with no backup is a lost history" per the guide's own
+   Known limits (docs/guide.md), and nothing used to remind you.
+   Sessions-since-last-export is computable from data the app already has, so
+   this rides on top of it rather than asking for anything new: a day's sets
+   going from incomplete to complete (see the tick handler in drawApp) is
+   close enough to "a session happened" for a gentle nag, not a precise
+   ledger. */
 function resetBackupNag() {
   state.prefs.sessionsSinceBackup = 0;
   save();
