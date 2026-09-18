@@ -1601,7 +1601,8 @@ rule, and which of this project's absences are deliberate.
 | File | What it is |
 |---|---|
 | `index.html` | the whole markup: header, session list, and the dialogs |
-| `css/style.css` | one stylesheet; all colours are tokens declared at the top, twice (light and dark) |
+| `js/theme-init.js` | resolves "auto" into an explicit `data-theme` before `css/style.css` is applied, so the first paint never flashes the wrong palette |
+| `css/style.css` | one stylesheet; all colours are tokens declared at the top, once per theme (light and `[data-theme="dark"]`) |
 | `js/data.js` | the default plans, used only on a device's first run |
 | `js/block-editor.js` | block CRUD/list, importing a block from JSON, and the plan editor |
 | `js/diagnostics.js` | the Diagnóstico screen: e1RM trend per exercise crossed with the log's own signals and with a second slope over kilos per set, real frequency per muscle from the row timestamps, and the indexed strength-per-muscle chart |

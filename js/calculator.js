@@ -19,29 +19,71 @@
    never below `floor` (the empty bar, on barra mode) — the actual target
    weight is a separate, unrounded fourth row, since a plate breakdown for
    *that* has to fit the number you asked for, not a rounded stand-in. */
+/* Consecutive steps can round to the same loadable weight (target 15,
+   increment 10 gives 10/10/10/15) — collapsing the duplicates rather than
+   drawing three identical rows the lifter has to notice are the same. */
 function warmupRamp(target, step, floor) {
-  return [0.4, 0.6, 0.8].map(p => Math.max(floor || 0, roundToStep(target * p, step)));
+  const rows = [0.4, 0.6, 0.8].map(p => Math.max(floor || 0, roundToStep(target * p, step)));
+  return rows.filter((w, i) => i === 0 || w !== rows[i - 1]);
 }
 
-/* Greedy fit, largest plate first. The available set can land short of an
-   exact fit (e.g. a gap smaller than the smallest plate) — the remainder is
-   reported rather than hidden, so a breakdown that doesn't add up is never
-   shown as if it did. */
 /* Belt-and-braces alongside the PLATE_MIN/MAX clamp in migrate(): a plate
    set never reaches here except through state.prefs, but nothing about this
-   function itself guarantees that, so a stray near-zero value stops the loop
-   on a hard cap rather than trusting the caller. */
+   function itself guarantees that, so a stray near-zero value cannot blow
+   up either path below. */
 const FIT_PLATES_MAX = 200;
 
+/* Plates are a small multiset with unlimited count per side, so this is
+   unbounded coin-change, not a knapsack that needs backtracking: quantize to
+   quarter-units (finer than any plate migrate() accepts) so the weights
+   become a small integer problem, then fill a minimum-coins table bottom-up
+   and read the largest reachable sum back off. Largest-first greedy used to
+   report a shortfall a smaller combination would have covered — e.g. plates
+   25/20/15/10 for a 30 target took 25 and reported "falta 5" although
+   15 + 15 fits exactly — and, separately, could use more plates than
+   necessary for a fit it did find. */
+const FIT_PLATES_DP_CAP = 4000;  /* 1000 kg/lb per side in quarter-units — no real plate load gets close */
+
 function fitPlates(perSide, plateSet) {
-  const sorted = (plateSet || []).filter(p => p > 0).sort((a, b) => b - a);
-  let remaining = Math.max(0, perSide);
+  const perSideClamped = Math.max(0, perSide);
+  const QUARTER_UNITS = 4;
+  const target = Math.round(perSideClamped * QUARTER_UNITS);
+  const coins = Array.from(new Set((plateSet || []).filter(p => p > 0).map(p => Math.round(p * QUARTER_UNITS))))
+    .filter(c => c > 0 && c <= FIT_PLATES_DP_CAP)
+    .sort((a, b) => b - a);
+  if (!coins.length || target <= 0) {
+    const remainder0 = Math.round(perSideClamped * 100) / 100;
+    return { plates: [], remainder: remainder0 > 0.01 ? remainder0 : 0 };
+  }
+  const cap = Math.min(target, FIT_PLATES_DP_CAP);
+  /* count[s] holds the fewest coins that reach sum s, and via[s] one of the
+     coins that achieves that count — a proper minimum-coins table, not just
+     a feasibility one, so the breakdown shown is also the fewest plates
+     rather than whichever largest-first pick happens to be feasible. -1
+     means s cannot be made at all from these coins. */
+  const count = new Int32Array(cap + 1).fill(-1);
+  const via = new Int32Array(cap + 1).fill(-1);
+  count[0] = 0;
+  for (let s = 1; s <= cap; s++) {
+    for (let i = 0; i < coins.length; i++) {
+      const c = coins[i];
+      if (c <= s && count[s - c] >= 0 && (count[s] < 0 || count[s - c] + 1 < count[s])) {
+        count[s] = count[s - c] + 1;
+        via[s] = c;
+      }
+    }
+  }
+  let best = 0;
+  for (let s = cap; s > 0; s--) { if (count[s] >= 0) { best = s; break; } }
   const used = [];
-  sorted.forEach(p => {
-    while (remaining - p > -1e-6 && used.length < FIT_PLATES_MAX) { used.push(p); remaining -= p; }
-  });
-  remaining = Math.round(remaining * 100) / 100;
-  return { plates: used, remainder: remaining > 0.01 ? remaining : 0 };
+  let s = best, reached = 0, guard = 0;
+  while (s > 0 && guard++ < FIT_PLATES_MAX) { const c = via[s]; used.push(c / QUARTER_UNITS); reached += c; s -= c; }
+  /* Derived from `reached` (the sum of plates actually pushed above), not
+     from `best`: if the guard cap is ever hit mid-reconstruction, `used`
+     stops short of `best` and the remainder must reflect that shortfall
+     rather than silently claiming the untruncated fit. */
+  const remainder = Math.round((perSideClamped - reached / QUARTER_UNITS) * 100) / 100;
+  return { plates: used, remainder: remainder > 0.01 ? remainder : 0 };
 }
 
 let calcDraft = { mode: 'bar', target: '', inc: '' };

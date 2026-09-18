@@ -29,7 +29,7 @@ below so it is not lost or re-audited.
 | 005 | [Stop re-walking the whole log several times per render](done/005-memoize-render-scans.md) | P2 | S | LOW | — | DONE |
 | 006 | [Four small correctness fixes](done/006-four-small-correctness-fixes.md) | P2 | S | LOW | — | DONE |
 | 007 | [Write `AGENTS.md`](done/007-agents-md.md) | P2 | S | LOW | — | DONE |
-| 008 | [Second audit: ranked findings and plan](008-audit-2026-09-17.md) | P1 | — | — | — | IN PROGRESS (items 1–14 done, 15–23 remain) |
+| 008 | [Second audit: ranked findings and plan](008-audit-2026-09-17.md) | P1 | — | — | — | IN PROGRESS (items 1–20 and 22 done, 21 partial, 23 remains) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
@@ -105,24 +105,18 @@ leverage.
   training as the second profile who turns on "Solo yo" is moved onto the
   first profile's blocks and log, and the name they typed lands on the other
   person's label. S effort, one ordering change.
-- **The heat-map week count is computed in milliseconds** (`js/diagnostics.js:270`).
-  Across a DST transition a local day is 23 h, so a span of N calendar days
-  measures short and the most recent trained day can be dropped off the right
-  edge of the chart. The rendering loop immediately below already uses
-  DST-safe calendar arithmetic; only the column count is wrong. S effort,
-  cosmetic impact.
+- ~~**The heat-map week count is computed in milliseconds**
+  (`js/diagnostics.js:270`)~~ — done (008 item 16): `js/diagnostics.js`
+  counts calendar days via `Date.UTC` on both ends instead.
 - **`install` swallows every precache failure** (`sw.js:48-55`). A flaky
   connection during the first install can leave a shell file uncached while
   the worker activates and claims clients, so the app reports itself installed
   and offline-ready with a subresource missing — discovered at the gym, with
   no way to self-heal until back online. A retry on `activate` is the safer
   shape than failing the install.
-- **`requestWakeLock` has no guard against a rest stopped mid-request**
-  (`js/app.js:1891-1895`). Tapping "saltar" inside the request's latency
-  leaves a wake lock held with no timer running, and no path can release it.
-  Narrow window; real battery cost when it hits. Note the `visibilitychange`
-  re-request is **not** a leak — browsers auto-release wake locks when a
-  document is hidden.
+- ~~**`requestWakeLock` has no guard against a rest stopped mid-request**
+  (`js/app.js:1891-1895`)~~ — done (008 item 15): it releases the lock
+  instead of holding it when `tId` is null after the `await`.
 
 **Security / robustness**
 
@@ -184,41 +178,40 @@ leverage.
 - **CI downloads Chromium from scratch on every PR** (`.github/workflows/test.yml`).
   No `actions/cache` anywhere, though the Playwright version is already pinned,
   making the cache key trivially stable. Roughly 1.5-2.5 minutes per run.
-- **The dark palette is written out twice, verbatim** (`css/style.css:43-71`
-  and `:75-102`) — 25 custom properties duplicated, with a comment
-  acknowledging it, plus the accent overrides at `:116-127`. Collapsing it
-  means `applyTheme()` always writing an explicit `data-theme`, which needs an
-  inline preference read in `<head>` to avoid a light flash. The CSP forbids
-  inline scripts, so that read must go in a real file — check this constraint
-  before starting.
-- **Two functions are never called**: `reorderedDay` (`js/app.js:1244`) and
-  `loggedSetsDay` (`js/app.js:1369`). Verified by grep across `js/`,
-  `index.html` and `test/`. `reorderedDay` duplicates a check `drawOrderNote`
-  inlines at `js/app.js:2518`, so the "was this session reordered?" rule has
-  two homes and only one that matters.
-- **The plan editor rebuilds every exercise row on each keystroke** of the
-  weeks field (`js/block-editor.js:974-980`). Every other editor field mutates
-  the draft without re-rendering, so this is the outlier. The weeks value is
-  re-read and re-clamped on save, so the draft cannot drift.
-- **Three locals shadow the global `slot()` key builder** (`js/diagnostics.js:159`,
-  `:241`, `:336` vs `js/app.js:85`). Not a bug today — those functions parse
-  keys with a regex instead — but adding a single `slot(w, dayId)` call to any
-  of them produces a runtime `TypeError` with no build-time warning.
+- ~~**The dark palette is written out twice, verbatim** (`css/style.css:43-71`
+  and `:75-102`)~~ — done (008 item 20): `js/theme-init.js` resolves the theme
+  into an explicit `data-theme` in `<head>` before the stylesheet is applied,
+  so the tokens are declared once for the default and once for
+  `[data-theme="dark"]`.
+- ~~**Two functions are never called**: `reorderedDay` (`js/app.js:1244`) and
+  `loggedSetsDay` (`js/app.js:1369`)~~ — done (008 item 20): both deleted.
+  `drawOrderNote` keeps the rule it already inlined.
+- ~~**The plan editor rebuilds every exercise row on each keystroke** of the
+  weeks field (`js/block-editor.js:974-980`)~~ — done (008 item 20): `peWeeks`
+  splits `oninput` (draft and deload options only) from `onchange` (the full
+  `renderPlanEditor()`).
+- ~~**Three locals shadow the global `slot()` key builder** (`js/diagnostics.js:159`,
+  `:241`, `:336` vs `js/app.js:85`)~~ — done (008 item 20): all three renamed
+  to `slotRows`.
 
 **Tests / docs**
 
 - **The restore path has no happy-path test.** Every `#bRestore` assertion in
   `test/smoke.js` (`:536`, `:539`, `:898`) is a rejection case; nothing reaches
   the success branch at `js/profile-transfer.js:107`. Folded into plan 004.
-- **Two documented data-safety guarantees are untested**: two-tab
-  reconciliation (`js/app.js:403-417`) and flush-on-hide (`:396-397`). The
-  README sells both as guarantees. Playwright supports two pages in one
-  context, so both are reachable.
+- ~~**Two documented data-safety guarantees are untested**: two-tab
+  reconciliation (`js/app.js:403-417`) and flush-on-hide (`:396-397`)~~ —
+  done (008 item 21, bullet 3): both turned out to already be covered by
+  existing smoke sections from earlier work.
 - **167 fixed sleeps totalling ~68 s** are the smoke suite's entire
   synchronisation strategy, and the whole 2,767-line file is one `try`/`catch`
-  — a single broken selector hides the other 19 blocks' results. Wrapping each
-  block to record a failure and continue would make a red build far more
-  useful.
+  — a single broken selector hides the other 19 blocks' results. **The
+  try/catch half is done** (008 item 21, bullet 1): every top-level block is
+  a `section(name, fn)` call that records a failure and continues. **The
+  sleep count is not down** (bullet 2, still open): `waitForTimeout` went
+  197 → 205 across PR #75, since the smoke coverage that PR added for items
+  15–22 used the same fixed-sleep pattern instead of `waitForFunction`
+  polling.
 - **The README says the tests "run on every push and pull request"** — they do
   not; `test.yml` is `pull_request` and `workflow_dispatch` only, deliberately.
   Meanwhile `pages.yml` deploys on every push to `main`, so a direct push

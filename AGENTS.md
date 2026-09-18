@@ -17,8 +17,8 @@ identical to an oversight unless someone writes down which it is:
 
 - **No build step, no bundler, no `package.json`, no TypeScript.** Plain
   HTML/CSS/JS, served by any static server. Do not add a build step.
-- **No modules.** Eleven `<script>` tags share one global scope, in a fixed
-  order (`index.html`, the `<script>` block at the foot of `<body>`):
+- **No modules.** Twelve `<script>` tags share one global scope — eleven of
+  them in a fixed order at the foot of `<body>` (`index.html`):
 
   ```html
   <script src="js/data.js"></script>
@@ -36,6 +36,13 @@ identical to an oversight unless someone writes down which it is:
 
   `js/app.js` loads last because it wires the others together and then calls
   `load()`.
+
+  One more script, `js/theme-init.js`, loads earlier still — in `<head>`,
+  before `css/style.css` — so `data-theme` is set before the stylesheet is
+  applied at all and "auto" never flashes light for a moment on a dark
+  system (plans/008 item 20). It has no `wire*()` — it is a self-invoking
+  read of the theme preference, not DOM wiring — but it is still in `SHELL`
+  and still loaded by `test/unit.js`'s `loadApp()`, first, ahead of this list.
 - **A file other than `app.js` must keep all its DOM wiring inside its own
   `wire*()` function**, called from `app.js`'s tail (`js/app.js:5437`):
 
@@ -144,9 +151,20 @@ with `esc` (`js/app.js:32`) on the way out. Limits are enforced in
 
 ## The CSP
 
-Strict, in a `<meta>` tag at `index.html:9`. No inline scripts or styles may
-be added. This is why the webfont flip lives in a real script rather than an
-inline `onload`.
+Strict, in a `<meta>` tag at `index.html`. No inline scripts or styles may
+be added — `style-src` has no `'unsafe-inline'` any more (plans/008 item
+22), so a literal `style="..."` attribute anywhere, including one stamped
+into an `innerHTML` string, is a silent, console-only failure to apply that
+style. Use a class in `css/style.css` instead — the `/* ---- utility classes
+---- */` section there is the pattern for a value that would otherwise be a
+one-off inline style. Most are named `.u-*`, but a few (`.sheet-lead`,
+`.calc-row`) are named for what they hold instead, per that section's own
+comment — the section is identified by location, not by prefix. A value
+computed at runtime (a chart's max-width) goes
+through a real CSSOM property assignment (`el.style.maxWidth = ...`), which
+the CSP does not restrict, never `setAttribute('style', ...)` or
+`.style.cssText`, which it does. This is why the webfont flip lives in a
+real script rather than an inline `onload`.
 
 ## Comment style
 
@@ -160,7 +178,7 @@ prevent — not what the code does. Two examples from the source:
    read used to mean a white screen and no way back. Instead: stop writing
    (so the broken copy is not overwritten with something worse), and offer to
    hand the raw bytes over as a file before anything is thrown away. */
-function showRecovery(err, raw) {
+function showRecovery(err, raw, mode) {
 ```
 
 ```js

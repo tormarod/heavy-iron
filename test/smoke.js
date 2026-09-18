@@ -521,7 +521,11 @@ const ok = (name, cond, extra) => {
     await page.click('#calcClose');
 
     console.log('\n== theme ==');
-    ok('starts on auto (no attribute)', await page.evaluate(() => document.documentElement.getAttribute('data-theme')) === null);
+    // "auto" resolves into an explicit data-theme (js/theme-init.js, then
+    // applyTheme()) rather than leaving the attribute unset, so the dark
+    // palette only needs declaring once in css/style.css (plans/008 item 20)
+    ok('starts on auto, resolved to the browser default (light)',
+       await page.evaluate(() => document.documentElement.getAttribute('data-theme')) === 'light');
     await page.click('#themeBtn');
     ok('cycles to light', await page.evaluate(() => document.documentElement.getAttribute('data-theme')) === 'light');
     await page.click('#themeBtn');
@@ -531,6 +535,17 @@ const ok = (name, cond, extra) => {
     await page.reload({ waitUntil: 'networkidle' });
     ok('theme choice persists', await page.evaluate(() => document.documentElement.getAttribute('data-theme')) === 'dark');
     await page.click('#themeBtn'); // back to auto
+    ok('back on auto', await page.evaluate(() => document.documentElement.getAttribute('data-theme')) === 'light');
+
+    // On auto, applyTheme()'s matchMedia listener is what now has to pick up
+    // a live system change — the @media(prefers-color-scheme) rule that used
+    // to do this was removed along with the duplicate dark palette block.
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.waitForTimeout(150);
+    ok('auto follows a live system theme change without a reload',
+       await page.evaluate(() => document.documentElement.getAttribute('data-theme')) === 'dark');
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.waitForTimeout(150);
 
     console.log('\n== XSS: hostile imported block ==');
     await page.evaluate(() => { window.__xss = false; });
@@ -1390,6 +1405,32 @@ const ok = (name, cond, extra) => {
     await ctx.close();
   });
 
+  // ---------- storage read failure (not corrupt data — no bytes at all) ----------
+  await section('storage read failure', async () => {
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    // simulates private-mode/blocked storage: getItem throws before any bytes
+    // are retrieved, which must not be folded into "first run" or "corrupt
+    // data" — both would risk seeding over or losing data that may be intact.
+    await page.addInitScript(() => {
+      const orig = Storage.prototype.getItem;
+      Storage.prototype.getItem = function (key) {
+        if (key === 'heavy-iron-v1') throw new Error('storage blocked de prueba');
+        return orig.call(this, key);
+      };
+    });
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.recovery', { timeout: 5000 });
+    ok('a storage read failure lands on the recovery screen, not a fresh seed',
+       await page.locator('.recovery').count() === 1);
+    ok('copy says storage could not be read, not that the data is corrupt',
+       (await page.textContent('.recovery h1')).includes('podido leer'));
+    ok('no download offered when there are no bytes to hand over',
+       await page.locator('#recDownload').count() === 0);
+    ok('Reintentar is offered as the primary way out', await page.locator('#recReload').count() === 1);
+    await ctx.close();
+  });
+
   // ---------- recovery screen ----------
   await section('recovery screen', async () => {
     const ctx = await browser.newContext();
@@ -1399,12 +1440,21 @@ const ok = (name, cond, extra) => {
     await dismissSetup(page);
     await page.waitForTimeout(600);
 
+    // off week 1 first, so "Volver a la semana 1" below is an actual reset
+    await page.evaluate(() => { state.profiles.hombre.week = 3; });
+
     // break rendering itself, then force a redraw
     await page.evaluate(() => { window.setsFor = () => { throw new Error('boom de prueba'); }; });
     await page.locator('.day').nth(1).click();
     await page.waitForTimeout(300);
     ok('recovery screen replaces the blank page', await page.locator('.recovery').count() === 1);
     ok('shows the underlying error', (await page.textContent('.recovery pre')).includes('boom de prueba'));
+    // a render throw is a code bug on data that parsed and migrated fine, so
+    // the copy and the extra buttons must say so (plans/008 item 18)
+    ok('copy says the app failed to draw, not that the data is unreadable',
+       (await page.textContent('.recovery h1')).includes('fallado al dibujar'));
+    ok('offers a way out that does not delete data', await page.locator('#recWeek1').count() === 1);
+    ok('offers switching block too', await page.locator('#recBlock').count() === 1);
     const dl = await Promise.all([page.waitForEvent('download'), page.click('#recDownload')]).then(r => r[0]).catch(() => null);
     ok('hands the raw data over as a file', !!dl);
 
@@ -1413,6 +1463,13 @@ const ok = (name, cond, extra) => {
     const clobbered = await page.evaluate(() => (localStorage.getItem('heavy-iron-v1') || '').includes('CLOBBERED'));
     const after = await page.evaluate(() => (localStorage.getItem('heavy-iron-v1') || '').length);
     ok('refuses to write over the data it could not read', !clobbered && before === after);
+
+    // "Volver a la semana 1" resets the week and reloads instead of wiping
+    await Promise.all([page.waitForNavigation(), page.click('#recWeek1')]);
+    await page.waitForTimeout(300);
+    ok('leaves the recovery screen after resetting the week', await page.locator('.recovery').count() === 0);
+    ok('the profile is back on week 1',
+       await page.evaluate(() => JSON.parse(localStorage.getItem('heavy-iron-v1')).profiles.hombre.week) === 1);
     await ctx.close();
   });
 
@@ -1461,6 +1518,28 @@ const ok = (name, cond, extra) => {
     });
     ok('deleting a block takes its rir/notes/energy/order with it',
        leftovers.length === 0, 'still present in: ' + leftovers.join(', '));
+
+    /* The confirm above was raised from inside the still-open block manager
+       sheet — the exact case that used to null the sheet stack's shared
+       focus-return variable (plans/008 item 22). Deleting a block also
+       rebuilds #blockbar and #blockList (both render() and the explicit
+       renderBlockManager() call), which would otherwise remove the focused
+       button out from under the browser and drop focus to <body> with no
+       way back — the del.onclick handler catches that and puts focus back
+       in the sheet instead. */
+    ok('deleting the block does not strand focus on <body>',
+       await page.evaluate(() => document.activeElement !== document.body));
+    /* Closing the sheet after this is a separate, larger gap than this item
+       covers: deleteBlocks()'s render() also recreates the "Gestionar"
+       button that opened this sheet (the nav bar is rebuilt on every
+       render()), so closeSheet's isConnected guard correctly skips focusing
+       the now-detached original rather than silently no-op'ing on it — but
+       nothing stands in for it, so focus does fall to <body> here. Restoring
+       identity across an arbitrary full re-render is out of scope for this
+       item; not asserted either way so this test does not pin that gap. */
+    await page.click('#blkClose');
+    await page.waitForTimeout(150);
+    ok('the sheet actually closes', await page.locator('#blocksSheet.up').count() === 0);
     await ctx.close();
   });
 
@@ -3140,6 +3219,37 @@ const ok = (name, cond, extra) => {
   });
 
   // ---------- layout on real phone widths ----------
+  // ---------- accessibility: reduced motion, CSP with no unsafe-inline ----------
+  await section('accesibilidad: reduced motion y CSP sin unsafe-inline (plans/008 item 22)', async () => {
+    const ctx = await browser.newContext({ reducedMotion: 'reduce' });
+    const page = await ctx.newPage();
+    const cspViolations = [];
+    page.on('console', msg => { if (msg.text().includes('Content Security Policy')) cspViolations.push(msg.text()); });
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await dismissSetup(page);
+    await page.waitForTimeout(300);
+    const dur = await page.evaluate(() =>
+      parseFloat(getComputedStyle(document.querySelector('.sm')).transitionDuration) * 1000);
+    ok('prefers-reduced-motion collapses a transition to near-zero', dur < 1, dur + 'ms');
+    // sheets, the heat-map SVG, the volume/strength charts and the plan
+    // editor's flex fields are the ones that used to carry style="" —
+    // exercising them here is what would surface a CSP violation the
+    // "no Content-Security-Policy violations" check in "main session"
+    // might not reach if this section's --only run skips that one.
+    await page.click('#diagBtn');
+    await page.click('#diagView >> text=Frecuencia');
+    await page.waitForTimeout(200);
+    await page.click('#diagClose');
+    await page.click('#volumeBtn');
+    await page.waitForTimeout(200);
+    await page.click('#volumeClose');
+    await page.click('#editPlan');
+    await page.waitForTimeout(200);
+    await page.click('#peClose');
+    ok('none of that tripped the CSP', cspViolations.length === 0, cspViolations.join(' | '));
+    await ctx.close();
+  });
+
   await section('layout', async () => {
     for (const [label, width] of [['iPhone SE', 375], ['Pixel', 412], ['tablet', 768]]) {
       const ctx = await browser.newContext({ viewport: { width, height: 820 } });

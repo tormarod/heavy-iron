@@ -57,9 +57,10 @@ function loadApp() {
   ctx.window.self = ctx.window;
   ctx.globalThis = ctx;
 
-  /* The same order as the <script> tags in index.html — app.js last, because
-     it is the one that wires the others and then calls load(). */
-  ['js/data.js', 'js/block-editor.js', 'js/diagnostics.js', 'js/review.js',
+  /* The same order as the <script> tags in index.html — theme-init.js first
+     because it loads in <head>, app.js last because it is the one that wires
+     the others and then calls load(). */
+  ['js/theme-init.js', 'js/data.js', 'js/block-editor.js', 'js/diagnostics.js', 'js/review.js',
    'js/profile-transfer.js', 'js/calculator.js', 'js/rest-timer.js',
    'js/chart.js', 'js/volume-sheet.js', 'js/qr-transfer.js',
    'js/app.js'].forEach(f => {
@@ -789,6 +790,12 @@ ok('a near-zero plate is filtered out by the PLATE_MIN/MAX bounds, not just p > 
    JSON.stringify(migratedPlates.prefs.plates));
 ok('fitPlates never grows past FIT_PLATES_MAX even fed a plate size migrate() would already reject',
    call('fitPlates(1000000, [0.0001]).plates.length') <= call('FIT_PLATES_MAX'));
+ok('fitPlates reports a remainder that matches the plates actually returned, even when reconstruction hits FIT_PLATES_MAX',
+   call('(function(){var f=fitPlates(60,[0.25]);return Math.abs(f.plates.reduce((a,b)=>a+b,0)+f.remainder-60)<1e-6;})()'),
+   String(call('JSON.stringify(fitPlates(60,[0.25]))')));
+ok('fitPlates picks the fewest plates for an exact fit, not just any feasible one',
+   call('fitPlates(30, [20, 15, 5]).plates.length') === 2,
+   String(call('JSON.stringify(fitPlates(30, [20, 15, 5]))')));
 
 console.log('\n== unit-stamped rows: diagnostics and the review convert instead of blending kg/lb (plans/008 item 9) ==');
 ok('convertWeight round-trips kg -> lb -> kg',
@@ -979,5 +986,95 @@ ok('blocks/mujer-bloque-1.json phase matches DEFAULT_PHASE_PAREJA',
 ok('blocks/mujer-bloque-1.json priority matches DEFAULT_PRIORITY_PAREJA',
    JSON.stringify(call('DEFAULT_PRIORITY_PAREJA')) === JSON.stringify(mujerBlockFile.priority));
 
-console.log('\n' + pass + ' passed, ' + fail + ' failed');
-process.exit(fail ? 1 : 0);
+console.log('\n== phaseRir: the number next to "RIR" wins, not the lowest digit anywhere (plans/008 item 17) ==');
+ok('a week number ahead of the RIR phrase no longer wins',
+   call('phaseRir({ phase: [{ r: "Semana 1: 2-3 RIR" }] }, 0)') === 2);
+ok('a one-off number elsewhere no longer wins over the RIR range',
+   call('phaseRir({ phase: [{ r: "Top set + 2 back-offs, 1 RIR" }] }, 0)') === 1);
+ok('a plain range still reads correctly',
+   call('phaseRir({ phase: [{ r: "2-3 RIR" }] }, 0)') === 2);
+ok('no RIR phrase falls back to the lowest digit anywhere',
+   call('phaseRir({ phase: [{ r: "Semana 3 de 5" }] }, 0)') === 3);
+ok('no digits at all returns null',
+   call('phaseRir({ phase: [{ r: "Deload" }] }, 0)') === null);
+
+console.log('\n== buildHeatmapSVG: week count is calendar days, not milliseconds (plans/008 item 16) ==');
+const heatWeeks = heat => {
+  const m = heat.svg.match(/viewBox="0 0 (\d+)/);
+  return Math.round((Number(m[1]) - 16) / 13);
+};
+ok('two Mondays exactly 14 days apart span 3 weeks (inclusive)',
+   heatWeeks(call('buildHeatmapSVG({ "2026-01-05": 1, "2026-01-19": 1 })')) === 3);
+ok('a single trained day is one week',
+   heatWeeks(call('buildHeatmapSVG({ "2026-06-10": 1 })')) === 1);
+ok('maxW comes back alongside the markup instead of round-tripping through a data attribute',
+   call('buildHeatmapSVG({ "2026-06-10": 1 }).maxW') > 0);
+
+console.log('\n== storage-failure paths (plans/008 item 18) ==');
+{
+  const origGetItem = call('localStorage.getItem');
+  const origShowRecovery = call('showRecovery');
+  call('__recoveryCalls = [];');
+  app.showRecovery = (e, raw, mode) => { call('__recoveryCalls').push({ msg: e && e.message, raw, mode }); };
+  app.localStorage.getItem = () => { throw new Error('getItem blocked'); };
+  call('load()');
+  ok('a thrown read goes to recovery instead of seeding a fresh device over it',
+     call('__recoveryCalls.length') === 1 && call('__recoveryCalls[0].raw') === null,
+     JSON.stringify(call('__recoveryCalls')));
+  ok('a thrown read is tagged as a read failure, not the corrupt-data or draw-failure copy',
+     call('__recoveryCalls[0].mode') === 'read',
+     JSON.stringify(call('__recoveryCalls')));
+  app.localStorage.getItem = origGetItem;
+  app.showRecovery = origShowRecovery;
+}
+
+{
+  /* frozen/ready reflect whatever the harness's inert DOM stub left them at
+     (drawApp() cannot fully draw against `inert()` elements) — orthogonal to
+     what this checks, so pin them to a normal, unfrozen state around it. */
+  const savedFrozen = call('frozen'), savedReady = call('ready');
+  call('frozen = false; ready = true; held = false; quotaToastShown = false;');
+  const origSetItem = call('localStorage.setItem');
+  const origToast = call('toast');
+  call('__toastCalls = 0;');
+  app.toast = () => { call('__toastCalls++;'); };
+  app.localStorage.setItem = () => { throw new Error('quota exceeded'); };
+  call('writeState(true)'); call('writeState(true)');
+  ok('a failed save shows the toast once, not on every retry', call('__toastCalls') === 1);
+  app.localStorage.setItem = origSetItem;
+  app.toast = origToast;
+  call('quotaToastShown = false; frozen = ' + savedFrozen + '; ready = ' + savedReady + ';');
+}
+
+console.log('\n== calculator correctness: exact plate fit, no duplicate warm-up rows (plans/008 item 19) ==');
+ok('25/20/15/10 for a 30 target finds a combination that fits exactly, not the old greedy shortfall of 5',
+   call('fitPlates(30, [25, 20, 15, 10]).remainder') === 0,
+   String(call('JSON.stringify(fitPlates(30, [25, 20, 15, 10]))')));
+ok('the plates reported for that fit really do sum to the target',
+   call('fitPlates(30, [25, 20, 15, 10]).plates.reduce((a,b)=>a+b,0)') === 30);
+ok('a target with no exact combination still reports the true shortfall',
+   call('fitPlates(23, [20, 10, 5]).remainder') === 3,
+   String(call('JSON.stringify(fitPlates(23, [20, 10, 5]))')));
+ok('warmupRamp collapses three identical rounded steps into one (target 15, increment 10)',
+   call('JSON.stringify(warmupRamp(15, 10, 0))') === '[10]',
+   String(call('JSON.stringify(warmupRamp(15, 10, 0))')));
+ok('warmupRamp keeps three distinct steps when they are actually distinct',
+   call('warmupRamp(100, 2.5, 0).length') === 3);
+
+console.log('\n== requestWakeLock: a rest skipped mid-request releases instead of holding the lock (plans/008 item 15) ==');
+(async () => {
+  let released = false;
+  const fakeLock = { release: () => { released = true; return Promise.resolve(); } };
+  app.navigator.wakeLock = { request: () => Promise.resolve(fakeLock) };
+  await call('requestWakeLock()');
+  ok('no rest in flight: the lock is released, not stored', released === true && call('wakeLock') == null);
+
+  released = false;
+  call('tId = 1');
+  await call('requestWakeLock()');
+  ok('a rest still running: the lock is kept', released === false && call('wakeLock') === fakeLock);
+  call('tId = null; wakeLock = null;');
+
+  console.log('\n' + pass + ' passed, ' + fail + ' failed');
+  process.exit(fail ? 1 : 0);
+})();

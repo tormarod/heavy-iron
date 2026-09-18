@@ -341,8 +341,13 @@ function drawQr() {
     };
   });
   const showing = qrMode === 'show';
-  $('qrShowPane').style.display = showing ? '' : 'none';
-  $('qrScanPane').style.display = showing ? 'none' : '';
+  /* .hidden on both, not .style.display for one of them: index.html ships
+     qrScanPane with the `hidden` attribute (plans/008 item 22), and clearing
+     an inline style there would leave that attribute in charge, never
+     showing the scanner — so both panes toggle the same property rather than
+     splitting the pair across two mechanisms. */
+  $('qrShowPane').hidden = !showing;
+  $('qrScanPane').hidden = showing;
   if (showing) { stopQrScan(); drawQrShow(); }
   else { stopQrShow(); startQrScan(); }
 }
@@ -436,7 +441,8 @@ function renderQrFrame() {
   $('qrCount').textContent = total === 1
     ? 'Un solo código — apunta con el otro móvil.'
     : 'Fotograma ' + (qrAt + 1) + '/' + total + ' — mantén el otro móvil apuntando hasta que los recoja todos.';
-  $('qrPause').style.display = total > 1 ? '' : 'none';
+  /* .hidden, not .style.display — same reason as qrScanPane above. */
+  $('qrPause').hidden = total <= 1;
   $('qrPause').textContent = qrPaused ? 'Reanudar' : 'Pausa';
 }
 

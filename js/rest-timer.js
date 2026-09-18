@@ -38,6 +38,7 @@ function startRest(sec, label) {
   $('timer').classList.add('up');
   $('timer').classList.remove('over');
   $('tlbl').textContent = 'Descanso · ' + label;
+  $('tmsg').setAttribute('aria-live', 'polite');
   $('tmsg').textContent = 'Prueba de la frase: si puedes hablar sin quedarte sin aire, ya estás listo.';
   tick();
   tId = setInterval(tick, 1000);
@@ -59,6 +60,10 @@ function tick() {
       tOverNotified = true;
       $('timer').classList.add('over');
       $('tlbl').textContent = 'Vamos';
+      /* This is the one message worth interrupting a screen reader for — the
+         rest is over and the phone may well be out of sight in a pocket, so
+         "polite" (which waits its turn) could go unheard entirely. */
+      $('tmsg').setAttribute('aria-live', 'assertive');
       $('tmsg').textContent = 'Se acabó el descanso. Siguiente serie.';
       f.style.width = '100%';
       /* Both before the alarm: with the sound off, startAlarmLoop() has
@@ -104,6 +109,7 @@ function nudgeRest(delta) {
     showMediaSession(tLabel, tEndAt, tTotal);
     $('timer').classList.remove('over');
     $('tlbl').textContent = 'Descanso · ' + tLabel;
+    $('tmsg').setAttribute('aria-live', 'polite');
     $('tmsg').textContent = 'Prueba de la frase: si puedes hablar sin quedarte sin aire, ya estás listo.';
   }
   tick();
@@ -362,7 +368,13 @@ function clearRestNotification() {
 
 async function requestWakeLock() {
   try {
-    if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
+    if (!('wakeLock' in navigator)) return;
+    const lock = await navigator.wakeLock.request('screen');
+    /* stopRest() can run while the request above is in flight (tapping
+       "saltar" mid-request); if the rest is already over by the time the
+       lock resolves, release it instead of holding a lock with no timer. */
+    if (!tId) { lock.release().catch(() => {}); return; }
+    wakeLock = lock;
   } catch (e) { /* not supported, or permission denied — countdown still self-corrects on tick */ }
 }
 
