@@ -1549,6 +1549,75 @@ console.log('\n== input boundary: unsafe tags, editor clamps, setup aliasing (pl
      JSON.stringify(call('__c012.days[0].ex[0].setup')));
 }
 
+console.log('\n== safeKey refuses every inherited Object.prototype name, not three of them ==');
+{
+  /* The deny-list was `__proto__`/`constructor`/`prototype`, which left
+     nine names that break identically: anything on Object.prototype reads
+     back truthy off a fresh {}, so `if (!m[k]) m[k] = []` skips the init
+     and the .push that follows throws. plans/012 routed the freeform tags
+     through safeKey but left safeKey itself alone, so a Músculo of
+     "toString" still blanked Diagnóstico after its host was cleared — the
+     same symptom, one name over. Derived from the chain now, so the list
+     cannot fall behind the language. */
+  const inherited = Object.getOwnPropertyNames(Object.prototype);
+  const kept = inherited.filter(n => call('safeKey(' + JSON.stringify(n) + ')') !== '');
+  ok('safeKey blocks every own name of Object.prototype', kept.length === 0, JSON.stringify(kept));
+  ok('...which is more than the three it used to name',
+     inherited.length > 3 && inherited.indexOf('toString') >= 0, String(inherited.length));
+  /* `'prototype' in {}` is false — it belongs to functions, not to
+     Object.prototype — so the chain test alone would quietly stop blocking
+     a name the callers were written against. It stays enumerated. */
+  ok('safeKey still blocks prototype, which the chain test cannot see',
+     call("safeKey('prototype')") === '' && call("('prototype' in {})") === false);
+  ok('safeKey leaves an ordinary tag alone', call("safeKey('Pecho')") === 'Pecho');
+  ok('safeKey leaves an ordinary id alone', call("safeKey('squat')") === 'squat');
+  /* The contract every caller reads: '' means absent, and anything else is
+     handed back unchanged so the caller's own `||` fallback still fires. */
+  ok('safeKey hands a missing id straight back, as before',
+     call('safeKey(undefined)') === undefined && call('safeKey("")') === '');
+
+  /* The reported crash, one name over from the one plans/012 fixed. */
+  call('state = defaultState(); migrate();');
+  call('__pSK = state.profiles.hombre; __bSK = __pSK.blocks[__pSK.activeBlock];');
+  call('__bSK.days[0].ex[0].muscle = "toString";');
+  call('__pSK.log[__bSK.id] = { [slot(1, __bSK.days[0].id)]: '
+     + '{ [__bSK.days[0].ex[0].id]: [{ done: 1, w: 100, r: 5, u: "kg", ts: 1758000000000 }] } };');
+  let skErr = null;
+  try { call('strengthRows(__pSK, __bSK)'); } catch (e) { skErr = e.message; }
+  ok('a "toString" muscle tag does not throw out of strengthRows', skErr === null, skErr);
+  let skFreqErr = null;
+  try { call('freqRows(__pSK, __bSK, 1)'); } catch (e) { skFreqErr = e.message; }
+  ok('a "toString" muscle tag does not throw out of freqRows', skFreqErr === null, skFreqErr);
+  ok('...and the tag falls back to "Sin clasificar" rather than being kept',
+     call('muscleTag({ muscle: "valueOf" })') === call('UNCLASSIFIED_LABEL'),
+     JSON.stringify(call('muscleTag({ muscle: "valueOf" })')));
+  ok('cleanPriority drops an inherited name and keeps the real muscle',
+     call('JSON.stringify(cleanPriority(["hasOwnProperty", "Pecho"]))') === '["Pecho"]',
+     call('JSON.stringify(cleanPriority(["hasOwnProperty", "Pecho"]))'));
+  ok('migrate() drops a "toString" muscle tag rather than storing it',
+     call('state = defaultState(); state.profiles.hombre.blocks["block-1"].days[0].ex[0].muscle = "toString";'
+        + ' migrate(); state.profiles.hombre.blocks["block-1"].days[0].ex[0].muscle') === undefined,
+     JSON.stringify(call('state.profiles.hombre.blocks["block-1"].days[0].ex[0].muscle')));
+
+  /* Ids go through the same helper (migrate(), normalizeImportedBlock), so
+     the widening has to hold there too: an id kept as "toString" is a log
+     key that reads back as a function. */
+  const inheritedIdBlock = {
+    name: 'T', weeks: 8, deload: 8,
+    days: [{ id: 'valueOf', name: 'D', ex: [{ id: 'toString', n: 'E', sets: 3, reps: '10-15' }] }],
+  };
+  const normalizedIds = JSON.parse(call('JSON.stringify(normalizeImportedBlock('
+    + JSON.stringify(inheritedIdBlock) + '))'));
+  ok('normalizeImportedBlock refuses a day id of "valueOf"',
+     normalizedIds.days[0].id !== 'valueOf', normalizedIds.days[0].id);
+  ok('normalizeImportedBlock refuses an exercise id of "toString"',
+     normalizedIds.days[0].ex[0].id !== 'toString', normalizedIds.days[0].ex[0].id);
+  ok('...and gives each a usable generated id instead',
+     !!normalizedIds.days[0].id && !!normalizedIds.days[0].ex[0].id,
+     JSON.stringify([normalizedIds.days[0].id, normalizedIds.days[0].ex[0].id]));
+  call('__pSK = null; __bSK = null;');
+}
+
 console.log('\n== requestWakeLock: a rest skipped mid-request releases instead of holding the lock (plans/008 item 15) ==');
 (async () => {
   let released = false;
