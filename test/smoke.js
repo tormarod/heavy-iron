@@ -2832,6 +2832,75 @@ const ok = (name, cond, extra) => {
     await ctx.close();
   });
 
+  // ---------- the first week of a new block sees the block before it ----------
+  await section('primera semana de un bloque nuevo', async () => {
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await dismissSetup(page);
+    await page.waitForSelector('.ex');
+    /* Seeding below writes localStorage behind the app's back, so it has to
+       wait for the app's own debounced save() queue to be empty first:
+       closeSetup() schedules one on the way out of the first-run sheet, and
+       when it fires 400 ms later it writes the app's untouched in-memory
+       state straight over the seed — the reload then reads week 1 with an
+       empty log and the new-block flow skips the review offer. (The two
+       older sections seeding this way happen to sleep past it; a condition
+       is what actually makes it safe.) */
+    await page.waitForFunction(() => !saveT && !held);
+
+    /* Seven working weeks of one exercise, plus the deload at 40 — which
+       must be the one week the hint does NOT come from. */
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      const pr = s.profiles.hombre;
+      const one = (w, r) => [{ w: String(w), r: String(r), done: true, ts: Date.now() }, { w: String(w), r: String(r - 1), done: true, ts: Date.now() }];
+      pr.log['block-1'] = {};
+      for (let i = 0; i < 7; i++) pr.log['block-1']['w' + (i + 1) + '-d0'] = { chestpress: one(60 + i * 2.5, 8) };
+      pr.log['block-1']['w8-d0'] = { chestpress: one(40, 8) };
+      pr.week = 8; pr.day = 0;
+      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+    });
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForSelector('.ex');
+
+    await page.click('#blockbar button:has-text("+ Nuevo bloque")');
+    await answerDialog(page, false);            /* "Crear sin repasar" */
+    await answerDialog(page, true, 'Bloque 2'); /* the name prompt */
+    await page.waitForFunction(() => (document.getElementById('title').textContent || '').includes('Bloque 2'));
+    ok('the new block opens on week 1', (await page.textContent('#title')).includes('Bloque 2'));
+
+    const card = page.locator('.ex').first();
+    const wIn = card.locator('.set-row').first().locator('input').first();
+    ok('week 1 of the new block shows the previous block\'s last working week as the hint',
+       await wIn.getAttribute('placeholder') === '75', 'got ' + await wIn.getAttribute('placeholder'));
+    ok('under a band that names the block and the week it came from',
+       (await card.locator('.last.prior .tag').textContent()).includes('Bloque 1') &&
+       (await card.locator('.last.prior .tag').textContent()).includes('Sem. 7'),
+       await card.locator('.last.prior').textContent());
+    ok('the deload week was skipped', !(await card.locator('.last.prior').textContent()).includes('40'));
+    ok('an exercise the old block never logged gets no band and no hint',
+       await page.locator('.ex').nth(1).locator('.last.prior').count() === 0 &&
+       await page.locator('.ex').nth(1).locator('.set-row').first().locator('input').first().getAttribute('placeholder') === '—');
+
+    await card.locator('.set-row').first().locator('.tick').click();
+    await page.waitForFunction(() => (document.getElementById('status').textContent || '').includes('semana 7'));
+    ok('ticking the empty box adopts the hint', await wIn.inputValue() === '75');
+    ok('and the status line says which block it came from',
+       (await page.textContent('#status')).includes('"Bloque 1", semana 7'), await page.textContent('#status'));
+    await page.click('#tskip');
+
+    await page.click('#copyPrev');
+    await page.waitForFunction(() => (document.getElementById('status').textContent || '').includes('sin subir'));
+    ok('"Copiar pesos" on week 1 copies the previous block\'s numbers across',
+       await card.locator('.set-row').nth(1).locator('input').first().inputValue() === '75');
+    ok('and says so, with no increment applied',
+       (await page.textContent('#status')).includes('"Bloque 1"') && (await page.textContent('#status')).includes('sin subir'),
+       await page.textContent('#status'));
+    ok('the objetivo line stays silent on week 1', await card.locator('.ex-est').count() === 0);
+    await ctx.close();
+  });
+
   // ---------- keeping the log on the device ----------
   await section('almacenamiento', async () => {
     const ctx = await browser.newContext();
