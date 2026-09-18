@@ -162,7 +162,10 @@ npx playwright install chromium >/dev/null 2>&1 || fail "could not install Chrom
 # its body in list mode and dies on browser.newContext(). It costs a second
 # here and it has been broken before. It needs playwright required, so it
 # sits below the install rather than up with the unit tests.
-node test/smoke.js --list >/dev/null 2>&1 || fail "test/smoke.js --list failed — a section is probably a bare block, not a section() call"
+# Into the log, not /dev/null: fail() greps the log, and with the output
+# discarded the only lines left to show would be the unit suite's "0 failed"
+# tally, which reads as a contradiction next to a --list failure.
+node test/smoke.js --list >>"$LOG" 2>&1 || fail "test/smoke.js --list failed — a section is probably a bare block, not a section() call"
 
 # A free port, so this does not collide with a dev server already up on 8765.
 PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
