@@ -148,9 +148,15 @@ command -v python3 >/dev/null 2>&1 || fail "python3 is needed to serve the site"
 # Playwright is a dev-only dependency of a repo that has no package.json on
 # purpose (see AGENTS.md), so it is installed with --no-save into a
 # node_modules/ that .gitignore already hides.
+#
+# Lifecycle scripts are off, which costs nothing and closes the one place this
+# repo runs third-party code at install time: the only install script that
+# matters is Playwright's browser download, and the next line does that
+# explicitly anyway. Left on, every transitive package in that tree gets to
+# run a postinstall on the machine a pull request is being opened from.
 if ! node -e "require('playwright')" >/dev/null 2>&1; then
   echo "smoke-gate: installing playwright@$PLAYWRIGHT_VERSION"
-  npm install --no-save "playwright@$PLAYWRIGHT_VERSION" >/dev/null 2>&1 || fail "npm install playwright failed"
+  npm install --no-save --ignore-scripts "playwright@$PLAYWRIGHT_VERSION" >/dev/null 2>&1 || fail "npm install playwright failed"
 fi
 # `playwright install` is a no-op when the pinned Chromium is already there,
 # and a download when it is not; --with-deps needs root, so it is left to
