@@ -1886,6 +1886,17 @@ console.log('\n== the log key has one reader as well as one builder (plans/009 i
   })()`);
   ok('...and narrows to one week when asked', oneWeek === 'w2-d1', oneWeek);
 
+  /* purgeSessionMeta's onlyWeek is optional, and the sweep this replaced read
+     it with a plain truthiness check. A null that narrowed to nothing would
+     purge nothing, silently. */
+  const nullWeek = call(`(function () {
+    const map = { b1: { 'w1-d1': 1, 'w2-d1': 2, 'w2-d2': 3 } };
+    const out = [];
+    forEachSlot(map, 'b1', k => out.push(k), { dayId: 'd1', week: null });
+    return out.sort().join(' ');
+  })()`);
+  ok('a null week means every week, as the walk it replaced did', nullWeek === 'w1-d1 w2-d1', nullWeek);
+
   ok('a block with no entries is not an error', call(`(function () {
     let n = 0;
     forEachSlot({}, 'nope', () => n++);

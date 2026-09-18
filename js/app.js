@@ -158,8 +158,11 @@ function forEachSlot(map, blockId, fn, filter) {
   Object.keys(blk).forEach(key => {
     const s = parseSlot(key);
     if (!s) return;
-    if (f.dayId !== undefined && s.dayId !== f.dayId) return;
-    if (f.week !== undefined && s.week !== f.week) return;
+    /* != null, not !== undefined: the walk this replaced treated a missing
+       week as "every week" via a plain truthiness check, and a caller that
+       passes null would otherwise match nothing and silently purge nothing. */
+    if (f.dayId != null && s.dayId !== f.dayId) return;
+    if (f.week != null && s.week !== f.week) return;
     fn(key, s.week, s.dayId, blk[key]);
   });
 }

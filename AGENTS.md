@@ -90,10 +90,12 @@ identical to an oversight unless someone writes down which it is:
   Both rules have one exception, and it is older than the rules: `js/data.js`,
   `js/block-editor.js` and `js/profile-transfer.js` predate the split and are
   precached in every deployed shell, so a symbol defined in them is treated as
-  if it were in `app.js`. That is why their `wire*()` calls are unguarded,
-  why `app.js` may read `normalizeImportedBlock` from `js/block-editor.js`
-  with no stub, and why `js/review.js` may read `buildAiPrompt` from it. A
-  file split out *since* then gets no such licence.
+  if it were in `app.js`. That is why `wireBlockEditor()` and
+  `wireProfileTransfer()` are the two unguarded calls in the list above
+  (`js/data.js` has no wiring of its own), why `app.js` may read
+  `normalizeImportedBlock` from `js/block-editor.js` with no stub, and why
+  `js/review.js` may read `buildAiPrompt` from it. A file split out *since*
+  then gets no such licence.
 
   The mix the other way round — a *new* split file loading beside the
   *old* cached `app.js`, both declaring the same top-level `const`/`let`,
