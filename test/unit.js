@@ -147,6 +147,16 @@ console.log('\n== a precache hole: app.js boots without each split file (AGENTS.
   ok(file + ' absent: load() still seeded state', c('!!state && !!state.profiles'));
 });
 
+/* js/theme-init.js runs in <head>, before app.js defines anything, so it has
+   to spell the storage key out as a literal. Its own comment says a renamed
+   STORAGE_KEY would silently bring back the flash of the wrong theme the
+   file exists to prevent, "with nothing to catch the drift". This is that. */
+console.log('\n== theme-init.js reads the same storage key as app.js ==');
+const themeInitSrc = fs.readFileSync(path.join(ROOT, 'js/theme-init.js'), 'utf8');
+ok('the literal in js/theme-init.js matches STORAGE_KEY',
+   themeInitSrc.includes("getItem('" + call('STORAGE_KEY') + "')"),
+   themeInitSrc.match(/getItem\([^)]*\)/)[0] + ' vs ' + call('STORAGE_KEY'));
+
 console.log('\n== pure arithmetic ==');
 ok('est1RM matches the Epley formula by hand', call('est1RM(100, 5)') === 100 * (1 + 5 / 30));
 ok('est1RM at 1 rep returns the weight itself', call('est1RM(80, 1)') === 80 * (1 + 1 / 30));
