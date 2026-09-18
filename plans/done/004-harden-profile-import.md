@@ -436,6 +436,13 @@ For whoever owns this next:
   training philosophy.
 - **What a reviewer should scrutinise**: the round-trip test in Step 6. Bounds
   that reject the app's own output are worse than no bounds.
+- **The same rule, one level down**: `plans/010-restore-round-trips-own-data.md`
+  applies "never reject or alter data the app itself wrote" at block level.
+  Plan 008 item 4 routed restores through `normalizeImportedBlock`, a
+  validator written for foreign pasted JSON, which then rejected the empty
+  starting plan outright and dropped the `off` flag on retired items. 010
+  gives that function an `own` mode for this path. A new field on a block
+  has to be classified for both modes — see 010's own maintenance notes.
 - **Deliberately deferred**: `qrInflate` (`js/app.js:3932-3937`) reads a
   decompressed QR payload with no size cap, so a small compressed payload can
   expand without bound before any shape check runs. It is a real robustness
