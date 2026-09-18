@@ -827,6 +827,10 @@ const targetProbe = `
     const week = opts.week || sessions.length + 1;
     const phase = {};
     for (let i = 1; i <= week + 4; i++) phase[i] = { r: (opts.rirWeek != null ? opts.rirWeek : 2) + ' RIR' };
+    /* Every week gets the same prescription unless a case overrides it, which
+       is the only way to reach weekRir's prose fallback: a phase somebody
+       wrote in their own words has no number in it at all. */
+    if (opts.phase) for (const k in phase) phase[k] = opts.phase;
     const ex = { id: 'E', n: 'x', sets: opts.sets || 3, reps: opts.range || '10–15', inc: opts.inc || 2.5 };
     if (opts.add) ex.add = opts.add;
     if (opts.minRir) ex.minRir = opts.minRir;
@@ -839,7 +843,13 @@ const targetProbe = `
       const d = s.day != null ? s.day : i * 7;
       lastDay = d;
       profile.log.B['w' + (i + 1) + '-D'] = { E: s.sets.map(function (p) {
-        return { w: String(p[0]), r: String(p[1]), done: true, ts: T0 + d * DAY };
+        const row = { w: String(p[0]), r: String(p[1]), done: true, ts: T0 + d * DAY };
+        /* A third element is the unit the row was written in. The key is
+           added only when there is one, because that is what the app writes:
+           a row logged in the profile's own unit carries no u at all, and a
+           literal u: undefined is a shape no restore ever produces. */
+        if (p[2] === 'lb') row.u = 'lb';
+        return row;
       }) };
       if (s.rir) profile.rir.B['w' + (i + 1) + '-D'] = { E: s.rir };
     });
@@ -857,6 +867,10 @@ const targetProbe = `
       }).join(' · '),
       line: targetLine(t), says: targetNotes(t).join(' | '),
       phi: t.phi ? t.phi.map(function (v) { return v.toFixed(3); }).join(' ') : '',
+      /* The rule's own workings, for the cases that have to assert on the
+         arithmetic rather than on the card: the floor in repsAt hides a
+         third of a rep, which is most of what the trend term is worth. */
+      g: t.g, level: t.level, rirWeek: t.rirWeek, sessions: t.sessions,
     };
   })
 `;
@@ -1031,6 +1045,58 @@ ok('   two do not', call(brakeProbe)([60, 62, 55], 2) === false);
 ok('   and neither does a sequence that never really fell',
    call(brakeProbe)([60, 62, 62], 3) === false);
 
+/* ---- the trend term itself (plans/026) ----
+   The fifteen cases above cover the decisions and none of the arithmetic
+   that feeds them: at 4f7e037 the whole suite still passed with theilSen
+   stubbed to `return 0` and with MAX_SLOPE moved from 0,03 to 0,5. These
+   three assert on `g` — the expected gain, js/app.js's `t.g` — because a
+   third of a rep is what the trend is worth and Math.floor in repsAt eats
+   exactly that before it reaches the card. */
+
+/* T16 — a climb steeper than one rep a session: the trend is real and
+   MAX_SLOPE binds. Two reps a session at 40 kg is 2,67 of capacity per
+   session over a level of 57,33, i.e. 0,047 — clamped to 0,03. Every
+   session is uncensored (12 reps is neither past CENSOR_REPS nor at the
+   top of 6–15, and the chip is given), which `conf === 'alta'` witnesses. */
+t = target([
+  { sets: [[40, 4], [40, 4], [40, 4]], rir: '1' },
+  { sets: [[40, 6], [40, 6], [40, 6]], rir: '1' },
+  { sets: [[40, 8], [40, 8], [40, 8]], rir: '1' },
+  { sets: [[40, 10], [40, 10], [40, 10]], rir: '1' },
+  { sets: [[40, 12], [40, 12], [40, 12]], rir: '1' },
+], { range: '6–15', inc: 2.5, sets: 3, rirWeek: 1 });
+ok('T16 a steep climb reads as a trend and is clamped at MAX_SLOPE',
+   t && Math.abs(t.g - 0.03) < 1e-9, JSON.stringify(t));
+
+/* T17 — one rep a session is, by construction, exactly oneRep and tells
+   the trend term nothing: C = w(1 + (r + ρ)/30), so a rep a session is a
+   slope of w/30 and slope / level is 1 / (30 + r + ρ). This is why the
+   fifteen cases could not see theilSen at all. */
+t = target([
+  { sets: [[40, 6], [40, 6]], rir: '1' },
+  { sets: [[40, 7], [40, 7]], rir: '1' },
+  { sets: [[40, 8], [40, 8]], rir: '1' },
+  { sets: [[40, 9], [40, 9]], rir: '1' },
+  { sets: [[40, 10], [40, 10]], rir: '1' },
+], { range: '6–15', inc: 2.5, sets: 2, rirWeek: 1 });
+ok('T17 a one-rep-a-session climb is priced at exactly one more rep',
+   t && Math.abs(t.g - 1 / (30 + 10 + 1)) < 1e-9, JSON.stringify(t));
+
+/* T18 — a falling trend is discarded rather than extrapolated: the floor
+   is still one more rep. The last session recovers to 54,67 against a best
+   of 56, well inside DECLINE_DROP, so this is the trend arm and not the
+   hold arm — which would reach g = 0 by another route entirely. */
+t = target([
+  { sets: [[40, 12], [40, 12]], rir: '1' },
+  { sets: [[40, 11], [40, 11]], rir: '1' },
+  { sets: [[40, 10], [40, 10]], rir: '1' },
+  { sets: [[40, 9], [40, 9]], rir: '1' },
+  { sets: [[40, 10], [40, 10]], rir: '1' },
+], { range: '6–15', inc: 2.5, sets: 2, rirWeek: 1 });
+ok('T18 a falling trend never prices less than one more rep',
+   t && Math.abs(t.g - 1 / (30 + 10 + 1)) < 1e-9 && !t.notes.includes('hold'),
+   JSON.stringify(t));
+
 /* The pieces the cases above lean on, asserted on their own so a failure
    says which one moved. */
 ok('a censored session can never be read as a decline',
@@ -1040,6 +1106,172 @@ ok('repsAt lands on the integer it should: 63 over 47,25 is 9 reps, not 8',
 ok('the load ladder climbs by the rungs the log knows and falls back to the step',
    call('nextLoad([18, 23], 18, 1)') === 19 && call('nextLoad([39, 45, 52], 39, 6)') === 45 &&
    call('prevLoad([42.75, 45], 45, 2.25)') === 42.75);
+
+/* ...and the rest of them (plans/026), so that a helper the cases only
+   reach through six sessions of arithmetic can fail by name. */
+ok('theilSen of nothing, or of one point, is a flat line', call('theilSen([])') === 0 && call('theilSen([[0, 5]])') === 0);
+/* [0,1] and [0,2] share an x and are skipped; the two remaining pairs give
+   slopes (3-1)/1 = 2 and (3-2)/1 = 1, whose median is 1,5. Two sets logged
+   in the same session is exactly that shape, which is why it is not an
+   Infinity waiting to be divided. */
+ok('theilSen skips pairs with the same x rather than dividing by zero',
+   call('theilSen([[0, 1], [0, 2], [1, 3]])') === 1.5);
+/* Six pairwise slopes: 1, 1, 10, 1, 14,5, 28 → sorted 1, 1, 1, 10, 14,5, 28
+   → even-length median (1 + 10) / 2 = 5,5. A least-squares line through the
+   same points would be steered by the outlier; the median is not, which is
+   the whole reason the rule uses this and not a regression. */
+ok('theilSen is the median of the pairwise slopes, not a least-squares fit',
+   call('theilSen([[0, 0], [1, 1], [2, 2], [3, 30]])') === 5.5);
+ok('median of an odd and an even list', call('median([3, 1, 2])') === 2 && call('median([4, 1, 3, 2])') === 2.5);
+ok('loadLadder dedupes to float tolerance and sorts',
+   JSON.stringify(call('loadLadder([{ sets: [{ w: 45 }, { w: 40 }] }, { sets: [{ w: 45.0000000001 }, { w: 42.5 }] }])')) === '[40,42.5,45]');
+ok('nextLoad takes the first rung within one and a half steps, else the step',
+   call('nextLoad([40, 41, 45], 40, 2.5)') === 41 && call('nextLoad([40, 45], 40, 2.5)') === 42.5);
+ok('prevLoad mirrors it', call('prevLoad([35, 39, 40], 40, 2.5)') === 39 && call('prevLoad([30, 40], 40, 2.5)') === 37.5);
+
+/* ---- the arms of targetFor the fifteen never entered (plans/026) ----
+   Every case above is a block with one day, a numbered phase, one segment
+   and a set count that never changes, which leaves five branches of the
+   rule reachable only from test/smoke.js or from nothing at all. */
+
+/* A phase somebody wrote in their own words has no number in it, so the
+   week cannot say what reserve it wants and the reserve the last session
+   was left at stands in — which asks for no change rather than inventing
+   one. `phaseRir` falls back to the lowest digit ANYWHERE in the text, so
+   the prose here has to carry none. */
+t = target([
+  { sets: [[40, 10], [40, 9]], rir: '2+' },
+  { sets: [[40, 10], [40, 9]], rir: '2+' },
+  { sets: [[40, 11], [40, 9]], rir: '2+' },
+], { range: '6–15', inc: 2.5, sets: 2, phase: { r: 'Semana de técnica' } });
+ok('a phase with no number in it falls back to the reserve the last session was left at',
+   t && t.rirWeek === 2, JSON.stringify(t));
+t = target([
+  { sets: [[40, 10], [40, 9]], rir: '0' },
+  { sets: [[40, 10], [40, 9]], rir: '0' },
+  { sets: [[40, 11], [40, 9]], rir: '0' },
+], { range: '6–15', inc: 2.5, sets: 2, phase: { r: 'Semana de técnica' } });
+ok('...including a zero, which is a reserve and not a missing one',
+   t && t.rirWeek === 0, JSON.stringify(t));
+t = target([
+  { sets: [[40, 10], [40, 9]], rir: '0' },
+  { sets: [[40, 10], [40, 9]], rir: '0' },
+  { sets: [[40, 11], [40, 9]], rir: '0' },
+], { range: '6–15', inc: 2.5, sets: 2, minRir: 1, phase: { r: 'Semana de técnica' } });
+ok('...and ex.minRir still floors what the fallback came back with',
+   t && t.rirWeek === 1, JSON.stringify(t));
+
+/* A layoff restarts the segment the level is read off: three sessions at
+   50 kg, twenty days away, three at 45. Measured against the whole run the
+   last three would still be the 45 kg ones, so the level alone cannot tell
+   the two apart — what can is that the run 50 → 45 reads as two declines
+   in a row, i.e. a CONFIRMED loss of the level, and inside the segment
+   there is no fall at all. */
+t = target([
+  { sets: [[50, 10]], rir: '1' },
+  { sets: [[50, 10]], rir: '1' },
+  { sets: [[50, 10]], rir: '1' },
+  { sets: [[45, 10]], rir: '1', day: 34 },
+  { sets: [[45, 10]], rir: '1', day: 41 },
+  { sets: [[45, 10]], rir: '1', day: 48 },
+], { range: '6–15', inc: 2.5, sets: 1, rirWeek: 1 });
+ok('a layoff restarts the segment, so coming back at 45 is the level and not a decline',
+   t && Math.abs(t.level - 45 * (1 + 11 / 30)) < 1e-6 && !t.notes.includes('confirmed'),
+   JSON.stringify(t));
+
+/* A second set that collapses from twelve reps to two is a ratio of 0,767,
+   under PSI_MIN — and the floor is there because a drop that size is a
+   mistyped row or a set done at a weight the rule could not see, not a
+   measurement of what the second set is worth. */
+t = target([
+  { sets: [[40, 12], [40, 2]], rir: '1' },
+  { sets: [[40, 12], [40, 2]], rir: '1' },
+  { sets: [[40, 12], [40, 2]], rir: '1' },
+  { sets: [[40, 12], [40, 2]], rir: '1' },
+], { range: '6–15', inc: 2.5, sets: 2, rirWeek: 1 });
+ok('a second set that collapses is floored at PSI_MIN rather than believed',
+   t && t.phi === '1.000 0.800', JSON.stringify(t));
+
+/* Four reps where the plan asks for ten, on a machine whose only logged
+   rung is 100: the walk down invents rungs of 3 and stops after three of
+   them, at 91, whether or not the bottom of the range is in reach yet. */
+t = target([
+  { sets: [[100, 4], [100, 3], [100, 3]] },
+  { sets: [[100, 4], [100, 3], [100, 2]] },
+], { range: '10–15', inc: 3, sets: 3, rirWeek: 1 });
+ok('coming down stops after three rungs, whether or not the range is back in reach',
+   t && t.show === '91×7↓ · 82×10↓ · 79×10↓', JSON.stringify(t));
+/* At 4f7e037 a set that ran out of rungs says nothing about it; plans/025
+   adds a "floor" note. Pinned as it stands so that plan has to move it. */
+ok('...and nothing yet marks the set that ran out of rungs (plans/025)',
+   t && !t.notes.includes('floor'), JSON.stringify(t));
+
+/* Back from a layoff the last session is repeated exactly — and the set
+   the plan has gained since was never done at all, so it takes the last
+   set's weight at the bottom of the range. */
+t = target([
+  { sets: [[40, 10], [35, 8]], rir: '1' },
+  { sets: [[40, 10], [35, 8]], rir: '1' },
+  { sets: [[40, 10], [35, 8]], rir: '1' },
+], { range: '6–15', inc: 2.5, sets: 3, rirWeek: 1, now: 34 });
+ok('a vuelta repeats the last session and gives a set gained since the last weight at the bottom of the range',
+   t && t.kind === 'vuelta' && t.show === '40×10 · 35×8 · 35×6', JSON.stringify(t));
+
+/* A rep range is the one field the rule cannot work around, and a plan
+   that arrived as JSON can say anything at all in it. */
+ok('a rep range written backwards, or with no numbers in it, is no target at all',
+   target([{ sets: [[40, 10]], rir: '1' }, { sets: [[40, 10]], rir: '1' }], { range: '15–10' }) === null &&
+   target([{ sets: [[40, 10]], rir: '1' }, { sets: [[40, 10]], rir: '1' }], { range: 'AMRAP' }) === null);
+
+console.log('\n== el mismo ejercicio en dos días del mismo bloque (plans/026) ==');
+/* The harness above is a one-day block by construction, so the day split in
+   exHistory — the same machine pressed first on Monday and fourth on
+   Thursday is not the same set — was reachable only from test/smoke.js.
+   This asks exHistory directly, which costs nothing per run. */
+const twoDayProbe = call(`
+  (function () {
+    const T0 = Date.UTC(2026, 0, 5), DAY = 86400000;
+    const mk = function () { return { id: 'E', n: 'x', sets: 2, reps: '8–12', inc: 2.5 }; };
+    const ex = mk();
+    const row = function (w, d) { return [{ w: String(w), r: '10', done: true, ts: T0 + d * DAY }]; };
+    const blockB = { id: 'B', name: 'B', weeks: 8, deload: 0, phase: {},
+                     days: [{ id: 'D1', name: 'D1', ex: [mk()] }, { id: 'D2', name: 'D2', ex: [mk()] }] };
+    const logB = function () {
+      return { 'w1-D1': { E: row(40, 0) }, 'w1-D2': { E: row(41, 3) },
+               'w2-D1': { E: row(42, 7) }, 'w2-D2': { E: row(43, 10) } };
+    };
+    const show = function (list) {
+      return list.map(function (s) { return s.blockId + '/' + s.dayId + ':' + s.sets[0].w; }).join(' ');
+    };
+
+    const one = { log: { B: logB() }, rir: { B: {} }, obj: {}, variants: {},
+                  blocks: { B: blockB }, blockOrder: ['B'] };
+    resetRenderCache();
+    const d1 = show(exHistory(one, blockB, ex, 'D1', 3));
+    const d2 = show(exHistory(one, blockB, ex, 'D2', 3));
+
+    /* The block before this one had the lift on a single day, and that
+       day's number means nothing here: whoever wrote that plan numbered
+       its days for themselves. Matching on it would throw the history
+       away rather than separate it. */
+    const blockA = { id: 'A', name: 'A', weeks: 8, deload: 0, phase: {},
+                     days: [{ id: 'DA', name: 'DA', ex: [mk()] }] };
+    const two = { log: { A: { 'w1-DA': { E: row(30, -30) } }, B: logB() },
+                  rir: { A: {}, B: {} }, obj: {}, variants: {},
+                  blocks: { A: blockA, B: blockB }, blockOrder: ['A', 'B'] };
+    resetRenderCache();
+    const priorD1 = show(exHistory(two, blockB, ex, 'D1', 3));
+    const priorD2 = show(exHistory(two, blockB, ex, 'D2', 3));
+    return { d1: d1, d2: d2, priorD1: priorD1, priorD2: priorD2 };
+  })()
+`);
+ok('a lift the plan puts on two days reads only its own day inside the block being trained',
+   twoDayProbe.d1 === 'B/D1:40 B/D1:42', JSON.stringify(twoDayProbe));
+ok('...and the other day reads only the other day',
+   twoDayProbe.d2 === 'B/D2:41 B/D2:43', JSON.stringify(twoDayProbe));
+ok('...while an earlier block\'s single day counts for both, oldest first',
+   twoDayProbe.priorD1 === 'A/DA:30 B/D1:40 B/D1:42' &&
+   twoDayProbe.priorD2 === 'A/DA:30 B/D2:41 B/D2:43', JSON.stringify(twoDayProbe));
 
 console.log('\n== el objetivo guardado, las variantes y minRir ==');
 
@@ -1287,6 +1519,73 @@ ok('normalizeImportedLog rejects a row array past LOG_ROW_HARD_CAP rather than s
    logProbe.threwOnHugeRows, JSON.stringify(logProbe));
 ok('normalizeImportedRir keeps a value in RIR_OPTIONS', logProbe.rirOk, JSON.stringify(logProbe));
 ok('normalizeImportedRir drops a value outside RIR_OPTIONS', logProbe.badRirDropped, JSON.stringify(logProbe));
+
+console.log('\n== normalizeImportedObj: the rule\'s own record, re-keyed like its twins (plans/026) ==');
+/* The one v3 function that takes untrusted bytes, and the only one of the
+   four normalizeImported* twins with no test of its own. A record of what
+   the rule put on the screen is not evidence about anything, so nothing in
+   it is trusted past its own shape — which is exactly the kind of code
+   that rots quietly. Built like logProbe above: one raw block, normalized,
+   then one slot at a time through the validator. */
+const objProbe = call(`
+  (function() {
+    const rawBlock = { name: 'B', weeks: 8, deload: 0, days: [{ id: 'd0', name: 'D', ex: [{ id: 'e1', n: 'Ex', sets: 3, reps: '10-15' }] }] };
+    const normalized = normalizeImportedBlock(rawBlock);
+    const dayId = normalized.days[0].id, exId = normalized.days[0].ex[0].id;
+
+    const run = function (key, id, rec) {
+      const raw = {}; raw[key] = {}; raw[key][id] = rec;
+      return normalizeImportedObj(raw, rawBlock, normalized);
+    };
+    const rec = function (over) {
+      const r = { v: 3, at: 1, conf: 'media', sets: [{ w: 45, r: 9, m: '↑' }] };
+      for (const k in over) r[k] = over[k];
+      return r;
+    };
+    const kept = function (out) { const k = 'w1-' + dayId; return (out[k] && out[k][exId]) || null; };
+    const empty = function (out) { return Object.keys(out).length === 0; };
+
+    const good = kept(run('w1-' + dayId, exId, rec()));
+    /* Everything wrong at once, because each field is clamped on its own
+       and a record only has to be rejected whole when its sets are. */
+    const bad = kept(run('w1-' + dayId, exId,
+      rec({ at: 'yesterday', conf: 'nonsense', sets: [{ w: 99999, r: -5, m: 'x' }] })));
+    return {
+      roundTrip: !!good && good.sets[0].w === 45 && good.sets[0].r === 9 &&
+                 good.sets[0].m === '↑' && good.conf === 'media' && good.at === 1 && good.v === 3,
+      weekZero: empty(run('w0-' + dayId, exId, rec())),
+      weekPastCap: empty(run('w17-' + dayId, exId, rec())),
+      unknownDay: empty(run('w1-no-such-day', exId, rec())),
+      unknownEx: empty(run('w1-' + dayId, 'no-such-ex', rec())),
+      setsNotAnArray: empty(run('w1-' + dayId, exId, rec({ sets: 'nope' }))),
+      setsEmpty: empty(run('w1-' + dayId, exId, rec({ sets: [] }))),
+      clampedW: !!bad && bad.sets[0].w === 9999,
+      clampedR: !!bad && bad.sets[0].r === 0,
+      droppedMove: !!bad && bad.sets[0].m === '',
+      confFallback: !!bad && bad.conf === 'baja',
+      atFallback: !!bad && bad.at === 0,
+    };
+  })()
+`);
+ok('normalizeImportedObj keeps a well-formed record whole', objProbe.roundTrip, JSON.stringify(objProbe));
+ok('a week of 0 is no week', objProbe.weekZero, JSON.stringify(objProbe));
+ok('a week past MAX_WEEKS is dropped rather than filed above the cap', objProbe.weekPastCap, JSON.stringify(objProbe));
+ok('a day id this block does not have is dropped', objProbe.unknownDay, JSON.stringify(objProbe));
+ok('an exercise id that day does not have is dropped', objProbe.unknownEx, JSON.stringify(objProbe));
+ok('a record whose sets are not an array is dropped, not coerced', objProbe.setsNotAnArray, JSON.stringify(objProbe));
+ok('...and neither is a record with no sets left in it kept', objProbe.setsEmpty, JSON.stringify(objProbe));
+ok('a weight past the cap clamps instead of rejecting the record', objProbe.clampedW, JSON.stringify(objProbe));
+ok('a negative rep count clamps to zero', objProbe.clampedR, JSON.stringify(objProbe));
+ok('a move marker that is neither arrow becomes no marker', objProbe.droppedMove, JSON.stringify(objProbe));
+ok('a confidence normalizeImportedObj does not recognise reads as "baja"', objProbe.confFallback, JSON.stringify(objProbe));
+ok('a timestamp that is not a number reads as 0', objProbe.atFallback, JSON.stringify(objProbe));
+/* Not asserted here on purpose: at this HEAD `conf` is checked with a
+   truthy lookup on a plain object, so 'constructor' passes it. plans/021
+   and plans/025 replace that with a TARGET_CONF_OPTIONS membership test,
+   and the assertions for it — 'constructor' rejected, `kind` and `hold`
+   round-tripping — belong with whichever of them lands. Writing them now
+   would fail on purpose. `grep -n TARGET_CONF_OPTIONS js/app.js` finds
+   nothing at 4f7e037; when it does, add them. */
 
 console.log('\n== normalizeImportedProfile: a restore runs the same per-row limits QR already had (plans/008 item 4) ==');
 const restoreProbe = call(`
@@ -2137,7 +2436,6 @@ console.log('\n== Escape reaches every sheet (plans/013, plans/009 item 1) ==');
      !/\bcloseReview\b/.test(appCode) && !/\bcloseQr\b/.test(appCode));
 }
 
-console.log('\n== requestWakeLock: one rest, one lock — skipped mid-request, doubled up, or re-acquired (plans/008 item 15, plans/013) ==');
 console.log('\n== the log key has one reader as well as one builder (plans/009 item 4) ==');
 {
   ok('parseSlot is the mirror of slot()', (() => {
@@ -2293,6 +2591,7 @@ console.log('\n== "borrar registro" reaches a week past the cap (plans/009 item 
 }
 
 (async () => {
+  console.log('\n== requestWakeLock: one rest, one lock — skipped mid-request, doubled up, or re-acquired (plans/008 item 15, plans/013) ==');
   /* A real WakeLockSentinel carries its own .released flag, and the guard
      added in plans/013 reads it — so the fake has to carry one as well. */
   const makeLock = () => ({ released: false, release() { this.released = true; return Promise.resolve(); } });
