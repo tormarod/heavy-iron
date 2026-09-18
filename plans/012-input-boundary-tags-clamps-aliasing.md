@@ -262,6 +262,16 @@ exact names).
 - If the plan editor gains another numeric box, clamp it in both the
   `oninput` handler and `syncDraftFromForm`, with the same bounds
   `migrate()` uses.
-- `importIdMaps` has the same `__proto__` hazard for raw *day/exercise ids*
-  (inert today: rows are misfiled, nothing throws). Plan 010 rewrites that
-  function; fold a `safeKey` there if it is touched.
+- `importIdMaps` had the same `__proto__` hazard for raw *day/exercise ids*
+  (inert: rows were misfiled, nothing threw). Settled without a `safeKey`:
+  plan 010's rewrite builds both maps with `Object.create(null)`, which has
+  no chain to inherit from, so any string is just a key.
+- `safeKey`/`UNSAFE_KEYS` were left out of scope here, and the three-name
+  deny-list turned out to be the same bug one name over: `toString`,
+  `valueOf` and the other eight inherited names are equally typeable in the
+  Músculo box and threw out of `strengthRows` exactly as `__proto__` did.
+  Closed as a follow-up to this plan rather than as a plan of its own —
+  `safeKey` now asks the prototype chain instead of naming keys, and
+  `UNSAFE_KEYS` holds only `prototype`, which `in` cannot see. See the
+  `== safeKey refuses every inherited Object.prototype name ==` section in
+  `test/unit.js`.

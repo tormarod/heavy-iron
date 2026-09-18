@@ -1262,10 +1262,11 @@ function getBlock() { const p = getProfile(); return p.blocks[p.activeBlock]; }
    place. */
 /* safeKey on a freeform tag, not just on an exercise id: every tag is a
    plain-object key somewhere downstream (byMuscle[tag] in diagnostics,
-   totals[t] in the volume dashboard), and a tag of "__proto__" reads the
-   inherited Object.prototype as "already there" and then throws on .push —
-   an empty Diagnóstico with no message (plans/012). Typeable in the
-   editor's Músculo box, so this is not only an import problem. */
+   totals[t] in the volume dashboard), and a tag of "__proto__" — or
+   "toString", or any other name `Object.prototype` carries — reads the
+   inherited member as "already there" and then throws on .push — an empty
+   Diagnóstico with no message (plans/012). Typeable in the editor's
+   Músculo box, so this is not only an import problem. */
 const muscleTag = ex => safeKey(txt(ex.muscle, MUSCLE_LIMIT)) || UNCLASSIFIED_LABEL;
 
 /* ---------- priority muscles ----------
@@ -2083,21 +2084,30 @@ function txt(v, max) {
   return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
-/* `__proto__`, `constructor` and `prototype` are ordinary strings everywhere
-   except as a key into a fresh `{}`: `log['__proto__'] = x` sets the
-   prototype instead of adding an own property, so a later `log[k][exId]`
-   read (rowsFor, js/app.js) finds `Object.prototype` — truthy, not an
-   array — and the next `.push` on it throws, straight to the recovery
-   screen. `Object.prototype.hasOwnProperty.call({}, s)` is not a fix on its
-   own: a plain `{}` owns none of these names either, hasOwnProperty says
-   so, and the walk up the chain happens anyway. A fixed deny-list is what
-   the reference implementation below (normalizeImportedBlock) and every
-   other id read from storage or an import checks ids against; returns ''
-   for a blocked id so the caller's existing "fall back to a generated one"
-   path handles it for free. */
-const UNSAFE_KEYS = ['__proto__', 'constructor', 'prototype'];
+/* An id or a tag is an ordinary string everywhere except as a key into a
+   fresh `{}`. Every name `Object.prototype` carries reads back truthy off
+   an object that does not own it, so the `if (!m[k]) m[k] = []; m[k].push()`
+   pattern skips the initialisation and throws on the `.push` (strengthRows,
+   js/diagnostics.js; rowsFor, js/app.js) — straight to the recovery screen,
+   or to a Diagnóstico blanked after its host was already cleared. For
+   `__proto__` specifically the assignment re-points the object's prototype
+   instead of adding a property. `Object.prototype.hasOwnProperty.call({}, s)`
+   is not a fix on its own: a plain `{}` owns none of these names either,
+   hasOwnProperty says so, and the walk up the chain happens anyway.
+
+   Naming the three obvious ones was the bug. `toString`, `valueOf` and
+   `hasOwnProperty` are just as typeable into the Músculo box and break
+   exactly as hard; `in` asks the prototype chain the same question the
+   truthy read asks, so this can no longer fall behind it.
+
+   `prototype` stays enumerated: `'prototype' in {}` is false — it is a
+   property of functions, not of `Object.prototype` — so the `in` test
+   cannot see it, and the callers here were written against a contract that
+   blocks it. Returns '' for a blocked key so the caller's existing "fall
+   back to a generated one" path handles it for free. */
+const UNSAFE_KEYS = ['prototype'];
 function safeKey(id) {
-  return UNSAFE_KEYS.indexOf(id) >= 0 ? '' : id;
+  return (id in Object.prototype) || UNSAFE_KEYS.indexOf(id) >= 0 ? '' : id;
 }
 
 /* ---------- nav ---------- */
