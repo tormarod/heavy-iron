@@ -99,7 +99,7 @@ function normalizeImportedProfile(p) {
     const raw = p.blocks[bk];
     let normalized;
     try {
-      normalized = normalizeImportedBlock(raw);
+      normalized = normalizeImportedBlock(raw, { own: true });
     } catch (e) {
       throw new Error('el bloque "' + (raw && raw.name || bk) + '": ' + e.message);
     }
@@ -135,6 +135,13 @@ function normalizeImportedProfile(p) {
     }
     const rawRir = ownGet(p.rir, bk);
     if (rawRir) p.rir[bk] = normalizeImportedRir(rawRir, raw, normalized);
+
+    /* Same re-keying as log and rir: a renamed exercise id (a blocked key,
+       or a duplicate on the strict path) would otherwise leave the recorded
+       session order pointing at ids no card on this phone has, and it would
+       silently fall back to plan order. Never done here before plans/010. */
+    const rawOrder = ownGet(p.order, bk);
+    if (rawOrder) p.order[bk] = normalizeImportedOrder(rawOrder, raw, normalized);
 
     /* Notes and energy carry no such re-keying (they are per-session, not
        per-exercise, so no id map applies) but were never capped or

@@ -343,6 +343,322 @@ ok('log entries for a block id not in blocks are dropped',
    survivingLogKeys.indexOf('ghost') < 0 && survivingLogKeys.indexOf('b1') >= 0,
    JSON.stringify(survivingLogKeys));
 
+console.log('\n== normalizeImportedProfile: the app can read back everything it writes (plans/010) ==');
+
+/* The rule plan 004 wrote down and plan 008 item 4 narrowed by accident:
+   never reject or alter data the app itself wrote. Every probe below is a
+   file the app produces on its own — an untouched new install, a plan with
+   something retired, a block migrate() left with one id on two days — and
+   each one came back wrong, or not at all, through "Cargar copia",
+   "Importar perfil" and the QR "perfil". Foreign pasted blocks keep the
+   strict treatment; that is asserted in `== normalizeImportedBlock ==`. */
+
+/* 1. The empty starting plan. emptyBlock() ships exactly one exercise with
+      no name yet (the editor shows an empty box to type into), and the
+      strict validator threw on it — so a brand-new install's very first
+      backup could not be restored by any route. */
+const emptyPlanRestore = call(`
+  (function() {
+    const p = JSON.parse(JSON.stringify(defaultState().profiles.hombre));
+    const b = emptyBlock();
+    p.blocks = {}; p.blocks[b.id] = b;
+    p.blockOrder = [b.id]; p.activeBlock = b.id;
+    p.log = {}; p.rir = {}; p.notes = {}; p.energy = {}; p.order = {};
+    try {
+      const after = normalizeImportedProfile(JSON.parse(JSON.stringify(p)));
+      const ab = after.blocks[after.blockOrder[0]];
+      return { threw: false, exCount: ab.days[0].ex.length, name: ab.days[0].ex[0].n, reps: ab.days[0].ex[0].reps };
+    } catch (e) { return { threw: true, msg: e.message }; }
+  })()
+`);
+ok('the empty starting plan restores at all', emptyPlanRestore.threw === false, emptyPlanRestore.msg);
+ok('...keeping its one exercise', emptyPlanRestore.exCount === 1, JSON.stringify(emptyPlanRestore));
+ok('...which comes back with a name to show', !!emptyPlanRestore.name, JSON.stringify(emptyPlanRestore));
+ok('...and a rep range', !!emptyPlanRestore.reps, JSON.stringify(emptyPlanRestore));
+
+/* 2. "Retirar" is the non-destructive way to drop a day or an exercise: it
+      stays in the block behind an `off` flag so its history is never
+      touched. The flag was not in the validator's output, so a restore
+      silently resurrected everything the user had retired. */
+const retiredRoundTrip = call(`
+  (function() {
+    state = defaultState(); migrate();
+    const profile = state.profiles.hombre;
+    const block = profile.blocks[profile.blockOrder[0]];
+    block.days[1].off = 1;
+    block.days[0].ex[2].off = 1;
+    const before = { days: block.days.length, ex: block.days[0].ex.length,
+                     liveDays: dayList(block).length, liveEx: exList(block.days[0]).length };
+    const after = normalizeImportedProfile(JSON.parse(JSON.stringify(profile)));
+    const ab = after.blocks[after.blockOrder[0]];
+    return {
+      sameDays: ab.days.length === before.days,
+      sameEx: ab.days[0].ex.length === before.ex,
+      dayOff: ab.days[1].off === 1,
+      exOff: ab.days[0].ex[2].off === 1,
+      sameLiveDays: dayList(ab).length === before.liveDays,
+      sameLiveEx: exList(ab.days[0]).length === before.liveEx,
+      before: JSON.stringify(before),
+      afterOff: JSON.stringify({ day: ab.days[1].off, ex: ab.days[0].ex[2].off }),
+    };
+  })()
+`);
+ok('a retired day is still in the restored block', retiredRoundTrip.sameDays, retiredRoundTrip.before);
+ok('...and still retired', retiredRoundTrip.dayOff, retiredRoundTrip.afterOff);
+ok('...so the session shows the same live days as before the restore', retiredRoundTrip.sameLiveDays);
+ok('a retired exercise is still in the restored day', retiredRoundTrip.sameEx, retiredRoundTrip.before);
+ok('...and still retired', retiredRoundTrip.exOff, retiredRoundTrip.afterOff);
+ok('...so the day shows the same live exercises as before the restore', retiredRoundTrip.sameLiveEx);
+
+/* 3. migrate() dedupes exercise ids within a day but lets the same id live
+      on two days by design (asserted in `== migrate() ==`), because that is
+      how the app records "the same lift twice a week". The strict validator
+      renames the second one, and the flat id map then filed day B's sets
+      under day A's exercise — one day's history gone on restore. */
+const dupIdRoundTrip = call(`
+  (function() {
+    state = defaultState(); migrate();
+    const profile = state.profiles.hombre;
+    const block = profile.blocks[profile.blockOrder[0]];
+    const d0 = block.days[0], d2 = block.days[2];
+    const src = d0.ex[0];
+    d2.ex.push(JSON.parse(JSON.stringify(src)));
+    const r0 = entry(profile, block.id, 1, d0.id, src.id, src.sets)[0];
+    r0.w = '60'; r0.r = '8'; r0.done = true;
+    const r2 = entry(profile, block.id, 1, d2.id, src.id, src.sets)[0];
+    r2.w = '75'; r2.r = '5'; r2.done = true;
+    setRir(profile, block.id, 1, d2.id, src.id, '1');
+    setOrder(profile, block.id, 1, d2.id, [src.id].concat(d2.ex.slice(0, 2).map(e => e.id)));
+    const beforeOrder = JSON.stringify(profile.order);
+
+    const after = normalizeImportedProfile(JSON.parse(JSON.stringify(profile)));
+    const ab = after.blocks[after.blockOrder[0]];
+    const ad0 = ab.days[0], ad2 = ab.days[2];
+    const s0 = (after.log[ab.id] || {})[slot(1, ad0.id)] || {};
+    const s2 = (after.log[ab.id] || {})[slot(1, ad2.id)] || {};
+    const rir2 = (after.rir[ab.id] || {})[slot(1, ad2.id)] || {};
+    /* Looked up under the id the RESTORED exercise carries, not the one it
+       had before: a row filed under an id no card on that day reads is the
+       bug, and asserting against src.id would pass straight through it. */
+    const id0 = ad0.ex[0].id, id2 = ad2.ex[ad2.ex.length - 1].id;
+    const order2 = ((after.order[ab.id] || {})[slot(1, ad2.id)]) || [];
+    const live2 = ad2.ex.map(e => e.id);
+    return {
+      notRenamed: id2 === src.id,
+      day0Row: !!(s0[id0] && s0[id0][0] && s0[id0][0].w === '60'),
+      day2Row: !!(s2[id2] && s2[id2][0] && s2[id2][0].w === '75'),
+      day2Rir: rir2[id2] === '1',
+      sameOrder: JSON.stringify(after.order) === beforeOrder,
+      orderResolves: order2.length === 3 && order2.every(id => live2.indexOf(id) >= 0),
+      srcId: src.id, keptId: id2,
+      s2keys: Object.keys(s2).join(','),
+      beforeOrder: beforeOrder, afterOrder: JSON.stringify(after.order),
+    };
+  })()
+`);
+ok('the same id on two days is not renamed on the restore path',
+   dupIdRoundTrip.notRenamed, dupIdRoundTrip.srcId + ' -> ' + dupIdRoundTrip.keptId);
+ok("...the first day's sets are still under it", dupIdRoundTrip.day0Row, dupIdRoundTrip.s2keys);
+ok("...the second day's sets are too, not merged into the first's",
+   dupIdRoundTrip.day2Row, dupIdRoundTrip.s2keys);
+ok("...and the second day's RIR chip with them", dupIdRoundTrip.day2Rir, dupIdRoundTrip.s2keys);
+ok('...and the recorded session order is unchanged',
+   dupIdRoundTrip.sameOrder, dupIdRoundTrip.beforeOrder + ' vs ' + dupIdRoundTrip.afterOrder);
+ok('...naming exercises that day actually has', dupIdRoundTrip.orderResolves,
+   dupIdRoundTrip.afterOrder);
+
+/* 4. Order was the one parallel map normalizeImportedProfile never re-keyed
+      — log and rir went through their normalizers, order was copied across
+      with its exercise ids untouched. safeKey() rewrites a blocked id on
+      every path, own data included, so an order naming one came back
+      pointing at an exercise no card on this phone has, and the session
+      silently fell back to plan order. */
+const orderRekey = call(`
+  (function() {
+    state = defaultState(); migrate();
+    const profile = state.profiles.hombre;
+    const block = profile.blocks[profile.blockOrder[0]];
+    const day = block.days[0];
+    day.ex[0].id = '__proto__';
+    setOrder(profile, block.id, 1, day.id, ['__proto__', day.ex[1].id, day.ex[2].id]);
+
+    const after = normalizeImportedProfile(JSON.parse(JSON.stringify(profile)));
+    const ab = after.blocks[after.blockOrder[0]];
+    const ad = ab.days[0];
+    const ids = ((after.order[ab.id] || {})[slot(1, ad.id)]) || [];
+    const live = ad.ex.map(e => e.id);
+    return {
+      kept: ids.length === 3,
+      allResolve: ids.length > 0 && ids.every(id => live.indexOf(id) >= 0),
+      ids: ids.join(','), live: live.join(','),
+    };
+  })()
+`);
+ok('a restored session order keeps all three of its exercises',
+   orderRekey.kept, orderRekey.ids);
+ok('...re-keyed to ids the restored day actually has',
+   orderRekey.allResolve, orderRekey.ids + ' vs ' + orderRekey.live);
+
+/* 5. The same misfiling, on the strict path that keeps renaming: two days
+      sharing a raw id normalize to two different ids, so the id map has to
+      be read per day. This is the QR "blocklog" wire format, which is why
+      it is asserted against normalizeImportedLog directly rather than
+      through a profile. */
+const strictDayAwareLog = call(`
+  (function() {
+    const raw = {
+      name: 'B', weeks: 4, deload: 0,
+      days: [
+        { id: 'da', name: 'A', ex: [{ id: 'chestpress', n: 'Press banca', reps: '8-10' }] },
+        { id: 'db', name: 'B', ex: [{ id: 'chestpress', n: 'Press banca', reps: '8-10' }] },
+      ],
+    };
+    const normalized = normalizeImportedBlock(raw);
+    const log = {};
+    log[slot(1, 'da')] = { chestpress: [{ w: '60', r: '8', done: true }] };
+    log[slot(1, 'db')] = { chestpress: [{ w: '75', r: '5', done: true }] };
+    const out = normalizeImportedLog(log, raw, normalized);
+    const idA = normalized.days[0].ex[0].id, idB = normalized.days[1].ex[0].id;
+    const sa = out[slot(1, normalized.days[0].id)] || {};
+    const sb = out[slot(1, normalized.days[1].id)] || {};
+    return {
+      renamed: idB !== idA,
+      dayARow: !!(sa[idA] && sa[idA][0] && sa[idA][0].w === '60'),
+      dayBRow: !!(sb[idB] && sb[idB][0] && sb[idB][0].w === '75'),
+      ids: idA + ' / ' + idB,
+      sbKeys: Object.keys(sb).join(','),
+    };
+  })()
+`);
+/* 6. An id the re-keying maps could not carry at all. importIdMaps indexes
+      by raw, untrusted id, and a plain {} answers `map['__proto__']` with
+      the real Object.prototype — truthy — while `put`'s `in` check saw that
+      same inherited hit and never stored the mapping. So the rows came back
+      filed under the literal key '[object Object]', on every path that
+      re-keys: QR "blocklog", a restored backup, a profile file. */
+const protoIdReKey = call(`
+  (function() {
+    /* JSON.parse, not an object literal: { '__proto__': x } as literal
+       syntax sets the prototype instead of creating an own property, which
+       would test nothing. JSON.parse is also how these ids really arrive. */
+    const raw = JSON.parse('{"name":"B","weeks":4,"deload":0,"days":[{"id":"d0","name":"D","ex":[{"id":"__proto__","n":"Press","reps":"8-10"}]}]}');
+    const rawLog = JSON.parse('{"w1-d0":{"__proto__":[{"w":"60","r":"8","done":true}]}}');
+    const normalized = normalizeImportedBlock(raw);
+    const exId = normalized.days[0].ex[0].id;
+    const s = normalizeImportedLog(rawLog, raw, normalized)[slot(1, normalized.days[0].id)] || {};
+    return {
+      renamed: exId !== '__proto__',
+      landed: !!(s[exId] && s[exId][0] && s[exId][0].w === '60'),
+      keys: Object.keys(s).join(','), exId: exId,
+    };
+  })()
+`);
+ok('an exercise id of "__proto__" is renamed rather than kept', protoIdReKey.renamed, protoIdReKey.exId);
+ok('...and its sets are re-keyed onto the renamed exercise, not "[object Object]"',
+   protoIdReKey.landed, 'slot holds: ' + protoIdReKey.keys + ' (expected ' + protoIdReKey.exId + ')');
+
+ok('a pasted block with one id on two days still renames the second (strict path unchanged)',
+   strictDayAwareLog.renamed, strictDayAwareLog.ids);
+ok("...day A's sets land on day A's exercise", strictDayAwareLog.dayARow, strictDayAwareLog.sbKeys);
+ok("...and day B's on the renamed one, not day A's id",
+   strictDayAwareLog.dayBRow, strictDayAwareLog.ids + ' - slot B has ' + strictDayAwareLog.sbKeys);
+
+/* 7. Every other field a block carries. The probes above each name the
+      field the bug was about, which is the problem: `off` was found because
+      plans/010 named it, and a field added to the editor next year would be
+      dropped on restore exactly the same way with nothing to catch it. So
+      this one names no fields at all — it walks whatever the fixture holds.
+
+      The invariant is containment, not equality: every own key whose stored
+      value is truthy must come back with that value. Deliberately not a
+      JSON.stringify compare — normalizeImportedBlock builds `out` in a
+      fixed key order that will not match the stored one, and it drops falsy
+      optionals on purpose (newExercise() ships alt: '', share: 0, ss: 0,
+      and a blank field is genuinely nothing to carry). */
+call(`
+  function restoreGaps(stored, restored, path, out) {
+    if (stored === null || stored === undefined) return out;
+    if (Array.isArray(stored)) {
+      if (!Array.isArray(restored)) { out.push(path + ': array -> ' + typeof restored); return out; }
+      if (restored.length !== stored.length) out.push(path + '.length: ' + stored.length + ' -> ' + restored.length);
+      stored.forEach((v, i) => restoreGaps(v, restored[i], path + '[' + i + ']', out));
+      return out;
+    }
+    if (typeof stored === 'object') {
+      if (!restored || typeof restored !== 'object') { out.push(path + ': object -> ' + typeof restored); return out; }
+      Object.keys(stored).forEach(k => restoreGaps(stored[k], restored[k], path + '.' + k, out));
+      return out;
+    }
+    if (!stored) return out;
+    if (restored !== stored) out.push(path + ': ' + JSON.stringify(stored) + ' -> ' + JSON.stringify(restored));
+    return out;
+  }
+  true;
+`);
+
+/* 7a. The two blocks nobody hand-wrote: the plan the app ships and the one
+       "Nuevo bloque" creates. They grow when the app grows, so a field added
+       to either is covered here without anyone remembering to add it. */
+const shippedFieldsSurvive = call(`
+  (function() {
+    state = defaultState(); migrate();
+    const profile = state.profiles.hombre;
+    const fresh = emptyBlock();
+    profile.blocks[fresh.id] = fresh;
+    profile.blockOrder.push(fresh.id);
+    const stored = JSON.parse(JSON.stringify(profile));
+    const after = normalizeImportedProfile(JSON.parse(JSON.stringify(profile)));
+    const gaps = [];
+    Object.keys(stored.blocks).forEach(k => restoreGaps(stored.blocks[k], after.blocks[k], k, gaps));
+    return { gaps: gaps.slice(0, 6), count: gaps.length, blocks: Object.keys(stored.blocks).length };
+  })()
+`);
+ok('both blocks in the fixture are actually there', shippedFieldsSurvive.blocks === 2,
+   String(shippedFieldsSurvive.blocks));
+ok('every truthy field on the blocks the app ships survives a restore',
+   shippedFieldsSurvive.count === 0, shippedFieldsSurvive.gaps.join(' | '));
+
+/* 7b. And the same walk over a block with every optional field the plan
+       editor can write set to something — the fields 7a's fixtures happen
+       not to use. Values are chosen to sit inside their own clamps (inc on
+       the 0.25 grid, add <= weeks, nothing over a txt() cap and no double
+       spaces for it to collapse), so anything this reports is a field being
+       dropped or rewritten, not a bound doing its job. */
+const everyFieldSurvives = call(`
+  (function() {
+    const block = {
+      id: 'block-ks', name: 'Bloque completo', createdAt: '2026-01-02T03:04:05.000Z',
+      weeks: 6, deload: 6,
+      days: [
+        { id: 'da', name: 'Día A', pair: 'A/B', ex: [
+          { id: 'sq', n: 'Sentadilla', reps: '5', sets: 5, rest: 180,
+            alt: 'Prensa', cue: 'Pecho arriba', setup: 'Barra a 1,40 m',
+            add: 2, inc: 2.5, share: 1, ss: 1,
+            muscle: 'cuádriceps', pattern: 'rodilla', type: 'compuesto' },
+          { id: 'sq-viejo', n: 'Retirado', reps: '10', sets: 3, rest: 90, off: 1 },
+        ] },
+        { id: 'db', name: 'Día B', off: 1, ex: [
+          { id: 'sq', n: 'Sentadilla', reps: '8', sets: 3, rest: 120 },
+        ] },
+      ],
+      phase: {
+        1: { r: '3', t: 'Acumulación' }, 2: { r: '2', t: 'Acumulación' },
+        3: { r: '2', t: 'Intensificación' }, 4: { r: '1', t: 'Intensificación' },
+        5: { r: '1', t: 'Pico' }, 6: { r: '4', t: 'Descarga' },
+      },
+      priority: ['cuádriceps'],
+    };
+    const p = { blocks: { 'block-ks': block }, blockOrder: ['block-ks'], activeBlock: 'block-ks',
+                log: {}, rir: {}, notes: {}, energy: {}, order: {} };
+    const stored = JSON.parse(JSON.stringify(p));
+    const after = normalizeImportedProfile(JSON.parse(JSON.stringify(p)));
+    const gaps = restoreGaps(stored.blocks['block-ks'], after.blocks['block-ks'], 'block', []);
+    return { gaps: gaps.slice(0, 6), count: gaps.length };
+  })()
+`);
+ok('every optional field the plan editor writes survives a restore',
+   everyFieldSurvives.count === 0, everyFieldSurvives.gaps.join(' | '));
+
 console.log('\n== render cache ==');
 const renderCacheProbe = `
   (function() {

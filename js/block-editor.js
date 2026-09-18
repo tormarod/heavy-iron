@@ -215,7 +215,17 @@ async function newBlock(skipReview) {
    plan, it is a way to hang the phone. Anything the app then draws is
    escaped on the way out (see `esc`), so this is a second line, not the
    only one. */
-function normalizeImportedBlock(raw) {
+function normalizeImportedBlock(raw, opts) {
+  /* `own` is set by normalizeImportedProfile, for data this app itself
+     wrote (a backup, a profile file, a QR "perfil"). A pasted or shared
+     block stays strict — reject a nameless exercise, drop retired items —
+     but the app must be able to read back anything it has ever saved:
+     emptyBlock() ships one blank exercise on purpose, `off` is how a user
+     retires an exercise without losing its history, and migrate() lets one
+     id live on two days by design. Rejecting or rewriting any of those on
+     restore turned the backup into a file that could not be restored
+     (plans/010). */
+  const own = !!(opts && opts.own);
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('El JSON no es un objeto válido.');
   const name = txt(raw.name, IMPORT_LIMITS.name) || 'Bloque importado';
   /* Both optional: a block that says nothing is the eight-week, deload-on-8
@@ -233,16 +243,27 @@ function normalizeImportedBlock(raw) {
     const dayName = txt(day.name, IMPORT_LIMITS.name) || ('Día ' + (di + 1));
     if (!Array.isArray(day.ex) || !day.ex.length) throw new Error('El día "' + dayName + '" necesita al menos un ejercicio.');
     if (day.ex.length > IMPORT_LIMITS.ex) throw new Error('El día "' + dayName + '" tiene ' + day.ex.length + ' ejercicios: el máximo es ' + IMPORT_LIMITS.ex + '.');
+    /* Ids are unique per block for a paste and per day for own data: two
+       days sharing one id is how the app records the same lift twice a
+       week (migrate() dedupes within a day only, on purpose), so renaming
+       the second one on restore moved a day's history onto an exercise
+       nobody trained. A pasted block keeps the block-wide rule — see
+       README "The same lift on two days" for what it means there. */
+    const dayIds = own ? new Set() : usedIds;
     const ex = day.ex.map((e, ei) => {
       if (!e || typeof e !== 'object') throw new Error('Un ejercicio del día "' + dayName + '" no es válido.');
-      const n = txt(e.n, IMPORT_LIMITS.exName);
+      /* Named rather than rejected on the own path: the blank exercise
+         emptyBlock() ships is a real thing the app saves, and a backup the
+         app cannot read back is not a backup. */
+      const n = txt(e.n, IMPORT_LIMITS.exName) || (own ? 'Ejercicio ' + (ei + 1) : '');
       if (!n) throw new Error('Falta el nombre de un ejercicio en "' + dayName + '".');
-      const reps = txt(e.reps, IMPORT_LIMITS.reps);
+      /* The same default migrate() fills a blank rep range with. */
+      const reps = txt(e.reps, IMPORT_LIMITS.reps) || (own ? '10–15' : '');
       if (!reps) throw new Error('Falta el rango de repeticiones en "' + n + '".');
       const baseId = safeKey(txt(e.id, 60)) || (slugify(n) || ('ex-' + di + '-' + ei));
       let uniqueId = baseId, suffix = 2;
-      while (usedIds.has(uniqueId)) uniqueId = baseId + '-' + (suffix++);
-      usedIds.add(uniqueId);
+      while (dayIds.has(uniqueId)) uniqueId = baseId + '-' + (suffix++);
+      dayIds.add(uniqueId);
       const out = {
         id: uniqueId, n, reps,
         sets: clampInt(e.sets, 1, 12, 3),
@@ -275,6 +296,11 @@ function normalizeImportedBlock(raw) {
       if (e.muscle != null) { const m = txt(e.muscle, MUSCLE_LIMIT); if (m) out.muscle = m; }
       if (e.pattern != null) { const p = txt(e.pattern, PATTERN_LIMIT); if (p) out.pattern = p; }
       if (e.type != null) { const t = txt(e.type, TYPE_LIMIT); if (t) out.type = t; }
+      /* Own data only. A share drops retired items outright (blockSharePlan)
+         so the receiver gets the plan as trained, but a restore that
+         resurrected them handed the user back a plan they had already
+         edited away from, with no way to tell. */
+      if (own && e.off) out.off = 1;
       return out;
     });
     let dayId = safeKey(txt(day.id, 60));
@@ -282,6 +308,8 @@ function normalizeImportedBlock(raw) {
     usedDayIds.add(dayId);
     const out = { id: dayId, name: dayName, ex };
     if (day.pair) out.pair = txt(day.pair, IMPORT_LIMITS.pair);
+    /* Same rule as the exercise `off` above. */
+    if (own && day.off) out.off = 1;
     return out;
   });
 
