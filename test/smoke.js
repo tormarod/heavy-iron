@@ -2741,7 +2741,7 @@ const ok = (name, cond, extra) => {
     ok('and it carries the session notes', await page.locator('.rev-note').count() === 2);
 
     const text = await page.evaluate(() => reviewText(buildBlockReview(getProfile(), getBlock())));
-    ok('the brief names the block', text.includes('"Bloque 1"'), text.slice(0, 80));
+    ok('the brief names the block', text.includes('«Bloque 1»'), text.slice(0, 80));
     ok('the brief carries strength, attendance and volume per muscle',
        /«Pecho» \(PRIORITARIO\).*fuerza \+12,5 %.*sesiones 7\/\d+.*series\/semana/.test(text),
        (text.match(/- «Pecho».*/) || [''])[0]);

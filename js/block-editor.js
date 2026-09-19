@@ -519,9 +519,9 @@ async function buildAiPrompt(opts) {
     const ctx = [
       'Entreno ' + (soloMode() ? 'solo' : 'en pareja') + '.',
       'Peso en ' + units() + '. Incremento por defecto: ' + p.inc + ' ' + units() + '. Barra: ' + p.barWeight + ' ' + units() + '. Discos por lado: ' + p.plates.join(', ') + '.',
-      'Mi bloque actual, "' + block.name + '", tiene ' + days.length + (days.length === 1 ? ' día' : ' días') + ' por semana y ' +
+      'Mi bloque actual, ' + reviewName(block.name) + ', tiene ' + days.length + (days.length === 1 ? ' día' : ' días') + ' por semana y ' +
         blockWeeks(block) + ' semanas' + (dl ? ', con descarga en la semana ' + dl : ', sin descarga') + '.',
-      priority.length ? 'Músculos prioritarios: ' + priority.join(', ') + '.' : '',
+      priority.length ? 'Músculos prioritarios: ' + priority.map(reviewName).join(', ') + '.' : '',
     ].filter(Boolean).join(' ');
     lines.push(
       '',
