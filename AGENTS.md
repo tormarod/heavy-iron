@@ -164,7 +164,8 @@ needs a static server on `:8765` (or `BASE=`) plus Playwright:
 ```
 npm install --no-save playwright@1.56.1  # once
 npx playwright install chromium          # once
-python3 -m http.server 8765 &
+python3 -m http.server 8765 &                                 # Git Bash
+Start-Process python3 -ArgumentList '-m','http.server','8765' # PowerShell
 ```
 
 The whole suite by hand is warranted in three cases only: you edited

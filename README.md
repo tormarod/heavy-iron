@@ -121,7 +121,8 @@ the rest timer's controls fit on a 375px phone.
 ```
 npm install --no-save playwright@1.56.1   # once
 npx playwright install chromium           # once
-python3 -m http.server 8765 &
+python3 -m http.server 8765 &                                 # Git Bash
+Start-Process python3 -ArgumentList '-m','http.server','8765' # PowerShell
 node test/smoke.js
 ```
 
