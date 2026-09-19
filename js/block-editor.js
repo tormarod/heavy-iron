@@ -260,7 +260,12 @@ function normalizeImportedBlock(raw, opts) {
       /* The same default migrate() fills a blank rep range with. */
       const reps = txt(e.reps, IMPORT_LIMITS.reps) || (own ? '10–15' : '');
       if (!reps) throw new Error('Falta el rango de repeticiones en "' + n + '".');
-      const baseId = safeKey(txt(e.id, 60)) || (slugify(n) || ('ex-' + di + '-' + ei));
+      /* safeKey on the slug too, not just on the stated id: a name can slug
+         straight to a reserved word — "Constructor" to `constructor` — and
+         an id safeKey refuses is one recordVariant and the import's
+         variants block silently drop, so that lift could never carry a
+         rename cut. */
+      const baseId = safeKey(txt(e.id, 60)) || safeKey(slugify(n)) || ('ex-' + di + '-' + ei);
       let uniqueId = baseId, suffix = 2;
       while (dayIds.has(uniqueId)) uniqueId = baseId + '-' + (suffix++);
       dayIds.add(uniqueId);
@@ -1128,6 +1133,7 @@ function wireBlockEditor() {
         if (from && from !== day.id) {
           moveExLog(profile, peDraftBlock.id, from, day.id, ex.id);
           moveExRir(profile, peDraftBlock.id, from, day.id, ex.id);
+          moveExObj(profile, peDraftBlock.id, from, day.id, ex.id);
           moveExOrder(profile, peDraftBlock.id, from, day.id, ex.id);
         }
       });

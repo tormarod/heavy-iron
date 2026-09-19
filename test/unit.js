@@ -1082,6 +1082,11 @@ t = target([
 ], { range: '8–12', inc: 2.5, sets: 3, rirWeek: 2 });
 ok('T13 with no RIR marked every session is a minimum and the confidence says so',
    t.show === '50×10 · 50×8 · 47,5×10↓' && t.conf === 'baja' && t.notes.includes('moreRir'), JSON.stringify(t));
+/* One rung down lands inside the range, so there is nothing to warn about:
+   the 'floor' note is for the walk that ran out of rungs, not for any
+   target that came down at all (plans/025). */
+ok('   and a set that comes down one rung INTO the range carries no floor note',
+   !t.notes.includes('floor'), JSON.stringify(t));
 
 /* T14 */
 ok('T14 no history at all is no line, not a guess',
@@ -1273,10 +1278,15 @@ t = target([
 ], { range: '10–15', inc: 3, sets: 3, rirWeek: 1 });
 ok('coming down stops after three rungs, whether or not the range is back in reach',
    t && t.show === '91×7↓ · 82×10↓ · 79×10↓', JSON.stringify(t));
-/* At 4f7e037 a set that ran out of rungs says nothing about it; plans/025
-   adds a "floor" note. Pinned as it stands so that plan has to move it. */
-ok('...and nothing yet marks the set that ran out of rungs (plans/025)',
-   t && !t.notes.includes('floor'), JSON.stringify(t));
+/* H1 — the set that ran out of rungs used to say nothing about it: reps
+   below the range under a header reading "3 × 10–15", with no note, while
+   the mirror case (a step UP that does not fit) has had one since v3. The
+   reps stay as computed — they are honest — and the note says why they sit
+   under the range (plans/025). */
+ok('H1 ...and the set that ran out of rungs is marked, not left to read as a miscount',
+   t && t.notes.includes('floor') && t.dir === 'down', JSON.stringify(t));
+ok('   and the note says so in words',
+   t && t.says.includes('escalones'), t && t.says);
 
 /* Back from a layoff the last session is repeated exactly — and the set
    the plan has gained since was never done at all, so it takes the last
@@ -1294,6 +1304,42 @@ ok('a vuelta repeats the last session and gives a set gained since the last weig
 ok('a rep range written backwards, or with no numbers in it, is no target at all',
    target([{ sets: [[40, 10]], rir: '1' }, { sets: [[40, 10]], rir: '1' }], { range: '15–10' }) === null &&
    target([{ sets: [[40, 10]], rir: '1' }, { sets: [[40, 10]], rir: '1' }], { range: 'AMRAP' }) === null);
+
+/* A row written in the other unit is converted for the capacity it proves,
+   but the converted number was never a pin on this stack: it used to enter
+   the ladder as a rung at 45,359237, the card read "objetivo: 45,36×10",
+   and the tick wrote that placeholder into the log for good (plans/025). */
+const convSets = call(`
+  (function () {
+    state = defaultState(); migrate();
+    state.prefs.units = 'kg';
+    const p = { log: { B: { 'w1-D': { E: [
+                  { w: '100', r: '10', done: true, u: 'lb' },
+                  { w: '45', r: '10', done: true },
+                ] } } }, rir: { B: {} } };
+    const s = exSession(p, 'B', 1, 'D', 'E', 10, 15);
+    return { conv0: s.sets[0].conv, w0: Math.round(s.sets[0].w * 100) / 100,
+             conv1: s.sets[1].conv, w1: s.sets[1].w };
+  })()
+`);
+ok('exSession marks a row logged in the other unit as converted, weight and all',
+   convSets.conv0 === true && convSets.w0 === 45.36, JSON.stringify(convSets));
+ok('...and a row in the profile\'s own unit is not marked',
+   convSets.conv1 === false && convSets.w1 === 45, JSON.stringify(convSets));
+ok('loadLadder leaves the converted weight out and keeps the real rung',
+   call("loadLadder([{ sets: [{ w: 45.359237, conv: true }, { w: 45, conv: false }] }]).join(',')") === '45');
+
+/* G1 — end to end: one lb session behind two kg ones. Before this, the
+   ladder carried 45,359237 and the next rung up from 45 was it. */
+t = target([
+  { sets: [[100, 10, 'lb'], [100, 10, 'lb'], [100, 10, 'lb']], rir: '1' },
+  { sets: [[45, 15], [45, 15], [45, 15]], rir: '1' },
+  { sets: [[45, 15], [45, 15], [45, 15]], rir: '1' },
+], { range: '10–15', inc: 2.5, sets: 3, rirWeek: 1 });
+ok('G1 a converted session behind the kg ones is never a rung the target can land on',
+   t && t.show.indexOf('45,36') < 0 &&
+   t.show.split(' · ').every(function (s) { return s.indexOf('47,5×') === 0 || s.indexOf('45×') === 0; }),
+   JSON.stringify(t));
 
 console.log('\n== el mismo ejercicio en dos días del mismo bloque (plans/026) ==');
 /* The harness above is a one-day block by construction, so the day split in
@@ -1511,6 +1557,48 @@ ok('and its variant history, with an undatable entry dropped rather than guessed
    recordsRoundTrip.variant === 2 && recordsRoundTrip.since === '2026-03-04' && recordsRoundTrip.bogus === false,
    JSON.stringify(recordsRoundTrip));
 
+/* `variants` is keyed by exercise id with no block above it, so it was the
+   one map the import's per-block re-keying never reached: an id the
+   importer renamed left its rename history behind on the wrong lift, or on
+   no lift at all (plans/025). */
+const variantRekey = call(`
+  (function () {
+    const p = { blocks: { B: { name: 'Bloque', weeks: 4, deload: 0, days: [
+                  { id: 'd0', name: 'Día', ex: [
+                    { id: 'dup', n: 'Press', reps: '10-15', sets: 3 },
+                    { id: 'dup', n: 'Remo', reps: '10-15', sets: 3 },
+                  ] } ] } },
+                blockOrder: ['B'],
+                variants: { dup: [{ n: 'a', since: '1970-01-01' }, { n: 'b', since: '2026-01-01' }] } };
+    const after = normalizeImportedProfile(p);
+    const ex = after.blocks.B.days[0].ex;
+    const own = k => Object.prototype.hasOwnProperty.call(after.variants, k);
+    return { first: ex[0].id, second: ex[1].id, onFirst: own(ex[0].id), onSecond: own(ex[1].id) };
+  })()
+`);
+ok('a duplicate exercise id is renamed on import and the variant history stays with the exercise that kept the id',
+   variantRekey.first === 'dup' && variantRekey.second !== 'dup' &&
+   variantRekey.onFirst === true && variantRekey.onSecond === false, JSON.stringify(variantRekey));
+
+const variantRekeyBlocked = call(`
+  (function () {
+    const p = { blocks: { B: { name: 'Bloque', weeks: 4, deload: 0, days: [
+                  { id: 'd0', name: 'Día', ex: [
+                    { id: 'constructor', n: 'Press banca', reps: '10-15', sets: 3 },
+                  ] } ] } },
+                blockOrder: ['B'],
+                variants: { constructor: [{ n: 'Press viejo', since: '1970-01-01' },
+                                          { n: 'Press nuevo', since: '2026-01-01' }] } };
+    const after = normalizeImportedProfile(p);
+    const id = after.blocks.B.days[0].ex[0].id;
+    const own = k => Object.prototype.hasOwnProperty.call(after.variants, k);
+    return { id: id, onNewId: own(id) && after.variants[id].length, stillBlocked: own('constructor') };
+  })()
+`);
+ok('a variant keyed by a blocked id follows the exercise to the id it was given, instead of being dropped',
+   variantRekeyBlocked.id !== 'constructor' && variantRekeyBlocked.onNewId === 2 &&
+   variantRekeyBlocked.stillBlocked === false, JSON.stringify(variantRekeyBlocked));
+
 /* Every backup written before v3 has neither map. */
 ok('a profile that carries neither map migrates to empty ones rather than throwing',
    call(`
@@ -1606,6 +1694,31 @@ ok('a block keyed "__proto__" in a restored profile is renamed rather than setti
    protoKeyProbe.noProtoBlockKey && protoKeyProbe.onePlainBlock, JSON.stringify(protoKeyProbe));
 ok('...and blockOrder/activeBlock follow the rename',
    protoKeyProbe.orderMatchesTheRenamedKey && protoKeyProbe.activeIsTheRenamedKey, JSON.stringify(protoKeyProbe));
+/* The id fallbacks slug the *name*, and a name can slug straight to a
+   reserved word. No map broke — they are prototype-less or write own
+   properties — but recordVariant and the import's variants block both
+   safeKey the id and drop it, so a lift called "Constructor" could never
+   carry a rename cut (plans/025). */
+const slugConstructorBlock = Object.assign({}, minimalBlock, {
+  days: [{ name: 'Día 1', ex: [{ n: 'Constructor', sets: 3, reps: '10-15' }] }],
+});
+ok('an exercise whose name slugs to a reserved word gets the positional id, not "constructor"',
+   call('normalizeImportedBlock(' + JSON.stringify(slugConstructorBlock) + ').days[0].ex[0].id') === 'ex-0-0');
+
+const migrateSlugProbe = call(`
+  (function () {
+    state = defaultState();
+    state.profiles.hombre.blocks = { B: { id: 'B', name: 'Bloque', weeks: 8, deload: 0,
+      days: [{ id: 'd0', name: 'Día 1', ex: [{ n: 'Prototype', sets: 3, reps: '10-15' }] }] } };
+    state.profiles.hombre.blockOrder = ['B'];
+    state.profiles.hombre.activeBlock = 'B';
+    migrate();
+    return state.profiles.hombre.blocks.B.days[0].ex[0].id;
+  })()
+`);
+ok('migrate() gives the same positional id to an id-less exercise whose name slugs to a reserved word',
+   migrateSlugProbe === 'ex-0-0', String(migrateSlugProbe));
+
 ok('Object.prototype itself is never touched by any of the above', Object.getPrototypeOf({}) === Object.prototype);
 
 console.log('\n== normalizeImportedLog / normalizeImportedRir (plans/008 item 4) ==');
@@ -1812,6 +1925,42 @@ ok('moveExOrder drops the id from the source day\'s recorded order', moveProbe.o
 ok('...and appends it to the destination\'s', moveProbe.orderAdded, JSON.stringify(moveProbe));
 ok('calling moveExLog again after the move destroys nothing (idempotent once the source is empty)',
    moveProbe.stillBothRows, JSON.stringify(moveProbe));
+
+/* "Enviar a otra sesión" used to move the log, the chips and the order but
+   leave the objetivo record filed under the day the lift no longer trains,
+   so the next session wrote a second record beside it (plans/025). */
+const moveObjProbe = call(`
+  (function () {
+    const p = { obj: { B: {
+      'w2-D': { E: { v: 3, conf: 'alta', sets: [{ w: 40 }] } },
+      'w3-D': { E: { v: 3, conf: 'baja', sets: [{ w: 42 }] } },
+      'w3-D2': { E: { v: 3, conf: 'media', sets: [{ w: 99 }] } },
+    } } };
+    moveExObj(p, 'B', 'D', 'D2', 'E');
+    return {
+      moved: p.obj.B['w2-D2'] && p.obj.B['w2-D2'].E ? p.obj.B['w2-D2'].E.conf : null,
+      sourceGone: !p.obj.B['w2-D'] || p.obj.B['w2-D'].E === undefined,
+      destinationKept: p.obj.B['w3-D2'].E.conf,
+      sourceGoneWeek3: !p.obj.B['w3-D'] || p.obj.B['w3-D'].E === undefined,
+    };
+  })()
+`);
+ok('moveExObj files the objetivo record under the destination day and empties the source',
+   moveObjProbe.moved === 'alta' && moveObjProbe.sourceGone, JSON.stringify(moveObjProbe));
+ok('...and never overwrites a record the destination day already has',
+   moveObjProbe.destinationKept === 'media' && moveObjProbe.sourceGoneWeek3, JSON.stringify(moveObjProbe));
+
+/* `obj` is the second map keyed by exercise under the slot, and it was added
+   after both sweeps were written: "borrar registro" used to leave the
+   objetivo record standing over rows that no longer exist (plans/025). */
+ok('purgeExLog drops the objetivo record with the rows and the chip', call(`
+  (function () {
+    const p = { log: { B: { 'w2-D': { E: [{ w: '40', r: '10', done: true }] } } },
+                rir: { B: { 'w2-D': { E: '1' } } }, obj: { B: { 'w2-D': { E: { v: 3, sets: [] } } } } };
+    purgeExLog(p, 'B', 'D', 'E');
+    return !p.log.B['w2-D'] || p.log.B['w2-D'].E === undefined ? (p.obj.B['w2-D'] === undefined || p.obj.B['w2-D'].E === undefined) : false;
+  })()
+`) === true);
 
 console.log('\n== plan editor "Guardar cambios": same exercise id on two days is not confused (plans/008 item 1) ==');
 const peSaveProbe = call(`
@@ -2962,6 +3111,34 @@ console.log('\n== "borrar registro" reaches a week past the cap (plans/009 item 
   ok('a lift the earlier blocks never planned gets nothing', priorProbe.unknown === null);
   ok('the first block of a profile has nothing before it', priorProbe.first === null);
   ok('a previous block whose only logged week is the deload is not used', priorProbe.onlyDeload === null);
+
+  /* The band and the rule used to disagree about what a deload week is: the
+     band tested the `deload` field alone, the rule (exHistory) tests
+     deloadAt, which also reads a phase text saying "Descarga". A block
+     whose deload was written in by hand showed its ~60 % weights in the
+     week-1 hint while the objetivo ignored them (plans/025). */
+  const priorPhaseDeload = call(`
+    (function() {
+      state = defaultState(); migrate();
+      const pr = state.profiles.hombre;
+      const b1 = pr.blocks[pr.blockOrder[0]];
+      /* No deload field at all — only the phase text says so. */
+      b1.deload = 0;
+      b1.phase[8] = { r: 'Descarga', t: 'Semana suave' };
+      const day = b1.days[0], ex = day.ex[0];
+      pr.log[b1.id] = {};
+      pr.log[b1.id][slot(7, day.id)] = { [ex.id]: [{ w: '65', r: '8', done: true }] };
+      pr.log[b1.id][slot(8, day.id)] = { [ex.id]: [{ w: '40', r: '8', done: true }] };
+      const b2 = JSON.parse(JSON.stringify(b1)); b2.id = 'block-2'; b2.name = 'Bloque 2';
+      pr.blocks[b2.id] = b2; pr.blockOrder.push(b2.id); pr.activeBlock = b2.id;
+      resetRenderCache();
+      const hint = priorBlockSets(pr, b2, b2.days[0].ex[0]);
+      return hint && { week: hint.week, w: hint.sets.map(s => s.w).join('/') };
+    })()
+  `);
+  ok('a deload written only into the phase text is skipped by the hint band too, same as by the rule',
+     priorPhaseDeload && priorPhaseDeload.week === 7 && priorPhaseDeload.w === '65',
+     JSON.stringify(priorPhaseDeload));
 
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);

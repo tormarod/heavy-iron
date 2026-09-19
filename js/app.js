@@ -134,12 +134,20 @@ function parseSlot(k) {
    normalizeImportedProfile deliberately does not come through here: it
    walks the *sender's* keys and re-keys every map afterwards, so it is a
    normalization pass over an untrusted object, not an install into a live
-   profile. See plans/009 item 5. */
+   profile. See plans/009 item 5.
+
+   `obj` is deliberately absent from the list: the record of what the rule
+   asked for travels only with a whole profile (normalizeImportedProfile),
+   never with a block share. Nothing produces one — neither the pasted JSON
+   nor the QR "plan + registro" payload carries it — and nothing ever will:
+   the receiving phone recomputes the objetivo from the log it is sent, and
+   a record it did not show is not its record to hold (decision,
+   plans/025). */
 function installBlockData(profile, blockId, data) {
   const id = safeKey(blockId);
   if (!id) return false;
   const d = data || {};
-  ['log', 'rir', 'order', 'notes', 'energy', 'obj'].forEach(name => {
+  ['log', 'rir', 'order', 'notes', 'energy'].forEach(name => {
     if (!d[name]) return;
     if (!profile[name]) profile[name] = {};
     profile[name][id] = d[name];
@@ -429,7 +437,11 @@ function migrate() {
         const usedEx = new Set();
         day.ex.forEach((ex, j) => {
           let id2 = safeKey(ex.id);
-          if (!id2 || usedEx.has(id2)) { id2 = slugify(ex.n) || ('ex-' + i + '-' + j); while (usedEx.has(id2)) id2 = uid('ex'); }
+          /* safeKey on the slug too: a name can slug straight to a reserved
+             word — "Constructor" to `constructor` — and an id safeKey
+             refuses is one recordVariant and the import's variants block
+             silently drop, so that lift could never carry a rename cut. */
+          if (!id2 || usedEx.has(id2)) { id2 = safeKey(slugify(ex.n)) || ('ex-' + i + '-' + j); while (usedEx.has(id2)) id2 = uid('ex'); }
           ex.id = id2;
           usedEx.add(id2);
           ex.sets = clampInt(ex.sets, 1, 12, 3);
@@ -1935,6 +1947,7 @@ function weeksBeyondEnd(profile, block) {
    behind to reappear if the block was ever lengthened again. */
 function purgeExLog(profile, blockId, dayId, exId) {
   purgeRir(profile, blockId, dayId, exId);
+  purgeObj(profile, blockId, dayId, exId);
   forEachSlot(profile.log, blockId, (k, w, d, s) => { if (s) delete s[exId]; }, { dayId: dayId });
 }
 
@@ -1958,10 +1971,10 @@ function purgeSessionMeta(profile, blockId, dayId, onlyWeek) {
   });
 }
 
-/* `rir` is the one parallel map keyed by exercise under the slot, so it needs
-   its own sweep: purgeSessionMeta cannot reach into it, and a chip left
-   behind with no set under it is invisible until the day comes back and
-   shows a RIR nobody recorded. */
+/* `rir` and `obj` are the two parallel maps keyed by exercise under the slot,
+   so each needs its own sweep: purgeSessionMeta cannot reach inside a slot,
+   and a chip left behind with no set under it is invisible until the day
+   comes back and shows a RIR nobody recorded. */
 function purgeRir(profile, blockId, dayId, exId) {
   const blk = profile.rir && profile.rir[blockId];
   if (!blk) return;
@@ -1972,19 +1985,37 @@ function purgeRir(profile, blockId, dayId, exId) {
   }, { dayId: dayId });
 }
 
+/* The same sweep for the objetivo record: it is the other map keyed by
+   exercise under the slot, and a record left behind after "borrar
+   registro" outlives the sets it described — and, if the id is ever reused
+   on that day, blocks the real record (recordTarget writes once). */
+function purgeObj(profile, blockId, dayId, exId) {
+  const blk = profile.obj && profile.obj[blockId];
+  if (!blk) return;
+  forEachSlot(profile.obj, blockId, (k, w, d, s) => {
+    if (!s) return;
+    if (exId) delete s[exId];
+    else delete blk[k];
+  }, { dayId: dayId });
+}
+
 /* "Send to another session" in the plan editor: the exercise moves between
    draft days right away, but everything filed under the session it was in —
-   the log, the RIR chips (moveExRir) and the session order (moveExOrder,
-   below) — stays there until the draft is saved. This is what makes that
-   filing catch up, across every week the block could have.
+   the log, the RIR chips (moveExRir), the objetivo record (moveExObj) and
+   the session order (moveExOrder, below) — stays there until the draft is
+   saved. This is what makes that filing catch up, across every week the
+   block could have.
 
    Merges into the destination's existing entry for the id rather than
    overwriting it: a block can carry the same exercise id on two days by
    design (see migrate()'s day/exercise-id repair), so the destination can
    already have its own rows for this id, and blindly assigning would erase
    them. An array (a day's logged rows) is concatenated; anything else (an
-   RIR chip) is left alone if the destination already has one, since there
-   is no way to merge two single values without picking a side. Either way
+   RIR chip, an objetivo record) is left alone if the destination already
+   has one, since there is no way to merge two single values without
+   picking a side — and for a record that is what it wants anyway: the
+   destination day's own record describes the session that was actually
+   shown there. Either way
    nothing is ever destroyed by calling this — including calling it twice,
    which peSave cannot do today but a future bug easily could. */
 function moveExKeyed(map, blockId, fromDayId, toDayId, exId) {
@@ -2011,6 +2042,10 @@ function moveExLog(profile, blockId, fromDayId, toDayId, exId) {
 
 function moveExRir(profile, blockId, fromDayId, toDayId, exId) {
   moveExKeyed(profile.rir, blockId, fromDayId, toDayId, exId);
+}
+
+function moveExObj(profile, blockId, fromDayId, toDayId, exId) {
+  moveExKeyed(profile.obj, blockId, fromDayId, toDayId, exId);
 }
 
 /* Order arrays are a permutation of a day's exercises, not a map keyed by
@@ -2536,9 +2571,13 @@ function priorBlockSets(profile, block, ex) {
     if (!prev || !profile.log[prev.id]) continue;
     const slots = liftSlots(prev, ex);
     if (!slots.length) continue;
-    const dl = deloadWeek(prev);
     for (let w = blockWeeks(prev); w >= 1; w--) {
-      if (w === dl) continue;
+      /* deloadAt, not `w === deloadWeek(prev)`: the same definition the rule
+         uses (exHistory), so the band and the objetivo cannot disagree about
+         which week was the deload. A block whose deload was written by hand
+         into the phase text used to show its ~60 % weights here while the
+         rule correctly ignored them. */
+      if (deloadAt(prev, w)) continue;
       for (let i = 0; i < slots.length; i++) {
         const s = profile.log[prev.id][slot(w, slots[i].dayId)];
         const arr = s && s[slots[i].exId];
@@ -3627,7 +3666,12 @@ function exSession(profile, blockId, week, dayId, exId, lo, hi) {
     ts: stamps.length ? median(stamps) : 0,
     sets: work.map(r => {
       const w = rowWeight(r), n = num(r.r);
-      return { w: w, r: n, e: capOf(w, n, rho),
+      /* `conv` marks a row that was logged in the other unit, so loadLadder
+         can leave it out: the capacity it proves is real, but the number it
+         converts to was never a pin on this stack. Nothing else reads it —
+         a reader that wants "the weight as logged" should read
+         rowWeight(r, rowUnit(r)) at the row, not un-convert this one. */
+      return { w: w, r: n, e: capOf(w, n, rho), conv: rowUnit(r) !== units(),
                cens: n >= hi || raw === '2+' || raw == null || n > CENSOR_REPS };
     }),
   };
@@ -3827,10 +3871,19 @@ function exHistory(profile, block, ex, dayId, beforeWeek, onlyBlockId) {
    rung up is the lowest of them within one and a half steps, and only when
    there is none does the step itself have to invent one. That is what
    keeps a 2,5 kg default from proposing 20,5 on a machine whose next pin
-   is 23, and what lets a micro-plate of 1 kg be a real rung. */
+   is 23, and what lets a micro-plate of 1 kg be a real rung.
+
+   A row logged in the other unit (`conv`) is converted for the capacity it
+   proves, but the number it converts to was never a pin on this stack: a kg
+   profile with one lb block behind it got a rung at 45,359237, the card read
+   "objetivo: 45,36×10", and the tick wrote that placeholder into the log,
+   where it became a genuine rung from then on. Those rows are left out of
+   the ladder only — everything else still reads them. If every session is
+   converted (a permanent unit switch) the ladder is empty and nextLoad /
+   prevLoad fall back to `w ± inc`, which is the documented fallback. */
 function loadLadder(sessions) {
   const seen = [];
-  sessions.forEach(s => s.sets.forEach(x => { if (!seen.some(v => sameLoad(v, x.w))) seen.push(x.w); }));
+  sessions.forEach(s => s.sets.forEach(x => { if (!x.conv && !seen.some(v => sameLoad(v, x.w))) seen.push(x.w); }));
   return seen.sort((a, b) => a - b);
 }
 function nextLoad(ladder, w, inc) {
@@ -4051,6 +4104,13 @@ function targetFor(profile, block, day, ex, week, now, brake) {
         r = Math.min(hi, repsAt(W, base * (1 + g), rirWeek));
         move = '↓';
       }
+      /* Still under the range after the walk gave up: the reps printed are
+         honest — they are what the model says that weight is worth — but
+         under a header that reads "3 × 10–15" they look like a rule that
+         cannot count. The mirror case, a step UP that does not fit, has
+         said so since v3 ('step'); this is the same courtesy coming down.
+         At most once per target: the note names the situation, not the set. */
+      if (r < lo && notes.indexOf('floor') < 0) notes.push('floor');
     }
     prevW = W;
     t.sets.push({ w: round2(W), r: Math.max(1, r), move: move });
@@ -4113,9 +4173,10 @@ function targetNotes(t) {
     hold: 'La última sesión bajó: hoy no sube la carga. Si vuelve a bajar, el nivel se ajusta.',
     confirmed: 'Dos sesiones seguidas por debajo: el objetivo baja contigo.',
     step: 'El siguiente escalón (' + loadText(t.step) + u + ') no cabe en el rango: micro-carga, medio escalón o más tempo.',
+    floor: 'Ni tres escalones abajo entran las reps del rango: el peso sigue alto — baja más de lo que propone la línea, o revisa el rango.',
     moreRir: 'Esta semana pide más RIR: las reps pueden bajar y no es retroceso.',
   };
-  return ['vuelta', 'hold', 'confirmed', 'step', 'moreRir']
+  return ['vuelta', 'hold', 'confirmed', 'step', 'floor', 'moreRir']
     .filter(k => t.notes.indexOf(k) >= 0).map(k => txts[k]);
 }
 

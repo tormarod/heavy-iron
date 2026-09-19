@@ -96,6 +96,14 @@ function normalizeImportedProfile(p) {
      it. Map.prototype.get/set never consult a prototype chain, so any
      string is just a key. */
   const keyMap = new Map();
+  /* raw exercise id -> the id it ended up with, unioned across every block.
+     The four slot-keyed maps are re-keyed block by block inside the loop
+     below, but `variants` is keyed by exercise id alone with no block above
+     it, so it has nowhere to look a per-block map up from and needs this
+     one flat union instead. First occurrence wins, matching importIdMaps'
+     own rule. A Map for the same reason keyMap is one: the key is an
+     untrusted string. */
+  const exIdMap = new Map();
   rawIds.forEach(bk => {
     const raw = p.blocks[bk];
     let normalized;
@@ -114,6 +122,14 @@ function normalizeImportedProfile(p) {
     normalized.id = id;
     normalized.createdAt = (raw && raw.createdAt) || new Date().toISOString();
     blocks[id] = normalized;
+
+    /* Filled here, inside the loop, because it needs `normalized` — the
+       block as it actually landed — and read after the loop by the
+       `variants` block below, which no longer has either form in hand. */
+    const ids = importIdMaps(raw, normalized).exMap;
+    Object.keys(ids).forEach(dayId => Object.keys(ids[dayId]).forEach(rawEx => {
+      if (!exIdMap.has(rawEx)) exIdMap.set(rawEx, ids[dayId][rawEx]);
+    }));
 
     /* The QR "blocklog" path already runs every row through the same
        per-row limits and RIR enum (LOG_LIMITS / normalizeImportedLog /
@@ -208,16 +224,21 @@ function normalizeImportedProfile(p) {
   const activeId = keyMap.get(p.activeBlock);
   p.activeBlock = (activeId && blocks[activeId]) ? activeId : order[order.length - 1];
 
-  /* Variants are keyed by exercise id and not by block, so the re-keying
-     above does not reach them: an id the whole file never mentions is
-     harmless (nothing asks for it) but a malformed date is not — it would
-     cut a history at a moment nobody can name. Anything that is not a
-     plain YYYY-MM-DD is dropped, which leaves the exercise reading as one
-     unbroken variant: the reading it had before v3. */
+  /* Variants are keyed by exercise id and not by block, so the block-by-block
+     re-keying above cannot reach them — `exIdMap` is the union it left
+     behind for exactly this. An id the importer renamed (a duplicate, or a
+     blocked key like `__proto__`) follows its exercise here, the same way
+     the log, the chips, the order and the objetivo record do; without that
+     the rename history stayed attached to an id nothing trains any more, or
+     to the wrong lift. An id the file never mentions is kept as before, on
+     safeKey alone: harmless, because nothing asks for it. A malformed date
+     is not harmless — it would cut a history at a moment nobody can name —
+     so anything that is not a plain YYYY-MM-DD is dropped, which leaves the
+     exercise reading as one unbroken variant: the reading it had before v3. */
   if (p.variants && typeof p.variants === 'object' && !Array.isArray(p.variants)) {
     const vars = {};
     Object.keys(p.variants).slice(0, IMPORT_LIMITS.days * IMPORT_LIMITS.ex).forEach(rawExId => {
-      const exId = safeKey(rawExId);
+      const exId = exIdMap.get(rawExId) || safeKey(rawExId);
       const list = p.variants[rawExId];
       if (!exId || !Array.isArray(list)) return;
       const clean = list.filter(v => v && typeof v === 'object' && VARIANT_SINCE_RE.test(String(v.since)))
