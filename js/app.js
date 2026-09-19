@@ -3770,13 +3770,20 @@ function seedLateralVariants(profile) {
 
    This is also why `variants` is written at all rather than derived: the
    log keeps no copy of the name a session was done under, so once the
-   plan is saved the old name is gone and the date with it. */
+   plan is saved the old name is gone and the date with it.
+
+   Compared as slugs, not as text: a rename is the only evidence the lift
+   changed, and fixing a capital, an accent or a bracket is not a rename —
+   it used to cut months of history for "Pajaros" → "Pájaros". slugify
+   strips exactly those and nothing a person would call a different name.
+   Returns whether a rename was recorded, so the save handler can tell the
+   user their objetivo history just started over. */
 function recordVariant(profile, exId, oldName, newName, ts) {
   const from = txt(oldName, IMPORT_LIMITS.exName) || '';
   const to = txt(newName, IMPORT_LIMITS.exName) || '';
-  if (!to || from === to) return;
+  if (!to || slugify(from) === slugify(to)) return false;
   const id = safeKey(exId);
-  if (!id) return;
+  if (!id) return false;
   if (!profile.variants) profile.variants = {};
   const list = profile.variants[id] || (profile.variants[id] = []);
   /* The variant that was running until today, dated only if this is the
@@ -3786,6 +3793,7 @@ function recordVariant(profile, exId, oldName, newName, ts) {
   if (!list.length && from) list.push({ n: from, since: '1970-01-01' });
   list.push({ n: to, since: isoDay(ts || Date.now()) });
   profile.variants[id] = list.slice(-VARIANT_LIMIT);
+  return true;
 }
 
 /* The record is written by the handlers that can turn an empty session into

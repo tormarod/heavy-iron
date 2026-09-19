@@ -1150,20 +1150,25 @@ function wireBlockEditor() {
        because this is the last moment the old name still exists: the log
        keeps no copy of it, so once the draft lands the only way to know
        where one variant ended is the date written now. See recordVariant
-       and variantSince in js/app.js. */
+       and variantSince in js/app.js. The log itself is kept either way —
+       only the objetivo history is cut — but the status line has to say
+       so, or the next session shows no objetivo with no explanation. */
     const liveBlock = profile.blocks[peDraftBlock.id];
+    let renamed = 0;
     if (liveBlock) {
       const wasNamed = Object.create(null);
       (liveBlock.days || []).forEach(d => (d.ex || []).forEach(e => { if (e && e.id) wasNamed[e.id] = e.n; }));
       peDraftBlock.days.forEach(d => d.ex.forEach(e => {
-        if (e && e.id && wasNamed[e.id] != null) recordVariant(profile, e.id, wasNamed[e.id], e.n);
+        if (e && e.id && wasNamed[e.id] != null && recordVariant(profile, e.id, wasNamed[e.id], e.n)) renamed++;
       }));
     }
     profile.blocks[peDraftBlock.id] = peDraftBlock;
     peDraftBlock = null; peDraftPurge = []; peDraftOriginalDay = new Map();
     commit();
     closeSheet('planSheet');
-    mark('Plan actualizado — el registro se mantiene');
+    mark('Plan actualizado — el registro se mantiene' +
+      (renamed ? ' · ' + renamed + (renamed === 1 ? ' ejercicio renombrado: su objetivo empieza de cero desde hoy'
+                                                  : ' ejercicios renombrados: su objetivo empieza de cero desde hoy') : ''));
   };
 
   $('peExport').onclick = async () => {
