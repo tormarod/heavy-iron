@@ -429,7 +429,11 @@ function migrate() {
         const usedEx = new Set();
         day.ex.forEach((ex, j) => {
           let id2 = safeKey(ex.id);
-          if (!id2 || usedEx.has(id2)) { id2 = slugify(ex.n) || ('ex-' + i + '-' + j); while (usedEx.has(id2)) id2 = uid('ex'); }
+          /* safeKey on the slug too: a name can slug straight to a reserved
+             word — "Constructor" to `constructor` — and an id safeKey
+             refuses is one recordVariant and the import's variants block
+             silently drop, so that lift could never carry a rename cut. */
+          if (!id2 || usedEx.has(id2)) { id2 = safeKey(slugify(ex.n)) || ('ex-' + i + '-' + j); while (usedEx.has(id2)) id2 = uid('ex'); }
           ex.id = id2;
           usedEx.add(id2);
           ex.sets = clampInt(ex.sets, 1, 12, 3);

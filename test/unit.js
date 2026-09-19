@@ -1648,6 +1648,31 @@ ok('a block keyed "__proto__" in a restored profile is renamed rather than setti
    protoKeyProbe.noProtoBlockKey && protoKeyProbe.onePlainBlock, JSON.stringify(protoKeyProbe));
 ok('...and blockOrder/activeBlock follow the rename',
    protoKeyProbe.orderMatchesTheRenamedKey && protoKeyProbe.activeIsTheRenamedKey, JSON.stringify(protoKeyProbe));
+/* The id fallbacks slug the *name*, and a name can slug straight to a
+   reserved word. No map broke — they are prototype-less or write own
+   properties — but recordVariant and the import's variants block both
+   safeKey the id and drop it, so a lift called "Constructor" could never
+   carry a rename cut (plans/025). */
+const slugConstructorBlock = Object.assign({}, minimalBlock, {
+  days: [{ name: 'Día 1', ex: [{ n: 'Constructor', sets: 3, reps: '10-15' }] }],
+});
+ok('an exercise whose name slugs to a reserved word gets the positional id, not "constructor"',
+   call('normalizeImportedBlock(' + JSON.stringify(slugConstructorBlock) + ').days[0].ex[0].id') === 'ex-0-0');
+
+const migrateSlugProbe = call(`
+  (function () {
+    state = defaultState();
+    state.profiles.hombre.blocks = { B: { id: 'B', name: 'Bloque', weeks: 8, deload: 0,
+      days: [{ id: 'd0', name: 'Día 1', ex: [{ n: 'Prototype', sets: 3, reps: '10-15' }] }] } };
+    state.profiles.hombre.blockOrder = ['B'];
+    state.profiles.hombre.activeBlock = 'B';
+    migrate();
+    return state.profiles.hombre.blocks.B.days[0].ex[0].id;
+  })()
+`);
+ok('migrate() gives the same positional id to an id-less exercise whose name slugs to a reserved word',
+   migrateSlugProbe === 'ex-0-0', String(migrateSlugProbe));
+
 ok('Object.prototype itself is never touched by any of the above', Object.getPrototypeOf({}) === Object.prototype);
 
 console.log('\n== normalizeImportedLog / normalizeImportedRir (plans/008 item 4) ==');
