@@ -1511,6 +1511,48 @@ ok('and its variant history, with an undatable entry dropped rather than guessed
    recordsRoundTrip.variant === 2 && recordsRoundTrip.since === '2026-03-04' && recordsRoundTrip.bogus === false,
    JSON.stringify(recordsRoundTrip));
 
+/* `variants` is keyed by exercise id with no block above it, so it was the
+   one map the import's per-block re-keying never reached: an id the
+   importer renamed left its rename history behind on the wrong lift, or on
+   no lift at all (plans/025). */
+const variantRekey = call(`
+  (function () {
+    const p = { blocks: { B: { name: 'Bloque', weeks: 4, deload: 0, days: [
+                  { id: 'd0', name: 'Día', ex: [
+                    { id: 'dup', n: 'Press', reps: '10-15', sets: 3 },
+                    { id: 'dup', n: 'Remo', reps: '10-15', sets: 3 },
+                  ] } ] } },
+                blockOrder: ['B'],
+                variants: { dup: [{ n: 'a', since: '1970-01-01' }, { n: 'b', since: '2026-01-01' }] } };
+    const after = normalizeImportedProfile(p);
+    const ex = after.blocks.B.days[0].ex;
+    const own = k => Object.prototype.hasOwnProperty.call(after.variants, k);
+    return { first: ex[0].id, second: ex[1].id, onFirst: own(ex[0].id), onSecond: own(ex[1].id) };
+  })()
+`);
+ok('a duplicate exercise id is renamed on import and the variant history stays with the exercise that kept the id',
+   variantRekey.first === 'dup' && variantRekey.second !== 'dup' &&
+   variantRekey.onFirst === true && variantRekey.onSecond === false, JSON.stringify(variantRekey));
+
+const variantRekeyBlocked = call(`
+  (function () {
+    const p = { blocks: { B: { name: 'Bloque', weeks: 4, deload: 0, days: [
+                  { id: 'd0', name: 'Día', ex: [
+                    { id: 'constructor', n: 'Press banca', reps: '10-15', sets: 3 },
+                  ] } ] } },
+                blockOrder: ['B'],
+                variants: { constructor: [{ n: 'Press viejo', since: '1970-01-01' },
+                                          { n: 'Press nuevo', since: '2026-01-01' }] } };
+    const after = normalizeImportedProfile(p);
+    const id = after.blocks.B.days[0].ex[0].id;
+    const own = k => Object.prototype.hasOwnProperty.call(after.variants, k);
+    return { id: id, onNewId: own(id) && after.variants[id].length, stillBlocked: own('constructor') };
+  })()
+`);
+ok('a variant keyed by a blocked id follows the exercise to the id it was given, instead of being dropped',
+   variantRekeyBlocked.id !== 'constructor' && variantRekeyBlocked.onNewId === 2 &&
+   variantRekeyBlocked.stillBlocked === false, JSON.stringify(variantRekeyBlocked));
+
 /* Every backup written before v3 has neither map. */
 ok('a profile that carries neither map migrates to empty ones rather than throwing',
    call(`
