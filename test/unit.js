@@ -1813,6 +1813,30 @@ ok('...and appends it to the destination\'s', moveProbe.orderAdded, JSON.stringi
 ok('calling moveExLog again after the move destroys nothing (idempotent once the source is empty)',
    moveProbe.stillBothRows, JSON.stringify(moveProbe));
 
+/* "Enviar a otra sesión" used to move the log, the chips and the order but
+   leave the objetivo record filed under the day the lift no longer trains,
+   so the next session wrote a second record beside it (plans/025). */
+const moveObjProbe = call(`
+  (function () {
+    const p = { obj: { B: {
+      'w2-D': { E: { v: 3, conf: 'alta', sets: [{ w: 40 }] } },
+      'w3-D': { E: { v: 3, conf: 'baja', sets: [{ w: 42 }] } },
+      'w3-D2': { E: { v: 3, conf: 'media', sets: [{ w: 99 }] } },
+    } } };
+    moveExObj(p, 'B', 'D', 'D2', 'E');
+    return {
+      moved: p.obj.B['w2-D2'] && p.obj.B['w2-D2'].E ? p.obj.B['w2-D2'].E.conf : null,
+      sourceGone: !p.obj.B['w2-D'] || p.obj.B['w2-D'].E === undefined,
+      destinationKept: p.obj.B['w3-D2'].E.conf,
+      sourceGoneWeek3: !p.obj.B['w3-D'] || p.obj.B['w3-D'].E === undefined,
+    };
+  })()
+`);
+ok('moveExObj files the objetivo record under the destination day and empties the source',
+   moveObjProbe.moved === 'alta' && moveObjProbe.sourceGone, JSON.stringify(moveObjProbe));
+ok('...and never overwrites a record the destination day already has',
+   moveObjProbe.destinationKept === 'media' && moveObjProbe.sourceGoneWeek3, JSON.stringify(moveObjProbe));
+
 /* `obj` is the second map keyed by exercise under the slot, and it was added
    after both sweeps were written: "borrar registro" used to leave the
    objetivo record standing over rows that no longer exist (plans/025). */

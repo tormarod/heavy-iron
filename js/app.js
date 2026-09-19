@@ -1989,17 +1989,21 @@ function purgeObj(profile, blockId, dayId, exId) {
 
 /* "Send to another session" in the plan editor: the exercise moves between
    draft days right away, but everything filed under the session it was in —
-   the log, the RIR chips (moveExRir) and the session order (moveExOrder,
-   below) — stays there until the draft is saved. This is what makes that
-   filing catch up, across every week the block could have.
+   the log, the RIR chips (moveExRir), the objetivo record (moveExObj) and
+   the session order (moveExOrder, below) — stays there until the draft is
+   saved. This is what makes that filing catch up, across every week the
+   block could have.
 
    Merges into the destination's existing entry for the id rather than
    overwriting it: a block can carry the same exercise id on two days by
    design (see migrate()'s day/exercise-id repair), so the destination can
    already have its own rows for this id, and blindly assigning would erase
    them. An array (a day's logged rows) is concatenated; anything else (an
-   RIR chip) is left alone if the destination already has one, since there
-   is no way to merge two single values without picking a side. Either way
+   RIR chip, an objetivo record) is left alone if the destination already
+   has one, since there is no way to merge two single values without
+   picking a side — and for a record that is what it wants anyway: the
+   destination day's own record describes the session that was actually
+   shown there. Either way
    nothing is ever destroyed by calling this — including calling it twice,
    which peSave cannot do today but a future bug easily could. */
 function moveExKeyed(map, blockId, fromDayId, toDayId, exId) {
@@ -2026,6 +2030,10 @@ function moveExLog(profile, blockId, fromDayId, toDayId, exId) {
 
 function moveExRir(profile, blockId, fromDayId, toDayId, exId) {
   moveExKeyed(profile.rir, blockId, fromDayId, toDayId, exId);
+}
+
+function moveExObj(profile, blockId, fromDayId, toDayId, exId) {
+  moveExKeyed(profile.obj, blockId, fromDayId, toDayId, exId);
 }
 
 /* Order arrays are a permutation of a day's exercises, not a map keyed by

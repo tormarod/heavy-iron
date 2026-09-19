@@ -1128,6 +1128,7 @@ function wireBlockEditor() {
         if (from && from !== day.id) {
           moveExLog(profile, peDraftBlock.id, from, day.id, ex.id);
           moveExRir(profile, peDraftBlock.id, from, day.id, ex.id);
+          moveExObj(profile, peDraftBlock.id, from, day.id, ex.id);
           moveExOrder(profile, peDraftBlock.id, from, day.id, ex.id);
         }
       });
