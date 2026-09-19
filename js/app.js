@@ -3658,7 +3658,12 @@ function exSession(profile, blockId, week, dayId, exId, lo, hi) {
     ts: stamps.length ? median(stamps) : 0,
     sets: work.map(r => {
       const w = rowWeight(r), n = num(r.r);
-      return { w: w, r: n, e: capOf(w, n, rho),
+      /* `conv` marks a row that was logged in the other unit, so loadLadder
+         can leave it out: the capacity it proves is real, but the number it
+         converts to was never a pin on this stack. Nothing else reads it —
+         a reader that wants "the weight as logged" should read
+         rowWeight(r, rowUnit(r)) at the row, not un-convert this one. */
+      return { w: w, r: n, e: capOf(w, n, rho), conv: rowUnit(r) !== units(),
                cens: n >= hi || raw === '2+' || raw == null || n > CENSOR_REPS };
     }),
   };
@@ -3858,10 +3863,19 @@ function exHistory(profile, block, ex, dayId, beforeWeek, onlyBlockId) {
    rung up is the lowest of them within one and a half steps, and only when
    there is none does the step itself have to invent one. That is what
    keeps a 2,5 kg default from proposing 20,5 on a machine whose next pin
-   is 23, and what lets a micro-plate of 1 kg be a real rung. */
+   is 23, and what lets a micro-plate of 1 kg be a real rung.
+
+   A row logged in the other unit (`conv`) is converted for the capacity it
+   proves, but the number it converts to was never a pin on this stack: a kg
+   profile with one lb block behind it got a rung at 45,359237, the card read
+   "objetivo: 45,36×10", and the tick wrote that placeholder into the log,
+   where it became a genuine rung from then on. Those rows are left out of
+   the ladder only — everything else still reads them. If every session is
+   converted (a permanent unit switch) the ladder is empty and nextLoad /
+   prevLoad fall back to `w ± inc`, which is the documented fallback. */
 function loadLadder(sessions) {
   const seen = [];
-  sessions.forEach(s => s.sets.forEach(x => { if (!seen.some(v => sameLoad(v, x.w))) seen.push(x.w); }));
+  sessions.forEach(s => s.sets.forEach(x => { if (!x.conv && !seen.some(v => sameLoad(v, x.w))) seen.push(x.w); }));
   return seen.sort((a, b) => a - b);
 }
 function nextLoad(ladder, w, inc) {

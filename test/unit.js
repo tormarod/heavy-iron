@@ -1295,6 +1295,42 @@ ok('a rep range written backwards, or with no numbers in it, is no target at all
    target([{ sets: [[40, 10]], rir: '1' }, { sets: [[40, 10]], rir: '1' }], { range: '15–10' }) === null &&
    target([{ sets: [[40, 10]], rir: '1' }, { sets: [[40, 10]], rir: '1' }], { range: 'AMRAP' }) === null);
 
+/* A row written in the other unit is converted for the capacity it proves,
+   but the converted number was never a pin on this stack: it used to enter
+   the ladder as a rung at 45,359237, the card read "objetivo: 45,36×10",
+   and the tick wrote that placeholder into the log for good (plans/025). */
+const convSets = call(`
+  (function () {
+    state = defaultState(); migrate();
+    state.prefs.units = 'kg';
+    const p = { log: { B: { 'w1-D': { E: [
+                  { w: '100', r: '10', done: true, u: 'lb' },
+                  { w: '45', r: '10', done: true },
+                ] } } }, rir: { B: {} } };
+    const s = exSession(p, 'B', 1, 'D', 'E', 10, 15);
+    return { conv0: s.sets[0].conv, w0: Math.round(s.sets[0].w * 100) / 100,
+             conv1: s.sets[1].conv, w1: s.sets[1].w };
+  })()
+`);
+ok('exSession marks a row logged in the other unit as converted, weight and all',
+   convSets.conv0 === true && convSets.w0 === 45.36, JSON.stringify(convSets));
+ok('...and a row in the profile\'s own unit is not marked',
+   convSets.conv1 === false && convSets.w1 === 45, JSON.stringify(convSets));
+ok('loadLadder leaves the converted weight out and keeps the real rung',
+   call("loadLadder([{ sets: [{ w: 45.359237, conv: true }, { w: 45, conv: false }] }]).join(',')") === '45');
+
+/* G1 — end to end: one lb session behind two kg ones. Before this, the
+   ladder carried 45,359237 and the next rung up from 45 was it. */
+t = target([
+  { sets: [[100, 10, 'lb'], [100, 10, 'lb'], [100, 10, 'lb']], rir: '1' },
+  { sets: [[45, 15], [45, 15], [45, 15]], rir: '1' },
+  { sets: [[45, 15], [45, 15], [45, 15]], rir: '1' },
+], { range: '10–15', inc: 2.5, sets: 3, rirWeek: 1 });
+ok('G1 a converted session behind the kg ones is never a rung the target can land on',
+   t && t.show.indexOf('45,36') < 0 &&
+   t.show.split(' · ').every(function (s) { return s.indexOf('47,5×') === 0 || s.indexOf('45×') === 0; }),
+   JSON.stringify(t));
+
 console.log('\n== el mismo ejercicio en dos días del mismo bloque (plans/026) ==');
 /* The harness above is a one-day block by construction, so the day split in
    exHistory — the same machine pressed first on Monday and fourth on
