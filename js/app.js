@@ -1935,6 +1935,7 @@ function weeksBeyondEnd(profile, block) {
    behind to reappear if the block was ever lengthened again. */
 function purgeExLog(profile, blockId, dayId, exId) {
   purgeRir(profile, blockId, dayId, exId);
+  purgeObj(profile, blockId, dayId, exId);
   forEachSlot(profile.log, blockId, (k, w, d, s) => { if (s) delete s[exId]; }, { dayId: dayId });
 }
 
@@ -1958,14 +1959,28 @@ function purgeSessionMeta(profile, blockId, dayId, onlyWeek) {
   });
 }
 
-/* `rir` is the one parallel map keyed by exercise under the slot, so it needs
-   its own sweep: purgeSessionMeta cannot reach into it, and a chip left
-   behind with no set under it is invisible until the day comes back and
-   shows a RIR nobody recorded. */
+/* `rir` and `obj` are the two parallel maps keyed by exercise under the slot,
+   so each needs its own sweep: purgeSessionMeta cannot reach inside a slot,
+   and a chip left behind with no set under it is invisible until the day
+   comes back and shows a RIR nobody recorded. */
 function purgeRir(profile, blockId, dayId, exId) {
   const blk = profile.rir && profile.rir[blockId];
   if (!blk) return;
   forEachSlot(profile.rir, blockId, (k, w, d, s) => {
+    if (!s) return;
+    if (exId) delete s[exId];
+    else delete blk[k];
+  }, { dayId: dayId });
+}
+
+/* The same sweep for the objetivo record: it is the other map keyed by
+   exercise under the slot, and a record left behind after "borrar
+   registro" outlives the sets it described — and, if the id is ever reused
+   on that day, blocks the real record (recordTarget writes once). */
+function purgeObj(profile, blockId, dayId, exId) {
+  const blk = profile.obj && profile.obj[blockId];
+  if (!blk) return;
+  forEachSlot(profile.obj, blockId, (k, w, d, s) => {
     if (!s) return;
     if (exId) delete s[exId];
     else delete blk[k];

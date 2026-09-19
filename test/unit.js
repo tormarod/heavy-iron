@@ -1813,6 +1813,18 @@ ok('...and appends it to the destination\'s', moveProbe.orderAdded, JSON.stringi
 ok('calling moveExLog again after the move destroys nothing (idempotent once the source is empty)',
    moveProbe.stillBothRows, JSON.stringify(moveProbe));
 
+/* `obj` is the second map keyed by exercise under the slot, and it was added
+   after both sweeps were written: "borrar registro" used to leave the
+   objetivo record standing over rows that no longer exist (plans/025). */
+ok('purgeExLog drops the objetivo record with the rows and the chip', call(`
+  (function () {
+    const p = { log: { B: { 'w2-D': { E: [{ w: '40', r: '10', done: true }] } } },
+                rir: { B: { 'w2-D': { E: '1' } } }, obj: { B: { 'w2-D': { E: { v: 3, sets: [] } } } } };
+    purgeExLog(p, 'B', 'D', 'E');
+    return !p.log.B['w2-D'] || p.log.B['w2-D'].E === undefined ? (p.obj.B['w2-D'] === undefined || p.obj.B['w2-D'].E === undefined) : false;
+  })()
+`) === true);
+
 console.log('\n== plan editor "Guardar cambios": same exercise id on two days is not confused (plans/008 item 1) ==');
 const peSaveProbe = call(`
   (function() {
