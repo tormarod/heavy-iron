@@ -3931,8 +3931,9 @@ function prevLoad(ladder, w, inc) {
    A decline is a session at least DECLINE_DROP under the best of the three
    before it, read off a set that was not censored — a session that ended at
    the top of the range is a floor, and a floor cannot say you got weaker.
-   One of those holds the weights where they are for a day. Two in a row is
-   the level itself moving, which is the only thing that lowers it. */
+   One of those stops the weights going up for a day (a set the range says
+   is out of reach still comes down). Two in a row is the level itself
+   moving, which is the only thing that lowers it. */
 function capSeq(sessions) {
   return sessions.map(s => ({ C: s.sets[0].e, cens: s.sets[0].cens }));
 }
