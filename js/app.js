@@ -4096,6 +4096,13 @@ function targetFor(profile, block, day, ex, week, now, brake) {
         r = Math.min(hi, repsAt(W, base * (1 + g), rirWeek));
         move = '↓';
       }
+      /* Still under the range after the walk gave up: the reps printed are
+         honest — they are what the model says that weight is worth — but
+         under a header that reads "3 × 10–15" they look like a rule that
+         cannot count. The mirror case, a step UP that does not fit, has
+         said so since v3 ('step'); this is the same courtesy coming down.
+         At most once per target: the note names the situation, not the set. */
+      if (r < lo && notes.indexOf('floor') < 0) notes.push('floor');
     }
     prevW = W;
     t.sets.push({ w: round2(W), r: Math.max(1, r), move: move });
@@ -4158,9 +4165,10 @@ function targetNotes(t) {
     hold: 'La última sesión bajó: hoy no sube la carga. Si vuelve a bajar, el nivel se ajusta.',
     confirmed: 'Dos sesiones seguidas por debajo: el objetivo baja contigo.',
     step: 'El siguiente escalón (' + loadText(t.step) + u + ') no cabe en el rango: micro-carga, medio escalón o más tempo.',
+    floor: 'Ni tres escalones abajo entran las reps del rango: el peso sigue alto — baja más de lo que propone la línea, o revisa el rango.',
     moreRir: 'Esta semana pide más RIR: las reps pueden bajar y no es retroceso.',
   };
-  return ['vuelta', 'hold', 'confirmed', 'step', 'moreRir']
+  return ['vuelta', 'hold', 'confirmed', 'step', 'floor', 'moreRir']
     .filter(k => t.notes.indexOf(k) >= 0).map(k => txts[k]);
 }
 

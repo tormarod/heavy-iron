@@ -1082,6 +1082,11 @@ t = target([
 ], { range: '8–12', inc: 2.5, sets: 3, rirWeek: 2 });
 ok('T13 with no RIR marked every session is a minimum and the confidence says so',
    t.show === '50×10 · 50×8 · 47,5×10↓' && t.conf === 'baja' && t.notes.includes('moreRir'), JSON.stringify(t));
+/* One rung down lands inside the range, so there is nothing to warn about:
+   the 'floor' note is for the walk that ran out of rungs, not for any
+   target that came down at all (plans/025). */
+ok('   and a set that comes down one rung INTO the range carries no floor note',
+   !t.notes.includes('floor'), JSON.stringify(t));
 
 /* T14 */
 ok('T14 no history at all is no line, not a guess',
@@ -1273,10 +1278,15 @@ t = target([
 ], { range: '10–15', inc: 3, sets: 3, rirWeek: 1 });
 ok('coming down stops after three rungs, whether or not the range is back in reach',
    t && t.show === '91×7↓ · 82×10↓ · 79×10↓', JSON.stringify(t));
-/* At 4f7e037 a set that ran out of rungs says nothing about it; plans/025
-   adds a "floor" note. Pinned as it stands so that plan has to move it. */
-ok('...and nothing yet marks the set that ran out of rungs (plans/025)',
-   t && !t.notes.includes('floor'), JSON.stringify(t));
+/* H1 — the set that ran out of rungs used to say nothing about it: reps
+   below the range under a header reading "3 × 10–15", with no note, while
+   the mirror case (a step UP that does not fit) has had one since v3. The
+   reps stay as computed — they are honest — and the note says why they sit
+   under the range (plans/025). */
+ok('H1 ...and the set that ran out of rungs is marked, not left to read as a miscount',
+   t && t.notes.includes('floor') && t.dir === 'down', JSON.stringify(t));
+ok('   and the note says so in words',
+   t && t.says.includes('escalones'), t && t.says);
 
 /* Back from a layoff the last session is repeated exactly — and the set
    the plan has gained since was never done at all, so it takes the last
