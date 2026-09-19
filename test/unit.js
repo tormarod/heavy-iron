@@ -2463,6 +2463,21 @@ ok('blocks/mujer-bloque-1.json phase matches DEFAULT_PHASE_PAREJA',
 ok('blocks/mujer-bloque-1.json priority matches DEFAULT_PRIORITY_PAREJA',
    JSON.stringify(call('DEFAULT_PRIORITY_PAREJA')) === JSON.stringify(mujerBlockFile.priority));
 
+console.log('\n== the PR gate recognises gh pr create wherever it hides (plans/029) ==');
+{
+  const gate = fs.readFileSync(path.join(ROOT, 'tools/smoke-gate.sh'), 'utf8');
+  const m = /if \((\/\(\^\|\[[^\]]*\]\|\\n\)\\s\*gh\\s\+pr\\s\+create\\b\/)\.test\(cmd\)\) return;/.exec(gate);
+  ok('the gate regex is where the plan left it', !!m, gate.slice(0, 0));
+  if (m) {
+    const re = eval(m[1]);   // the literal, as JS
+    const gated = ['gh pr create --title x', 'git push -u origin HEAD && gh pr create --fill', 'cd /repo; gh pr create',
+                   'bash -c "gh pr create --title x"', "sh -c 'gh pr create'", 'eval "gh pr create"', 'echo hi\ngh pr create'];
+    const passed = ['ghx pr create', 'gh prune', 'echo done'];
+    gated.forEach(c => ok('gated: ' + JSON.stringify(c), re.test(c)));
+    passed.forEach(c => ok('not gated: ' + JSON.stringify(c), !re.test(c)));
+  }
+}
+
 /* blocks/index.json is what "Importar JSON" offers, and the only thing that
    checked it was a person noticing the list was short. A file dropped into
    blocks/ without an entry is invisible; an entry pointing at a missing or

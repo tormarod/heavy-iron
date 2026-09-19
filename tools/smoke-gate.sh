@@ -70,7 +70,8 @@ command -v node >/dev/null 2>&1 || { echo "smoke-gate: node is not installed" >&
 # tests — and, with the unit suite mid-edit, blocked that edit with
 # "test/unit.js failed". So the gate reads the call itself and returns at
 # once unless a pull request is really being opened. No stdin, or stdin that
-# is not hook JSON, means someone ran it by hand: run in full.
+# is not hook JSON, means someone ran it by hand: run in full. A quote is a
+# separator too, so `bash -c "gh pr create …"` runs the gate.
 if [ ! -t 0 ]; then
   verdict="$(node -e '
     let s = "";
@@ -81,7 +82,7 @@ if [ ! -t 0 ]; then
       if (/^mcp__.*create_pull_request$/.test(tool)) return;
       if (tool === "Bash") {
         const cmd = String((call.tool_input && call.tool_input.command) || "");
-        if (/(^|[;&|(]|\n)\s*gh\s+pr\s+create\b/.test(cmd)) return;
+        if (/(^|[;&|("\x27]|\n)\s*gh\s+pr\s+create\b/.test(cmd)) return;
         console.log("a Bash call that is not `gh pr create`");
         return;
       }
