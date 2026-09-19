@@ -50,7 +50,7 @@ below so it is not lost or re-audited.
 | 026 | [The unit suite pins the v3 trend term, its untested branches and the `obj` validator — mutation-checked](026-pin-the-v3-rule.md) | P1 | M | LOW | — | DONE (the layoff case also asserts no `confirmed` decline, since `level` alone cannot see the restart; the PSI ratio in the plan prose is 0.767, not 0.63 — see PR #96) |
 | 027 | [A set tick reuses the render cache; the Diagnóstico reads through it; `diagPoints` groups once](027-tick-keeps-the-render-cache.md) | P2 | S | MED | 026 (soft) | DONE (the `resetRenderCache();` count criterion cannot hold beside the plan's own conditional edit — unconditional resets went 2 → 1; the sheet-sees-tick case asserts on `change`, since `sessions` moves either way — see PR #102) |
 | 028 | [A rename compares slugs and says what it cut](028-rename-compares-slugs-and-says-what-it-cut.md) | P2 | S | LOW–MED | — | DONE (optional smoke step skipped — the only "Guardar cambios" section never renames an exercise; four of the five new assertions fail on revert, not three — see PR #103) |
-| 029 | [Docs, briefing and self-description match the code; Node 22; gate regex; doc-link check; `.editorconfig`](029-docs-and-dx-sync.md) | P2 | S | LOW | 021 (soft: the `obj` bullet) | TODO |
+| 029 | [Docs, briefing and self-description match the code; Node 22; gate regex; doc-link check; `.editorconfig`](029-docs-and-dx-sync.md) | P2 | S | LOW | 021 (soft: the `obj` bullet) | IN PROGRESS |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
