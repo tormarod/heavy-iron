@@ -670,8 +670,11 @@ function diagRows(profile, block, scope) {
         /* A stall reset is also `down`, but it is not "the weight was
            picked wrong" — it is the target rule's own answer to the
            stall this screen is about to name, so it reads as the stall,
-           not as a mis-chosen weight. */
-        estDown: !!est && est.dir === 'down',
+           not as a mis-chosen weight. A deload is `down` too, and it is
+           neither: the rule lowered the load because the week asked it
+           to, and reading that as a mis-chosen weight told every flat
+           exercise to drop to its deload load for good. */
+        estDown: !!est && est.kind === 'objetivo' && est.dir === 'down',
         /* Not a fourth reading of the log: the target rule has already
            crossed the level with this week's sessions and come back with
            "hold today" or with the whole day braked. Reading its answer
