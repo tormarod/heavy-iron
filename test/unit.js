@@ -807,6 +807,8 @@ ok('an upward trend with no signals reads as working as intended',
    call('diagVerdict("up", {}).lectura') === 'Funciona');
 ok('too few sessions is its own verdict',
    call('diagVerdict("none", {}).lectura') === 'Aún no hay suficientes sesiones');
+ok('the volume-margin verdict delimits the imported muscle tag',
+   (() => { const v = call('diagVerdict("up", { volLow: true, volTag: "Pecho «x»" })'); return v.lectura.indexOf('«Pecho x»') >= 0 && v.cambio.indexOf('«Pecho x»') >= 0; })());
 
 /* On a deload week the rule returns a `descarga` target, which is `down` by
    design; the Diagnóstico must not read that as "the weight was picked
@@ -2798,6 +2800,7 @@ console.log('\n== "borrar registro" reaches a week past the cap (plans/009 item 
 
   console.log('\n== the round-trip text carries the app\'s own context (plans/016) ==');
   call('state = defaultState(); migrate(); state.setupDone = true; state.prefs.units = "kg";');
+  call('getBlock().name = "Bloque «raro» 2"; getBlock().priority = ["Pecho «x»", "Espalda"];');
   const ownPrompt = await call('buildAiPrompt({ withBlock: true })');
   const ownPlan = call('JSON.stringify(blockSharePlan(getBlock()))');
   ok('with the app set up, the prompt carries the current block as JSON',
@@ -2808,6 +2811,10 @@ console.log('\n== "borrar registro" reaches a week past the cap (plans/009 item 
      ownPrompt.indexOf('Peso en kg') >= 0 && ownPrompt.indexOf('"id": string opcional') >= 0 && ownPrompt.indexOf('"inc": número opcional (en kg)') >= 0);
   ok('and says a phase week needs both keys', ownPrompt.indexOf('"r" y "t" juntos') >= 0);
   ok('it still asks for what only the user knows', ownPrompt.indexOf('[tu nivel') >= 0);
+  ok('the block name in the prompt is delimited and its own delimiters stripped',
+     ownPrompt.indexOf('Mi bloque actual, «Bloque raro 2», tiene') >= 0, ownPrompt.slice(0, 600));
+  ok('and so is every priority tag',
+     ownPrompt.indexOf('Músculos prioritarios: «Pecho x», «Espalda».') >= 0, ownPrompt.slice(0, 600));
   const firstRunPrompt = await call('buildAiPrompt({ withBlock: false })');
   ok('on a first run the prompt has no block of its own in it',
      firstRunPrompt.indexOf('Mi bloque actual') < 0 && firstRunPrompt.indexOf('Mi contexto: [tu nivel') >= 0);
@@ -2828,6 +2835,7 @@ console.log('\n== "borrar registro" reaches a week past the cap (plans/009 item 
       pr.rir[blockId][slot(2, day.id)] = { [exId]: '0' };
       pr.rir[blockId][slot(3, day.id)] = { [exId]: '0' };
       pr.rir[blockId][slot(4, day.id)] = { [exId]: '1' };
+      pr.notes[blockId] = { [slot(2, day.id)]: 'nota «rara»' };
       day.ex[0].n = 'Press «raro» de banca';
       pr.week = 5;
       resetRenderCache();
@@ -2843,6 +2851,13 @@ console.log('\n== "borrar registro" reaches a week past the cap (plans/009 item 
   ok('and the RIR chips tapped, as a histogram',
      review.indexOf('RIR marcado: 1×1, 0×2') >= 0, (review.match(/RIR marcado[^.]*/) || [''])[0]);
   ok('muscle tags are delimited too', /^- «Pecho»/m.test(review), (review.match(/^- «.*/m) || [''])[0]);
+  ok('the review heading delimits the block name',
+     review.indexOf('## Cómo fue el bloque anterior («Bloque raro 2»)') >= 0, review.slice(0, 200));
+  ok('and the priority line delimits each tag',
+     review.indexOf('prioritarios: «Pecho x», «Espalda».') >= 0, (review.match(/prioritarios.*/) || [''])[0]);
+  ok('the session note is delimited',
+     review.indexOf(': «nota rara»') >= 0, (review.match(/Semana.*nota.*/) || [''])[0]);
+  call('getBlock().name = "Bloque 1"; getBlock().priority = ["Pecho", "Espalda", "Hombro"];');
 
   /* The review must not inherit the Diagnóstico sheet's toggle. */
   call(`
