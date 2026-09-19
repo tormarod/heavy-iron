@@ -51,6 +51,7 @@ below so it is not lost or re-audited.
 | 027 | [A set tick reuses the render cache; the Diagnóstico reads through it; `diagPoints` groups once](done/027-tick-keeps-the-render-cache.md) | P2 | S | MED | 026 (soft) | DONE (the `resetRenderCache();` count criterion cannot hold beside the plan's own conditional edit — unconditional resets went 2 → 1; the sheet-sees-tick case asserts on `change`, since `sessions` moves either way — see PR #102) |
 | 028 | [A rename compares slugs and says what it cut](done/028-rename-compares-slugs-and-says-what-it-cut.md) | P2 | S | LOW–MED | — | DONE (optional smoke step skipped — the only "Guardar cambios" section never renames an exercise; four of the five new assertions fail on revert, not three — see PR #103) |
 | 029 | [Docs, briefing and self-description match the code; Node 22; gate regex; doc-link check; `.editorconfig`](done/029-docs-and-dx-sync.md) | P2 | S | LOW | 021 (soft: the `obj` bullet) | DONE (the slug rule uses `\s`, not `\s+`, so "Data & privacy" resolves as GitHub does — see PR #104) |
+| 030 | [Sixth pass: user-facing features, direction only](030-user-facing-features-research.md) | — | — | — | — | TODO — a menu, not a plan: 31 new options ranked with `file:line` evidence, the fourth audit's 15 open options carried, a market comparison of 17 apps, and a platform table; nothing is planned until the maintainer picks |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
@@ -555,6 +556,59 @@ on conflict: **021, 022, 023, 024, 025, 027, 028**. 029's
 need no bump and can land any time; its one `index.html` line ("8 semanas")
 rides on whichever `js/` plan lands next rather than spending a whole-shell
 re-download on a description.
+
+## Sixth pass (2026-09-19) — user-facing features, direction only
+
+A direction-only pass at commit `f103ebf` (the merge of PR #105), asked
+for as "what new user-facing features could we add", in
+[030-user-facing-features-research.md](030-user-facing-features-research.md).
+Three lenses: the code read as a user (every screen, control and stored
+map, with `file:line` evidence for each gap); a market comparison of 17
+comparable apps and the demand signals behind them (a research subagent;
+the vendors' own domains and Reddit were unreachable through the egress
+proxy, so those facts are search summaries, and Liftosaur's public ideas
+board with its vote counts is the one hard demand signal it read
+directly); and a table of what a static PWA can do on both phones in
+2026, since half the household is on iOS Safari.
+
+The five settled decisions (Spanish only, no sync, one-way QR, one-level
+undo, two profiles) were not weighed; everything that needs a server is
+listed once under "Considered and rejected" in that file. The fourth
+audit's 21 direction findings are not repeated: its 15 still-open ones
+are carried in one table there, so that file is the live list.
+
+**The eight worth weighing**, by leverage for the stated household:
+
+1. **Open on the next session** — the footer already prints `Siguiente:
+   …` and writes nothing (`js/app.js:3237`). S.
+2. **A bodyweight log** — the one outcome variable the log has none of,
+   in every comparable app, and what the carried bodyweight/assisted-
+   exercise item (fourth audit #21) is blocked on. M.
+3. **A session summary when the last set is ticked**, shareable as an
+   image through the share sheet the exports already use. S–M, after the
+   carried tick-discipline spike (#10).
+4. **Do the alternative today** — `ex.alt` is display-only
+   (`js/app.js:2847, 2894`); the most-requested non-hardware feature in
+   the comparison. M, design first.
+5. **One more set today**, without editing the plan — the storage already
+   keeps rows beyond the plan (`parkedRows`). S–M.
+6. **Exercise names autocomplete from history, inheriting id, tags and
+   `inc`** — one typo in the editor cuts a lift from its cross-block
+   history (`sameLift`, `js/app.js:2127`). S.
+7. **An early-deload offer when the brake keeps firing** — `brakeOn`
+   already has the signal and holds one day. S–M, offer only.
+8. **A partner band on JUNTOS cards**, then a two-person session view —
+   the premise no comparable app has. S / L (product call).
+
+Twenty-three more options follow in the file (a rest timer that can stay
+quiet, an all-blocks calendar, a note per exercise, warm-up rows, a `±`
+stepper, open-ended rep targets, a search over every exercise ever
+logged, a session-date override, …), each with its evidence and its
+effort, then the rejected list and the platform table. Two things the
+market lens corrected on the way: the app-icon badge is iOS-only (Android
+Chrome has no `setAppBadge`), and "stop the timer after the last set" is
+the fourth-highest idea on Liftosaur's board, so it joined the timer
+option.
 
 ## Worth doing, not yet planned
 
