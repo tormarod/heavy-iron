@@ -776,6 +776,49 @@ ok('slugifyCached agrees with slugify for accented Spanish text',
    call('slugifyCached("Press militar")') === call('slugify("Press militar")') &&
    call('slugifyCached("Extensión de tríceps")') === call('slugify("Extensión de tríceps")'));
 
+/* The cache now outlives a single card being swapped, and that is the whole
+   of plans/027: drawCard keeps what drawApp built instead of resetting it.
+   Asserted against the source because the thing being pinned is a lifetime,
+   not a value — a later edit that puts the bare reset back would leave every
+   assertion in this file green while every tick paid for brakeOn again. */
+ok('drawCard reuses the render cache rather than resetting it on every tick',
+   /function drawCard\(exId\) \{[\s\S]{0,1600}if \(!renderCache\) resetRenderCache\(\);/.test(
+     fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8')));
+
+/* And what that lifetime is worth, counted: brakeOn asks every exercise of
+   every live day of the block for its history, so one call per draw rather
+   than one per tick is the win. */
+const stubbable = call('typeof brakeOn') === 'function';
+const brakeCallProbe = call(`
+  (function() {
+    const profile = defaultState().profiles.hombre;
+    const block = profile.blocks[profile.blockOrder[0]];
+    const now = Date.now();
+    /* Restored in the finally: everything after this section reads the real
+       one, and a counting wrapper left behind would be invisible here and
+       wrong everywhere else. */
+    const real = brakeOn;
+    let calls = 0;
+    brakeOn = function() { calls++; return real.apply(null, arguments); };
+    try {
+      resetRenderCache();
+      brakeCached(profile, block, 1, now);
+      brakeCached(profile, block, 1, now);
+      const twoReads = calls;
+      resetRenderCache();
+      brakeCached(profile, block, 1, now);
+      return { twoReads: twoReads, afterReset: calls };
+    } finally {
+      brakeOn = real;
+    }
+  })()
+`);
+ok('two brakeCached reads inside one draw call brakeOn once',
+   stubbable && brakeCallProbe.twoReads === 1, String(brakeCallProbe.twoReads));
+ok('a resetRenderCache() in between makes the next brakeCached pay for brakeOn again',
+   brakeCallProbe.afterReset === 2 && call('brakeOn.toString().indexOf("calls++")') < 0,
+   String(brakeCallProbe.afterReset));
+
 console.log('\n== diagnostics statistics ==');
 ok('fitSlope is positive for a clean upward series', call('fitSlope([1,2,3])') > 0);
 ok('fitSlope is 0 for a flat series', call('fitSlope([5,5,5])') === 0);
@@ -795,6 +838,77 @@ ok('diagMedianGap on an even number of gaps averages the middle two',
    String(call('diagMedianGap([' + stampsOf([0, 1, 5]) + '])')));
 ok('diagMedianGap on too few timestamps returns null rather than NaN',
    call('diagMedianGap([])') === null);
+
+/* diagPoints groups the log keys by week in one pass now instead of
+   re-filtering them once per week (plans/027). The order of the output is
+   what the whole screen is fitted through, and the deload is what must stay
+   out of it, so both are pinned here rather than left to the rewrite. */
+const diagPointLabels = call(`
+  (function () {
+    state = defaultState(); migrate(); state.setupDone = true;
+    const pr = state.profiles.hombre;
+    const blockId = pr.blockOrder[0];
+    const block = pr.blocks[blockId];
+    const day = block.days[0];
+    const exId = day.ex[0].id;
+    pr.log[blockId] = {};
+    [1, 2, 3, 4].forEach(w => {
+      pr.log[blockId][slot(w, day.id)] = { [exId]: [
+        { w: '60', r: '10', done: true, ts: Date.now() - (5 - w) * 7 * 86400000 },
+      ] };
+    });
+    block.weeks = 8; block.deload = 3;
+    return { labels: diagPoints(pr, exId, blockId).map(p => p.label), name: block.name };
+  })()
+`);
+ok('diagPoints returns the weeks in ascending order with the deload left out',
+   JSON.stringify(diagPointLabels.labels) ===
+   JSON.stringify([1, 2, 4].map(w => diagPointLabels.name + ' · S' + w)),
+   JSON.stringify(diagPointLabels.labels));
+
+/* The sheet is a draw of its own (plans/027). Since drawCard stopped emptying
+   the render cache, the cache the last full draw left behind outlives every
+   tick — harmless for the card, whose history entries stop at profile.week,
+   but not here: diagLevelTrend asks for MAX_WEEKS + 1, so the sheet's entries
+   include the week being trained. Open the Diagnóstico, close it, tick, reopen
+   — without the resetRenderCache() at the top of diagRows the trend would be
+   read from before the tick. The `change` half of the assertion is the one
+   that pins that: `sessions` comes from diagPoints, which reads the log
+   directly and would move either way. */
+const sheetSeesTick = call(`
+  (function () {
+    state = defaultState(); migrate(); state.setupDone = true;
+    const pr = state.profiles.hombre;
+    const blockId = pr.blockOrder[0];
+    const block = pr.blocks[blockId];
+    const day = block.days[0];
+    const exId = day.ex[0].id;
+    const at = w => Date.now() - (6 - w) * 7 * 86400000;
+    const session = (kg, ts) => [
+      { w: kg, r: '10', done: true, ts: ts },
+      { w: kg, r: '10', done: true, ts: ts },
+      { w: kg, r: '10', done: true, ts: ts },
+    ];
+    pr.log[blockId] = {};
+    for (let w = 1; w <= 4; w++) pr.log[blockId][slot(w, day.id)] = { [exId]: session('60', at(w)) };
+    block.weeks = 8; block.deload = 0;
+    pr.week = 5;
+    /* Stands in for the last full draw, which is what fills the cache the
+       sheet would otherwise inherit. */
+    resetRenderCache();
+    const before = diagRows(pr, block, 'block').find(r => r.id === exId);
+    /* A tick on the week being trained, written the way the card writes it. */
+    pr.log[blockId][slot(5, day.id)] = { [exId]: session('100', Date.now()) };
+    const after = diagRows(pr, block, 'block').find(r => r.id === exId);
+    return { beforeSessions: before.sessions, afterSessions: after.sessions,
+             beforeChange: before.change, afterChange: after.change,
+             beforeTrend: before.trend, afterTrend: after.trend };
+  })()
+`);
+ok('the Diagnóstico reads a set ticked since the last full draw, not the cache the draw left',
+   sheetSeesTick.afterSessions === sheetSeesTick.beforeSessions + 1 &&
+   sheetSeesTick.afterChange > sheetSeesTick.beforeChange,
+   JSON.stringify(sheetSeesTick));
 
 console.log('\n== diagVerdict ==');
 ok('a downward trend with a long gap reads as an attendance problem',

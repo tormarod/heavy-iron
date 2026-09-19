@@ -76,15 +76,29 @@ function diagPoints(profile, exId, onlyBlockId) {
     const block = profile.blocks[bId];
     const blk = profile.log[bId];
     if (!block || !blk) return;
+    /* One pass over the keys, grouped by week, the way the chart's
+       collectHistoryAll does it (js/chart.js) — the loop below used to
+       re-filter every key of the block once per week, so a long block paid
+       W × S key parses for every exercise on the sheet. The weeks are still
+       walked in order, which is what keeps the output week-ascending; the
+       two screens differ on purpose in what they skip, and this one's skips
+       stay where they are. */
+    const byWeek = new Map();
+    Object.keys(blk).forEach(k => {
+      const s = parseSlot(k);
+      if (!s) return;
+      s.k = k;
+      if (!byWeek.has(s.week)) byWeek.set(s.week, []);
+      byWeek.get(s.week).push(s);
+    });
     for (let w = 1; w <= blockWeeks(block); w++) {
       /* The deload is prescribed at roughly 60 % of the weight, so leaving
          it in drags the fitted line down and reports a block that did
          exactly what it was told as "bajando". Skipped here rather than
          at the verdict, so it cannot reach the slope at all. */
       if (w === deloadWeek(block)) continue;
-      Object.keys(blk).forEach(k => {
-        const s = parseSlot(k);
-        if (!s || s.week !== w) return;
+      (byWeek.get(w) || []).forEach(s => {
+        const k = s.k;
         const rows = blk[k][exId];
         if (!Array.isArray(rows)) return;
         /* rowWeight() rather than num(r.w): converts a row logged in the
@@ -503,9 +517,17 @@ function fitSlope(values) {
    putting the weight up. Fitted through the rule's own level instead —
    the best of the last three sessions, which a censored session can only
    raise — and handed straight to the rule's own verdict when it has
-   already confirmed a drop. One log, one definition, one answer. */
+   already confirmed a drop. One log, one definition, one answer.
+
+   Through exHistoryCached, so it shares the history entries of the sheet's
+   own build: the cache keys on block, exercise, day, beforeWeek and the
+   scope, so these MAX_WEEKS + 1 entries are the same ones every other
+   caller in this build asks for and never collide with the card's, which
+   stop at profile.week. Uncached, the sheet re-walked the whole log once
+   per exercise on top of what targetNow (two lines below, in diagRows) had
+   already cached. */
 function diagLevelTrend(profile, block, day, ex, scopeBlockId) {
-  const sessions = exHistory(profile, block, ex, day && day.id, MAX_WEEKS + 1, scopeBlockId);
+  const sessions = exHistoryCached(profile, block, ex, day && day.id, MAX_WEEKS + 1, scopeBlockId);
   if (!sessions.length) return null;
   const seq = capSeq(sessions).slice(-DIAG_WINDOW);
   const lv = levelOf(seq);
@@ -646,6 +668,15 @@ function diagVerdict(trend, sig) {
    window; the signals are read off the most recent sessions, since what you
    change on Monday answers to how last Monday went. */
 function diagRows(profile, block, scope) {
+  /* A draw of its own, the way drawApp is. Since drawCard stopped resetting
+     the render cache, the cache left behind by the last full draw survives
+     every tick — which is safe for the card, whose entries stop at
+     profile.week, and wrong here: diagLevelTrend asks for MAX_WEEKS + 1, so
+     the sheet's entries INCLUDE the week being trained, which a tick does
+     change. Open the Diagnóstico, close it, tick a set, reopen: without this
+     the level trend would be read from before the tick. Starting empty costs
+     one cold drawCard afterwards, not one per tick. */
+  resetRenderCache();
   /* The sheet's own toggle by default; the block review passes 'block'
      explicitly, because what it exports must not depend on whatever the
      Diagnóstico sheet happened to be showing last. */
