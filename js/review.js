@@ -28,12 +28,7 @@ const REVIEW_MAX_EXERCISES = 40;
 const reviewPct = v => (v > 0 ? '+' : v < 0 ? '−' : '') +
   String(Math.abs(Math.round(v * 10) / 10)).replace('.', ',') + ' %';
 
-/* Exercise names, day names and muscle tags arrive from imports and go
-   into a document written for a language model. Delimited, so a name
-   cannot read as an instruction to the model; `txt()` already collapsed
-   whitespace on the way in, so the only characters to strip are the
-   delimiters themselves. */
-const reviewName = s => '«' + String(s == null ? '' : s).replace(/[«»]/g, '') + '»';
+/* reviewName lives in js/app.js — the prompt and the Diagnóstico use it too. */
 
 /* The unit-converting volume rule is convertedSetVolume in js/app.js — an
    identical copy lived here until plans/011 made the two one. */

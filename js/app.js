@@ -35,6 +35,15 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+/* Exercise names, day names, block names, muscle tags and session notes
+   arrive from imports and go into a document written for a language model.
+   Delimited, so a name cannot read as an instruction to the model; `txt()`
+   already collapsed whitespace on the way in, so the only characters to
+   strip are the delimiters themselves. Lives here rather than in
+   review.js because block-editor.js and diagnostics.js read it too, and a
+   symbol another split file reads stays in app.js (AGENTS.md). */
+const reviewName = s => '«' + String(s == null ? '' : s).replace(/[«»]/g, '') + '»';
+
 /* Weights are typed on a Spanish phone keyboard, where the decimal key is a
    comma. parseFloat('22,5') is 22 — five kilos of drift on a leg press — so
    every read of a logged weight goes through here instead. */
