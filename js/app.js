@@ -2605,8 +2605,11 @@ function priorBlockSetsCached(profile, block, ex) {
 /* Everything below is a pure function of (profile, block, week, day) and is
    asked for the same answer several times inside one render — lastTime twice
    per card, liftSlots once per card over every card. Held for the duration of
-   one draw and dropped at the start of the next, so nothing can go stale:
-   every path that changes the log already ends in render(). */
+   one draw and dropped at the start of the next full draw, so nothing can go
+   stale: every path that changes the log already ends in render(). A single
+   card swapped in between (drawCard) reads what is already here instead of
+   rebuilding it — the note above that call says why a tick cannot stale any
+   of these maps. */
 let renderCache = null;
 
 function resetRenderCache() {
@@ -3167,7 +3170,24 @@ function drawCard(exId) {
      this is not the path being made cheap. */
   if (!old || !old.parentNode) { render(); return; }
   try {
-    resetRenderCache();
+    /* The draw's cache is kept, not thrown away. A tick — or a keystroke in a
+       weight box — writes exactly one slot: profile.log[activeBlock][slot(
+       profile.week, day.id)], and profile.rir/profile.obj under the same key.
+       Every map held here is built to exclude that slot: exHistory drops the
+       block being trained at `w >= beforeWeek`, lastTime starts its walk at
+       `beforeWeek - 1`, priorBlockSets reads strictly earlier blocks, and
+       liftSlots and slug are facts about the plan, which a tick does not
+       touch. The one thing a tick changes that this card shows is the RÉCORD
+       bar, and `best` below is recomputed on every call.
+
+       Resetting here undid what plans/008 item 14 bought: the rebuilt card
+       asks targetNow, targetNow asks for the day's brake, and brakeOn asks
+       every exercise of every live day for its history — the whole-block,
+       whole-log walk, once per tick, growing with the log rather than with
+       the plan. Anything that changes which cards exist, which week is shown
+       or an earlier week's rows goes through render() → drawApp(), which
+       does reset. */
+    if (!renderCache) resetRenderCache();
     const profile = getProfile();
     const block = getBlock();
     const days = dayList(block);

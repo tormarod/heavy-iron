@@ -776,6 +776,49 @@ ok('slugifyCached agrees with slugify for accented Spanish text',
    call('slugifyCached("Press militar")') === call('slugify("Press militar")') &&
    call('slugifyCached("Extensión de tríceps")') === call('slugify("Extensión de tríceps")'));
 
+/* The cache now outlives a single card being swapped, and that is the whole
+   of plans/027: drawCard keeps what drawApp built instead of resetting it.
+   Asserted against the source because the thing being pinned is a lifetime,
+   not a value — a later edit that puts the bare reset back would leave every
+   assertion in this file green while every tick paid for brakeOn again. */
+ok('drawCard reuses the render cache rather than resetting it on every tick',
+   /function drawCard\(exId\) \{[\s\S]{0,1600}if \(!renderCache\) resetRenderCache\(\);/.test(
+     fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8')));
+
+/* And what that lifetime is worth, counted: brakeOn asks every exercise of
+   every live day of the block for its history, so one call per draw rather
+   than one per tick is the win. */
+const stubbable = call('typeof brakeOn') === 'function';
+const brakeCallProbe = call(`
+  (function() {
+    const profile = defaultState().profiles.hombre;
+    const block = profile.blocks[profile.blockOrder[0]];
+    const now = Date.now();
+    /* Restored in the finally: everything after this section reads the real
+       one, and a counting wrapper left behind would be invisible here and
+       wrong everywhere else. */
+    const real = brakeOn;
+    let calls = 0;
+    brakeOn = function() { calls++; return real.apply(null, arguments); };
+    try {
+      resetRenderCache();
+      brakeCached(profile, block, 1, now);
+      brakeCached(profile, block, 1, now);
+      const twoReads = calls;
+      resetRenderCache();
+      brakeCached(profile, block, 1, now);
+      return { twoReads: twoReads, afterReset: calls };
+    } finally {
+      brakeOn = real;
+    }
+  })()
+`);
+ok('two brakeCached reads inside one draw call brakeOn once',
+   stubbable && brakeCallProbe.twoReads === 1, String(brakeCallProbe.twoReads));
+ok('a resetRenderCache() in between makes the next brakeCached pay for brakeOn again',
+   brakeCallProbe.afterReset === 2 && call('brakeOn.toString().indexOf("calls++")') < 0,
+   String(brakeCallProbe.afterReset));
+
 console.log('\n== diagnostics statistics ==');
 ok('fitSlope is positive for a clean upward series', call('fitSlope([1,2,3])') > 0);
 ok('fitSlope is 0 for a flat series', call('fitSlope([5,5,5])') === 0);
