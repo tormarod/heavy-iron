@@ -839,6 +839,50 @@ ok('diagMedianGap on an even number of gaps averages the middle two',
 ok('diagMedianGap on too few timestamps returns null rather than NaN',
    call('diagMedianGap([])') === null);
 
+/* The sheet is a draw of its own (plans/027). Since drawCard stopped emptying
+   the render cache, the cache the last full draw left behind outlives every
+   tick — harmless for the card, whose history entries stop at profile.week,
+   but not here: diagLevelTrend asks for MAX_WEEKS + 1, so the sheet's entries
+   include the week being trained. Open the Diagnóstico, close it, tick, reopen
+   — without the resetRenderCache() at the top of diagRows the trend would be
+   read from before the tick. The `change` half of the assertion is the one
+   that pins that: `sessions` comes from diagPoints, which reads the log
+   directly and would move either way. */
+const sheetSeesTick = call(`
+  (function () {
+    state = defaultState(); migrate(); state.setupDone = true;
+    const pr = state.profiles.hombre;
+    const blockId = pr.blockOrder[0];
+    const block = pr.blocks[blockId];
+    const day = block.days[0];
+    const exId = day.ex[0].id;
+    const at = w => Date.now() - (6 - w) * 7 * 86400000;
+    const session = (kg, ts) => [
+      { w: kg, r: '10', done: true, ts: ts },
+      { w: kg, r: '10', done: true, ts: ts },
+      { w: kg, r: '10', done: true, ts: ts },
+    ];
+    pr.log[blockId] = {};
+    for (let w = 1; w <= 4; w++) pr.log[blockId][slot(w, day.id)] = { [exId]: session('60', at(w)) };
+    block.weeks = 8; block.deload = 0;
+    pr.week = 5;
+    /* Stands in for the last full draw, which is what fills the cache the
+       sheet would otherwise inherit. */
+    resetRenderCache();
+    const before = diagRows(pr, block, 'block').find(r => r.id === exId);
+    /* A tick on the week being trained, written the way the card writes it. */
+    pr.log[blockId][slot(5, day.id)] = { [exId]: session('100', Date.now()) };
+    const after = diagRows(pr, block, 'block').find(r => r.id === exId);
+    return { beforeSessions: before.sessions, afterSessions: after.sessions,
+             beforeChange: before.change, afterChange: after.change,
+             beforeTrend: before.trend, afterTrend: after.trend };
+  })()
+`);
+ok('the Diagnóstico reads a set ticked since the last full draw, not the cache the draw left',
+   sheetSeesTick.afterSessions === sheetSeesTick.beforeSessions + 1 &&
+   sheetSeesTick.afterChange > sheetSeesTick.beforeChange,
+   JSON.stringify(sheetSeesTick));
+
 console.log('\n== diagVerdict ==');
 ok('a downward trend with a long gap reads as an attendance problem',
    call('diagVerdict("down", { gap: 30 }).lectura').indexOf('Asistencia') === 0);
