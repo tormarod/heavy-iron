@@ -2563,9 +2563,13 @@ function priorBlockSets(profile, block, ex) {
     if (!prev || !profile.log[prev.id]) continue;
     const slots = liftSlots(prev, ex);
     if (!slots.length) continue;
-    const dl = deloadWeek(prev);
     for (let w = blockWeeks(prev); w >= 1; w--) {
-      if (w === dl) continue;
+      /* deloadAt, not `w === deloadWeek(prev)`: the same definition the rule
+         uses (exHistory), so the band and the objetivo cannot disagree about
+         which week was the deload. A block whose deload was written by hand
+         into the phase text used to show its ~60 % weights here while the
+         rule correctly ignored them. */
+      if (deloadAt(prev, w)) continue;
       for (let i = 0; i < slots.length; i++) {
         const s = profile.log[prev.id][slot(w, slots[i].dayId)];
         const arr = s && s[slots[i].exId];

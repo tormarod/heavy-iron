@@ -3066,6 +3066,34 @@ console.log('\n== "borrar registro" reaches a week past the cap (plans/009 item 
   ok('the first block of a profile has nothing before it', priorProbe.first === null);
   ok('a previous block whose only logged week is the deload is not used', priorProbe.onlyDeload === null);
 
+  /* The band and the rule used to disagree about what a deload week is: the
+     band tested the `deload` field alone, the rule (exHistory) tests
+     deloadAt, which also reads a phase text saying "Descarga". A block
+     whose deload was written in by hand showed its ~60 % weights in the
+     week-1 hint while the objetivo ignored them (plans/025). */
+  const priorPhaseDeload = call(`
+    (function() {
+      state = defaultState(); migrate();
+      const pr = state.profiles.hombre;
+      const b1 = pr.blocks[pr.blockOrder[0]];
+      /* No deload field at all — only the phase text says so. */
+      b1.deload = 0;
+      b1.phase[8] = { r: 'Descarga', t: 'Semana suave' };
+      const day = b1.days[0], ex = day.ex[0];
+      pr.log[b1.id] = {};
+      pr.log[b1.id][slot(7, day.id)] = { [ex.id]: [{ w: '65', r: '8', done: true }] };
+      pr.log[b1.id][slot(8, day.id)] = { [ex.id]: [{ w: '40', r: '8', done: true }] };
+      const b2 = JSON.parse(JSON.stringify(b1)); b2.id = 'block-2'; b2.name = 'Bloque 2';
+      pr.blocks[b2.id] = b2; pr.blockOrder.push(b2.id); pr.activeBlock = b2.id;
+      resetRenderCache();
+      const hint = priorBlockSets(pr, b2, b2.days[0].ex[0]);
+      return hint && { week: hint.week, w: hint.sets.map(s => s.w).join('/') };
+    })()
+  `);
+  ok('a deload written only into the phase text is skipped by the hint band too, same as by the rule',
+     priorPhaseDeload && priorPhaseDeload.week === 7 && priorPhaseDeload.w === '65',
+     JSON.stringify(priorPhaseDeload));
+
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 })();
