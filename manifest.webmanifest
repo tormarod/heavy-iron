@@ -1,7 +1,7 @@
 {
   "name": "Heavy Iron — Registro de entrenamiento",
   "short_name": "Heavy Iron",
-  "description": "Registro de entrenamiento para dos perfiles: bloques de 8 semanas, temporizador de descanso y progreso por ejercicio.",
+  "description": "Registro de entrenamiento para dos perfiles: bloques de 1 a 16 semanas, temporizador de descanso y progreso por ejercicio.",
   "lang": "es",
   "dir": "ltr",
   "id": "./",

@@ -164,7 +164,8 @@ needs a static server on `:8765` (or `BASE=`) plus Playwright:
 ```
 npm install --no-save playwright@1.56.1  # once
 npx playwright install chromium          # once
-python3 -m http.server 8765 &
+python3 -m http.server 8765 &                                 # Git Bash
+Start-Process python3 -ArgumentList '-m','http.server','8765' # PowerShell
 ```
 
 The whole suite by hand is warranted in three cases only: you edited
@@ -258,6 +259,15 @@ does" list only names features and links into the guide.
 One shape is worth naming here because it is read in four files: a log key
 is `slot(week, dayId)` and is read back by `parseSlot`, both in `js/app.js`,
 and nothing else runs the regex — `test/unit.js` fails if anything does.
-To walk one block of `log`/`rir`/`notes`/`energy`/`order`, use `forEachSlot`
-rather than rebuilding keys week by week: it visits the slots that exist,
-which is the only way a purge reaches a week filed above `MAX_WEEKS`.
+To walk one block of `log`/`rir`/`notes`/`energy`/`order`/`obj`, use
+`forEachSlot` rather than rebuilding keys week by week: it visits the slots
+that exist, which is the only way a purge reaches a week filed above
+`MAX_WEEKS`.
+
+`variants` is the one per-profile map keyed by exercise id rather than by
+block and slot (`exId → [{ n, since }]`, read only by `variantSince`), so it
+is never walked by slot and is not in any purge or move helper's list; and
+the objetivo rule that reads both lives in `js/app.js` under "peso
+objetivo" (`targetFor`) and is documented in `docs/guide.md` § "The weekly
+objetivo" — both maps are absent from every backup written before v3, so
+every reader copes with them missing.

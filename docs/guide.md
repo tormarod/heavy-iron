@@ -652,9 +652,10 @@ under-read.
 The **level** is a maximum over three sessions, so one bad night cannot move
 it and three sessions renew it completely. Going *down* takes more than a
 bad night: a session at least 5 % under the best of the three before it, read
-off a set that was not censored. One of those holds every weight where it is
-for the day (`La última sesión bajó: hoy no sube la carga`). Two in a row is
-the level itself moving, and the line says so.
+off a set that was not censored. One of those holds the load where it is —
+nothing goes up for that exercise (`La última sesión bajó: hoy no sube la
+carga`) — though a set the range says is out of reach still comes down a
+rung. Two in a row is the level itself moving, and the line says so.
 
 **`phi[k]` is measured between consecutive sets and in capacity, not in
 reps** — which is what lets a back-off set at another weight count. `45×9`
@@ -781,9 +782,12 @@ with it.
 Two records, neither of which asks you to type anything:
 
 - **`obj`** — the objetivo that was on the screen, kept once the session
-  starts and never rewritten. It is the only thing that can later tell a
-  back-off the rule *asked for* from a weight that had to come off, and the
-  only way to measure the rule's own error instead of assuming it.
+  starts and never rewritten. It holds the confidence, the kind of target
+  (objetivo, descarga, vuelta), whether the day was held or braked, and
+  each set's weight, reps and arrow — not the notes, the level or the
+  trend. It is the only thing that can later tell a back-off the rule
+  *asked for* from a weight that had to come off, and the only way to
+  measure the rule's own error instead of assuming it.
 - **`variants`** — the names an exercise has had, with the date each one
   started. Renaming an exercise in the plan editor usually means a different
   machine or a different groove, and the loads are not comparable;
@@ -795,7 +799,13 @@ Both travel in the backup, in a profile file and in the QR "perfil"
 transfer, and every reader copes with them missing — which is what every
 backup written before this rule looks like.
 
-### The guardrails, in the order they apply
+### The guardrails
+
+They are listed here by what they protect, not in the order the code
+applies them — the code first drops what does not count (deload weeks,
+sessions before a rename, the other day of a split lift), then answers "no
+history, no line", then the deload and the layoff, and only then reads the
+week's RIR.
 
 - **`2+` is read as exactly 2**, and a missing chip as 0. Both come out low,
   which is the right direction to be wrong in — and both censor the session

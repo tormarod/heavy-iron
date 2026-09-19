@@ -30,7 +30,7 @@ cp package/LICENSE     js/vendor/jsQR-LICENSE.txt
 (cd js/vendor && sha256sum qrcode.js jsQR.js > SHA256SUMS)
 ```
 
-Then regenerate `SHA256SUMS` as above, bump `VENDOR_VERSION` **and**
+Then bump `VENDOR_VERSION` **and**
 `CACHE_VERSION` in `sw.js`, and run the QR smoke section — which is part of
 `main session`, because the QR checks build on that page's state:
 `node test/smoke.js --only "main session"`.

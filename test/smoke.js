@@ -1,7 +1,8 @@
 /* Smoke tests for the whole app, driven in a real browser.
  *
  *   npx playwright install chromium     # once
- *   python3 -m http.server 8765 &       # or any static server
+ *   python3 -m http.server 8765 &                                 # Git Bash
+ *   Start-Process python3 -ArgumentList '-m','http.server','8765' # PowerShell
  *   node test/smoke.js
  *
  * Nothing here is a unit test: the app has no modules and no build step, so
