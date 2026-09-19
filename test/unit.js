@@ -2478,6 +2478,30 @@ console.log('\n== the PR gate recognises gh pr create wherever it hides (plans/0
   }
 }
 
+console.log('\n== docs cross-links resolve (README.md, docs/guide.md, AGENTS.md, plans/README.md) ==');
+{
+  // GitHub's own slugger drops punctuation character by character rather than
+  // collapsing what is left, so "Data & privacy" loses only the "&" and keeps
+  // both spaces around where it was — "data--privacy", not "data-privacy".
+  // A `\s+` here would collapse that back down to one hyphen and fail a link
+  // that resolves on GitHub today.
+  const slug = h => h.toLowerCase().replace(/[`*_~]/g, '').replace(/[^\p{L}\p{N}\s-]/gu, '').trim().replace(/\s/g, '-');
+  const headings = file => (fs.readFileSync(path.join(ROOT, file), 'utf8').match(/^#{1,6} .+$/gm) || [])
+    .map(h => slug(h.replace(/^#+ /, '')));
+  const docs = ['README.md', 'docs/guide.md', 'AGENTS.md', 'plans/README.md'];
+  docs.forEach(file => {
+    const src = fs.readFileSync(path.join(ROOT, file), 'utf8');
+    const links = [...src.matchAll(/\]\(([^)\s]+)\)/g)].map(x => x[1]).filter(l => !/^(https?:|mailto:)/.test(l));
+    links.forEach(link => {
+      const [rel, anchor] = link.split('#');
+      const target = rel ? path.normalize(path.join(path.dirname(file), rel)) : file;
+      const exists = fs.existsSync(path.join(ROOT, target));
+      ok(file + ' → ' + link + ' exists', exists);
+      if (exists && anchor && /\.md$/.test(target)) ok(file + ' → #' + anchor + ' is a heading', headings(target).includes(anchor), headings(target).join(' | '));
+    });
+  });
+}
+
 /* blocks/index.json is what "Importar JSON" offers, and the only thing that
    checked it was a person noticing the list was short. A file dropped into
    blocks/ without an entry is invisible; an entry pointing at a missing or
