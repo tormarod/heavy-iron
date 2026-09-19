@@ -134,12 +134,20 @@ function parseSlot(k) {
    normalizeImportedProfile deliberately does not come through here: it
    walks the *sender's* keys and re-keys every map afterwards, so it is a
    normalization pass over an untrusted object, not an install into a live
-   profile. See plans/009 item 5. */
+   profile. See plans/009 item 5.
+
+   `obj` is deliberately absent from the list: the record of what the rule
+   asked for travels only with a whole profile (normalizeImportedProfile),
+   never with a block share. Nothing produces one — neither the pasted JSON
+   nor the QR "plan + registro" payload carries it — and nothing ever will:
+   the receiving phone recomputes the objetivo from the log it is sent, and
+   a record it did not show is not its record to hold (decision,
+   plans/025). */
 function installBlockData(profile, blockId, data) {
   const id = safeKey(blockId);
   if (!id) return false;
   const d = data || {};
-  ['log', 'rir', 'order', 'notes', 'energy', 'obj'].forEach(name => {
+  ['log', 'rir', 'order', 'notes', 'energy'].forEach(name => {
     if (!d[name]) return;
     if (!profile[name]) profile[name] = {};
     profile[name][id] = d[name];
