@@ -155,11 +155,11 @@ function buildBlockReview(profile, block) {
    to whoever is holding them. */
 function reviewText(r) {
   const L = [];
-  L.push('## Cómo fue el bloque anterior ("' + r.name + '")');
+  L.push('## Cómo fue el bloque anterior (' + reviewName(r.name) + ')');
   L.push('');
   L.push('- Semanas del bloque: ' + r.weeks + '. Registradas: ' + r.weeksLogged + '. Llegué hasta la semana ' + r.upTo + '.');
   L.push('- Series marcadas como hechas: ' + r.sets + '. Peso movido: ' + Math.round(r.tonnage) + ' ' + units() + '.');
-  if (r.priority.length) L.push('- Músculos que marqué como prioritarios: ' + r.priority.join(', ') + '.');
+  if (r.priority.length) L.push('- Músculos que marqué como prioritarios: ' + r.priority.map(reviewName).join(', ') + '.');
   if (r.deload) {
     L.push('- Descarga en la semana ' + r.deload.deload + ': la semana ' + r.deload.after +
       ' quedó ' + reviewPct(r.deload.change) + ' respecto a la semana ' + r.deload.before +
@@ -216,7 +216,7 @@ function reviewText(r) {
     L.push('### Notas de sesión');
     L.push('');
     r.notes.slice(0, REVIEW_MAX_NOTES).forEach(n => {
-      L.push('- Semana ' + n.week + ', ' + reviewName(n.day) + ': ' + n.text);
+      L.push('- Semana ' + n.week + ', ' + reviewName(n.day) + ': ' + reviewName(n.text));
     });
   }
   L.push('');

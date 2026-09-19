@@ -628,10 +628,13 @@ function diagVerdict(trend, sig) {
        fewer sets than the range asks for is not a problem, it is unused
        margin — and the muscle you said the block was for is where to
        spend it. */
+    /* sig.volTag is an imported muscle tag, and this sentence is exported
+       verbatim into the review's AI document, so it is delimited here
+       rather than parsed back out of the verdict text in js/review.js. */
     if (sig.volLow) {
-      return { lectura: 'Funciona, y con margen: ' + sig.volTag + ' se queda por debajo de la franja de series' +
+      return { lectura: 'Funciona, y con margen: ' + reviewName(sig.volTag) + ' se queda por debajo de la franja de series' +
                  (sig.volPriority ? ', siendo prioritario' : ''),
-               cambio: 'Va bien con pocas series. Si quieres más, añádeselas a ' + sig.volTag + ' antes que a nada.' };
+               cambio: 'Va bien con pocas series. Si quieres más, añádeselas a ' + reviewName(sig.volTag) + ' antes que a nada.' };
     }
     return { lectura: 'Funciona', cambio: 'No toques nada.' };
   }
