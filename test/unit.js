@@ -808,6 +808,76 @@ ok('an upward trend with no signals reads as working as intended',
 ok('too few sessions is its own verdict',
    call('diagVerdict("none", {}).lectura') === 'Aún no hay suficientes sesiones');
 
+/* On a deload week the rule returns a `descarga` target, which is `down` by
+   design; the Diagnóstico must not read that as "the weight was picked
+   wrong". Four identical sessions make the trend flat, which is the branch
+   that consults estDown. */
+const deloadVerdict = call(`
+  (function () {
+    state = defaultState(); migrate(); state.setupDone = true;
+    const pr = state.profiles.hombre;
+    const blockId = pr.blockOrder[0];
+    const block = pr.blocks[blockId];
+    const day = block.days[0];
+    const exId = day.ex[0].id;
+    pr.log[blockId] = {};
+    for (let w = 1; w <= 4; w++) {
+      pr.log[blockId][slot(w, day.id)] = { [exId]: [
+        { w: '60', r: '10', done: true, ts: Date.now() - (5 - w) * 7 * 86400000 },
+        { w: '60', r: '10', done: true, ts: Date.now() - (5 - w) * 7 * 86400000 },
+        { w: '60', r: '10', done: true, ts: Date.now() - (5 - w) * 7 * 86400000 },
+      ] };
+    }
+    block.weeks = 8; block.deload = 5;
+    pr.week = 5;
+    resetRenderCache();
+    const rows = diagRows(pr, block, 'block');
+    const row = rows.find(x => x.id === exId) || rows[0];
+    const est = targetNow(pr, block, day, day.ex[0], 5);
+    return { kind: est && est.kind, dir: est && est.dir, lectura: row && row.lectura };
+  })()
+`);
+ok('on the deload week the rule returns a descarga target that is down',
+   deloadVerdict.kind === 'descarga' && deloadVerdict.dir === 'down', JSON.stringify(deloadVerdict));
+ok('and the Diagnóstico does not read it as a mis-chosen weight',
+   deloadVerdict.lectura && deloadVerdict.lectura.indexOf('Peso mal elegido') < 0, JSON.stringify(deloadVerdict));
+
+/* The other side of the same gate: an ordinary `objetivo` target that comes
+   down (the exercise's reps sit well under its rep range at the same
+   weight, session after session) must still read as a mis-chosen weight.
+   Four flat sessions so the trend reaches the same branch as above. */
+const objetivoDownVerdict = call(`
+  (function () {
+    state = defaultState(); migrate(); state.setupDone = true;
+    const pr = state.profiles.hombre;
+    const blockId = pr.blockOrder[0];
+    const block = pr.blocks[blockId];
+    const day = block.days[0];
+    day.ex[0].reps = '10–15';
+    const exId = day.ex[0].id;
+    pr.log[blockId] = {};
+    for (let w = 1; w <= 4; w++) {
+      pr.log[blockId][slot(w, day.id)] = { [exId]: [
+        { w: '100', r: '4', done: true, ts: Date.now() - (5 - w) * 7 * 86400000 },
+        { w: '100', r: '4', done: true, ts: Date.now() - (5 - w) * 7 * 86400000 },
+        { w: '100', r: '4', done: true, ts: Date.now() - (5 - w) * 7 * 86400000 },
+      ] };
+    }
+    block.weeks = 8; block.deload = 0;
+    pr.week = 5;
+    resetRenderCache();
+    const rows = diagRows(pr, block, 'block');
+    const row = rows.find(x => x.id === exId) || rows[0];
+    const est = targetNow(pr, block, day, day.ex[0], 5);
+    return { kind: est && est.kind, dir: est && est.dir, trend: row && row.trend, lectura: row && row.lectura };
+  })()
+`);
+ok('an ordinary objetivo target that comes down still reads as a mis-chosen weight',
+   objetivoDownVerdict.kind === 'objetivo' && objetivoDownVerdict.dir === 'down' &&
+   objetivoDownVerdict.trend === 'flat' &&
+   objetivoDownVerdict.lectura && objetivoDownVerdict.lectura.indexOf('Peso mal elegido') === 0,
+   JSON.stringify(objetivoDownVerdict));
+
 console.log('\n== objetivo: los quince casos de la v3 ==');
 /* The fifteen cases the rule was specified against, in the order the spec
    lists them. Every one of them reads MORE than one session — which is the
