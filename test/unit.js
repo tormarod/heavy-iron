@@ -1608,6 +1608,26 @@ ok('every rename after it carries the day it happened',
 ok('a save that changed no name records nothing', variants.list.length === 3, JSON.stringify(variants.list));
 ok('and the cut is the last one', variants.since === Date.parse('2026-08-03T00:00:00Z'), String(variants.since));
 
+/* A rename is a different lift; a spelling fix is not. */
+const renameEdits = call(`
+  (function () {
+    const p = { variants: {} };
+    const a = recordVariant(p, 'E', 'Press banca', 'Press Banca', Date.UTC(2026, 8, 1));
+    const b = recordVariant(p, 'E', 'Pajaros', 'Pájaros', Date.UTC(2026, 8, 1));
+    const c = recordVariant(p, 'E', 'Press (inclinado)', 'Press inclinado', Date.UTC(2026, 8, 1));
+    const d = recordVariant(p, 'E', 'Press banca', 'Press inclinado', Date.UTC(2026, 8, 1));
+    return { a, b, c, d, n: (p.variants.E || []).length };
+  })()
+`);
+ok('a case-only edit records no rename', renameEdits.a === false, JSON.stringify(renameEdits));
+ok('an accent-only edit records no rename', renameEdits.b === false, JSON.stringify(renameEdits));
+ok('a punctuation-only edit records no rename', renameEdits.c === false, JSON.stringify(renameEdits));
+ok('a real rename still records, and returns true so the save can say so',
+   renameEdits.d === true && renameEdits.n === 2, JSON.stringify(renameEdits));
+
+ok('the plan-editor save names a rename\'s consequence in its status line',
+   /renombrad/.test(fs.readFileSync(path.join(ROOT, 'js/block-editor.js'), 'utf8')));
+
 /* What the cut is FOR: the loads before a rename belong to another lift. */
 const cutHistory = call(`
   (function () {
