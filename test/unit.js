@@ -839,6 +839,33 @@ ok('diagMedianGap on an even number of gaps averages the middle two',
 ok('diagMedianGap on too few timestamps returns null rather than NaN',
    call('diagMedianGap([])') === null);
 
+/* diagPoints groups the log keys by week in one pass now instead of
+   re-filtering them once per week (plans/027). The order of the output is
+   what the whole screen is fitted through, and the deload is what must stay
+   out of it, so both are pinned here rather than left to the rewrite. */
+const diagPointLabels = call(`
+  (function () {
+    state = defaultState(); migrate(); state.setupDone = true;
+    const pr = state.profiles.hombre;
+    const blockId = pr.blockOrder[0];
+    const block = pr.blocks[blockId];
+    const day = block.days[0];
+    const exId = day.ex[0].id;
+    pr.log[blockId] = {};
+    [1, 2, 3, 4].forEach(w => {
+      pr.log[blockId][slot(w, day.id)] = { [exId]: [
+        { w: '60', r: '10', done: true, ts: Date.now() - (5 - w) * 7 * 86400000 },
+      ] };
+    });
+    block.weeks = 8; block.deload = 3;
+    return { labels: diagPoints(pr, exId, blockId).map(p => p.label), name: block.name };
+  })()
+`);
+ok('diagPoints returns the weeks in ascending order with the deload left out',
+   JSON.stringify(diagPointLabels.labels) ===
+   JSON.stringify([1, 2, 4].map(w => diagPointLabels.name + ' · S' + w)),
+   JSON.stringify(diagPointLabels.labels));
+
 /* The sheet is a draw of its own (plans/027). Since drawCard stopped emptying
    the render cache, the cache the last full draw left behind outlives every
    tick — harmless for the card, whose history entries stop at profile.week,

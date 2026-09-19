@@ -76,15 +76,29 @@ function diagPoints(profile, exId, onlyBlockId) {
     const block = profile.blocks[bId];
     const blk = profile.log[bId];
     if (!block || !blk) return;
+    /* One pass over the keys, grouped by week, the way the chart's
+       collectHistoryAll does it (js/chart.js) — the loop below used to
+       re-filter every key of the block once per week, so a long block paid
+       W × S key parses for every exercise on the sheet. The weeks are still
+       walked in order, which is what keeps the output week-ascending; the
+       two screens differ on purpose in what they skip, and this one's skips
+       stay where they are. */
+    const byWeek = new Map();
+    Object.keys(blk).forEach(k => {
+      const s = parseSlot(k);
+      if (!s) return;
+      s.k = k;
+      if (!byWeek.has(s.week)) byWeek.set(s.week, []);
+      byWeek.get(s.week).push(s);
+    });
     for (let w = 1; w <= blockWeeks(block); w++) {
       /* The deload is prescribed at roughly 60 % of the weight, so leaving
          it in drags the fitted line down and reports a block that did
          exactly what it was told as "bajando". Skipped here rather than
          at the verdict, so it cannot reach the slope at all. */
       if (w === deloadWeek(block)) continue;
-      Object.keys(blk).forEach(k => {
-        const s = parseSlot(k);
-        if (!s || s.week !== w) return;
+      (byWeek.get(w) || []).forEach(s => {
+        const k = s.k;
         const rows = blk[k][exId];
         if (!Array.isArray(rows)) return;
         /* rowWeight() rather than num(r.w): converts a row logged in the
