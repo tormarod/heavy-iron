@@ -639,6 +639,22 @@ function flushSave() {
   writeState(true);
 }
 
+/* The half of flushSave an import's pre-flight needs: land the pending
+   debounce so its "Guardado hh:mm" cannot overwrite the rejection reason
+   printed a few lines later — and nothing else. flushSave forces because it
+   runs when the tab is going away, where an unanswered conflict toast must
+   not cost a set; a file that turns out not to be a backup is not that
+   moment, and restoreFromText calling the forcing one meant that opening a
+   bad file answered "Quedarme con lo mío" on the user's behalf. While
+   `held` the storage handler has already cancelled the timer, so there is
+   nothing here to land and the conflict is left exactly as it was. */
+function flushPending() {
+  if (!saveT) return;
+  clearTimeout(saveT);
+  saveT = null;
+  writeState();
+}
+
 window.addEventListener('pagehide', flushSave);
 window.addEventListener('beforeunload', flushSave);
 /* The phone going into a pocket is the most likely moment for the tab to be
