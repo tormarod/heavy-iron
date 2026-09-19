@@ -2763,11 +2763,9 @@ function buildExCard(ctx, ex, i) {
   /* Read off the sessions before this one, so it is the same line all week
      and does not move as you tick sets. */
   const est = targetNow(profile, block, day, ex, profile.week);
-  /* Kept the moment the session becomes a session — the first row with
-     anything in it. Not on a bare draw: opening Thursday to look at it is
-     not a session, and a record of every day anyone ever scrolled past is
-     noise in the one place that is supposed to hold what was asked for. */
-  if (est && rows.some(rowUsed) && recordTarget(profile, block.id, profile.week, day.id, ex.id, est)) save();
+  /* `est` is only drawn here. Recording it is the job of the handlers below
+     that start the session — see recordTargetOnStart for why a draw must
+     never do it. */
   const setupOpen = expandedSetup.has(setupKey(block, ex));
 
   card.innerHTML =
@@ -2937,12 +2935,27 @@ function buildExCard(ctx, ex, i) {
     rIn.placeholder = '—';
     wIn.setAttribute('aria-label', 'Peso, serie ' + (si + 1) + ' de ' + ex.n);
     rIn.setAttribute('aria-label', 'Repeticiones, serie ' + (si + 1) + ' de ' + ex.n);
-    wIn.oninput = e => { r.w = e.target.value.replace(/[^0-9.,]/g, ''); if (r.w !== e.target.value) e.target.value = r.w; stampRowUnit(r); save(); };
-    rIn.oninput = e => { r.r = e.target.value.replace(/[^0-9]/g, ''); if (r.r !== e.target.value) e.target.value = r.r; save(); };
+    /* `wasSession` is read BEFORE the assignment in every one of these, and
+       that order is the whole mechanism: read it after and the row is
+       already used, every keystroke looks like a start, and the draw-time
+       write is back by another route. */
+    wIn.oninput = e => {
+      const wasSession = rows.some(rowUsed);
+      r.w = e.target.value.replace(/[^0-9.,]/g, ''); if (r.w !== e.target.value) e.target.value = r.w; stampRowUnit(r); save();
+      recordTargetOnStart(profile, block, day, ex, rows, wasSession, est);
+    };
+    rIn.oninput = e => {
+      const wasSession = rows.some(rowUsed);
+      r.r = e.target.value.replace(/[^0-9]/g, ''); if (r.r !== e.target.value) e.target.value = r.r; save();
+      recordTargetOnStart(profile, block, day, ex, rows, wasSession, est);
+    };
 
     const tick = row.querySelector('.tick');
     tick.setAttribute('aria-label', (r.done ? 'Desmarcar' : 'Marcar') + ' serie ' + (si + 1) + ' de ' + ex.n);
     tick.onclick = () => {
+      /* Read first, before the adoption below can put a weight in the row:
+         after it, every tick would look like the start of a session. */
+      const wasSession = rows.some(rowUsed);
       let adopted = '';
       if (!r.done) {
         /* Ticking a set whose weight box is still empty takes the greyed
@@ -2952,6 +2965,7 @@ function buildExCard(ctx, ex, i) {
         r.ts = Date.now();
       }
       r.done = !r.done;
+      recordTargetOnStart(profile, block, day, ex, rows, wasSession, est);
       if (r.done && ex.rest) startRest(ex.rest, ex.n + ' · serie ' + (si + 1));
       if (r.done && !ex.rest) stopRest();
       /* The tick that finishes the whole day counts as a session — see
@@ -3002,8 +3016,19 @@ function buildExCard(ctx, ex, i) {
       const where = 'bajada ' + (di + 1) + ', serie ' + (si + 1) + ' de ' + ex.n;
       dwIn.setAttribute('aria-label', 'Peso tras bajar, ' + where);
       drIn.setAttribute('aria-label', 'Repeticiones tras bajar, ' + where);
-      dwIn.oninput = e => { d.w = e.target.value.replace(/[^0-9.,]/g, ''); if (d.w !== e.target.value) e.target.value = d.w; stampRowUnit(r); save(); };
-      drIn.oninput = e => { d.r = e.target.value.replace(/[^0-9]/g, ''); if (d.r !== e.target.value) e.target.value = d.r; save(); };
+      /* A typed drop weight makes the row used too — rowUsed counts
+         dropsOf(r).some(dropUsed) — so a session can start here, and
+         `wasSession` is read before the assignment for the same reason. */
+      dwIn.oninput = e => {
+        const wasSession = rows.some(rowUsed);
+        d.w = e.target.value.replace(/[^0-9.,]/g, ''); if (d.w !== e.target.value) e.target.value = d.w; stampRowUnit(r); save();
+        recordTargetOnStart(profile, block, day, ex, rows, wasSession, est);
+      };
+      drIn.oninput = e => {
+        const wasSession = rows.some(rowUsed);
+        d.r = e.target.value.replace(/[^0-9]/g, ''); if (d.r !== e.target.value) e.target.value = d.r; save();
+        recordTargetOnStart(profile, block, day, ex, rows, wasSession, est);
+      };
 
       const del = dRow.querySelector('.drop-x');
       del.setAttribute('aria-label', 'Quitar ' + where);
@@ -3303,6 +3328,9 @@ $('copyPrev').onclick = () => {
     const t = targetNow(profile, block, day, ex, profile.week);
     if (!t) return;
     const to = entry(profile, block.id, profile.week, day.id, ex.id, setsFor(ex, profile.week, block));
+    /* Before the loop writes a single weight, for the same reason the card
+       handlers read it first: this button starts a session with no tick. */
+    const wasSession = to.some(rowUsed);
     to.forEach((r, i) => {
       if (r.done) return;
       /* A row past the last set the rule priced — a plan grown since, or a
@@ -3313,6 +3341,7 @@ $('copyPrev').onclick = () => {
       r.w = loadText(from.w);
       stampRowUnit(r);
     });
+    recordTargetOnStart(profile, block, day, ex, to, wasSession, t);
     written++;
     if (t.kind === 'vuelta') back++;
     /* Counted independently, not as a chain: the common shape of a v3
@@ -3670,18 +3699,41 @@ function recordVariant(profile, exId, oldName, newName, ts) {
   profile.variants[id] = list.slice(-VARIANT_LIMIT);
 }
 
+/* The record is written by the handlers that can turn an empty session into
+   a started one — the tick, the weight and rep boxes, the drop boxes, and
+   "Rellenar con el objetivo" — and by nothing else. It used to be written
+   by the draw, for whatever week was on screen, as soon as that week had a
+   row in it: every week logged before v3 got a rebuilt target the first
+   time anyone scrolled past it, stamped with today's clock, so a week from
+   two months ago was filed as a "vuelta de parón". `wasSession` is whether
+   the exercise's rows already counted as a session when the handler began;
+   only the transition from "not yet" to "yes" records, so browsing writes
+   nothing and a session that already has its record keeps it. */
+function recordTargetOnStart(profile, block, day, ex, rows, wasSession, est) {
+  if (wasSession || !est || !rows.some(rowUsed)) return false;
+  if (!recordTarget(profile, block.id, profile.week, day.id, ex.id, est)) return false;
+  save();
+  return true;
+}
+
 /* The target as it was on the screen, kept once the session has actually
    started. Written once per session and never rewritten: the point of the
    record is what was ASKED for, so a weight that came down mid-session has
    something to be compared against — the rule's own back-off, or a set the
    lifter had to strip. Rebuilding it later would only ever reproduce the
-   rule, which is the one thing it must not do. */
+   rule, which is the one thing it must not do.
+   `kind`, `hold` and `brake` are kept with it because a descarga or a
+   vuelta de parón is not a prescription the rule can be wrong about — it is
+   the rule deliberately asking for less — and a record that cannot say
+   which of the three it was turns every deload week into evidence the rule
+   overshot. */
 function recordTarget(profile, blockId, week, dayId, exId, t) {
   const k = slot(week, dayId);
   const blk = profile.obj[blockId] || (profile.obj[blockId] = Object.create(null));
   const sl = blk[k] || (blk[k] = Object.create(null));
   if (sl[exId]) return false;
-  sl[exId] = { v: 3, at: Date.now(), conf: t.conf,
+  sl[exId] = { v: 3, at: Date.now(), conf: t.conf, kind: t.kind,
+               hold: !!t.hold, brake: !!t.brake,
                sets: t.sets.map(x => ({ w: x.w, r: x.r, m: x.move })) };
   return true;
 }
@@ -4043,6 +4095,13 @@ function targetNotes(t) {
 }
 
 const TARGET_CONF_LABEL = { baja: 'confianza baja', media: 'confianza media', alta: 'confianza alta' };
+/* The same two vocabularies as lists, for the import validator. A plain
+   object literal answers truthily to every name it inherits from
+   Object.prototype, so 'constructor' would have passed a lookup on
+   TARGET_CONF_LABEL; a membership test is what RIR_OPTIONS and
+   ENERGY_OPTIONS already use for exactly that reason. */
+const TARGET_CONF_OPTIONS = ['baja', 'media', 'alta'];
+const TARGET_KIND_OPTIONS = ['objetivo', 'descarga', 'vuelta'];
 
 /* The progress chart lives in js/chart.js. */
 
@@ -4775,8 +4834,17 @@ function normalizeImportedObj(rawObj, rawBlock, normalized) {
         m: (x && (x.m === '↑' || x.m === '↓')) ? x.m : '',
       }));
       if (!sets.length) return;
-      kept[exId] = { v: 3, at: clampInt(rec.at, 0, Number.MAX_SAFE_INTEGER, 0),
-                     conf: TARGET_CONF_LABEL[rec.conf] ? rec.conf : 'baja', sets: sets };
+      /* A record written before plans/021 has no `kind`, and it stays
+         absent rather than being given a default: the missing field is the
+         only thing that tells the two generations apart, and some of the
+         older ones are reconstructions. `hold`/`brake` are stored only when
+         true, the same convention the log uses for `share`/`ss`/`u`. */
+      const keep = { v: 3, at: clampInt(rec.at, 0, Number.MAX_SAFE_INTEGER, 0),
+                     conf: TARGET_CONF_OPTIONS.indexOf(rec.conf) >= 0 ? rec.conf : 'baja', sets: sets };
+      if (TARGET_KIND_OPTIONS.indexOf(rec.kind) >= 0) keep.kind = rec.kind;
+      if (rec.hold === true) keep.hold = true;
+      if (rec.brake === true) keep.brake = true;
+      kept[exId] = keep;
     });
     if (Object.keys(kept).length) out[slot(w, dayId)] = kept;
   });

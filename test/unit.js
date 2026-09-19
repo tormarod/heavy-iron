@@ -1319,6 +1319,45 @@ ok('the target shown is recorded once, with its moves and its confidence',
 ok('and a second draw of the same session does not overwrite it',
    objRecord.again === false, JSON.stringify(objRecord));
 
+/* Browsing never writes: the record is made by the handler that starts the
+   session, and only on the transition from "no session yet" to "session".
+   Before plans/021 the draw did it, so every week logged before v3 got a
+   rebuilt target — read off today's clock, so anything older than ten days
+   was filed as a "vuelta de parón" — the first time anyone scrolled past. */
+const startRecord = call(`
+  (function () {
+    const p = { week: 2, obj: {} };
+    const block = { id: 'B' }, day = { id: 'D' }, ex = { id: 'E' };
+    const t = { kind: 'objetivo', conf: 'alta', hold: false, brake: true,
+                sets: [{ w: 40, r: 10, move: '' }] };
+    const rows = [{ w: '', r: '', done: false }];
+    const before = recordTargetOnStart(p, block, day, ex, rows, false, t);   // nothing typed yet
+    rows[0].w = '40';
+    const browsed = recordTargetOnStart(p, block, day, ex, rows, true, t);   // rows were already a session
+    const started = recordTargetOnStart(p, block, day, ex, rows, false, t);  // the transition
+    const again = recordTargetOnStart(p, block, day, ex, rows, false, t);
+    const rec = p.obj.B['w2-D'].E;
+    return { before: before, browsed: browsed, started: started, again: again,
+             kind: rec.kind, brake: rec.brake, hold: rec.hold };
+  })()
+`);
+ok('an untouched row records nothing', startRecord.before === false, JSON.stringify(startRecord));
+ok('rows that were already a session record nothing (browsing a logged week)',
+   startRecord.browsed === false, JSON.stringify(startRecord));
+ok('the first row of a session records the target, with its kind and the brake',
+   startRecord.started === true && startRecord.kind === 'objetivo' && startRecord.brake === true,
+   JSON.stringify(startRecord));
+ok('hold is stored only when true', startRecord.hold === false, JSON.stringify(startRecord));
+ok('and a second start of the same session does not overwrite it',
+   startRecord.again === false, JSON.stringify(startRecord));
+
+/* A source-level guard, because the bug this plan fixed was not a wrong
+   answer but a write in the wrong place: a draw that grows the call back
+   would pass every assertion above. Two sites only — the definition and
+   the one call inside recordTargetOnStart. */
+ok('no draw path calls recordTarget — only recordTargetOnStart does',
+   (fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8').match(/recordTarget\(/g) || []).length === 2);
+
 /* A rename is the only evidence there is that the lift changed, because the
    log never stored the name a session was done under. */
 const variants = call(`
@@ -1366,12 +1405,20 @@ const recordsRoundTrip = call(`
     state = defaultState(); migrate();
     const p = JSON.parse(JSON.stringify(state.profiles.hombre));
     p.log['block-1'] = { 'w1-d0': { chestpress: [{ w: '60', r: '10', done: true }] } };
-    p.obj = { 'block-1': { 'w1-d0': { chestpress: { v: 3, at: 123, conf: 'alta', sets: [{ w: 60, r: 10, m: '\\u2191' }] } } } };
+    p.obj = { 'block-1': {
+      'w1-d0': { chestpress: { v: 3, at: 123, conf: 'alta', kind: 'descarga', hold: true, brake: false,
+                               sets: [{ w: 60, r: 10, m: '\\u2191' }] } },
+      'w2-d0': { chestpress: { v: 3, at: 123, conf: 'constructor', kind: 'anything',
+                               sets: [{ w: 60, r: 10, m: '' }] } },
+    } };
     p.variants = { chestpress: [{ n: 'Press viejo', since: '1970-01-01' }, { n: 'Press nuevo', since: '2026-03-04' }],
                    bogus: [{ n: 'x', since: 'cuando sea' }] };
     const after = normalizeImportedProfile(JSON.parse(JSON.stringify(p)));
     const rec = after.obj['block-1'] && after.obj['block-1']['w1-d0'] && after.obj['block-1']['w1-d0'].chestpress;
+    const junk = after.obj['block-1'] && after.obj['block-1']['w2-d0'] && after.obj['block-1']['w2-d0'].chestpress;
     return { conf: rec && rec.conf, w: rec && rec.sets[0].w, m: rec && rec.sets[0].m,
+             kind: rec && rec.kind, hold: rec && rec.hold, brake: rec && ('brake' in rec),
+             junkKind: junk && ('kind' in junk), junkConf: junk && junk.conf,
              variant: after.variants.chestpress && after.variants.chestpress.length,
              since: after.variants.chestpress && after.variants.chestpress[1].since,
              bogus: !!after.variants.bogus };
@@ -1379,6 +1426,15 @@ const recordsRoundTrip = call(`
 `);
 ok('a restored profile keeps the objetivo it was shown',
    recordsRoundTrip.conf === 'alta' && recordsRoundTrip.w === 60 && recordsRoundTrip.m === '↑', JSON.stringify(recordsRoundTrip));
+ok('...and what kind of objetivo it was, with the false brake left off rather than stored',
+   recordsRoundTrip.kind === 'descarga' && recordsRoundTrip.hold === true && recordsRoundTrip.brake === false,
+   JSON.stringify(recordsRoundTrip));
+/* A kind nobody wrote is dropped, not carried through: a reader tells a
+   pre-plans/021 record from a v3 one by the absence of the field, so an
+   invented value would read as a genuine descarga. */
+ok('a kind and a confianza the validator does not know are dropped, not carried through',
+   recordsRoundTrip.junkKind === false && recordsRoundTrip.junkConf === 'baja',
+   JSON.stringify(recordsRoundTrip));
 ok('and its variant history, with an undatable entry dropped rather than guessed at',
    recordsRoundTrip.variant === 2 && recordsRoundTrip.since === '2026-03-04' && recordsRoundTrip.bogus === false,
    JSON.stringify(recordsRoundTrip));
@@ -1550,7 +1606,19 @@ const objProbe = call(`
        and a record only has to be rejected whole when its sets are. */
     const bad = kept(run('w1-' + dayId, exId,
       rec({ at: 'yesterday', conf: 'nonsense', sets: [{ w: 99999, r: -5, m: 'x' }] })));
+    /* The fields plans/021 added, and the inherited-name hole its
+       membership test closed. */
+    const inherited = kept(run('w1-' + dayId, exId, rec({ conf: 'constructor' })));
+    const deload = kept(run('w1-' + dayId, exId, rec({ kind: 'descarga' })));
+    const madeUpKind = kept(run('w1-' + dayId, exId, rec({ kind: 'x' })));
+    const held = kept(run('w1-' + dayId, exId, rec({ hold: true })));
+    const truthyHold = kept(run('w1-' + dayId, exId, rec({ hold: 'yes' })));
     return {
+      confInherited: !!inherited && inherited.conf === 'baja',
+      kindKept: !!deload && deload.kind === 'descarga',
+      kindDropped: !!madeUpKind && !('kind' in madeUpKind),
+      holdKept: !!held && held.hold === true,
+      holdDropped: !!truthyHold && !('hold' in truthyHold),
       roundTrip: !!good && good.sets[0].w === 45 && good.sets[0].r === 9 &&
                  good.sets[0].m === '↑' && good.conf === 'media' && good.at === 1 && good.v === 3,
       weekZero: empty(run('w0-' + dayId, exId, rec())),
@@ -1579,13 +1647,16 @@ ok('a negative rep count clamps to zero', objProbe.clampedR, JSON.stringify(objP
 ok('a move marker that is neither arrow becomes no marker', objProbe.droppedMove, JSON.stringify(objProbe));
 ok('a confidence normalizeImportedObj does not recognise reads as "baja"', objProbe.confFallback, JSON.stringify(objProbe));
 ok('a timestamp that is not a number reads as 0', objProbe.atFallback, JSON.stringify(objProbe));
-/* Not asserted here on purpose: at this HEAD `conf` is checked with a
-   truthy lookup on a plain object, so 'constructor' passes it. plans/021
-   and plans/025 replace that with a TARGET_CONF_OPTIONS membership test,
-   and the assertions for it — 'constructor' rejected, `kind` and `hold`
-   round-tripping — belong with whichever of them lands. Writing them now
-   would fail on purpose. `grep -n TARGET_CONF_OPTIONS js/app.js` finds
-   nothing at 4f7e037; when it does, add them. */
+/* These five were deferred by plans/026 to whichever plan introduced
+   TARGET_CONF_OPTIONS, because until then `conf` was a truthy lookup on a
+   plain object literal and 'constructor' passed it. plans/021 landed the
+   membership test and the kind/hold fields, so they are here. */
+ok('a confianza inherited from Object.prototype is not a confianza', objProbe.confInherited, JSON.stringify(objProbe));
+ok('a kind the rule can produce round-trips', objProbe.kindKept, JSON.stringify(objProbe));
+ok('a kind it cannot is dropped, leaving the record looking pre-v3 rather than mislabelled',
+   objProbe.kindDropped, JSON.stringify(objProbe));
+ok('hold round-trips when it is exactly true', objProbe.holdKept, JSON.stringify(objProbe));
+ok('...and a merely truthy hold is dropped rather than coerced', objProbe.holdDropped, JSON.stringify(objProbe));
 
 console.log('\n== normalizeImportedProfile: a restore runs the same per-row limits QR already had (plans/008 item 4) ==');
 const restoreProbe = call(`
