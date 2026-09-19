@@ -278,8 +278,10 @@ async function restoreFromText(text) {
      mark() calls below and silently overwrite "no se puede usar…" with
      "Guardado hh:mm" — the rejection reason disappears exactly when it
      matters most. Flushing first means any autosave lands before this
-     function's own message, never after. */
-  flushSave();
+     function's own message, never after. `flushPending`, not `flushSave`:
+     the forcing one would resolve an open two-tab conflict in this tab's
+     favour before the file has even been parsed. */
+  flushPending();
   let parsed;
   try {
     parsed = JSON.parse(String(text).trim());
@@ -337,6 +339,10 @@ async function restoreFromText(text) {
    file carries exactly one person, and loading it overwrites exactly that
    one, without touching anyone else's log. */
 async function loadProfileFromText(text) {
+  /* Same reasoning as restoreFromText's pre-flight flush above: land any
+     pending debounce before the first rejection message can be overwritten
+     by it, without forcing through an open two-tab conflict. */
+  flushPending();
   let parsed;
   try {
     parsed = JSON.parse(String(text).trim());

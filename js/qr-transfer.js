@@ -526,6 +526,11 @@ async function startQrScan() {
    so arriving by camera is not a way to get looser validation than arriving
    by file. */
 async function applyQrPayload(payload) {
+  /* Same reasoning as restoreFromText's pre-flight flush in
+     js/profile-transfer.js: land any pending debounce before the first
+     rejection message can be overwritten by it, without forcing through an
+     open two-tab conflict. */
+  flushPending();
   if (!payload || typeof payload !== 'object') { mark('Ese código no trae datos de Heavy Iron', true); return; }
 
   if (payload.kind === 'profile') {

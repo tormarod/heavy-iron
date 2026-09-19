@@ -3009,6 +3009,17 @@ const ok = (name, cond, extra) => {
     ok('and cancels its own pending timer instead of letting it fire later',
        await page1.evaluate(() => saveT === null && held === true));
 
+    /* Opening a file that is not a backup must not answer the toast: a
+       rejected import is not the user saying "keep mine", so it must leave
+       the held conflict — and the other tab's write — exactly as they were. */
+    const beforeInvalid = await page1.evaluate(() => localStorage.getItem('heavy-iron-v1'));
+    await page1.evaluate(() => restoreFromText('esto no es json'));
+    ok('una copia inválida no resuelve el conflicto de pestañas: se informa del motivo',
+       (await page1.textContent('#status')).includes('no es una copia válida'), await page1.textContent('#status'));
+    ok('el aviso de dos pestañas sigue en pantalla', await page1.locator('#toast').isVisible());
+    ok('y lo que la otra pestaña había guardado no se ha tocado',
+       await page1.evaluate(() => localStorage.getItem('heavy-iron-v1')) === beforeInvalid);
+
     await page1.waitForTimeout(500);
     const midway = await page2.evaluate(() => JSON.parse(localStorage.getItem('heavy-iron-v1')).prefs.barWeight);
     ok('past the old 400ms window, page2\'s write is still the one on disk — nothing overwrote it silently',

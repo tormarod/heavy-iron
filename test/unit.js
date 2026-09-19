@@ -2284,6 +2284,39 @@ console.log('\n== storage-failure paths (plans/008 item 18) ==');
   call('quotaToastShown = false; frozen = ' + savedFrozen + '; ready = ' + savedReady + ';');
 }
 
+console.log('\n== flushPending lands the debounce and leaves a two-tab conflict alone (plans/024) ==');
+{
+  const savedFrozen = call('frozen'), savedReady = call('ready');
+  call('frozen = false; ready = true; held = false; __writes = 0;');
+  const origSetItem = call('localStorage.setItem');
+  app.localStorage.setItem = () => { call('__writes++;'); };
+
+  call('save(); flushPending();');
+  ok('a pending debounce is landed by flushPending', call('__writes') === 1 && call('saveT') === null, String(call('__writes')));
+
+  call('__writes = 0; held = true; flushPending();');
+  ok('with a conflict open and no timer, flushPending writes nothing and leaves held set',
+     call('__writes') === 0 && call('held') === true);
+
+  call('__writes = 0; held = true; flushSave();');
+  ok('flushSave still forces through a conflict (the page-exit contract)',
+     call('__writes') === 1 && call('held') === false);
+
+  app.localStorage.setItem = origSetItem;
+  call('held = false; frozen = ' + savedFrozen + '; ready = ' + savedReady + ';');
+}
+
+{
+  const ptSrc = fs.readFileSync(path.join(ROOT, 'js/profile-transfer.js'), 'utf8');
+  const qrSrc = fs.readFileSync(path.join(ROOT, 'js/qr-transfer.js'), 'utf8');
+  ok('restoreFromText and loadProfileFromText both open with flushPending',
+     (ptSrc.match(/flushPending\(\)/g) || []).length === 2);
+  ok('applyQrPayload opens with flushPending', (qrSrc.match(/flushPending\(\)/g) || []).length === 1);
+  ok('no import path calls the forcing flushSave before its rejection messages',
+     !/async function loadProfileFromText[\s\S]{0,200}flushSave\(\)/.test(ptSrc) &&
+     !/async function applyQrPayload[\s\S]{0,200}flushSave\(\)/.test(qrSrc));
+}
+
 console.log('\n== calculator correctness: exact plate fit, no duplicate warm-up rows (plans/008 item 19) ==');
 ok('25/20/15/10 for a 30 target finds a combination that fits exactly, not the old greedy shortfall of 5',
    call('fitPlates(30, [25, 20, 15, 10]).remainder') === 0,
