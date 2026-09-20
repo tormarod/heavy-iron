@@ -1370,7 +1370,7 @@ function showRecovery(err, raw, mode) {
         'aunque la app no sepa leerlo, no se pierde y se puede recuperar a mano.</p>'
       : '') +
     '<pre></pre>' +
-    '<div class="foot-btns">' +
+    '<div class="rec-btns">' +
       (readFailure ? '<button class="sm key" id="recReload" type="button">Reintentar</button>' : '') +
       (hasBytes ? '<button class="sm' + (readFailure ? '' : ' key') + '" id="recDownload" type="button">Descargar los datos tal cual</button>' : '') +
       (drawFailure

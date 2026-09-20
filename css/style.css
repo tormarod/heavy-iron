@@ -1082,6 +1082,11 @@ body {
   font-family: var(--font-mono); font-size: 11px; color: var(--danger);
   white-space: pre-wrap; word-break: break-word; margin-bottom: 14px;
 }
+/* The row of ways out. It was `.foot-btns`, shared with the footer's own
+   nine buttons, until plans/037 moved those into the bar and left the
+   recovery screen the only thing wearing the class — so it takes a name of
+   its own rather than inheriting one for a footer that no longer has any. */
+.rec-btns { display: flex; gap: 7px; flex-wrap: wrap; }
 
 /* ---- first-run setup / settings ---- */
 .setup-field { margin-bottom: 18px; }
