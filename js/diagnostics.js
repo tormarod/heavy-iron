@@ -63,8 +63,9 @@ let diagView = 'trend';   /* 'trend' per exercise | 'freq' | 'index' per muscle 
 /* Every session this exercise was logged in, oldest first, as one e1RM
    point each. Modelled on collectHistoryAll(), but it keeps what the charts
    have no use for and the diagnosis does: which rows the point came from
-   (for rep decay and forced drops), the RIR chip filed against it, and the
-   timestamp, so a gap between sessions can be told from a gap in progress.
+   (for rep decay and forced drops), the RIR of its last working set — the
+   session's own reading, see getRir — and the timestamp, so a gap between
+   sessions can be told from a gap in progress.
 
    Sets above EST_MAX_REPS reps are dropped rather than plotted: Epley
    drifts badly up there, and one 20-rep back-off set would otherwise fake a

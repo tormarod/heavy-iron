@@ -275,3 +275,8 @@ the objetivo rule that reads both lives in `js/app.js` under "peso
 objetivo" (`targetFor`) and is documented in `docs/guide.md` § "The weekly
 objetivo" — both maps are absent from every backup written before v3, so
 every reader copes with them missing.
+
+`rir` is legacy since plans/035: read as a fallback, never written. The
+record is `row.rir` on the log row — one digit per set — so it travels with
+every purge, move and share the row does, and `foldRirMap` moves the old map
+onto the rows on load and on import.

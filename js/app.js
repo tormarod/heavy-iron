@@ -3980,14 +3980,14 @@ function exSession(profile, blockId, week, dayId, exId, lo, hi) {
     ts: stamps.length ? median(stamps) : 0,
     sets: work.map((r, k) => {
       const w = rowWeight(r), n = num(r.r);
-      const rk = rirs[k];
+      const rk = rirs[k], rho = rhoOf(rk);
       /* `conv` marks a row that was logged in the other unit, so loadLadder
          can leave it out: the capacity it proves is real, but the number it
          converts to was never a pin on this stack. Nothing else reads it —
          a reader that wants "the weight as logged" should read
          rowWeight(r, rowUnit(r)) at the row, not un-convert this one. */
-      return { w: w, r: n, e: capOf(w, n, rhoOf(rk)), conv: rowUnit(r) !== units(),
-               rir: rk, rho: rhoOf(rk),
+      return { w: w, r: n, e: capOf(w, n, rho), conv: rowUnit(r) !== units(),
+               rir: rk, rho: rho,
                cens: n >= hi || n > CENSOR_REPS || rk == null || rk >= 2 };
     }),
   };
@@ -4233,17 +4233,17 @@ function prevLoad(ladder, w, inc) {
    A decline is a session at least DECLINE_DROP under the best of the three
    before it, read off a set that was not censored — a session that ended at
    the top of the range is a floor, and a floor cannot say you got weaker.
+   One of those stops the weights going up for a day (a set the range says
+   is out of reach still comes down). Two in a row is the level itself
+   moving, which is the only thing that lowers it.
 
    `sets[0].cens` is the FIRST set's own state since plans/035, not the
    whole session's: a 0 or 1 typed on the first set makes it a reading and
-   the level can move on it, a 2 or more (or nothing typed) keeps it a
+   the level can move on it, a 2 or more — or nothing typed — keeps it a
    floor. That is what typing the first set's RIR buys, and `conf` in
-   targetFor — the count of un-censored first sets over the last six
-   sessions — is where the lifter sees it: the confidence chip climbs from
-   "baja" to "alta" on the one set per session that matters most.
-   One of those stops the weights going up for a day (a set the range says
-   is out of reach still comes down). Two in a row is the level itself
-   moving, which is the only thing that lowers it. */
+   targetFor, the count of un-censored first sets over the last six
+   sessions, is where the lifter sees it: the confidence chip climbs from
+   "baja" to "alta" on the one set per session that matters most. */
 function capSeq(sessions) {
   return sessions.map(s => ({ C: s.sets[0].e, cens: s.sets[0].cens }));
 }

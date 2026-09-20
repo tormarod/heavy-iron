@@ -460,6 +460,11 @@ const populatedRoundTrip = call(`
     const row2 = entry(profile, block.id, 1, day.id, ex2.id, ex2.sets)[0];
     row2.w = '20'; row2.r = '12'; row2.done = true;
     setRir(profile, block.id, 1, day.id, ex1.id, '1');
+    /* setRir writes the row since plans/035, so the legacy map needs a
+       session of its own here or "...RIR chips too" would be comparing two
+       empty objects. A profile logged before that plan carries exactly
+       this, and a restore still has to hand it back untouched. */
+    profile.rir[block.id] = { [slot(2, day.id)]: { [ex2.id]: '2+' } };
     setNoteText(profile, block.id, 1, day.id, 'Buena sesión');
     setEnergy(profile, block.id, 1, day.id, 'alta');
     setOrder(profile, block.id, 1, day.id, [ex2.id, ex1.id].concat(day.ex.slice(2).map(e => e.id)));
