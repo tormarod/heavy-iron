@@ -3832,21 +3832,40 @@ const ok = (name, cond, extra) => {
       ok(label + ': page does not scroll sideways', r.scroll <= r.vw, r.scroll + ' > ' + r.vw);
 
       await page.click('#tskip');
+      /* Both halves of both switches, because hiding is the easy one to get
+         right: a bar stuck hidden passes every "it is not on screen" check
+         ever written, and neither of the two things that hide it is the
+         thing that brings it back — stopRest() and focusout are. */
+      const afterRest = await page.evaluate(() => ({
+        hidden: document.getElementById('navBar').hidden,
+        display: getComputedStyle(document.getElementById('navBar')).display,
+      }));
+      ok(label + ': and comes back when the rest ends',
+         afterRest.hidden === false && afterRest.display !== 'none', JSON.stringify(afterRest));
+
       /* And again for the software keyboard. iOS has no
          `interactive-widget` viewport segment, so the visual viewport does
          not shrink and a fixed bar floats on top of the keyboard — over the
          very row being typed into.
 
-         No sleeps on either side: stopRest() runs inside the click and
-         focusin inside the focus(), and both resolve after the page has
-         run the handler. */
-      await page.locator('.ex').first().locator('.set-row').nth(1).locator('input').first().focus();
+         No sleeps anywhere here: stopRest() runs inside the click, focusin
+         inside the focus() and focusout inside the blur(), and each call
+         resolves after the page has run the handler. */
+      const wBox = page.locator('.ex').first().locator('.set-row').nth(1).locator('input').first();
+      await wBox.focus();
       const kb = await page.evaluate(() => ({
         kbOpen: document.getElementById('app').classList.contains('kb-open'),
         display: getComputedStyle(document.getElementById('navBar')).display,
       }));
       ok(label + ': the bar goes away while a weight box has the keyboard',
          kb.kbOpen && kb.display === 'none', JSON.stringify(kb));
+      await wBox.blur();
+      const kbBack = await page.evaluate(() => ({
+        kbOpen: document.getElementById('app').classList.contains('kb-open'),
+        display: getComputedStyle(document.getElementById('navBar')).display,
+      }));
+      ok(label + ': and comes back when the box loses it',
+         !kbBack.kbOpen && kbBack.display !== 'none', JSON.stringify(kbBack));
       await ctx.close();
     }
   });
