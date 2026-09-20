@@ -3194,7 +3194,14 @@ function buildExCard(ctx, ex, i) {
            took JUNTOS and RÉCORD away with the third. The badge is the
            point of the badge. */
         '<span class="ex-badges"></span>' +
-        '<span class="ex-meta"></span>' +
+        /* The chevron rides the meta line, which is the line that summarises
+           what the fold holds. Its own span rather than inside .ex-meta,
+           whose textContent is rewritten on every draw. aria-hidden because
+           the button already carries aria-expanded. */
+        '<span class="ex-meta-row">' +
+          '<span class="ex-meta"></span>' +
+          '<span class="chev" aria-hidden="true">▾</span>' +
+        '</span>' +
       '</button>' +
       '<button type="button" class="ex-menu-btn">⋯</button>' +
     '</div>' +

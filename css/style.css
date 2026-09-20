@@ -386,9 +386,10 @@ body {
 }
 .ord-reset:hover { border-color: var(--signal); color: var(--signal); }
 /* The whole name block is the disclosure's target, so the tap area is the
-   name plus the line under it rather than a chevron somebody has to aim
-   at. Transparent and border-less: it has to read as the card's title,
-   which is what it still is. */
+   name plus the line under it rather than the chevron alone — that one is
+   the sign the block opens, not the thing to aim at. Transparent and
+   border-less: it has to read as the card's title, which is what it still
+   is. */
 .ex-name-btn {
   flex: 1; min-width: 0; display: block; text-align: left;
   background: transparent; border: none; padding: 0; margin: 0;
@@ -410,10 +411,15 @@ body {
 .ex-badges > :first-child { margin-left: 0; }
 /* "4 × 6–10 · desc. 2,5 min · asiento 4": the sets, the rest and a preview
    of the machine settings, in the one face that keeps numbers in columns. */
+/* The row carries the top margin so the chevron sits level with the meta
+   line's first line rather than with the middle of a wrapped one; baseline
+   alignment keeps it there whatever the setup preview does to the wrap. */
+.ex-meta-row { display: flex; align-items: baseline; gap: 8px; margin-top: 4px; }
 .ex-meta {
-  display: block; margin-top: 4px;
+  flex: 1 1 auto; min-width: 0;
   font-family: var(--font-mono); font-size: 12px; line-height: 1.35; color: var(--soft);
 }
+.ex-name-btn[aria-expanded="true"] .chev { transform: rotate(180deg); }
 .ex-menu-btn {
   flex: 0 0 44px; width: 44px; height: 44px; margin-top: -3px; padding: 0;
   background: transparent; border: none; border-radius: 3px;
