@@ -1687,7 +1687,13 @@ const RIR_OPTIONS = ['2+', '1', '0'];
 const RIR_LABEL = { '2+': '2+ RIR', '1': '1 RIR', '0': '0 RIR (al fallo)' };
 /* Past five reps in reserve the number stops saying anything a lifter can
    feel: it says "easy", which '5' already says. One digit, so the box in
-   plans/036 is one keypress and maxlength="1" is the whole validation. */
+   plans/036 is one keypress and maxlength="1" is the whole validation.
+
+   Read by normalizeImportedObj only. The three places that validate a row's
+   own value spell the range out as /^[0-5]$/ — rowRir, rirNumber and
+   normalizeImportedLog — because a regex is what they need and building one
+   from the constant would be the harder thing to read. Raising this number
+   means editing those three as well; grep for the literal. */
 const RIR_MAX = 5;
 
 /* The row's own value as a number, or null when the row has none. Nothing
