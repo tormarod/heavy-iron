@@ -1984,13 +1984,32 @@ function moveSessionEx(profile, block, w, day, exId, dir) {
    would show the wrong number. plans/036 replaces this with a box per set,
    which writes `r.rir` on its own row and does not come through here.
 
+   It also drops this exercise-session's entry from the legacy map, and that
+   deletion is the ONE write this file makes to it — the single exception to
+   "the map is never written again" in the RIR section. It has to be:
+   getRir falls back to the map, and foldRirMap would put the chip straight
+   back on the row on the next load, so without this, clearing the chip on
+   any session logged before plans/035 does nothing at all — the guide's
+   "tapping the same chip again clears it" would be false for the whole of
+   the installed base's history. It is a deletion and not a write, so it can
+   only ever drop a value the person just asked to change; the alternative
+   — making getRir ignore the map once the rows exist — cannot tell a slot
+   that has been folded from one that has not, and would silently re-read
+   every session logged before this release as having no RIR at all.
+
    `val` is anything rirNumber understands — a chip ('2+' → '2') or a digit
    — and an empty value clears the session's RIR. */
 function setRir(profile, blockId, w, dayId, exId, val) {
-  const bucket = profile.log && profile.log[blockId] && profile.log[blockId][slot(w, dayId)];
+  const key = slot(w, dayId);
+  const bucket = profile.log && profile.log[blockId] && profile.log[blockId][key];
   const rows = bucket && bucket[exId];
   if (!Array.isArray(rows) || !rows.length) return;
   rows.forEach(r => { if (r && typeof r === 'object') delete r.rir; });
+  const slotRir = profile.rir && profile.rir[blockId] && profile.rir[blockId][key];
+  if (slotRir && typeof slotRir === 'object') {
+    delete slotRir[exId];
+    if (!Object.keys(slotRir).length) delete profile.rir[blockId][key];
+  }
   const n = val === '' || val == null ? null : rirNumber(val);
   if (n == null) return;
   const row = rirRowFor(rows);
