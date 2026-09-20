@@ -3612,12 +3612,22 @@ const ok = (name, cond, extra) => {
     /* The height above is bought with a fixed 60px day tab, and the cheapest
        way to buy it would have been one ellipsized line — plans/031's draft
        renders showed "Tirón + Cuádri…", and a day tab that will not say
-       which day it is has stopped being a day tab. .day-t wraps instead, so
-       every name's scrollWidth is its clientWidth; a switch back to nowrap
-       makes the two diverge and fails here. */
+       which day it is has stopped being a day tab.
+
+       Both axes, because .day-t is clamped on both: it wraps, so a switch
+       back to nowrap makes scrollWidth exceed clientWidth — but it wraps
+       inside -webkit-line-clamp: 2 in a fixed 60px .day with overflow
+       hidden, so the axis it actually truncates on is the vertical one, and
+       a width-only comparison cannot see it. Measured with a 51-character
+       name: scrollWidth 98 == clientWidth 98 while scrollHeight 79 >
+       clientHeight 32 (plans/034 fix round 1). Day names run to
+       IMPORT_LIMITS.name = 80 characters; two lines hold about 26 at 375
+       wide, so the seed plan passing is not the same as the clamp being
+       safe. */
     const clipped = await page.evaluate(() => [...document.querySelectorAll('.day-t')]
-      .filter(e => e.scrollWidth > e.clientWidth)
-      .map(e => e.textContent + ' ' + e.scrollWidth + '>' + e.clientWidth));
+      .filter(e => e.scrollWidth > e.clientWidth || e.scrollHeight > e.clientHeight)
+      .map(e => e.textContent + ' ' + e.scrollWidth + 'x' + e.scrollHeight +
+                ' in ' + e.clientWidth + 'x' + e.clientHeight));
     ok('the day names are not truncated', clipped.length === 0, clipped.join(', '));
 
     /* The week strip left the header for a panel behind #weekBtn, and a
