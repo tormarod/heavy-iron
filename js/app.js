@@ -3201,17 +3201,28 @@ function buildExCard(ctx, ex, i) {
     if (focusSetup === ex.id) setupIn.dataset.focusMark = '1';
   }
 
+  /* The chip is still the writer, for one plan more — plans/036 puts a box
+     next to the reps and this goes away. What changed underneath it is
+     where the value lands: setRir writes the row of the last set actually
+     done, and a session with nothing ticked yet has no such set, so the
+     chip falls back to the last row of the exercise rather than recording
+     nothing.
+
+     The pressed state is read back through rirNumber, not compared as a
+     string: the row holds a digit now, so a '2+' tapped last week comes
+     back as '2' and a value typed at 3 reserve is still "2 or more". */
   const rirHost = card.querySelector('.rir-chips');
-  const rirVal = getRir(profile, block.id, profile.week, day.id, ex.id);
+  const rirNow = rirNumber(getRir(profile, block.id, profile.week, day.id, ex.id));
   RIR_OPTIONS.forEach(opt => {
+    const on = rirNow != null && (opt === '2+' ? rirNow >= 2 : rirNumber(opt) === rirNow);
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'rir-chip' + (rirVal === opt ? ' on' : '');
+    b.className = 'rir-chip' + (on ? ' on' : '');
     b.textContent = opt;
-    b.setAttribute('aria-pressed', rirVal === opt ? 'true' : 'false');
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
     b.setAttribute('aria-label', RIR_LABEL[opt] + ' en la última serie de ' + ex.n);
     b.onclick = () => {
-      setRir(profile, block.id, profile.week, day.id, ex.id, rirVal === opt ? '' : opt);
+      setRir(profile, block.id, profile.week, day.id, ex.id, on ? '' : opt);
       save(); drawCard(ex.id);
     };
     rirHost.appendChild(b);
