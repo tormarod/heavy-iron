@@ -396,11 +396,16 @@ body {
   color: var(--ink); font-family: var(--font-sans); cursor: pointer;
 }
 .ex-name-col { flex: 1 1 auto; min-width: 0; }
-/* Level with the name's first line and next to the ⋯, where the eye already
-   goes for this card's controls. Bigger than the chevrons in the bars: those
-   sit inside a bordered control that is obviously pressable, and this one has
-   only itself to say the title opens. */
-.ex-name-btn > .chev { font-size: 17px; margin-top: 5px; }
+/* Beside the ⋯, where the eye already goes for this card's controls, and
+   given that button's own box — 44px tall with the same -3px lift — so the
+   two glyphs sit on one line by construction rather than by an offset that
+   drifts the next time either font size moves. Bigger than the chevrons in
+   the bars: those sit inside a bordered control that is obviously pressable,
+   and this one has only itself to say the title opens. */
+.ex-name-btn > .chev {
+  flex: 0 0 auto; height: 44px; margin-top: -3px;
+  display: flex; align-items: center; font-size: 18px;
+}
 /* Two lines, then ellipsis — a name that will not say which lift it is has
    given up the one job it has, and every seed name fits in two. */
 .ex-name {
