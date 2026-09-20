@@ -3188,22 +3188,21 @@ function buildExCard(ctx, ex, i) {
          ahead of every exercise name is noise. */
       '<span class="ex-pos" aria-hidden="true">' + (i + 1) + '</span>' +
       '<button type="button" class="ex-name-btn" aria-expanded="' + (moreOpen ? 'true' : 'false') + '">' +
-        '<span class="ex-name-col">' +
-          '<span class="ex-name"></span>' +
-          /* Outside the clamped name, not inside it: -webkit-line-clamp
-             counts the badges' own line, so a name that fills both lines
-             took JUNTOS and RÉCORD away with the third. The badge is the
-             point of the badge. */
-          '<span class="ex-badges"></span>' +
+        '<span class="ex-name"></span>' +
+        /* Outside the clamped name, not inside it: -webkit-line-clamp
+           counts the badges' own line, so a name that fills both lines
+           took JUNTOS and RÉCORD away with the third. The badge is the
+           point of the badge. */
+        '<span class="ex-badges"></span>' +
+        /* The chevron closes the plan line. Beside the name it reserved a
+           column and pushed two of the seed's seven day-1 names onto a
+           second line, and a second bare glyph next to the ⋯ read as
+           clutter rather than as a control. Its own span rather than inside
+           .ex-meta, whose textContent is rewritten on every draw. */
+        '<span class="ex-meta-row">' +
           '<span class="ex-meta"></span>' +
+          '<span class="chev" aria-hidden="true">▾</span>' +
         '</span>' +
-        /* On the head row beside the ⋯, level with the name: at the end of
-           the meta line it was the least-looked-at pixel on the card, which
-           is no use for the one mark that says the card opens at all. Still
-           inside the button, so the whole name block is the tap target and
-           aria-expanded still reaches it; aria-hidden, since that attribute
-           is what actually announces the state. */
-        '<span class="chev" aria-hidden="true">▾</span>' +
       '</button>' +
       '<button type="button" class="ex-menu-btn">⋯</button>' +
     '</div>' +
