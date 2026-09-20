@@ -30,13 +30,15 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const BASE = process.env.BASE || 'http://127.0.0.1:8765';
-/* Plan 032 pins the main screen's current header height and its still-
-   undersized set-row floor, so a later redesign cannot quietly widen either
-   gap without a red run. Both are the plan's own "current, not final"
-   values: 034 folded the header and lowered HEADER_MAX to 140 (measured:
-   133); 036 raises the set row's own floor, SET_ROW_MIN, to 44. */
+/* Plan 032 pins the main screen's header height and its set-row floor, so a
+   later redesign cannot quietly widen either gap without a red run. Both
+   were that plan's "current, not final" values: 034 folded the header and
+   lowered HEADER_MAX to 140 (measured: 133), and 036 raised the set row's
+   own floor, SET_ROW_MIN, from 40 to 44 — every box, tick and ↓ in the row
+   now clears the 44px target size WCAG 2.5.5 asks for, not just the 24px
+   2.5.8 requires. */
 const HEADER_MAX = 140;
-const SET_ROW_MIN = 40;
+const SET_ROW_MIN = 44;
 let pass = 0, fail = 0, skipped = 0;
 
 const argv = process.argv.slice(2);
@@ -111,6 +113,31 @@ const closeSheetVia = async (page, btn, sheet) => {
 const closeBlocks = page => closeSheetVia(page, '#blockClose', '#blockSheet');
 const closeMore = page => closeSheetVia(page, '#moreClose', '#moreSheet');
 
+/* plans/036 did the same to the card: "Progreso ↗", the two order arrows,
+   the ⚙ settings line and the calculator are all one tap further in, four
+   of them behind the "⋯" and the machine settings behind the name as well.
+   Same shape as the header's helpers above — the tap, and nothing else. */
+const openExMenu = async (page, index) => {
+  await page.locator('.ex').nth(index).locator('.ex-menu-btn').click();
+  await page.waitForSelector('#exMenuSheet.up', { timeout: 4000 });
+};
+/* `dir` is 'up' or 'down', naming the row rather than a sign: the menu's
+   labels say where the card lands, not which way an arrow points. */
+const moveEx = async (page, index, dir) => {
+  await openExMenu(page, index);
+  await page.click(dir === 'up' ? '#exMenuUp' : '#exMenuDown');
+  await page.waitForSelector('#exMenuSheet.up', { state: 'hidden', timeout: 4000 });
+};
+/* The fold behind the name: the alternative, the cue and the machine
+   settings. Idempotent, like the header's, so a section can put one in
+   front of every read without tracking what it left open. */
+const openExMore = async (page, index) => {
+  const card = page.locator('.ex').nth(index);
+  if (await card.locator('.ex-more:not([hidden])').count()) return;
+  await card.locator('.ex-name-btn').click();
+  await card.locator('.ex-more:not([hidden])').waitFor({ timeout: 4000 });
+};
+
 /* confirm()/alert()/prompt() are gone: answering a question is a click on
    the in-app dialog now. */
 const answerDialog = async (page, accept, text) => {
@@ -158,7 +185,9 @@ const ok = (name, cond, extra) => {
     await page.waitForTimeout(400);
     ok('the names are used everywhere', (await page.textContent('#title')).includes('Ana'), await page.textContent('#title'));
     ok('the second profile is renamed too', (await page.textContent('.profiles')).includes('Bruno'));
-    ok('the unit label follows the setting', (await page.locator('.fld u').first().textContent()) === 'lb');
+    /* The unit is the card's own column heading since plans/036, said once
+       instead of glued inside every weight box. */
+    ok('the unit label follows the setting', (await page.locator('.set-head span').first().textContent()) === 'lb');
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForTimeout(300);
     ok('setup does not come back on reload', await page.locator('#setupSheet.up').count() === 0);
@@ -170,6 +199,23 @@ const ok = (name, cond, extra) => {
     ok('3 days', await page.locator('.day').count() === 3);
     ok('7 exercises on day 1', await page.locator('.ex').count() === 7);
     ok('status says loaded', (await page.textContent('#status')).length > 0);
+
+    /* plans/036: the alternative, the cue and the machine settings are
+       behind the name now. The field has never been covered here — it used
+       to be built only while the ⚙ panel was open, and it is built with
+       every card now, so what is worth pinning is that it stays out of the
+       way until asked for and still writes to the plan when it is. */
+    console.log('\n== what is behind the name ==');
+    ok('the fold starts closed', await page.locator('.ex').first().locator('.ex-more[hidden]').count() === 1);
+    await openExMore(page, 0);
+    ok('the name says it is open', await page.locator('.ex').first().locator('.ex-name-btn').getAttribute('aria-expanded') === 'true');
+    await page.locator('.ex').first().locator('.ex-setup-in').fill('asiento 4');
+    await page.waitForFunction(() => !saveT && !held);
+    ok('the machine settings write straight to the plan',
+       await page.evaluate(() => JSON.parse(localStorage.getItem('heavy-iron-v1'))
+         .profiles.hombre.blocks['block-1'].days[0].ex[0].setup) === 'asiento 4');
+    ok('and the head previews them without opening anything',
+       (await page.locator('.ex').first().locator('.ex-meta').textContent()).includes('asiento 4'));
 
     console.log('\n== comma decimals ==');
     const w1 = page.locator('.ex').first().locator('.set-row').first().locator('input').first();
@@ -532,7 +578,8 @@ const ok = (name, cond, extra) => {
     await closeBlocks(page);
 
     console.log('\n== progress across every block ==');
-    await page.locator('.ex').first().locator('.ex-chart-btn').click();
+    await openExMenu(page, 0);
+    await page.click('#exMenuChart');
     ok('the chart opens on this block', await page.locator('#chartSheet.up').count() === 1);
     await page.click('#chartScope >> text=Todos los bloques');
     await page.waitForTimeout(250);
@@ -639,7 +686,7 @@ const ok = (name, cond, extra) => {
     await page.waitForTimeout(400);
     ok('hostile block imported as data', (await page.textContent('#title')).includes('Bloque malo'));
     ok('no script executed', await page.evaluate(() => window.__xss) === false);
-    const repsText = await page.locator('.ex-target').first().textContent();
+    const repsText = await page.locator('.ex-meta').first().textContent();
     ok('rep range rendered as literal text', repsText.includes('<img'), repsText);
     ok('no injected img element in the card', await page.locator('.ex img').count() === 0);
 
@@ -1354,7 +1401,7 @@ const ok = (name, cond, extra) => {
     await seed(false);
     await page.click('#copyPrev');
     await filled();
-    /* One session, 60×10 at the top of a 6–10 range and no RIR chip: that
+    /* One session, 60×10 at the top of a 6–10 range and no RIR typed: that
        is a FLOOR under what the set was worth, not a reading of it, so it
        can raise the level and nothing more. 60 is also the only weight
        this exercise has ever been logged at, so the ladder has one rung
@@ -1731,6 +1778,30 @@ const ok = (name, cond, extra) => {
        await card.locator('.set-row').first().locator('input').first().inputValue());
     ok('y dice de dónde salió',
        (await page.textContent('#status')).includes('el objetivo de esta semana'), await page.textContent('#status'));
+    /* Only the weight box has the adoption contract, and the tick that just
+       fired is the one place that could quietly break it. The RIR box was
+       showing the week's own target in grey at that moment — week 4 of the
+       seed plan reads "1–2 RIR" — and a reserve nobody reported is not a
+       measurement (plans/035 Step H.4, plans/036 Step C.5): the set has to
+       read as a floor, which is what sessionRirs, the objetivo's censoring
+       and the Diagnóstico all assume of a blank one. Adopting it would
+       feed the rule a number the lifter never gave it.
+
+       Here rather than in test/unit.js only because it cannot go there:
+       the handler is a closure inside buildExCard, and loadApp's inert
+       document hands querySelectorAll an empty array, so there is no row
+       to tick. */
+    const adopt = await page.evaluate(() => {
+      const row = document.querySelectorAll('.ex')[0].querySelector('.set-row');
+      const saved = getProfile().log['block-1']['w4-d0'].chestpress[0];
+      return { rirShown: row.querySelector('.rir-in').placeholder,
+               rirTyped: row.querySelector('.rir-in').value,
+               keys: Object.keys(saved).sort().join(','), w: saved.w };
+    });
+    ok('marcar no adopta el RIR que enseña la casilla, sólo el peso',
+       adopt.rirShown === '1' && adopt.rirTyped === '' &&
+       adopt.w === '47,25' && !adopt.keys.split(',').includes('rir'),
+       JSON.stringify(adopt));
     if (await page.locator('#timer.up').count()) await page.click('#tskip');
 
     /* The record of what was shown — the one thing that can later tell a
@@ -2359,8 +2430,9 @@ const ok = (name, cond, extra) => {
          return !o || !o['block-1'] || o['block-1']['w1-d0'] === undefined;
        }));
 
-    /* The bench is taken, so the second exercise gets done first. */
-    await page.locator('.ex').nth(1).locator('.ex-ord.up').click();
+    /* The bench is taken, so the second exercise gets done first. Two taps
+       rather than one since plans/036: the arrows moved into the "⋯". */
+    await moveEx(page, 1, 'up');
     await page.waitForTimeout(400);
     const swapped = await names();
     ok('moving an exercise up puts it first in the session',
@@ -2381,7 +2453,7 @@ const ok = (name, cond, extra) => {
        whole point of keying the order separately from the log. */
     await page.locator('.ex').first().locator('.set-row').first().locator('input').first().fill('12');
     await page.waitForTimeout(400);
-    await page.locator('.ex').first().locator('.ex-ord.down').click();
+    await moveEx(page, 0, 'down');
     await page.waitForTimeout(400);
     ok('moving an exercise carries its sets with it',
        await page.locator('.ex').nth(1).locator('.set-row').first().locator('input').first().inputValue() === '12');
@@ -2393,14 +2465,22 @@ const ok = (name, cond, extra) => {
     ok('so the line about the order goes away too',
        await page.locator('#ordNote').isVisible() === false);
 
+    await openExMenu(page, 0);
+    const firstUp = await page.locator('#exMenuUp').isDisabled();
+    await page.click('#exMenuClose');
+    await page.waitForSelector('#exMenuSheet.up', { state: 'hidden', timeout: 4000 });
+    const lastIndex = await page.locator('.ex').count() - 1;
+    await openExMenu(page, lastIndex);
+    const lastDown = await page.locator('#exMenuDown').isDisabled();
+    await page.click('#exMenuClose');
+    await page.waitForSelector('#exMenuSheet.up', { state: 'hidden', timeout: 4000 });
     ok('the first exercise cannot be moved up and the last cannot be moved down',
-       await page.locator('.ex').first().locator('.ex-ord.up').isDisabled() &&
-       await page.locator('.ex').last().locator('.ex-ord.down').isDisabled());
+       firstUp && lastDown, 'first up ' + firstUp + ', last down ' + lastDown);
 
     /* Four swaps are not four taps to undo, which is what the reset is for. */
-    await page.locator('.ex').nth(4).locator('.ex-ord.up').click();
+    await moveEx(page, 4, 'up');
     await page.waitForTimeout(300);
-    await page.locator('.ex').nth(3).locator('.ex-ord.up').click();
+    await moveEx(page, 3, 'up');
     await page.waitForTimeout(300);
     await page.click('.ord-reset');
     await page.waitForTimeout(400);
@@ -2561,8 +2641,9 @@ const ok = (name, cond, extra) => {
     await page.evaluate(() => {
       const card = [...document.querySelectorAll('.ex')]
         .find(c => c.querySelector('.ex-name').childNodes[0].textContent.includes('Press de pecho'));
-      card.querySelector('.ex-chart-btn').click();
+      card.querySelector('.ex-menu-btn').click();
     });
+    await page.click('#exMenuChart');
     await page.waitForTimeout(400);
     const chart = await page.evaluate(() => ({
       head: document.querySelector('#chartHost .chart-table th').textContent,
@@ -2582,8 +2663,9 @@ const ok = (name, cond, extra) => {
     await page.evaluate(() => {
       const card = [...document.querySelectorAll('.ex')]
         .find(c => c.querySelector('.ex-name').childNodes[0].textContent.includes('Contractora'));
-      card.querySelector('.ex-chart-btn').click();
+      card.querySelector('.ex-menu-btn').click();
     });
+    await page.click('#exMenuChart');
     await page.waitForTimeout(400);
     ok('a lift on one day only keeps the week axis',
        await page.evaluate(() => {
@@ -2668,7 +2750,7 @@ const ok = (name, cond, extra) => {
     await page.waitForTimeout(700);
 
     ok('the energy chips are offered before the sets', await page.locator('.energy-chip').count() === 3);
-    ok('and start empty, like the RIR chips', await page.locator('.energy-chip.on').count() === 0);
+    ok('and start empty', await page.locator('.energy-chip.on').count() === 0);
     await page.click('.energy-chip:has-text("baja")');
     await page.waitForTimeout(500);
     ok('tapping one records it',
@@ -2682,32 +2764,90 @@ const ok = (name, cond, extra) => {
          return !e || e['w1-d0'] === undefined;
        }));
 
-    /* The RIR chip's own round trip, on a day where nothing has been ticked
+    /* The RIR box's own round trip, on a day where nothing has been ticked
        — the shape that used to write a value getRir could not read and
-       pruneLog deleted on the next save (plans/035). Nothing had ever
-       pressed a .rir-chip in either suite, which is how it got that far. */
+       pruneLog deleted on the next save (plans/035). Until that plan
+       nothing in either suite had ever recorded an RIR at all, which is how
+       it got that far; the control is a box per set since plans/036, so
+       this is the same round trip through the box. */
     const rirCard = page.locator('.ex').first();
-    ok('the RIR chips start empty', await rirCard.locator('.rir-chip.on').count() === 0);
-    await rirCard.locator('.rir-chip').nth(1).click();    /* RIR_OPTIONS[1] === '1' */
+    const rirBox = rirCard.locator('.set-row').first().locator('.rir-in');
+    const rirBoxes = rirCard.locator('.rir-in');
+    /* Counted before it is read, and read through evaluateAll rather than
+       one locator at a time. Both halves matter: `every` over an empty
+       match is vacuously TRUE, so a renamed class would sail through this
+       and take the section down four cases later instead — and asking a
+       locator that matches nothing for an attribute waits thirty seconds
+       and then takes the whole section down with it. The count is what
+       makes the class name itself part of what is being asserted. */
+    const rirPlaceholders = () => rirBoxes.evaluateAll(els => els.map(e => e.placeholder));
+    ok('there is one RIR box per set row, and every one starts empty',
+       await rirBoxes.count() === 4 &&
+       await rirBoxes.evaluateAll(els => els.every(e => e.value === '')),
+       'boxes: ' + await rirBoxes.count());
+    /* Week 1 of the seed plan asks for 3 RIR, and every box says so in grey
+       the way the weight box shows the objetivo's weight. */
+    const week1Rir = await rirPlaceholders();
+    ok('the RIR box greys in the week\'s own target',
+       week1Rir.length === 4 && week1Rir.every(p => p === '3'), JSON.stringify(week1Rir));
+
+    /* And a week that prescribes no RIR at all greys in nothing. Week 8 of
+       the seed plan is "Descarga": phaseRir finds no number in it and
+       returns null, while weekRir answers 0 — 0 is what it falls back to
+       when nothing has been prescribed, and it is also a real reserve
+       meaning "to failure". Read weekRir alone, as plans/036 Step C.3
+       literally asks, and every box on a deload card greys in a 0 telling
+       you to take a back-off set to failure; the '—' branch that plan
+       names is unreachable. The probe reads both numbers so the assertion
+       carries the trap in its own diagnostic. render() runs synchronously
+       off the week click, so there is nothing to wait for. */
+    await openWeeks(page);
+    await page.locator('.wk').nth(7).click();
+    const deloadRir = await page.evaluate(() => {
+      const b = getBlock(), ex = b.days[0].ex[0];
+      return { phase: phaseRir(b, 8), raw: weekRir(b, ex, 8, null),
+               boxes: [...document.querySelectorAll('.ex')[0].querySelectorAll('.rir-in')].map(e => e.placeholder) };
+    });
+    ok('a deload week greys in an em dash, not the 0 weekRir falls back to',
+       deloadRir.phase === null && deloadRir.raw === 0 &&
+       deloadRir.boxes.length === 3 && deloadRir.boxes.every(p => p === '—'),
+       JSON.stringify(deloadRir));
+    await openWeeks(page);
+    await page.locator('.wk').nth(0).click();
+    await rirBox.fill('1');
     await page.waitForFunction(() => !saveT && !held);
-    ok('tapping one on a day with nothing ticked records it on the row',
+    ok('typing one on a day with nothing ticked records it on the row',
        await page.evaluate(() => {
          const sl = JSON.parse(localStorage.getItem('heavy-iron-v1'))
            .profiles.hombre.log['block-1']['w1-d0'] || {};
          return Object.keys(sl).some(k => (sl[k] || []).some(r => r && r.rir === '1'));
        }));
     await page.reload({ waitUntil: 'networkidle' });
-    await page.waitForFunction(() => document.querySelectorAll('.rir-chip').length > 0);
-    /* Counted rather than read: before this was fixed nothing came back
-       pressed, and asking a locator that matches nothing for its text waits
-       thirty seconds and then takes the whole section down with it. */
-    const pressed = page.locator('.ex').first().locator('.rir-chip.on');
-    ok('...and it is still pressed after a reload',
-       await pressed.count() === 1 && await pressed.first().textContent() === '1',
-       'chips pressed: ' + await pressed.count());
-    await rirCard.locator('.rir-chip').nth(1).click();
+    await page.waitForFunction(() => document.querySelectorAll('.rir-in').length > 0);
+    const rirAfter = page.locator('.ex').first().locator('.set-row').first().locator('.rir-in');
+    ok('...and it is still in the box after a reload', await rirAfter.inputValue() === '1',
+       'box holds: ' + await rirAfter.inputValue());
+    /* One digit, 0-5: the box refuses the rest rather than storing a number
+       no reader can price a set on. */
+    await rirAfter.fill('7');
     await page.waitForFunction(() => !saveT && !held);
-    ok('...and tapping it again clears it', await pressed.count() === 0);
+    ok('...a reserve outside 0-5 is refused rather than stored',
+       await rirAfter.inputValue() === '' &&
+       await page.evaluate(() => {
+         const sl = JSON.parse(localStorage.getItem('heavy-iron-v1'))
+           .profiles.hombre.log['block-1']['w1-d0'] || {};
+         return !Object.keys(sl).some(k => (sl[k] || []).some(r => r && r.rir === '7'));
+       }), 'box holds: ' + await rirAfter.inputValue());
+    await rirAfter.fill('1');
+    await page.waitForFunction(() => !saveT && !held);
+    await rirAfter.fill('');
+    await page.waitForFunction(() => !saveT && !held);
+    ok('...and emptying it clears it',
+       await page.evaluate(() => {
+         const sl = JSON.parse(localStorage.getItem('heavy-iron-v1'))
+           .profiles.hombre.log['block-1']['w1-d0'] || {};
+         return !Object.keys(sl).some(k => (sl[k] || []).some(r => r && r.rir != null));
+       }));
 
     await page.fill('#sesNote', 'Dormí 5 h');
     await page.waitForTimeout(500);
@@ -2730,14 +2870,15 @@ const ok = (name, cond, extra) => {
     await openWeeks(page);
     await page.locator('.wk').nth(0).click();   /* back to where the section left off */
 
-    /* The note is keyed by slot with no exercise under it, so unlike the
-       RIR chips it would still be sitting there when the day came back. */
+    /* The note is keyed by slot with no exercise under it, so unlike an
+       RIR on a row it would still be sitting there when the day came
+       back. */
     await page.click('#clearDay');
     await answerDialog(page, true);
     await page.waitForTimeout(400);
     ok('clearing the day clears its note too', await page.inputValue('#sesNote') === '');
 
-    /* "Borrar todo el registro" used to leave the RIR chips on disk. */
+    /* "Borrar todo el registro" used to leave the legacy RIR map on disk. */
     await page.evaluate(() => {
       const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
       const pr = s.profiles.hombre;
@@ -3681,20 +3822,10 @@ const ok = (name, cond, extra) => {
         if (el.closest('.sheet') || el.getClientRects().length === 0) return;
         const r = el.getBoundingClientRect();
         if (r.width >= 24 && r.height >= 24) return;
-        /* SC 2.5.8's spacing exception: a target under 24x24 still passes
-           if a 24px circle centred on it does not overlap the same circle
-           on the next target. .ex-ord (24x20, plan 032 Step E) relies on
-           exactly this — the two arrows sit 24px apart centre to centre,
-           not 24px tall each — so check that distance instead of failing
-           it outright. Anything else under 24x24 is a real failure. */
-        if (el.classList.contains('ex-ord')) {
-          const sib = el.parentElement.querySelector(el.classList.contains('up') ? '.ex-ord.down' : '.ex-ord.up');
-          if (sib) {
-            const sr = sib.getBoundingClientRect();
-            const dist = Math.hypot((r.left + r.width / 2) - (sr.left + sr.width / 2), (r.top + r.height / 2) - (sr.top + sr.height / 2));
-            if (dist >= 24) return;
-          }
-        }
+        /* No exceptions left to make. The 24x20 order arrows that used to
+           need SC 2.5.8's spacing exception are gone — plans/036 moved them
+           into the card's "⋯" menu, where they are 48px rows — so anything
+           under 24x24 here is a real failure. */
         bad.push(el.className + ' ' + Math.round(r.width) + 'x' + Math.round(r.height));
       });
       return bad;
@@ -3704,14 +3835,14 @@ const ok = (name, cond, extra) => {
 
     const shallowSetRow = await page.evaluate(min => {
       const bad = [];
-      document.querySelectorAll('.fld input, .tick').forEach(el => {
+      document.querySelectorAll('.set-row input, .tick, .drop-add').forEach(el => {
         if (el.getClientRects().length === 0) return;
         const h = el.getBoundingClientRect().height;
         if (h < min) bad.push(el.className + ' ' + Math.round(h) + 'px');
       });
       return bad;
     }, SET_ROW_MIN);
-    ok('the set row\'s inputs and ticks are at least ' + SET_ROW_MIN + ' tall (036 raises this to 44)',
+    ok('the set row\'s boxes, ticks and ↓ are at least ' + SET_ROW_MIN + ' tall',
        shallowSetRow.length === 0, shallowSetRow.join(', '));
 
     // 3. focus never ends up entirely under the sticky header (WCAG 2.4.11,

@@ -333,29 +333,22 @@ body {
 .ex.complete { border-color: var(--signal); }
 .ex.shared { border-left: 3px solid var(--share); }
 
-.ex-head { display: flex; gap: 11px; padding: 13px 13px 11px; align-items: flex-start; }
-/* Number in the middle, one arrow above and one below: the column reads as
-   "this is where it happened, and here is how to move it". Fixed width so
-   the names to the right of it line up card to card whether or not an
-   arrow is disabled. 24px, matching .ex-ord below it: SC 2.5.8 needs a 24px
-   target, and a narrower column let the arrow's own box bleed 2px past it
-   on each side (plan 032 fix round 1). */
-.ex-num {
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
-  padding-top: 1px; width: 24px; flex: 0 0 24px;
-}
-.ex-ord-n {
-  font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+/* One row, and the only row of chrome the card has (plans/036): the
+   position in a square, the name — which is also the disclosure for
+   everything that used to be printed under it — and the "⋯". 44px is the
+   floor the row is built to, not its height: a two-line name grows it. */
+.ex-head { display: flex; gap: 9px; padding: 10px 7px 4px 11px; align-items: flex-start; min-height: 44px; }
+/* Where the card's own number went. Not a control any more — the two ways
+   to move a card are rows in the "⋯" menu — so it is sized to be read at a
+   glance from a metre away rather than to be hit with a thumb. */
+.ex-pos {
+  flex: 0 0 28px; width: 28px; height: 28px; margin-top: 2px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--sunk); border-radius: 3px;
+  font-family: var(--font-display); font-size: 14px; font-weight: 700;
   color: var(--soft); line-height: 1;
 }
-.ex.complete .ex-ord-n { color: var(--signal); }
-.ex-ord {
-  width: 24px; height: 20px; padding: 0; border: none; background: transparent;
-  color: var(--soft); font-size: 11px; line-height: 1; cursor: pointer; opacity: .55;
-  border-radius: 3px;
-}
-.ex-ord:hover:not(:disabled) { color: var(--signal); background: var(--sunk); opacity: 1; }
-.ex-ord:disabled { opacity: .12; cursor: default; }
+.ex.complete .ex-pos { color: var(--signal); }
 
 /* ---- the order the session was actually done in ----
    Absent unless the sequence stopped matching the plan — see
@@ -373,21 +366,54 @@ body {
   padding: 3px 7px; border-radius: 3px; cursor: pointer;
 }
 .ord-reset:hover { border-color: var(--signal); color: var(--signal); }
-.ex-body { flex: 1; min-width: 0; }
-.ex-name { font-family: var(--font-display); font-size: 24px; font-weight: 700; letter-spacing: -0.015em; line-height: 1.05; }
-.ex-alt { font-size: 12.5px; color: var(--soft); margin-top: 3px; }
-.ex-cue { font-size: 12.5px; color: var(--amber-ink); margin-top: 4px; font-weight: 500; }
-.ex-target {
-  font-family: var(--font-mono); font-size: 12px; font-weight: 600;
-  text-align: right; white-space: nowrap; padding-top: 2px;
+/* The whole name block is the disclosure's target, so the tap area is the
+   name plus the line under it rather than a chevron somebody has to aim
+   at. Transparent and border-less: it has to read as the card's title,
+   which is what it still is. */
+.ex-name-btn {
+  flex: 1; min-width: 0; display: block; text-align: left;
+  background: transparent; border: none; padding: 0; margin: 0;
+  color: var(--ink); font-family: var(--font-sans); cursor: pointer;
 }
-.ex-rest { font-family: var(--font-mono); font-size: 11px; color: var(--soft); margin-top: 3px; text-align: right; }
-.ex-chart-btn {
-  margin-top: 5px; background: transparent; border: 1px solid var(--edge); color: var(--soft);
-  font-size: 11px; font-family: var(--font-sans); font-weight: 600; padding: 5px 9px; border-radius: 3px; cursor: pointer;
-  min-height: 28px;
+/* Two lines, then ellipsis — a name that will not say which lift it is has
+   given up the one job it has, and every seed name fits in two. */
+.ex-name {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+  font-family: var(--font-display); font-size: 24px; font-weight: 700;
+  letter-spacing: -0.015em; line-height: 1.05;
 }
-.ex-chart-btn:hover { border-color: var(--signal); color: var(--signal); }
+/* Its own line under the name, as the mockup draws it
+   (plans/031-mockups/opcion4-sesion.png) — and, less prettily, because a
+   badge inside the clamped name above is a badge a two-line name deletes.
+   :empty so solo mode, which appends nothing at all, costs no space. */
+.ex-badges { display: block; margin-top: 3px; line-height: 1; }
+.ex-badges:empty { display: none; }
+.ex-badges > :first-child { margin-left: 0; }
+/* "4 × 6–10 · desc. 2,5 min · asiento 4": the sets, the rest and a preview
+   of the machine settings, in the one face that keeps numbers in columns. */
+.ex-meta {
+  display: block; margin-top: 4px;
+  font-family: var(--font-mono); font-size: 12px; line-height: 1.35; color: var(--soft);
+}
+.ex-menu-btn {
+  flex: 0 0 44px; width: 44px; height: 44px; margin-top: -3px; padding: 0;
+  background: transparent; border: none; border-radius: 3px;
+  color: var(--soft); font-size: 20px; line-height: 1; cursor: pointer;
+}
+.ex-menu-btn:hover { color: var(--signal); background: var(--sunk); }
+
+/* ---- behind the name ----
+   The alternative, the cue and the machine settings. Indented to the name
+   above it, so an open fold reads as part of that line rather than as a
+   second card. */
+.ex-more { padding: 0 13px 9px 48px; }
+.ex-more[hidden] { display: none; }
+.ex-alt { font-size: 13px; color: var(--soft); }
+.ex-cue { font-size: 13px; color: var(--amber-ink); margin-top: 4px; font-weight: 500; }
+.ex-setup-lbl {
+  display: block; margin-top: 8px;
+  font-family: var(--font-mono); font-size: 11px; color: var(--soft);
+}
 
 .ss {
   display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: 0.1em;
@@ -428,22 +454,13 @@ body {
   padding: 7px 13px;
 }
 
-/* ---- machine setup (collapsed) ---- */
-.ex-setup { padding: 0 13px; }
-.ex-setup-btn {
-  background: transparent; border: none; color: var(--soft);
-  font-family: var(--font-mono); font-size: 11px;
-  padding: 6px 0; cursor: pointer; text-align: left;
-  min-height: 28px;
-}
-.ex-setup-btn:hover { color: var(--ink); }
-.ex-setup-box { padding-bottom: 8px; }
-.ex-setup-box input {
-  width: 100%; height: 34px; padding: 0 9px;
+/* ---- machine setup (inside the fold) ---- */
+.ex-setup-in {
+  display: block; width: 100%; height: 40px; margin-top: 4px; padding: 0 9px;
   border: 1px solid var(--edge); border-radius: 3px; background: var(--sunk);
-  font-size: 13px; color: var(--ink);
+  font-family: var(--font-sans); font-size: 13px; color: var(--ink);
 }
-.ex-setup-box input:focus { outline: none; border-color: var(--signal); box-shadow: 0 0 0 2px var(--signal-soft); }
+.ex-setup-in:focus { outline: none; border-color: var(--signal); box-shadow: 0 0 0 2px var(--signal-soft); }
 
 /* ---- rep-decay flag ---- */
 .ex-decay {
@@ -456,8 +473,8 @@ body {
    read on the way past, never something you operate. Colour carries the
    direction so the number itself does not have to shout. */
 .ex-est {
-  font-size: 12.5px; line-height: 1.45; color: var(--soft);
-  padding: 0 13px 8px;
+  font-size: 13px; line-height: 1.45; color: var(--soft);
+  padding: 4px 14px 12px;
 }
 .ex-est.up { color: var(--signal); }
 .ex-est.down { color: var(--amber-ink); }
@@ -534,92 +551,93 @@ body {
 }
 .ses-note-prev b { color: var(--ink); font-weight: 600; }
 
-/* ---- RIR chips ---- */
-.ex-rir { display: flex; align-items: center; gap: 8px; padding: 0 13px 10px; }
-.ex-rir-lbl {
+/* ---- the set rows ----
+   Three numbers, ↓ and ✓, and no set number: four rows in a column ARE
+   first to fourth, and the 26px that said so went to the boxes (plans/036).
+   The column line above them carries the unit, "rep" and "RIR" once for the
+   card, so the boxes hold nothing but numbers. Both grids are stated
+   together because they have to agree exactly — a heading a column off is
+   worse than no heading. */
+.set-head, .set-row, .drop-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 56px 40px 52px;
+  gap: 6px; align-items: center;
+}
+.set-head { padding: 2px 0 3px; }
+.set-head span {
   font-family: var(--font-display); font-size: 11px; font-weight: 600;
-  letter-spacing: .08em; text-transform: uppercase; color: var(--soft);
+  letter-spacing: .08em; text-transform: uppercase; color: var(--soft); text-align: center;
 }
-.rir-chips { display: flex; gap: 5px; }
-.rir-chip {
-  height: 40px; min-width: 30px; padding: 0 8px;
-  border: 1px solid var(--edge); border-radius: 3px; background: var(--card);
-  font-family: var(--font-mono); font-size: 14px; font-weight: 600;
-  color: var(--soft); cursor: pointer;
-}
-.rir-chip:hover { border-color: var(--signal); color: var(--signal); }
-.rir-chip.on { background: var(--signal); border-color: var(--signal); color: var(--on-signal); }
+.set-row { padding: 3px 0; }
 
-/* The two number boxes stay on 1fr each so they keep the lion's share of a
-   360px phone; ↓ is deliberately the narrowest control in the row, since
-   it is the one you press least. */
-.set-row {
-  display: grid; grid-template-columns: 26px 1fr 1fr 30px 42px;
-  gap: 7px; align-items: center; padding: 5px 0;
-}
-.set-n { font-family: var(--font-display); font-size: 11px; font-weight: 600; letter-spacing: .08em; color: var(--soft); }
-.set-row.done .set-n { color: var(--signal); font-weight: 600; }
-
-.fld { position: relative; }
-.fld input {
-  width: 100%; height: 40px; padding: 0 27px 0 9px;
-  border: 1px solid var(--edge); border-radius: 3px; background: var(--card);
-  font-family: var(--font-mono); font-size: 17px; font-weight: 500; color: var(--ink);
+/* 52px and 19px: the numbers are read at arm's length, one-handed, and
+   typed into with a thumb. A transparent border rather than none, so the
+   done and next states below can colour it without the row moving by 2px
+   when they do. */
+.set-row input {
+  width: 100%; min-width: 0; height: 52px; padding: 0 6px; text-align: center;
+  border: 2px solid transparent; border-radius: 3px; background: var(--sunk);
+  font-family: var(--font-mono); font-size: 19px; font-weight: 500; color: var(--ink);
   -moz-appearance: textfield;
 }
-.fld input::-webkit-outer-spin-button, .fld input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.fld input:focus { outline: none; border-color: var(--signal); box-shadow: 0 0 0 2px var(--signal-soft); }
-.fld u {
-  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
-  font-family: var(--font-mono); font-size: 11px; color: var(--soft); text-decoration: none;
-}
-.set-row.done .fld input { background: var(--sunk); }
+.set-row input::-webkit-outer-spin-button, .set-row input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.set-row input:focus { outline: none; border-color: var(--signal); box-shadow: 0 0 0 2px var(--signal-soft); }
+/* Done: the box lifts out of the surface it was sunk into, which is what
+   says "this one is written down" without a tick in every column. */
+.set-row.done input { background: var(--card); border-color: var(--line); }
+/* The set you are about to do, boxes and tick together — the mockup's
+   "siguiente" state (plans/031-mockups/opcion4-estilo.png). */
+.set-row.next input, .set-row.next .tick { border-color: var(--signal); }
 
 .tick {
-  height: 40px; border: 1px solid var(--edge); background: var(--card);
-  border-radius: 3px; cursor: pointer; font-size: 16px; color: var(--edge);
+  height: 52px; width: 100%; padding: 0;
+  border: 2px solid var(--edge); background: var(--card);
+  border-radius: 3px; cursor: pointer; font-family: var(--font-sans);
+  font-size: 18px; color: var(--edge);
   display: flex; align-items: center; justify-content: center; transition: all .12s;
 }
-.tick { width: 100%; font-family: var(--font-sans); padding: 0; }
 
 /* ---- weight drops ----
    A drop belongs to the set above it, so the sub-row shares the set row's
-   grid and is only marked out by the ↳ in the set-number column and a rule
-   down the left. Nothing is indented by margin: the weight and rep boxes
-   have to line up with the ones they came off, or the pair stops reading as
-   one set at a glance. */
+   grid and is marked out only by its shorter boxes and a rule down the
+   left. Nothing is indented by margin, and the rule is drawn outside the
+   row rather than as a border on it: the weight and rep boxes have to line
+   up with the ones they came off, or the pair stops reading as one set at
+   a glance. The ↓ is deliberately the narrowest control in the row, since
+   it is the one you press least. */
 .drop-add {
-  height: 40px; width: 100%; padding: 0;
-  border: 1px solid var(--edge); border-radius: 3px; background: var(--card);
-  font-family: var(--font-sans); font-size: 14px; color: var(--edge);
+  height: 52px; width: 100%; padding: 0;
+  border: none; border-radius: 3px; background: transparent;
+  font-family: var(--font-sans); font-size: 15px; color: var(--soft);
   display: flex; align-items: center; justify-content: center; cursor: pointer;
   transition: all .12s;
 }
-.drop-add:hover:not(:disabled) { border-color: var(--signal); color: var(--signal); }
-.drop-add.on { background: var(--signal); border-color: var(--signal); color: var(--on-signal); }
+.drop-add:hover:not(:disabled) { color: var(--signal); }
+.drop-add.on { background: var(--signal); color: var(--on-signal); }
 .drop-add:disabled { cursor: default; opacity: .4; }
 
-.drop-row {
-  display: grid; grid-template-columns: 26px 1fr 1fr 30px 42px;
-  gap: 7px; align-items: center; padding: 2px 0;
+.drop-row { position: relative; padding: 2px 0; }
+.drop-row::before {
+  content: ''; position: absolute; left: -7px; top: 1px; bottom: 1px;
+  width: 2px; background: var(--line);
 }
-.drop-row .fld input { height: 34px; font-size: 13px; }
-.drop-row.done .fld input { background: var(--sunk); }
-.drop-n {
-  font-family: var(--font-mono); font-size: 12px;
-  color: var(--soft); text-align: right; padding-right: 3px;
+.drop-row input {
+  width: 100%; min-width: 0; height: 44px; padding: 0 6px; text-align: center;
+  border: 2px solid transparent; border-radius: 3px; background: var(--sunk);
+  font-family: var(--font-mono); font-size: 16px; font-weight: 500; color: var(--ink);
 }
+.drop-row input:focus { outline: none; border-color: var(--signal); box-shadow: 0 0 0 2px var(--signal-soft); }
+.drop-row.done input { background: var(--card); border-color: var(--line); }
 .drop-x {
-  height: 34px; width: 100%; padding: 0;
+  height: 44px; width: 100%; padding: 0;
   border: 1px solid var(--edge); border-radius: 3px; background: var(--card);
-  font-family: var(--font-sans); font-size: 11px; color: var(--soft);
+  font-family: var(--font-sans); font-size: 12px; color: var(--soft);
   display: flex; align-items: center; justify-content: center; cursor: pointer;
 }
 .drop-x:hover { border-color: var(--danger); color: var(--danger); }
 
 /* Sits under the segments, left-aligned with the number boxes so it reads
    as a footnote to them rather than another input. */
-.drop-kind { display: flex; gap: 5px; padding: 2px 0 6px 33px; }
+.drop-kind { display: flex; gap: 5px; padding: 2px 0 6px; }
 .drop-chip {
   padding: 3px 8px;
   border: 1px solid var(--edge); border-radius: 3px; background: var(--card);
@@ -635,9 +653,11 @@ body {
 .tick.on { background: var(--signal); border-color: var(--signal); color: var(--on-signal); }
 
 /* A set that beat every previous week on this exercise. The tick goes amber
-   instead of signal so you can see it happen without reading anything. */
+   instead of signal so you can see it happen without reading anything, and
+   the weight box — the number that did it — carries the same colour down
+   its left edge, where the set number used to carry it (plans/036). */
 .set-row.pr .tick.on { background: var(--amber); border-color: var(--amber); color: var(--on-share); }
-.set-row.pr .set-n { color: var(--amber-ink); font-weight: 600; }
+.set-row.pr input.w-in, .set-row.pr-e1rm input.w-in { border-left-color: var(--amber-ink); }
 .badge.pr { background: var(--amber); color: var(--on-share); }
 
 /* A set that beat the best estimated 1RM without beating the weight —
@@ -646,7 +666,6 @@ body {
    --amber is a fill, not a text colour (plans/032, plans/033 fix round 1);
    the outline reads its text and border from --amber-ink instead. */
 .set-row.pr-e1rm .tick.on { background: var(--card); border-color: var(--amber-ink); color: var(--amber-ink); }
-.set-row.pr-e1rm .set-n { color: var(--amber-ink); font-weight: 600; }
 .badge.pr-e1rm { background: transparent; color: var(--amber-ink); border: 1px solid var(--amber-ink); }
 
 /* ---- rest timer ---- */
@@ -753,6 +772,11 @@ body {
 .sheet-box textarea:focus { outline: none; border-color: var(--signal); }
 .sheet-btns { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 12px; }
 .sheet-btns[hidden] { display: none; }
+/* The card's "⋯" menu: five actions read down a column rather than aimed
+   at across a wrapping strip, each its own 48px row (plans/036). */
+.ex-menu-list { flex-direction: column; align-items: stretch; }
+.ex-menu-list .sm { height: 48px; width: 100%; text-align: left; }
+.ex-menu-list .sm:disabled { opacity: .45; cursor: default; }
 .sheet-hr { border-top: 1px solid var(--line); margin: 16px 0; }
 
 /* ---- plan editor ---- */
@@ -1170,6 +1194,23 @@ body {
 .u-status-left-lg { text-align: left; padding-top: 6px; }
 .sheet-lead { font-weight: 600; color: var(--ink); margin-bottom: 6px; }
 .calc-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+/* A number box with its unit tucked inside the right edge. The set rows
+   used this until plans/036 gave them a column line instead; what is left
+   of it is the four fields in Ajustes and in the calculator, where one box
+   stands alone and there is no column to head. */
+.fld { position: relative; }
+.fld input {
+  width: 100%; height: 44px; padding: 0 27px 0 9px;
+  border: 1px solid var(--edge); border-radius: 3px; background: var(--card);
+  font-family: var(--font-mono); font-size: 17px; font-weight: 500; color: var(--ink);
+  -moz-appearance: textfield;
+}
+.fld input::-webkit-outer-spin-button, .fld input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.fld input:focus { outline: none; border-color: var(--signal); box-shadow: 0 0 0 2px var(--signal-soft); }
+.fld u {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  font-family: var(--font-mono); font-size: 11px; color: var(--soft); text-decoration: none;
+}
 .u-svg-fluid { width: 100%; height: auto; display: block; }
 .u-flex-grow { flex: 1; min-width: 140px; }
 .u-flex-grow-sm { flex: 1; min-width: 70px; }
