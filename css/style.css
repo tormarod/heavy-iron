@@ -149,6 +149,15 @@ body {
   color: var(--ink); font-family: var(--font-sans); font-size: 12.5px; font-weight: 600;
   border-radius: 3px; padding: 0 8px;
 }
+/* .blockbar sits inside the sticky header (.top) and wraps to two rows at
+   375px, so the general .sm face's 44px height pushes .top well past plan
+   032's HEADER_MAX (measured: 325px). The select next to "+ Nuevo bloque"
+   pins that first row at its own 34px regardless of .sm's height, so only
+   24px here — the same floor 032's own 24x24 assertion in this section
+   requires, exactly, not approximately — brings .top back under 300px
+   (measured: 295px). Stay this compact until 034 folds the header and
+   this bar moves out of it. */
+.blockbar .sm { height: 24px; }
 
 /* ---- header ---- */
 .top {
