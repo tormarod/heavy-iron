@@ -180,9 +180,14 @@ body {
 
 .days { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; padding-bottom: 12px; }
 
+/* A <button>'s default text colour follows the OS scheme through the
+   color-scheme meta (index.html:12), not data-theme — every other button
+   class in this file states its own colour, and this was the one that
+   didn't. */
 .day {
   border: 1px solid var(--line); background: transparent; cursor: pointer;
   padding: 9px 6px; border-radius: 2px; text-align: left; transition: all .12s;
+  color: var(--ink);
 }
 .day:hover { border-color: var(--ink); }
 .day.on { background: var(--ink); border-color: var(--ink); }
