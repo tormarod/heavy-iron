@@ -97,16 +97,15 @@
    that inset is live and .top is really 177-192px tall, not 133. A flat
    140px there would put a focused control 37-52px under the header on
    exactly the devices plans/032's safe-area work was written for.
-   150px covers the rest timer when it is up — it was 90 while the timer was
-   one line; plans/037 gave it a second one (the next set, the sound switch)
-   and it measures 137px at 375 wide. The bar is never the thing to reserve
-   for here: #app.kb-open hides it, and typing is the only way focus moves
-   under a keyboard. Anything that changes the header's height changes the
-   140, and anything that changes the timer's changes the 150 — update them
-   here, rather than adding a second rule. */
+   190px covers the rest timer when it is up — the same number, and for the
+   same reason, as #app's reserve below; see the comment there. The bar is
+   never the thing to reserve for here: #app.kb-open hides it, and typing is
+   the only way focus moves under a keyboard. Anything that changes the
+   header's height changes the 140, and anything that changes the timer's
+   changes the 190 — update them here, rather than adding a second rule. */
 html {
   scroll-padding-top: calc(140px + env(safe-area-inset-top));
-  scroll-padding-bottom: calc(150px + env(safe-area-inset-bottom));
+  scroll-padding-bottom: calc(190px + env(safe-area-inset-bottom));
 }
 
 body {
@@ -116,10 +115,26 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* The reserve at the foot of the page is whatever is docked there: 100px
-   was the rest timer's (plans/032), 120 is the four-destination bar's
-   64px plus room for the last card to clear it (plans/037). */
-#app { min-height: 100vh; padding-bottom: calc(120px + env(safe-area-inset-bottom)); }
+/* The reserve at the foot of the page is the TALLEST thing that can be
+   docked there, not the usual one — and that is the rest timer, not the
+   64px bar it replaces while a rest runs. 100px answered an 85px timer
+   before plans/037 (plans/032); 120, sized for the bar, put the version
+   line 17px underneath the two-line timer instead.
+
+   190 is measured, not estimated. Below the 620px breakpoint the timer is
+   exactly 137px whatever the exercise is called, because .timer-msg is
+   hidden there, so that half is 53px of clearance. Above it the coaching
+   line comes back and takes whatever width the exercise's name leaves it,
+   so the height rises with the name: 147px short, 157 for the shipped
+   plan's "Press de pecho en máquina", 172 for its longest,
+   "Elevaciones laterales en polea" — 18px of clearance at the worst name
+   this app ships. An imported 80-character name (IMPORT_LIMITS.name) can
+   still squeeze the coaching line into a 20px column 217px tall and go
+   under; that squeeze predates this plan and no reserve can chase it.
+
+   Over-reserving costs nothing: it is blank scroll past the version line,
+   below everything anyone reads. */
+#app { min-height: 100vh; padding-bottom: calc(190px + env(safe-area-inset-bottom)); }
 /* Each profile carries an accent. `hombre`/`mujer` are the names the app
    shipped with and are kept as aliases so existing saved profiles do not
    change colour; new ones pick `azul` or `verde` by name. */
