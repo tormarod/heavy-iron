@@ -692,6 +692,13 @@ const ok = (name, cond, extra) => {
     await page.emulateMedia({ colorScheme: 'light' });
     await page.waitForTimeout(150);
     await closeMore(page);
+    /* Two routes into the same sheet since plans/037: the header's "⋯"
+       (plans/034) and the bar's "Más". Everything above came in by the bar;
+       this is the other one, which nothing else covers. */
+    await openMore(page);
+    ok('the header\'s ⋯ opens the same "Más" sheet the bar does',
+       await page.locator('#moreSheet.up').count() === 1);
+    await closeMore(page);
 
     console.log('\n== XSS: hostile imported block ==');
     await page.evaluate(() => { window.__xss = false; });
@@ -3187,7 +3194,6 @@ const ok = (name, cond, extra) => {
     await answerDialog(page, true, 'Bloque 2'); /* the name prompt */
     await page.waitForFunction(() => (document.getElementById('title').textContent || '').includes('Bloque 2'));
     ok('the new block opens on week 1', (await page.textContent('#title')).includes('Bloque 2'));
-    await closeBlocks(page);
 
     const card = page.locator('.ex').first();
     const wIn = card.locator('.set-row').first().locator('input').first();
