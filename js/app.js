@@ -965,7 +965,6 @@ $('askInput').addEventListener('keydown', e => {
    stick. Stored with the rest of the state, so it rides along in backups. */
 const THEME_ORDER = ['auto', 'light', 'dark'];
 const THEME_LABEL = { auto: 'automático', light: 'claro', dark: 'oscuro' };
-const THEME_ICON = { auto: '◐', light: '☀', dark: '☾' };
 
 /* "auto" is resolved into an explicit light/dark right here — the same
    thing js/theme-init.js does before this script has even loaded, so the
@@ -980,7 +979,10 @@ function applyTheme() {
   const t = (state.prefs && state.prefs.theme) || 'auto';
   document.documentElement.setAttribute('data-theme', t === 'auto' ? (systemPrefersDark() ? 'dark' : 'light') : t);
   const b = $('themeBtn');
-  b.textContent = THEME_ICON[t];
+  /* The row's own hint, not its whole text: since plans/037 "Tema" is a
+     labelled row in "Más" rather than a one-glyph button, and writing
+     textContent here would take the label with it. */
+  $('themeHint').textContent = THEME_LABEL[t];
   b.title = 'Tema ' + THEME_LABEL[t];
   b.setAttribute('aria-label', 'Tema ' + THEME_LABEL[t] + ' — cambiar');
 }
@@ -2739,6 +2741,19 @@ function takeFocusMark(root) {
   }
 }
 
+/* The bar goes away while a box in the list has the keyboard. iOS has no
+   `interactive-widget` viewport segment, so the visual viewport does not
+   shrink and a `position: fixed` bar floats on top of the software
+   keyboard — which on a phone is exactly where the row being typed into
+   is (plans/031 § L8). Delegated on #list, which survives every redraw,
+   rather than bound per input on a card that is rebuilt on every tick. */
+$('list').addEventListener('focusin', e => {
+  if (e.target && e.target.tagName === 'INPUT') $('app').classList.add('kb-open');
+});
+$('list').addEventListener('focusout', e => {
+  if (e.target && e.target.tagName === 'INPUT') $('app').classList.remove('kb-open');
+});
+
 /* ---------- main render ----------
    Everything the app draws goes through here, so this is also the one place
    that has to survive bad data: if drawing throws, the recovery screen takes
@@ -3309,6 +3324,39 @@ function buildExCard(ctx, ex, i) {
      empty and there is nothing to point at. */
   const nextAt = est ? rows.findIndex(r => !r.done) : -1;
 
+  /* One answer for the greyed number in a set's weight box, read from two
+     places: the row that shows it, and the rest timer's "Siguiente" line,
+     which prices the set you are walking back to. Two copies of this would
+     disagree the first time the objetivo's rule moved — and the whole point
+     of the line is that it says what the box is about to say. */
+  function rowHint(si) {
+    const tgt = est && est.sets[si];
+    const own = priorWeight(profile, block.id, profile.week, day.id, ex.id, si);
+    /* No earlier week in this block: the previous block's last logged
+       session, same set index, last set when the plan has since grown —
+       the same fallback priorWeight applies within a block. */
+    const prv = (!tgt && !own && prior) ? (prior.sets[si] || prior.sets[prior.sets.length - 1]) : null;
+    return {
+      tgt,
+      hint: tgt ? loadText(tgt.w) : (own || (prv ? String(prv.w) : '')),
+      /* The whole parenthetical rather than a noun the line then glues "lo
+         de" in front of: "lo de el objetivo" is not Spanish. */
+      from: tgt ? 'lo que pide el objetivo de esta semana'
+        : own ? 'lo de la semana anterior'
+        : (prv ? 'lo de "' + prior.block.name + '", semana ' + prior.week : ''),
+    };
+  }
+
+  /* What the countdown is counting down TO. An empty second line under a
+     timer reads as something that failed to load, so the last set of a card
+     says so instead. */
+  function nextLine(si) {
+    if (!rows[si + 1]) return 'Última serie hecha';
+    const nx = rowHint(si + 1);
+    return 'Siguiente: serie ' + (si + 2) +
+      (nx.hint ? ' · ' + nx.hint + ' ' + units() + (ex.reps ? ' × ' + ex.reps : '') : '');
+  }
+
   rows.forEach((r, si) => {
     if (r.done) {
       stat.tonnage += setVolume(r);
@@ -3342,18 +3390,7 @@ function buildExCard(ctx, ex, i) {
        target rather than a copy of last week. Which is also what makes
        "Copiar pesos" and the line above agree by construction instead of
        by two implementations happening to say the same thing. */
-    const tgtRow = est && est.sets[si];
-    const ownHint = priorWeight(profile, block.id, profile.week, day.id, ex.id, si);
-    /* No earlier week in this block: the previous block's last logged
-       session, same set index, last set when the plan has since grown —
-       the same fallback priorWeight applies within a block. */
-    const priorRow = (!tgtRow && !ownHint && prior) ? (prior.sets[si] || prior.sets[prior.sets.length - 1]) : null;
-    const hint = tgtRow ? loadText(tgtRow.w) : (ownHint || (priorRow ? String(priorRow.w) : ''));
-    /* The whole parenthetical rather than a noun the line then glues "lo de"
-       in front of: "lo de el objetivo" is not Spanish. */
-    const hintFrom = tgtRow ? 'lo que pide el objetivo de esta semana'
-      : ownHint ? 'lo de la semana anterior'
-      : (priorRow ? 'lo de "' + prior.block.name + '", semana ' + prior.week : '');
+    const { tgt: tgtRow, hint, from: hintFrom } = rowHint(si);
     wIn.value = r.w; rIn.value = r.r;
     rirIn.value = r.rir == null ? '' : r.rir;
     wIn.placeholder = hint || '—';
@@ -3425,7 +3462,7 @@ function buildExCard(ctx, ex, i) {
       }
       r.done = !r.done;
       recordTargetOnStart(profile, block, day, ex, rows, wasSession, est);
-      if (r.done && ex.rest) startRest(ex.rest, ex.n + ' · serie ' + (si + 1));
+      if (r.done && ex.rest) startRest(ex.rest, ex.n + ' · serie ' + (si + 1), nextLine(si));
       if (r.done && !ex.rest) stopRest();
       /* The tick that finishes the whole day counts as a session — see
          maybeNagBackup. dayCards holds every card's rows by live reference,
@@ -5661,12 +5698,61 @@ $('bCsv').onclick = () => {
 registerSheet('profileSheet', { closeBtn: 'profileClose' });
 registerSheet('blockSheet', { closeBtn: 'blockClose' });
 registerSheet('moreSheet', { closeBtn: 'moreClose' });
+/* The bar's other two hubs, app.js's own for the same reason (plans/037).
+   Their rows belong to five different files, but the sheets around them do
+   not. */
+registerSheet('progressSheet', { closeBtn: 'progressClose' });
+registerSheet('planHubSheet', { closeBtn: 'planHubClose' });
 /* The card's "⋯" menu is app.js's own too, and its five rows are rewired on
    every open by openExMenu — only the sheet's own close belongs here. */
 registerSheet('exMenuSheet', { closeBtn: 'exMenuClose' });
 $('profileBtn').onclick = () => openSheet('profileSheet');
 $('blockBtn').onclick = () => openSheet('blockSheet');
 $('moreBtn').onclick = () => openSheet('moreSheet');
+
+/* ---------- the bar ----------
+   Three of the four open a hub; Sesión is the page you are already on, so
+   it keeps aria-current and does the only two things left: put away
+   whatever hub is up, and take you back to the top of the day. A route
+   model would buy nothing here — there is one screen and three sheets. */
+const HUBS = ['progressSheet', 'planHubSheet', 'moreSheet'];
+$('navProgress').onclick = () => openSheet('progressSheet');
+$('navPlan').onclick = () => openSheet('planHubSheet');
+$('navMore').onclick = () => openSheet('moreSheet');
+$('navSession').onclick = () => {
+  HUBS.forEach(id => { if ($(id).classList.contains('up')) closeSheet(id); });
+  $('main').scrollIntoView({ block: 'start' });
+};
+
+/* A hub row that opens another sheet puts the hub away first, so the stack
+   holds one sheet rather than a dashboard with a hub underneath it that
+   Escape then has to be pressed twice to leave.
+
+   In the capture phase, which is the half that matters: closing the hub
+   AFTER the row's own handler has run pulls focus back out of the sheet
+   that just opened (closeSheet returns it to whatever opened the hub), and
+   leaves that sheet's own return target pointing at a row that is no longer
+   on screen. Closing first means the row's openSheet() records the bar
+   button as its return target, which is where Escape should land.
+
+   data-keep-open is for the one row that opens nothing: "Tema" cycles in
+   place and the sheet has to still be there to show what it cycled to. */
+HUBS.forEach(id => {
+  $(id).addEventListener('click', e => {
+    const row = e.target && e.target.closest ? e.target.closest('.sheet-row') : null;
+    if (!row || row.dataset.keepOpen) return;
+    closeSheet(id);
+  }, true);
+});
+
+/* It is a field in Ajustes, not a setting of its own — this row is the
+   shortcut to it, and the focus is what stops "Aviso con la pantalla
+   apagada" opening a long sheet and leaving you to find it. */
+$('bgAlarmBtn').onclick = () => {
+  openSetup(false);
+  const seg = $('setupBgAlarm').querySelector('.seg-btn[aria-pressed="true"]') || $('setupBgAlarm').querySelector('.seg-btn');
+  if (seg) seg.focus();
+};
 
 $('weekBtn').onclick = () => { expandedWeek = !expandedWeek; applyWeekPanel(); };
 

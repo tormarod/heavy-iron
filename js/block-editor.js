@@ -49,31 +49,12 @@ function renderBlockBar() {
   chip.innerHTML = '<span class="chip-lbl"></span><span class="chev" aria-hidden="true">▾</span>';
   chip.querySelector('.chip-lbl').textContent = label;
   chip.setAttribute('aria-label', 'Bloque: ' + label + '. Cambiar');
-
-  const newBtn = document.createElement('button');
-  newBtn.className = 'sm';
-  newBtn.textContent = '+ Nuevo bloque';
-  newBtn.onclick = () => newBlock();
-  host.appendChild(newBtn);
-
-  const reviewBtn = document.createElement('button');
-  reviewBtn.className = 'sm';
-  reviewBtn.textContent = 'Revisión';
-  reviewBtn.onclick = openReview;
-  host.appendChild(reviewBtn);
-
-  const importBtn = document.createElement('button');
-  importBtn.className = 'sm';
-  importBtn.textContent = 'Importar JSON';
-  importBtn.onclick = openImportSheet;
-  host.appendChild(importBtn);
-
-  const manageBtn = document.createElement('button');
-  manageBtn.className = 'sm';
-  manageBtn.textContent = 'Gestionar';
-  manageBtn.onclick = openBlockManager;
-  host.appendChild(manageBtn);
 }
+/* The picker and nothing else. The four buttons this used to build on every
+   render — "+ Nuevo bloque", "Revisión", "Importar JSON", "Gestionar" — are
+   markup now, three in the bar's "Plan" hub and the review in "Progreso",
+   with ids of their own and handlers bound once in wireBlockEditor and
+   wireReview (plans/037). */
 
 /* ---------- deleting blocks ----------
    The one rule: deleting somebody else's block must not move you. Only
@@ -1095,6 +1076,19 @@ function wireBlockEditor() {
      shipped plan — so the prompt keeps the generic example. Reopened from
      "Ajustes" later, the block is real and goes in. */
   $('setupCopyPrompt').onclick = () => copyBlockPrompt($('setupImportStatus'), { withBlock: !!state.setupDone });
+
+  /* The three block actions the "Plan" hub took over from renderBlockBar.
+     Null-guarded, and #editPlan below is not, because these three ids are
+     NEW to the shell and that one is the footer's own, moved: this file is
+     precached in every already-deployed shell, so a precache hole can serve
+     this copy of it against an index.html that has never heard of
+     #newBlockBtn. wireBlockEditor() is one of the two unguarded calls in
+     app.js's tail, so a throw here would take load() with it and leave the
+     app on "Cargando tu registro…" — AGENTS.md's precache-hole rule, which
+     covers ids exactly as it covers symbols. */
+  if ($('newBlockBtn')) $('newBlockBtn').onclick = () => newBlock();
+  if ($('importBtn')) $('importBtn').onclick = openImportSheet;
+  if ($('manageBtn')) $('manageBtn').onclick = openBlockManager;
 
   $('editPlan').onclick = () => {
     peDraftBlock = JSON.parse(JSON.stringify(getBlock()));

@@ -29,7 +29,10 @@ let tId = null, tEndAt = 0, tTotal = 0, tOverNotified = false;
 let wakeLock = null;
 let tLabel = '';
 
-function startRest(sec, label) {
+/* `next` names the set you are walking back to, and is optional: an old
+   cached app.js calls this with two arguments and the line simply stays
+   empty. */
+function startRest(sec, label, next) {
   if (!sec) return;
   clearInterval(tId);
   stopAlarmLoop();
@@ -37,6 +40,17 @@ function startRest(sec, label) {
   tTotal = sec; tOverNotified = false; tLabel = label;
   $('timer').classList.add('up');
   $('timer').classList.remove('over');
+  /* Both guarded: this file is precached in every deployed shell and #tnext
+     and #navBar arrived with plans/037's markup, so a precache hole can
+     serve this copy against an index.html that has neither — and an
+     unguarded read would throw before the countdown ever started
+     (AGENTS.md's precache-hole rule, which covers ids as it does symbols). */
+  const n = $('tnext');
+  if (n) n.textContent = next || '';
+  /* The timer takes the bar's place rather than stacking on top of it:
+     that is what buys the three controls 44px each (plans/037). */
+  const nav = $('navBar');
+  if (nav) nav.hidden = true;
   $('tlbl').textContent = 'Descanso · ' + label;
   $('tmsg').setAttribute('aria-live', 'polite');
   $('tmsg').textContent = 'Prueba de la frase: si puedes hablar sin quedarte sin aire, ya estás listo.';
@@ -85,6 +99,8 @@ function stopRest() {
   keepAliveStop();
   clearRestNotification();
   $('timer').classList.remove('up', 'over');
+  const nav = $('navBar');
+  if (nav) nav.hidden = false;
   releaseWakeLock();
 }
 /* The prescribed rest is a starting point, not a rule: the machine is still
@@ -184,10 +200,13 @@ function beep() {
   } catch (e) { /* ignore — never let the alarm break the countdown */ }
 }
 
+/* aria-checked, not aria-pressed: since plans/037 this is a labelled switch
+   ("Aviso sonoro") rather than a four-letter toggle button, and role=switch
+   is the one that carries a checked state. */
 function renderSoundBtn() {
   const b = $('tsound');
   const on = !!state.prefs.sound;
-  b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  b.setAttribute('aria-checked', on ? 'true' : 'false');
   b.title = on ? 'Aviso sonoro activado' : 'Aviso sonoro desactivado';
 }
 
