@@ -3173,6 +3173,11 @@ function buildExCard(ctx, ex, i) {
       '<span class="ex-pos" aria-hidden="true">' + (i + 1) + '</span>' +
       '<button type="button" class="ex-name-btn" aria-expanded="' + (moreOpen ? 'true' : 'false') + '">' +
         '<span class="ex-name"></span>' +
+        /* Outside the clamped name, not inside it: -webkit-line-clamp
+           counts the badges' own line, so a name that fills both lines
+           took JUNTOS and RÉCORD away with the third. The badge is the
+           point of the badge. */
+        '<span class="ex-badges"></span>' +
         '<span class="ex-meta"></span>' +
       '</button>' +
       '<button type="button" class="ex-menu-btn">⋯</button>' +
@@ -3213,15 +3218,18 @@ function buildExCard(ctx, ex, i) {
 
   const nameEl = card.querySelector('.ex-name');
   nameEl.appendChild(document.createTextNode(ex.n));
+  /* Still the first child of .ex-name, which is how three smoke cases read
+     an exercise's name off a card — the badges are what moved out. */
+  const badgeEl = card.querySelector('.ex-badges');
   if (!soloMode()) {
     const s = document.createElement('span');
     s.className = 'badge ' + (ex.share ? 'together' : 'solo');
     s.textContent = ex.share ? 'JUNTOS' : 'SOLO';
-    nameEl.appendChild(s);
+    badgeEl.appendChild(s);
   }
-  if (ex.ss) { const s = document.createElement('span'); s.className = 'ss'; s.textContent = 'SS'; nameEl.appendChild(s); }
-  if (cardPr) { const s = document.createElement('span'); s.className = 'badge pr'; s.textContent = 'RÉCORD'; nameEl.appendChild(s); }
-  else if (cardPrE) { const s = document.createElement('span'); s.className = 'badge pr-e1rm'; s.textContent = 'RÉCORD 1RM'; nameEl.appendChild(s); }
+  if (ex.ss) { const s = document.createElement('span'); s.className = 'ss'; s.textContent = 'SS'; badgeEl.appendChild(s); }
+  if (cardPr) { const s = document.createElement('span'); s.className = 'badge pr'; s.textContent = 'RÉCORD'; badgeEl.appendChild(s); }
+  else if (cardPrE) { const s = document.createElement('span'); s.className = 'badge pr-e1rm'; s.textContent = 'RÉCORD 1RM'; badgeEl.appendChild(s); }
   if (ex.alt) card.querySelector('.ex-alt').textContent = ex.alt;
   if (ex.cue) card.querySelector('.ex-cue').textContent = ex.cue;
 
