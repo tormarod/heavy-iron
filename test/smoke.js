@@ -2969,6 +2969,7 @@ const ok = (name, cond, extra) => {
     await answerDialog(page, true, 'Bloque 2'); /* the name prompt */
     await page.waitForFunction(() => (document.getElementById('title').textContent || '').includes('Bloque 2'));
     ok('the new block opens on week 1', (await page.textContent('#title')).includes('Bloque 2'));
+    await closeBlocks(page);
 
     const card = page.locator('.ex').first();
     const wIn = card.locator('.set-row').first().locator('input').first();
