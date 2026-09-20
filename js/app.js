@@ -3154,11 +3154,15 @@ function buildExCard(ctx, ex, i) {
      the rest, and a preview of the machine settings so you can read them
      without opening anything. Same 28-character truncation the ⚙ button's
      own label used, and for the same reason — it is a preview, not the
-     field. */
+     field. Recomputed rather than stamped once, because the field that
+     feeds its last third sits two lines below it in the fold: typing there
+     does not redraw the card, and a preview showing the seat height you
+     just changed away from is worse than no preview. */
   const restTxt = ex.rest
     ? 'desc. ' + (ex.rest >= 60 ? (ex.rest / 60).toFixed(ex.rest % 60 ? 1 : 0).replace('.0', '') + ' min' : ex.rest + 's')
     : 'superserie →';
-  const setupTxt = ex.setup ? (ex.setup.length > 28 ? ex.setup.slice(0, 28) + '…' : ex.setup) : '';
+  const metaText = () => n + ' × ' + ex.reps + ' · ' + restTxt +
+    (ex.setup ? ' · ' + (ex.setup.length > 28 ? ex.setup.slice(0, 28) + '…' : ex.setup) : '');
 
   card.innerHTML =
     '<div class="ex-head">' +
@@ -3169,8 +3173,7 @@ function buildExCard(ctx, ex, i) {
       '<span class="ex-pos" aria-hidden="true">' + (i + 1) + '</span>' +
       '<button type="button" class="ex-name-btn" aria-expanded="' + (moreOpen ? 'true' : 'false') + '">' +
         '<span class="ex-name"></span>' +
-        '<span class="ex-meta">' + n + ' × ' + esc(ex.reps) + ' · ' + esc(restTxt) +
-          (setupTxt ? ' · ' + esc(setupTxt) : '') + '</span>' +
+        '<span class="ex-meta"></span>' +
       '</button>' +
       '<button type="button" class="ex-menu-btn">⋯</button>' +
     '</div>' +
@@ -3204,6 +3207,9 @@ function buildExCard(ctx, ex, i) {
       ? 'Hay 1 serie registrada por encima de las que pide el plan. Se guarda: sube las series de este ejercicio para volver a verla.'
       : 'Hay ' + parked + ' series registradas por encima de las que pide el plan. Se guardan: sube las series de este ejercicio para volver a verlas.';
   }
+
+  const metaEl = card.querySelector('.ex-meta');
+  metaEl.textContent = metaText();
 
   const nameEl = card.querySelector('.ex-name');
   nameEl.appendChild(document.createTextNode(ex.n));
@@ -3255,7 +3261,12 @@ function buildExCard(ctx, ex, i) {
      session would otherwise offer seven fields called "Ajustes de
      máquina". It still starts with the visible text (SC 2.5.3). */
   setupIn.setAttribute('aria-label', 'Ajustes de máquina de ' + ex.n);
-  setupIn.oninput = e => { const v = e.target.value; if (v) ex.setup = v; else delete ex.setup; save(); };
+  setupIn.oninput = e => {
+    const v = e.target.value;
+    if (v) ex.setup = v; else delete ex.setup;
+    metaEl.textContent = metaText();
+    save();
+  };
   /* Marked, not focused, and only when the "⋯" menu's own row is what
      opened it. Focusing on every draw was a workaround for render()
      rebuilding the card on every set tick; it also meant that leaving a

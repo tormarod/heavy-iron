@@ -244,7 +244,7 @@ console.log('\n== a precache hole: app.js boots without each split file (AGENTS.
 const smokeSrc = fs.readFileSync(path.join(ROOT, 'test/smoke.js'), 'utf8');
 const sleeps = (smokeSrc.match(/waitForTimeout\(/g) || []).length;
 ok('test/smoke.js does not gain fixed sleeps (plans/008 item 21: ' + sleeps + ' now; replace, do not add)',
-   sleeps <= 209, String(sleeps));
+   sleeps <= 208, String(sleeps));
 
 /* js/theme-init.js runs in <head>, before app.js defines anything, so it has
    to spell the storage key out as a literal. Its own comment says a renamed
