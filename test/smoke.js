@@ -113,6 +113,15 @@ const closeSheetVia = async (page, btn, sheet) => {
 const closeBlocks = page => closeSheetVia(page, '#blockClose', '#blockSheet');
 const closeMore = page => closeSheetVia(page, '#moreClose', '#moreSheet');
 
+/* plans/037 did it once more, to the whole shell: the nine footer buttons
+   and the block bar's four are four destinations now, three of which open a
+   hub. Same shape as the two above — the tap, and nothing else — and no
+   partner to close it: a hub row that opens another sheet closes its hub on
+   the way (js/app.js), so the only thing left standing is what you asked
+   for. #copyPrev and #calcBtn are on the page and need none of this. */
+const HUB_OF = { progress: ['#navProgress', '#progressSheet'], plan: ['#navPlan', '#planHubSheet'], more: ['#navMore', '#moreSheet'] };
+const openHub = (page, which) => openSheetVia(page, HUB_OF[which][0], HUB_OF[which][1]);
+
 /* plans/036 did the same to the card: "Progreso ↗", the two order arrows,
    the ⚙ settings line and the calculator are all one tap further in, four
    of them behind the "⋯" and the machine settings behind the name as well.
@@ -353,6 +362,7 @@ const ok = (name, cond, extra) => {
       return blockTonnageByWeek(profile, block)[0] === 100;
     }));
 
+    await openHub(page, 'progress');
     await page.click('#volumeBtn');
     ok('the volume sheet opens', await page.locator('#volumeSheet.up').count() === 1);
     const kgStrip = await page.textContent('#volumeTonnage');
@@ -414,6 +424,7 @@ const ok = (name, cond, extra) => {
     ok('close hides it', await page.locator('#volumeSheet.up').count() === 0);
 
     console.log('\n== plan editor: muscle tag is freeform text ==');
+    await openHub(page, 'plan');
     await page.click('#editPlan');
     const day0 = page.locator('.pe-day').first();
     ok('chest press starts tagged Pecho', await day0.locator('.pe-ex').nth(0).locator('.f-muscle').inputValue() === 'Pecho');
@@ -425,6 +436,7 @@ const ok = (name, cond, extra) => {
     ok('typing a custom tag and saving persists it verbatim', await page.evaluate(() =>
       state.profiles.hombre.blocks['block-1'].days[0].ex.find(e => e.id === 'facepull').muscle) === 'Pantorrilla externa');
 
+    await openHub(page, 'plan');
     await page.click('#editPlan');
     await page.locator('.pe-day').first().locator('.pe-ex').nth(0).locator('.f-muscle').fill('');
     await page.click('#peSave');
@@ -433,6 +445,7 @@ const ok = (name, cond, extra) => {
       !('muscle' in state.profiles.hombre.blocks['block-1'].days[0].ex.find(e => e.id === 'chestpress'))));
 
     console.log('\n== plan editor: pattern/type tags, same freeform shape as muscle ==');
+    await openHub(page, 'plan');
     await page.click('#editPlan');
     const day0b = page.locator('.pe-day').first();
     ok('pattern starts blank (unclassified)', await day0b.locator('.pe-ex').nth(0).locator('.f-pattern').inputValue() === '');
@@ -448,6 +461,7 @@ const ok = (name, cond, extra) => {
       return ex.pattern === 'Empuje horizontal' && ex.type === 'Compuesto';
     }));
 
+    await openHub(page, 'plan');
     await page.click('#editPlan');
     await page.locator('.pe-day').first().locator('.pe-ex').nth(0).locator('.f-pattern').fill('');
     await page.locator('.pe-day').first().locator('.pe-ex').nth(0).locator('.f-type').fill('');
@@ -503,6 +517,7 @@ const ok = (name, cond, extra) => {
 
     console.log('\n== in-app dialogs ==');
     ok('no native dialog fired during the run', alertText === null, String(alertText));
+    await openHub(page, 'more');
     await page.click('#clearDay');
     ok('a confirmation sheet opens', await page.locator('#askSheet.up').count() === 1);
     ok('it says what will go', (await page.textContent('#askBody')).includes('semana'));
@@ -511,6 +526,7 @@ const ok = (name, cond, extra) => {
 
     console.log('\n== undo ==');
     const doneBefore = await page.locator('.set-row.done').count();
+    await openHub(page, 'more');
     await page.click('#clearDay');
     await answerDialog(page, true);
     ok('confirming clears the day', await page.locator('.set-row.done').count() === 0, 'was ' + doneBefore);
@@ -523,6 +539,7 @@ const ok = (name, cond, extra) => {
     await openWeeks(page);
     ok('a fresh block shows 8 weeks', await page.locator('.wk').count() === 8);
     ok('week 8 is the deload', (await page.locator('.wk').nth(7).textContent()) === 'DL');
+    await openHub(page, 'plan');
     await page.click('#editPlan');
     await page.fill('#peWeeks', '5');
     await page.waitForTimeout(200);
@@ -543,6 +560,7 @@ const ok = (name, cond, extra) => {
     ok('nothing is stranded while the log still fits', !(await page.locator('#beyond').isVisible()));
 
     // one week: now the week-2 sets are past the end
+    await openHub(page, 'plan');
     await page.click('#editPlan');
     await page.fill('#peWeeks', '1');
     await page.waitForTimeout(150);
@@ -553,6 +571,7 @@ const ok = (name, cond, extra) => {
     ok('the current week is pulled back into range', await page.evaluate(() => getProfile().week) === 1);
 
     // back to 8 so the rest of the run sees a normal block
+    await openHub(page, 'plan');
     await page.click('#editPlan');
     await page.fill('#peWeeks', '8');
     await page.waitForTimeout(150);
@@ -562,8 +581,8 @@ const ok = (name, cond, extra) => {
     ok('lengthening brings the stranded weeks back', !(await page.locator('#beyond').isVisible()));
 
     console.log('\n== a new block is named in-app ==');
-    await openBlocks(page);
-    await page.click('#blockbar >> text=+ Nuevo bloque');
+    await openHub(page, 'plan');
+    await page.click('#newBlockBtn');
     /* The block being left has sets logged by now, so the review is
        offered first — see the block-review section further down. Decline
        it here; this case is about the name prompt behind it. */
@@ -575,6 +594,11 @@ const ok = (name, cond, extra) => {
     ok('the name prompt is an in-app sheet', await page.locator('#askInput').isVisible());
     await answerDialog(page, true, 'Bloque de prueba');
     ok('the block is created with that name', (await page.textContent('#title')).includes('Bloque de prueba'));
+    /* The block sheet is the picker and nothing else since plans/037 moved
+       its four actions into the "Plan" hub, so this is what is left covering
+       it — and the new block has to be in the list it draws. */
+    await openBlocks(page);
+    ok('the block picker lists both blocks', await page.locator('#blockbar select option').count() === 2);
     await closeBlocks(page);
 
     console.log('\n== progress across every block ==');
@@ -644,17 +668,17 @@ const ok = (name, cond, extra) => {
     // palette only needs declaring once in css/style.css (plans/008 item 20)
     ok('starts on auto, resolved to the browser default (light)',
        await page.evaluate(() => document.documentElement.getAttribute('data-theme')) === 'light');
-    await openMore(page);
+    await openHub(page, 'more');
     await page.click('#themeBtn');
     ok('cycles to light', await page.evaluate(() => document.documentElement.getAttribute('data-theme')) === 'light');
-    await openMore(page);
+    await openHub(page, 'more');
     await page.click('#themeBtn');
     ok('cycles to dark', await page.evaluate(() => document.documentElement.getAttribute('data-theme')) === 'dark');
     const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
     ok('dark theme actually repaints body', bg === 'rgb(15, 17, 19)', bg);
     await page.reload({ waitUntil: 'networkidle' });
     ok('theme choice persists', await page.evaluate(() => document.documentElement.getAttribute('data-theme')) === 'dark');
-    await openMore(page);
+    await openHub(page, 'more');
     await page.click('#themeBtn'); // back to auto
     ok('back on auto', await page.evaluate(() => document.documentElement.getAttribute('data-theme')) === 'light');
 
@@ -671,8 +695,8 @@ const ok = (name, cond, extra) => {
 
     console.log('\n== XSS: hostile imported block ==');
     await page.evaluate(() => { window.__xss = false; });
-    await openBlocks(page);
-    await page.click('#blockbar >> text=Importar JSON');
+    await openHub(page, 'plan');
+    await page.click('#importBtn');
     const hostile = JSON.stringify({
       name: '<img src=x onerror="window.__xss=true">Bloque malo',
       days: [{
@@ -691,8 +715,8 @@ const ok = (name, cond, extra) => {
     ok('no injected img element in the card', await page.locator('.ex img').count() === 0);
 
     console.log('\n== import validation ==');
-    await openBlocks(page);
-    await page.click('#blockbar >> text=Importar JSON');
+    await openHub(page, 'plan');
+    await page.click('#importBtn');
     await page.fill('#importBlob', JSON.stringify({ name: 'Enorme', days: Array.from({ length: 40 }, (_, i) => ({ name: 'd' + i, ex: [{ n: 'x', reps: '5' }] })) }));
     await page.click('#importFromText');
     ok('too many days rejected', (await page.textContent('#importError')).includes('Demasiados días'));
@@ -713,8 +737,8 @@ const ok = (name, cond, extra) => {
       const body = await (await fetch(BASE + '/blocks/' + f)).text();
       // a successful import closes the sheet, so reopen it each time round
       if (await page.locator('#importSheet.up').count() === 0) {
-        await openBlocks(page);
-        await page.click('#blockbar >> text=Importar JSON');
+        await openHub(page, 'plan');
+        await page.click('#importBtn');
       }
       await page.fill('#importBlob', body);
       await page.click('#importFromText');
@@ -723,8 +747,8 @@ const ok = (name, cond, extra) => {
       ok('blocks/' + f + ' imports cleanly', err === '', err);
       ok('blocks/' + f + ' became the active block', (await page.textContent('#title')).length > 0);
     }
-    await openBlocks(page);
-    await page.click('#blockbar >> text=Importar JSON');
+    await openHub(page, 'plan');
+    await page.click('#importBtn');
 
     console.log('\n== import: freeform muscle field ==');
     await page.fill('#importBlob', JSON.stringify({
@@ -744,8 +768,8 @@ const ok = (name, cond, extra) => {
        await page.evaluate(() => !('muscle' in getBlock().days[0].ex[1])));
     ok('a missing muscle tag is left absent',
        await page.evaluate(() => !('muscle' in getBlock().days[0].ex[2])));
-    await openBlocks(page);
-    await page.click('#blockbar >> text=Importar JSON');
+    await openHub(page, 'plan');
+    await page.click('#importBtn');
 
     console.log('\n== import: freeform pattern/type fields ==');
     await page.fill('#importBlob', JSON.stringify({
@@ -771,20 +795,22 @@ const ok = (name, cond, extra) => {
       const ex = getBlock().days[0].ex[2];
       return !('pattern' in ex) && !('type' in ex);
     }));
-    await openBlocks(page);
-    await page.click('#blockbar >> text=Importar JSON');
+    await openHub(page, 'plan');
+    await page.click('#importBtn');
 
     console.log('\n== escape closes sheets ==');
     ok('import sheet open', await page.locator('#importSheet.up').count() === 1);
     await page.keyboard.press('Escape');
     ok('escape closed it', await page.locator('#importSheet.up').count() === 0);
-    /* And the sheet it opened from is still there underneath, which is what
-       the stack in openSheet/closeSheet is for. A second Escape would take
-       it too; this takes the documented route. */
-    ok('the block sheet it opened from is still up', await page.locator('#blockSheet.up').count() === 1);
-    await closeBlocks(page);
+    /* And nothing is left underneath: a hub row that opens another sheet
+       closes its hub on the way (plans/037), so one Escape puts you back on
+       the page rather than on a dashboard you never asked to return to. The
+       stack in openSheet/closeSheet still has a nesting case of its own —
+       #qrSheet over the backup sheet, further down. */
+    ok('the Plan hub it opened from is already closed', await page.locator('#planHubSheet.up').count() === 0);
 
     console.log('\n== backup / restore validation ==');
+    await openHub(page, 'more');
     await page.click('#backup');
     ok('backup sheet opens', await page.locator('#sheet.up').count() === 1);
     ok('backup blob is valid JSON', await page.evaluate(() => { try { return !!JSON.parse(document.getElementById('blob').value).data.profiles; } catch (e) { return false; } }));
@@ -1124,16 +1150,20 @@ const ok = (name, cond, extra) => {
     await page.keyboard.press('Escape');
     /* No sleep: the Escape handler moves focus synchronously, and press()
        resolves after the page has run it.
-       The backup sheet was opened from #backup and the QR sheet from a button
-       inside it. With one shared return slot (before plans/009 item 1) the QR
-       sheet overwrote it on open and nulled it on close, so closing the backup
-       sheet afterwards left focus on <body> and a keyboard user lost their
-       place. Each sheet carries its own return target now. */
-    ok('focus returns to the button that opened the backup sheet, after a sheet opened over it',
-       await page.evaluate(() => document.activeElement && document.activeElement.id) === 'backup',
+       The backup sheet was opened from a row in "Más" and the QR sheet from
+       a button inside it. With one shared return slot (before plans/009 item
+       1) the QR sheet overwrote it on open and nulled it on close, so closing
+       the backup sheet afterwards left focus on <body> and a keyboard user
+       lost their place. Each sheet carries its own return target now.
+       #navMore, not #backup: the hub closes before the row's own handler
+       runs, which hands the focus back to the bar button first, and that is
+       what the backup sheet then records (plans/037). */
+    ok('focus returns to the bar button the backup sheet was reached from, after a sheet opened over it',
+       await page.evaluate(() => document.activeElement && document.activeElement.id) === 'navMore',
        await page.evaluate(() => document.activeElement && document.activeElement.id));
 
     console.log('\n== plan editor still works ==');
+    await openHub(page, 'plan');
     await page.click('#editPlan');
     ok('editor opens', await page.locator('#planSheet.up').count() === 1);
     ok('editor lists days', await page.locator('.pe-day').count() >= 1);
@@ -1151,6 +1181,7 @@ const ok = (name, cond, extra) => {
     console.log('\n== solo mode ==');
     await openProfiles(page);
     await page.click('.profile-btn >> nth=0');   // back to the first profile
+    await openHub(page, 'more');
     await page.click('#settings');
     ok('settings hides the starting-plan question', !(await page.locator('#setupPlanField').isVisible()));
     await page.click('#setupMode >> text=Solo yo');
@@ -1164,6 +1195,7 @@ const ok = (name, cond, extra) => {
     ok('no JUNTOS/SOLO badges on any exercise', await page.locator('.badge.together, .badge.solo').count() === 0);
     ok('the pair note is hidden', !(await page.locator('#pair').isVisible()));
     ok('the shared-station stripe is gone', await page.locator('.ex.shared').count() === 0);
+    await openHub(page, 'plan');
     await page.click('#editPlan');
     ok('plan editor hides the shared-station checkbox', !(await page.locator('.pe-check-share').first().isVisible()));
     ok('plan editor hides the pair note field', !(await page.locator('.pe-day-pair').first().isVisible()));
@@ -1172,6 +1204,7 @@ const ok = (name, cond, extra) => {
        await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('heavy-iron-v1')).profiles).length) === 2);
 
     // and back again, with nothing lost
+    await openHub(page, 'more');
     await page.click('#settings');
     await page.click('#setupMode >> text=Dos personas');
     await page.click('#setupSave');
@@ -1180,6 +1213,7 @@ const ok = (name, cond, extra) => {
        && await page.locator('.badge.together, .badge.solo').count() > 0);
 
     console.log('\n== moving one profile between phones ==');
+    await openHub(page, 'more');
     await page.click('#backup');
     ok('there is an export button per person', await page.locator('#profileExports button').count() === 2);
     ok('a dialog raised from inside a sheet is on top of it', await page.evaluate(() => {
@@ -1253,6 +1287,7 @@ const ok = (name, cond, extra) => {
     const setsBefore = await page.locator('.set-row.done').count();
     ok('a set was logged, to restore later', setsBefore > 0);
 
+    await openHub(page, 'more');
     await page.click('#backup');
     const goodBlob = await page.evaluate(() => document.getElementById('blob').value);
 
@@ -1281,6 +1316,7 @@ const ok = (name, cond, extra) => {
     await page.waitForTimeout(300);
     ok('the wipe actually took effect', await page.locator('.set-row.done').count() === 0);
 
+    await openHub(page, 'more');
     await page.click('#backup');
     await page.fill('#blob', goodBlob);
     await page.click('#bRestore');
@@ -1495,8 +1531,8 @@ const ok = (name, cond, extra) => {
     // and cache these requests — cross-origin, as this used to be, the
     // handler never ran and "importable offline once you've seen it" was
     // dead in production. Seeing it once online is the setup for that.
-    await openBlocks(page);
-    await page.click('#blockbar >> text=Importar JSON');
+    await openHub(page, 'plan');
+    await page.click('#importBtn');
     await page.waitForSelector('.import-item button');
     await page.locator('.import-item button').first().click();
     await page.waitForTimeout(400);
@@ -1506,8 +1542,8 @@ const ok = (name, cond, extra) => {
     await page.reload({ waitUntil: 'domcontentloaded' });
     await dismissSetup(page);
     await page.waitForTimeout(500);
-    await openBlocks(page);
-    await page.click('#blockbar >> text=Importar JSON');
+    await openHub(page, 'plan');
+    await page.click('#importBtn');
     await page.waitForTimeout(500);
     ok('the published-blocks list still loads offline',
        await page.locator('.import-item').count() > 0,
@@ -1671,8 +1707,8 @@ const ok = (name, cond, extra) => {
     await dismissSetup(page);
     await page.waitForTimeout(300);
 
-    await openBlocks(page);
-    await page.click('#blockbar >> text=Gestionar');
+    await openHub(page, 'plan');
+    await page.click('#manageBtn');
     await page.waitForTimeout(200);
     ok('the block manager sheet opens', await page.locator('#blocksSheet.up').count() === 1);
     await page.locator('.blk-row', { hasText: 'Bloque huérfano' }).locator('.blk-del').click();
@@ -1904,6 +1940,7 @@ const ok = (name, cond, extra) => {
     });
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForTimeout(300);
+    await openHub(page, 'progress');
     await page.click('#diagBtn');
     await page.waitForTimeout(300);
     ok('el diagnóstico se abre', await page.locator('#diagSheet.up').count() === 1);
@@ -1954,6 +1991,7 @@ const ok = (name, cond, extra) => {
     });
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForTimeout(300);
+    await openHub(page, 'progress');
     await page.click('#diagBtn');
     await page.waitForTimeout(300);
     const held = await page.evaluate(() => {
@@ -1996,6 +2034,7 @@ const ok = (name, cond, extra) => {
       }, weeks);
       await page.reload({ waitUntil: 'networkidle' });
       await page.waitForTimeout(300);
+      await openHub(page, 'progress');
       await page.click('#diagBtn');
       await page.waitForTimeout(300);
       const out = await page.evaluate(() => {
@@ -2077,6 +2116,7 @@ const ok = (name, cond, extra) => {
        (await page.evaluate(() => (JSON.parse(localStorage.getItem('heavy-iron-v1'))
           .profiles.hombre.blocks['block-1'].priority || []).join(','))) === 'Pecho,Espalda,Hombro');
 
+    await openHub(page, 'progress');
     await page.click('#volumeBtn');
     await page.waitForTimeout(200);
     ok('the volume sheet still opens on this week', await page.locator('#volumeSpan .seg-btn[data-span="week"]').getAttribute('aria-pressed') === 'true');
@@ -2115,6 +2155,7 @@ const ok = (name, cond, extra) => {
     });
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForTimeout(400);
+    await openHub(page, 'progress');
     await page.click('#volumeBtn');
     await page.waitForTimeout(150);
     await page.click('#volumeSpan .seg-btn[data-span="block"]');
@@ -2138,6 +2179,7 @@ const ok = (name, cond, extra) => {
     await page.waitForTimeout(200);
 
     /* Marking priorities is a chip you tap, not a field you type. */
+    await openHub(page, 'plan');
     await page.click('#editPlan');
     await page.waitForTimeout(300);
     const chips = () => page.evaluate(() => [...document.querySelectorAll('#pePriority .pri-chip')]
@@ -2201,6 +2243,7 @@ const ok = (name, cond, extra) => {
     });
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForTimeout(400);
+    await openHub(page, 'progress');
     await page.click('#diagBtn');
     await page.waitForTimeout(250);
 
@@ -2272,6 +2315,7 @@ const ok = (name, cond, extra) => {
     });
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForTimeout(400);
+    await openHub(page, 'progress');
     await page.click('#diagBtn');
     await page.waitForTimeout(200);
     await page.click('#diagView .seg-btn[data-view="freq"]');
@@ -2321,6 +2365,7 @@ const ok = (name, cond, extra) => {
     });
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForTimeout(400);
+    await openHub(page, 'progress');
     await page.click('#diagBtn');
     await page.waitForTimeout(200);
     await page.click('#diagView .seg-btn[data-view="index"]');
@@ -2382,6 +2427,7 @@ const ok = (name, cond, extra) => {
     });
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForTimeout(400);
+    await openHub(page, 'progress');
     await page.click('#diagBtn');
     await page.waitForTimeout(200);
     await page.click('#diagView .seg-btn[data-view="index"]');
@@ -2505,6 +2551,7 @@ const ok = (name, cond, extra) => {
     /* Same rule as the note and the energy chips: keyed by slot with no
        exercise under it, so it would still be sitting there when the day
        came back. */
+    await openHub(page, 'more');
     await page.click('#clearDay');
     await answerDialog(page, true);
     await page.waitForTimeout(400);
@@ -2726,6 +2773,7 @@ const ok = (name, cond, extra) => {
     await dismissSetup(page);
     await page.waitForTimeout(400);
 
+    await openHub(page, 'plan');
     await page.click('#editPlan');
     ok('editor opens', await page.locator('#planSheet.up').count() === 1);
     await page.click('#peSave');
@@ -2873,6 +2921,7 @@ const ok = (name, cond, extra) => {
     /* The note is keyed by slot with no exercise under it, so unlike an
        RIR on a row it would still be sitting there when the day came
        back. */
+    await openHub(page, 'more');
     await page.click('#clearDay');
     await answerDialog(page, true);
     await page.waitForTimeout(400);
@@ -2890,6 +2939,7 @@ const ok = (name, cond, extra) => {
     });
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForTimeout(400);
+    await openHub(page, 'more');
     await page.click('#wipe');
     await answerDialog(page, true);
     await page.waitForTimeout(500);
@@ -2976,10 +3026,10 @@ const ok = (name, cond, extra) => {
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForTimeout(400);
 
-    await openBlocks(page);
-    await page.click('#blockbar button:has-text("Revisión")');
+    await openHub(page, 'progress');
+    await page.click('#reviewBtn');
     await page.waitForTimeout(400);
-    ok('the review opens from the block bar', await page.locator('#reviewSheet.up').count() === 1);
+    ok('the review opens from the Progreso hub', await page.locator('#reviewSheet.up').count() === 1);
     const rows = await page.evaluate(() => [...document.querySelectorAll('.rev-row')]
       .map(r => r.dataset.tag + '|' + r.querySelector('.rev-n').textContent));
     ok('it reports strength per muscle',
@@ -3016,8 +3066,8 @@ const ok = (name, cond, extra) => {
 
     /* "+ Nuevo bloque" offers the review first, and picking it resumes the
        flow when the sheet closes instead of dead-ending. */
-    await openBlocks(page);
-    await page.click('#blockbar button:has-text("+ Nuevo bloque")');
+    await openHub(page, 'plan');
+    await page.click('#newBlockBtn');
     await page.waitForTimeout(300);
     ok('starting a new block offers the review of the one you are leaving',
        (await page.locator('#askBody').textContent()).includes('revisión'));
@@ -3033,8 +3083,8 @@ const ok = (name, cond, extra) => {
     await page.waitForTimeout(300);
 
     /* Declining goes straight to naming it, with no review in between. */
-    await openBlocks(page);
-    await page.click('#blockbar button:has-text("+ Nuevo bloque")');
+    await openHub(page, 'plan');
+    await page.click('#newBlockBtn');
     await page.waitForTimeout(300);
     await page.click('#askCancel');
     await page.waitForTimeout(400);
@@ -3048,8 +3098,8 @@ const ok = (name, cond, extra) => {
        continuation that would have asked to name a copied block is
        dropped — the pasted block is the next block. */
     const nextBlock = JSON.stringify({ name: 'Bloque siguiente', days: [{ name: 'Día A', ex: [{ n: 'Press banca', reps: '6–10', sets: 3 }] }] });
-    await openBlocks(page);
-    await page.click('#blockbar button:has-text("+ Nuevo bloque")');
+    await openHub(page, 'plan');
+    await page.click('#newBlockBtn');
     await page.waitForSelector('#askSheet.up');
     await page.click('#askOk');
     await page.waitForSelector('#reviewSheet.up');
@@ -3091,8 +3141,8 @@ const ok = (name, cond, extra) => {
     });
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForTimeout(400);
-    await openBlocks(page);
-    await page.click('#blockbar button:has-text("Revisión")');
+    await openHub(page, 'progress');
+    await page.click('#reviewBtn');
     await page.waitForTimeout(300);
     ok('an empty block says there is nothing to review yet',
        await page.locator('#reviewHost .chart-empty').count() === 1);
@@ -3131,8 +3181,8 @@ const ok = (name, cond, extra) => {
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForSelector('.ex');
 
-    await openBlocks(page);
-    await page.click('#blockbar button:has-text("+ Nuevo bloque")');
+    await openHub(page, 'plan');
+    await page.click('#newBlockBtn');
     await answerDialog(page, false);            /* "Crear sin repasar" */
     await answerDialog(page, true, 'Bloque 2'); /* the name prompt */
     await page.waitForFunction(() => (document.getElementById('title').textContent || '').includes('Bloque 2'));
@@ -3188,6 +3238,7 @@ const ok = (name, cond, extra) => {
     ok('the browser is asked to protect the log once setup is saved',
        await page.evaluate(() => state.prefs.persistAsked === true));
 
+    await openHub(page, 'more');
     await page.click('#backup');
     await page.waitForTimeout(400);
     const line = await page.textContent('#storageState');
@@ -3330,6 +3381,7 @@ const ok = (name, cond, extra) => {
        await page.evaluate(() => !navigator.mediaSession.metadata));
     await page.evaluate(() => stopRest());
 
+    await openHub(page, 'more');
     await page.click('#settings');
     await page.waitForTimeout(300);
     ok('the setting is in Ajustes', await page.locator('#setupBgField').isVisible());
@@ -3714,13 +3766,16 @@ const ok = (name, cond, extra) => {
     // exercising them here is what would surface a CSP violation the
     // "no Content-Security-Policy violations" check in "main session"
     // might not reach if this section's --only run skips that one.
+    await openHub(page, 'progress');
     await page.click('#diagBtn');
     await page.click('#diagView >> text=Frecuencia');
     await page.waitForTimeout(200);
     await page.click('#diagClose');
+    await openHub(page, 'progress');
     await page.click('#volumeBtn');
     await page.waitForTimeout(200);
     await page.click('#volumeClose');
+    await openHub(page, 'plan');
     await page.click('#editPlan');
     await page.waitForTimeout(200);
     await page.click('#peClose');
@@ -3734,17 +3789,56 @@ const ok = (name, cond, extra) => {
       const page = await ctx.newPage();
       await page.goto(BASE, { waitUntil: 'networkidle' });
       await dismissSetup(page);
+
+      /* The bar, before anything is covering it. 48px rather than SC 2.5.8's
+         24: it is the floor plans/036 held the card's own controls to, and a
+         destination you reach for mid-set with one hand is the last place to
+         economise (plans/031 § L8). */
+      const bar = await page.evaluate(() => ({
+        vw: window.innerWidth, vh: window.innerHeight,
+        btns: [...document.querySelectorAll('.navbar-btn')].map(b => {
+          const x = b.getBoundingClientRect();
+          return { id: b.id, l: Math.round(x.left), r: Math.round(x.right), bot: Math.round(x.bottom), h: Math.round(x.height) };
+        }),
+      }));
+      ok(label + ': the bar\'s four destinations are inside the viewport and at least 48px tall',
+         bar.btns.length === 4 && bar.btns.every(x => x.l >= 0 && x.r <= bar.vw && x.bot <= bar.vh && x.h >= 48),
+         JSON.stringify(bar.btns) + ' in ' + bar.vw + 'x' + bar.vh);
+
       await page.locator('.ex').first().locator('.set-row').first().locator('input').first().fill('60');
       await page.locator('.ex').first().locator('.set-row').first().locator('.tick').click();
       await page.waitForTimeout(300);
+      /* Still four boxes, but the fourth is the sound switch on the line
+         below rather than a fourth 29px button squeezed into the row — which
+         is what bought the other three their 44px (plans/037). */
       const r = await page.evaluate(() => ({
         vw: window.innerWidth,
         scroll: document.documentElement.scrollWidth,
-        btns: [...document.querySelectorAll('.timer-acts .timer-btn')].map(b => b.getBoundingClientRect()).map(x => [x.left, x.right]),
+        navHidden: document.getElementById('navBar').hidden,
+        btns: [...document.querySelectorAll('.timer-acts .timer-btn'), document.getElementById('tsound')]
+          .map(b => b.getBoundingClientRect()).map(x => [Math.round(x.left), Math.round(x.right)]),
       }));
-      ok(label + ': all 4 rest-timer controls fit on screen',
+      ok(label + ': the three rest-timer controls and the sound switch are on screen',
          r.btns.length === 4 && r.btns.every(([l, rt]) => l >= 0 && rt <= r.vw), JSON.stringify(r.btns));
+      /* The timer takes the bar's place rather than stacking on top of it —
+         the reason the bar's place was worth having. */
+      ok(label + ': the bar is out of the way while a rest runs', r.navHidden === true, String(r.navHidden));
       ok(label + ': page does not scroll sideways', r.scroll <= r.vw, r.scroll + ' > ' + r.vw);
+
+      await page.click('#tskip');
+      await page.waitForTimeout(250);
+      /* And again for the software keyboard. iOS has no
+         `interactive-widget` viewport segment, so the visual viewport does
+         not shrink and a fixed bar floats on top of the keyboard — over the
+         very row being typed into. */
+      await page.locator('.ex').first().locator('.set-row').nth(1).locator('input').first().focus();
+      await page.waitForTimeout(200);
+      const kb = await page.evaluate(() => ({
+        kbOpen: document.getElementById('app').classList.contains('kb-open'),
+        display: getComputedStyle(document.getElementById('navBar')).display,
+      }));
+      ok(label + ': the bar goes away while a weight box has the keyboard',
+         kb.kbOpen && kb.display === 'none', JSON.stringify(kb));
       await ctx.close();
     }
   });
