@@ -184,13 +184,17 @@ body {
   transition: all .12s;
 }
 .wk:hover { border-color: var(--ink); color: var(--ink); }
-.wk.on { background: var(--ink); border-color: var(--ink); color: var(--card); font-weight: 600; }
-.wk.deload.on { background: var(--amber); border-color: var(--amber); }
+.wk.on { background: var(--signal); border-color: var(--signal); color: var(--on-signal); font-weight: 600; }
+/* Deload week, selected: the amber fill outranks the profile's signal, so
+   the text has to switch inks too — --on-signal is tuned against the
+   signal colour, not against amber, and the two are not always close
+   enough to share (plans/033). */
+.wk.deload.on { background: var(--amber); border-color: var(--amber); color: var(--on-share); }
 .wk .dot {
   position: absolute; bottom: 3px; width: 4px; height: 4px;
   border-radius: 50%; background: var(--signal);
 }
-.wk.on .dot { background: var(--card); }
+.wk.on .dot { background: var(--on-signal); }
 
 .days { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; padding-bottom: 12px; }
 
@@ -204,24 +208,25 @@ body {
   color: var(--ink);
 }
 .day:hover { border-color: var(--ink); }
-.day.on { background: var(--ink); border-color: var(--ink); }
+.day.on { background: var(--signal); border-color: var(--signal); color: var(--on-signal); }
 .day-n {
   font-family: var(--font-display); font-size: 11px; font-weight: 600;
   letter-spacing: .08em; text-transform: uppercase; color: var(--soft); display: block;
 }
-.day.on .day-n { color: var(--on-ink-faint); }
+.day.on .day-n { color: var(--on-signal); opacity: .75; }
 .day-t { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
-.day.on .day-t { color: var(--card); }
+.day.on .day-t { color: var(--on-signal); }
 
 /* ---- week banner ---- */
 .banner {
   display: flex; justify-content: space-between; align-items: center;
   margin: 14px 0; padding: 11px 13px; width: 100%;
-  background: var(--signal-soft); border-left: 3px solid var(--signal); border-radius: 3px;
+  background: var(--card); border: 1px solid var(--line);
+  border-left: 3px solid var(--signal); border-radius: 3px;
 }
-.banner.deload { background: var(--amber-soft); border-left-color: var(--amber); }
+.banner.deload { border-left-color: var(--amber); }
 .banner-l { font-family: var(--font-display); font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--soft); }
-.banner-v { font-size: 15px; font-weight: 600; margin-top: 2px; }
+.banner-v { font-family: var(--font-display); font-size: 15px; font-weight: 600; color: var(--signal); margin-top: 2px; }
 .banner-r { text-align: right; font-size: 11px; color: var(--soft); line-height: 1.4; max-width: 47%; }
 
 /* ---- pair note ---- */
@@ -398,9 +403,9 @@ body {
 }
 .energy-chips { display: flex; gap: 5px; }
 .energy-chip {
-  height: 26px; min-width: 44px; padding: 0 10px;
+  height: 40px; min-width: 44px; padding: 0 10px;
   border: 1px solid var(--edge); border-radius: 3px; background: var(--card);
-  font-size: 11px; color: var(--soft); cursor: pointer;
+  font-size: 14px; color: var(--soft); cursor: pointer;
 }
 .energy-chip:hover { border-color: var(--signal); color: var(--signal); }
 .energy-chip.on { background: var(--signal); border-color: var(--signal); color: var(--on-signal); }
@@ -453,9 +458,9 @@ body {
 }
 .rir-chips { display: flex; gap: 5px; }
 .rir-chip {
-  height: 26px; min-width: 30px; padding: 0 8px;
+  height: 40px; min-width: 30px; padding: 0 8px;
   border: 1px solid var(--edge); border-radius: 3px; background: var(--card);
-  font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+  font-family: var(--font-mono); font-size: 14px; font-weight: 600;
   color: var(--soft); cursor: pointer;
 }
 .rir-chip:hover { border-color: var(--signal); color: var(--signal); }
@@ -507,7 +512,7 @@ body {
   transition: all .12s;
 }
 .drop-add:hover:not(:disabled) { border-color: var(--signal); color: var(--signal); }
-.drop-add.on { border-color: var(--signal); color: var(--signal); }
+.drop-add.on { background: var(--signal); border-color: var(--signal); color: var(--on-signal); }
 .drop-add:disabled { cursor: default; opacity: .4; }
 
 .drop-row {
@@ -582,12 +587,12 @@ body {
      controls off a phone screen if it is allowed to set the width */
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.timer-val { font-family: var(--font-display); font-size: 52px; font-weight: 700; line-height: 1; margin-top: 3px; }
+.timer-val { font-family: var(--font-display); font-size: 52px; font-weight: 700; line-height: 1; margin-top: 3px; color: var(--signal); }
 .timer.over .timer-val { color: var(--flare); }
 .timer-msg { flex: 1; min-width: 0; font-size: 11.5px; color: var(--timer-dim); line-height: 1.35; }
 .timer-btn {
-  background: transparent; border: 1px solid var(--timer-line); color: var(--timer-ink);
-  border-radius: 3px; padding: 8px 13px; font-family: var(--font-sans); font-size: 11px;
+  height: 44px; background: transparent; border: 1px solid var(--edge); color: var(--timer-ink);
+  border-radius: 3px; padding: 0 13px; font-family: var(--font-sans); font-size: 11px;
   font-weight: 600; cursor: pointer; letter-spacing: 0.04em;
 }
 .timer-btn:hover { border-color: var(--timer-ink); }
@@ -606,12 +611,12 @@ body {
 .note { font-size: 12.5px; color: var(--soft); line-height: 1.5; margin-bottom: 12px; }
 .foot-btns { display: flex; gap: 7px; flex-wrap: wrap; }
 .sm {
-  background: transparent; border: 1px solid var(--edge); color: var(--soft);
-  padding: 7px 11px; border-radius: 3px; font-family: var(--font-sans);
-  font-size: 11px; font-weight: 500; cursor: pointer;
+  height: 44px; background: transparent; border: 1px solid var(--edge); color: var(--ink);
+  padding: 0 16px; border-radius: 3px; font-family: var(--font-sans);
+  font-size: 14px; font-weight: 600; cursor: pointer;
 }
 .sm:hover { border-color: var(--ink); color: var(--ink); }
-.sm.key { border-color: var(--signal); color: var(--signal); font-weight: 600; }
+.sm.key { background: var(--signal); border-color: var(--signal); color: var(--on-signal); }
 .sm.warn { border-color: var(--danger); color: var(--danger); }
 
 .status { font-family: var(--font-mono); font-size: 11px; color: var(--soft); text-align: right; padding: 8px 0 0; }
@@ -804,12 +809,12 @@ body {
 .pe-priority { margin: 12px 0 4px; }
 .pri-chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 4px 0 2px; }
 .pri-chip {
-  height: 28px; padding: 0 10px;
+  height: 40px; padding: 0 10px;
   border: 1px solid var(--edge); border-radius: 3px; background: var(--card);
-  font-size: 11.5px; color: var(--soft); cursor: pointer;
+  font-size: 14px; color: var(--soft); cursor: pointer;
 }
 .pri-chip:hover { border-color: var(--amber); color: var(--ink); }
-.pri-chip.on { background: var(--amber); border-color: var(--amber); color: var(--on-signal); }
+.pri-chip.on { background: var(--amber); border-color: var(--amber); color: var(--on-share); }
 
 /* ---- block manager ---- */
 .blk-row {
@@ -852,13 +857,13 @@ body {
    of buttons that stay pressed reads faster on a phone than a select */
 .seg { display: flex; gap: 6px; flex-wrap: wrap; }
 .seg-btn {
-  flex: 1; min-width: 110px; padding: 9px 10px;
+  flex: 1; min-width: 110px; height: 40px; padding: 0 10px;
   border: 1px solid var(--edge); background: transparent; color: var(--soft);
-  font-family: var(--font-sans); font-size: 12.5px; font-weight: 600;
+  font-family: var(--font-sans); font-size: 14px; font-weight: 600;
   border-radius: 3px; cursor: pointer; transition: all .12s;
 }
 .seg-btn:hover { border-color: var(--ink); color: var(--ink); }
-.seg-btn[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--card); }
+.seg-btn[aria-pressed="true"] { background: var(--signal); border-color: var(--signal); color: var(--on-signal); }
 .seg + .seg { margin-top: 8px; }
 
 .chart-table tr.unreliable td { color: var(--soft); }

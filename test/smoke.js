@@ -561,7 +561,7 @@ const ok = (name, cond, extra) => {
     await page.click('#themeBtn');
     ok('cycles to dark', await page.evaluate(() => document.documentElement.getAttribute('data-theme')) === 'dark');
     const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-    ok('dark theme actually repaints body', bg === 'rgb(21, 22, 26)', bg);
+    ok('dark theme actually repaints body', bg === 'rgb(15, 17, 19)', bg);
     await page.reload({ waitUntil: 'networkidle' });
     ok('theme choice persists', await page.evaluate(() => document.documentElement.getAttribute('data-theme')) === 'dark');
     await page.click('#themeBtn'); // back to auto
