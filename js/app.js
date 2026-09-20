@@ -1738,11 +1738,12 @@ function sessionRirs(rows, legacy) {
 
 /* The row the session's RIR is read off: the last SET ACTUALLY DONE that
    carries one, and only if no set done carries one, the last row that
-   does. That second pass is what keeps the chip from being a dead control
-   on an untouched day — before anything is ticked there is no set done to
-   write on, so the value lands on a padding row (rirRowFor), and a reader
-   that only looked at the sets done could not see it. The first pass is
-   why that padding row cannot then shadow a set ticked afterwards. */
+   does. That second pass is what keeps a reserve typed before anything is
+   ticked from being unreadable — an untouched day has no set done for the
+   value to sit on, so it sits on a padding row (the box's own row, or
+   rirRowFor's for a legacy chip being folded), and a reader that only
+   looked at the sets done could not see it. The first pass is why that
+   padding row cannot then shadow a set ticked afterwards. */
 function rirRowRead(rows) {
   if (!Array.isArray(rows)) return null;
   for (let i = rows.length - 1; i >= 0; i--) {
@@ -1755,10 +1756,10 @@ function rirRowRead(rows) {
 }
 
 /* The exercise-level reader the screens that still say "the session's RIR"
-   keep using — the Diagnóstico's signals, the review's buckets, the chip's
-   own pressed state: the row above, else the legacy map, else ''. It
-   returns a string either way ('3' or '2+'), because its callers compare it
-   against the chips; take a number through rirNumber. */
+   keep using — the Diagnóstico's signals, the review's buckets, exSession's
+   fallback: the row above, else the legacy map, else ''. It returns a
+   string either way ('3' or '2+'), because the legacy map's own values are
+   strings; take a number through rirNumber. */
 function getRir(profile, blockId, w, dayId, exId) {
   const bucket = profile.log && profile.log[blockId] && profile.log[blockId][slot(w, dayId)];
   const row = rirRowRead(bucket && bucket[exId]);
@@ -2685,8 +2686,8 @@ $('days').addEventListener('keydown', e => {
 
 /* ---------- keeping the keyboard's place across a redraw ----------
    Redrawing anything destroys the control the keyboard was on, even when the
-   new markup has the same shape, and focus lands back on <body>: press an
-   RIR chip and the next Tab starts from the top of the page. These record
+   new markup has the same shape, and focus lands back on <body>: tick a set
+   and the next Tab starts from the top of the page. These record
    where it was as the chain of child indices from a root that survives the
    redraw — "second child, third child, first child" — and put it back.
 
@@ -3218,8 +3219,9 @@ function buildExCard(ctx, ex, i) {
 
   const nameEl = card.querySelector('.ex-name');
   nameEl.appendChild(document.createTextNode(ex.n));
-  /* Still the first child of .ex-name, which is how three smoke cases read
-     an exercise's name off a card — the badges are what moved out. */
+  /* Still the first child of .ex-name, which is how five smoke cases across
+     two sections read an exercise's name off a card — the badges are what
+     moved out. */
   const badgeEl = card.querySelector('.ex-badges');
   if (!soloMode()) {
     const s = document.createElement('span');
