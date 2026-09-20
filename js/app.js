@@ -2,21 +2,23 @@ const STORAGE_KEY = 'heavy-iron-v1';
 
 let state = null;
 let ready = false;
-/* Keys of the "Ajustes" (machine setup) boxes expanded right now — in-memory
-   only, so every fresh open of the app starts collapsed again. Keyed by
-   profile + block + exercise id, not the exercise id alone: JSON-authored
-   blocks reuse ids across blocks and profiles on purpose (sameLift), so an
-   id-only key left a panel opened for one profile's "squat" pre-expanded for
-   the other's. */
-const expandedSetup = new Set();
+/* Keys of the cards whose fold — the alternative, the cue and the machine
+   settings, everything that used to be printed under the name (plans/036) —
+   is open right now. In-memory only, so every fresh open of the app starts
+   collapsed again. Keyed by profile + block + exercise id, not the exercise
+   id alone: JSON-authored blocks reuse ids across blocks and profiles on
+   purpose (sameLift), so an id-only key left a panel opened for one
+   profile's "squat" pre-expanded for the other's. */
+const expandedMore = new Set();
 const setupKey = (block, ex) => state.activeProfile + '|' + block.id + '|' + ex.id;
 /* Same shape, same reason, for the pair note under the week row: it opens on
    a tap and stays open for the rest of the session, and because the day is
    in the key, walking to the next day starts it folded again (plans/034). */
 const expandedPair = new Set();
 const pairKey = (block, day) => state.activeProfile + '|' + block.id + '|' + day.id;
-/* Set by the ↓ and ⚙ buttons so the draw they trigger can put the cursor
-   straight into a box that does not exist until that draw has run. Both are
+/* Set by the ↓ button and by the "⋯" menu's "Ajustes de máquina" row so the
+   draw they trigger can put the cursor straight into a box that was not on
+   screen until that draw had run. Both are
    honoured by takeFocusMark() once the card is in the document, because the
    card is detached while it is being built and focus() on a detached element
    is silently a no-op. Cleared as soon as they are honoured. */
@@ -2418,8 +2420,8 @@ if (typeof askForNotifications !== 'function') globalThis.askForNotifications = 
 if (typeof keepAliveStop !== 'function') globalThis.keepAliveStop = function () {};
 
 /* Same again for js/chart.js, which owns one entry point: the "Progreso ↗"
-   button on every card calls it from inside buildExCard, so an unguarded
-   call would throw inside a card rather than merely doing nothing.
+   row of every card's "⋯" menu calls it from openExMenu, so an unguarded
+   call would throw inside a sheet rather than merely doing nothing.
 
    js/qr-transfer.js needed one too until sheets registered their own
    teardown: the Escape handler used to name closeQr directly. It does not
@@ -3156,28 +3158,39 @@ function buildExCard(ctx, ex, i) {
   /* `est` is only drawn here. Recording it is the job of the handlers below
      that start the session — see recordTargetOnStart for why a draw must
      never do it. */
-  const setupOpen = expandedSetup.has(setupKey(block, ex));
+  const moreOpen = expandedMore.has(setupKey(block, ex));
+
+  /* One mono line where three stacked blocks used to be: the sets × reps,
+     the rest, and a preview of the machine settings so you can read them
+     without opening anything. Same 28-character truncation the ⚙ button's
+     own label used, and for the same reason — it is a preview, not the
+     field. */
+  const restTxt = ex.rest
+    ? 'desc. ' + (ex.rest >= 60 ? (ex.rest / 60).toFixed(ex.rest % 60 ? 1 : 0).replace('.0', '') + ' min' : ex.rest + 's')
+    : 'superserie →';
+  const setupTxt = ex.setup ? (ex.setup.length > 28 ? ex.setup.slice(0, 28) + '…' : ex.setup) : '';
 
   card.innerHTML =
     '<div class="ex-head">' +
-      '<div class="ex-num">' +
-        '<button type="button" class="ex-ord up"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
-        '<span class="ex-ord-n">' + (i + 1) + '</span>' +
-        '<button type="button" class="ex-ord down"' + (i === sessionEx.length - 1 ? ' disabled' : '') + '>↓</button>' +
-      '</div>' +
-      '<div class="ex-body">' +
-        '<div class="ex-name"></div>' +
-        (ex.alt ? '<div class="ex-alt"></div>' : '') +
-        (ex.cue ? '<div class="ex-cue"></div>' : '') +
-      '</div>' +
-      '<div><div class="ex-target">' + n + ' × ' + esc(ex.reps) + '</div>' +
-      '<div class="ex-rest">' + (ex.rest ? 'desc. ' + (ex.rest >= 60 ? (ex.rest / 60).toFixed(ex.rest % 60 ? 1 : 0).replace('.0', '') + ' min' : ex.rest + 's') : 'superserie →') + '</div>' +
-      '<button class="ex-chart-btn" type="button">Progreso ↗</button></div>' +
-    '</div>' + prevTxt +
-    '<div class="ex-setup">' +
-      '<button type="button" class="ex-setup-btn"></button>' +
-      (setupOpen ? '<div class="ex-setup-box"><input type="text" class="ex-setup-in" maxlength="' + SETUP_LIMIT + '" autocomplete="off" placeholder="asiento 4, respaldo 2…"></div>' : '') +
+      /* The position, and nothing to operate: aria-hidden because the two
+         controls that move the card — the "⋯" menu's own rows — say
+         "puesto N" in their labels already, and a bare number read out
+         ahead of every exercise name is noise. */
+      '<span class="ex-pos" aria-hidden="true">' + (i + 1) + '</span>' +
+      '<button type="button" class="ex-name-btn" aria-expanded="' + (moreOpen ? 'true' : 'false') + '">' +
+        '<span class="ex-name"></span>' +
+        '<span class="ex-meta">' + n + ' × ' + esc(ex.reps) + ' · ' + esc(restTxt) +
+          (setupTxt ? ' · ' + esc(setupTxt) : '') + '</span>' +
+      '</button>' +
+      '<button type="button" class="ex-menu-btn">⋯</button>' +
     '</div>' +
+    '<div class="ex-more"' + (moreOpen ? '' : ' hidden') + '>' +
+      (ex.alt ? '<div class="ex-alt"></div>' : '') +
+      (ex.cue ? '<div class="ex-cue"></div>' : '') +
+      '<label class="ex-setup-lbl">Ajustes de máquina' +
+        '<input type="text" class="ex-setup-in" maxlength="' + SETUP_LIMIT + '" autocomplete="off" placeholder="asiento 4, respaldo 2…">' +
+      '</label>' +
+    '</div>' + prevTxt +
     '<div class="sets"></div>' +
     (decay ? '<div class="ex-decay"></div>' : '') +
     (est ? '<div class="ex-est ' + (est.dir || 'flat') + '"><span class="ex-est-l"></span>' +
@@ -3217,52 +3230,49 @@ function buildExCard(ctx, ex, i) {
   if (ex.alt) card.querySelector('.ex-alt').textContent = ex.alt;
   if (ex.cue) card.querySelector('.ex-cue').textContent = ex.cue;
 
-  card.querySelector('.ex-chart-btn').onclick = () => openChart(ex, day.id);
+  /* The name IS the disclosure: everything a card used to print under it —
+     the alternative, the amber cue, the machine settings — is one tap away
+     instead of 117px of head read once per block (plans/031 § "The
+     numbers", plans/036). Flipped in place rather than through drawCard:
+     nothing else on the card depends on it, and a redraw here would throw
+     away a half-typed weight two rows down for no gain. `expandedMore` is
+     written too, so a later redraw (a tick, a drop) comes back open. */
+  const nameBtn = card.querySelector('.ex-name-btn');
+  const moreBox = card.querySelector('.ex-more');
+  nameBtn.onclick = () => {
+    const open = moreBox.hidden;
+    moreBox.hidden = !open;
+    nameBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) expandedMore.add(setupKey(block, ex));
+    else expandedMore.delete(setupKey(block, ex));
+  };
 
-  /* The number is the position this exercise was done in, and the two
-     arrows are how you correct it — the machine was taken, you did the
-     next one first, two taps and the card is where it belongs. Ends stay
-     rendered but disabled rather than hidden, so the column keeps its
-     width and the numbers do not shuffle sideways card to card. */
-  card.querySelectorAll('.ex-ord').forEach(btn => {
-    const dir = btn.classList.contains('up') ? -1 : 1;
-    const label = 'Hiciste ' + ex.n + (dir < 0 ? ' antes' : ' después') +
-      ': moverlo al puesto ' + (i + 1 + dir) + ' de la sesión';
-    btn.setAttribute('aria-label', label);
-    btn.title = label;
-    btn.onclick = () => {
-      if (!moveSessionEx(profile, block, profile.week, day, ex.id, dir)) return;
-      commit();
-    };
-  });
+  const menuBtn = card.querySelector('.ex-menu-btn');
+  const menuLabel = 'Más sobre ' + ex.n + ': progreso, mover, ajustes de máquina';
+  menuBtn.setAttribute('aria-label', menuLabel);
+  menuBtn.title = menuLabel;
+  menuBtn.onclick = () => openExMenu(ctx, ex, i);
 
   /* `ex.setup` — seat height, pin position: a plan field, not a log field,
      so editing it here writes straight to the live exercise, the same way
-     the plan editor's own text fields do. Collapsed by default (folded
-     behind the ⚙ button) since it rarely changes and isn't what you came
-     to read mid-set; the button's own label previews it so you don't have
-     to open it just to check. */
-  const setupBtn = card.querySelector('.ex-setup-btn');
-  setupBtn.textContent = ex.setup ? '⚙ ' + (ex.setup.length > 28 ? ex.setup.slice(0, 28) + '…' : ex.setup) : '⚙ Ajustes';
-  setupBtn.setAttribute('aria-expanded', setupOpen ? 'true' : 'false');
-  setupBtn.setAttribute('aria-label', 'Ajustes de máquina de ' + ex.n);
-  setupBtn.onclick = () => {
-    if (setupOpen) expandedSetup.delete(setupKey(block, ex));
-    else { expandedSetup.add(setupKey(block, ex)); focusSetup = ex.id; }
-    drawCard(ex.id);
-  };
-  if (setupOpen) {
-    const setupIn = card.querySelector('.ex-setup-in');
-    setupIn.value = ex.setup || '';
-    setupIn.setAttribute('aria-label', 'Ajustes de máquina de ' + ex.n);
-    setupIn.oninput = e => { const v = e.target.value; if (v) ex.setup = v; else delete ex.setup; save(); };
-    /* Marked, not focused, and only when this press is what opened it.
-       Focusing on every draw was a workaround for render() rebuilding the
-       card on every set tick; it also meant that leaving a settings box open
-       and moving to another day popped the keyboard up for a field nobody
-       had asked for. */
-    if (focusSetup === ex.id) setupIn.dataset.focusMark = '1';
-  }
+     the plan editor's own text fields do. It lives in the fold because it
+     rarely changes and isn't what you came to read mid-set; the head's
+     mono line previews it so you don't have to open the fold just to
+     check. Always built, open or not: the fold is one `hidden` attribute,
+     so there is no draw between the tap and the field being there. */
+  const setupIn = card.querySelector('.ex-setup-in');
+  setupIn.value = ex.setup || '';
+  /* Names the exercise, where the visible label cannot: seven cards in a
+     session would otherwise offer seven fields called "Ajustes de
+     máquina". It still starts with the visible text (SC 2.5.3). */
+  setupIn.setAttribute('aria-label', 'Ajustes de máquina de ' + ex.n);
+  setupIn.oninput = e => { const v = e.target.value; if (v) ex.setup = v; else delete ex.setup; save(); };
+  /* Marked, not focused, and only when the "⋯" menu's own row is what
+     opened it. Focusing on every draw was a workaround for render()
+     rebuilding the card on every set tick; it also meant that leaving a
+     settings box open and moving to another day popped the keyboard up for
+     a field nobody had asked for. */
+  if (focusSetup === ex.id) setupIn.dataset.focusMark = '1';
 
   /* The chip is still the writer, for one plan more — plans/036 puts a box
      next to the reps and this goes away. What changed underneath it is
@@ -3480,6 +3490,67 @@ function buildExCard(ctx, ex, i) {
   });
 
   return card;
+}
+
+/* The five things a card used to draw for itself. Four of them — the two
+   order arrows, "Progreso ↗" and the ⚙ settings line — cost 117 px of head
+   on every card of every session to save one tap on the few days anybody
+   reaches for them (plans/031 § "The numbers", plans/036). One sheet,
+   shared by every card and rewired on each open, rather than a sheet per
+   card: seven cards' worth of menu markup on screen is seven times the
+   nodes for one thing at a time.
+
+   `ctx` is the card's own draw context, so nothing here re-derives the
+   profile, the block or the day the card was built from. */
+function openExMenu(ctx, ex, i) {
+  const profile = ctx.profile, block = ctx.block, day = ctx.day, sessionEx = ctx.sessionEx;
+  $('exMenuT').textContent = ex.n;
+
+  const up = $('exMenuUp'), down = $('exMenuDown');
+  const first = i === 0, last = i === sessionEx.length - 1;
+  /* Rendered and disabled at the ends, never hidden: a menu whose rows
+     move depending on where in the session you are is one you have to read
+     every time instead of reaching for. The label says the destination,
+     because "arriba" means nothing once the arrows are gone. */
+  up.disabled = first;
+  down.disabled = last;
+  up.textContent = first ? 'Ya es el primero de la sesión' : 'Hiciste este antes: al puesto ' + i;
+  down.textContent = last ? 'Ya es el último de la sesión' : 'Hiciste este después: al puesto ' + (i + 2);
+
+  $('exMenuChart').onclick = () => { closeSheet('exMenuSheet'); openChart(ex, day.id); };
+
+  const move = dir => {
+    closeSheet('exMenuSheet');
+    if (!moveSessionEx(profile, block, profile.week, day, ex.id, dir)) return;
+    commit();
+    /* render() has just rebuilt every card, so the "⋯" the menu was opened
+       from no longer exists and closeSheet handed focus to a detached
+       node. Put it on the same button of the card where it landed — the
+       same thing the week and day buttons do after a move. */
+    const at = dayCards.findIndex(c => c.ex.id === ex.id);
+    const fresh = at >= 0 && dayCards[at].el.querySelector('.ex-menu-btn');
+    if (fresh) fresh.focus();
+  };
+  up.onclick = () => move(-1);
+  down.onclick = () => move(1);
+
+  $('exMenuSetup').onclick = () => {
+    closeSheet('exMenuSheet');
+    expandedMore.add(setupKey(block, ex));
+    focusSetup = ex.id;
+    drawCard(ex.id);
+  };
+
+  /* js/calculator.js is a split file, so `openCalc` can be missing from a
+     shell with a precache hole — a guarded call, not a bare one (AGENTS.md
+     rule (a)). A row that does nothing is the cost; a card that throws
+     mid-session is not. */
+  $('exMenuCalc').onclick = () => {
+    closeSheet('exMenuSheet');
+    if (typeof openCalc === 'function') openCalc();
+  };
+
+  openSheet('exMenuSheet');
 }
 
 /* Redraw one exercise's card, and the few things outside it that a change
@@ -5545,6 +5616,9 @@ $('bCsv').onclick = () => {
 registerSheet('profileSheet', { closeBtn: 'profileClose' });
 registerSheet('blockSheet', { closeBtn: 'blockClose' });
 registerSheet('moreSheet', { closeBtn: 'moreClose' });
+/* The card's "⋯" menu is app.js's own too, and its five rows are rewired on
+   every open by openExMenu — only the sheet's own close belongs here. */
+registerSheet('exMenuSheet', { closeBtn: 'exMenuClose' });
 $('profileBtn').onclick = () => openSheet('profileSheet');
 $('blockBtn').onclick = () => openSheet('blockSheet');
 $('moreBtn').onclick = () => openSheet('moreSheet');

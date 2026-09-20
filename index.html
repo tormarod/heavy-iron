@@ -120,6 +120,27 @@
     </div>
   </div>
 
+  <!-- Everything one card used to draw as controls of its own (plans/036):
+       the chart, the two ways to move the exercise inside the session, the
+       machine settings and the calculator. One sheet shared by every card —
+       openExMenu writes the exercise's name into the title and rewires the
+       five rows, so there is never a doubt which card it belongs to. -->
+  <div class="sheet" id="exMenuSheet">
+    <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="exMenuT">
+      <div class="sheet-t" id="exMenuT"></div>
+      <div class="sheet-btns ex-menu-list">
+        <button class="sm" id="exMenuChart" type="button">Progreso ↗</button>
+        <button class="sm" id="exMenuUp" type="button"></button>
+        <button class="sm" id="exMenuDown" type="button"></button>
+        <button class="sm" id="exMenuSetup" type="button">Ajustes de máquina</button>
+        <button class="sm" id="exMenuCalc" type="button">Calculadora</button>
+      </div>
+      <div class="sheet-btns">
+        <button class="sm" id="exMenuClose" type="button">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- The three sheets the folded header hands its controls to (plans/034).
        They sit here, ahead of every other sheet in the markup, on purpose:
        .sheet all share z-index 60, so document order is what decides which
