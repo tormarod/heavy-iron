@@ -79,7 +79,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-#app { min-height: 100vh; padding-bottom: 100px; }
+#app { min-height: 100vh; padding-bottom: calc(100px + env(safe-area-inset-bottom)); }
 /* Each profile carries an accent. `hombre`/`mujer` are the names the app
    shipped with and are kept as aliases so existing saved profiles do not
    change colour; new ones pick `azul` or `verde` by name. */
@@ -129,6 +129,7 @@ body {
   position: sticky; top: 0; z-index: 40;
   background: var(--paper);
   border-bottom: 1px solid var(--line);
+  padding-top: env(safe-area-inset-top);
 }
 
 .title {
@@ -513,10 +514,15 @@ body {
 .badge.pr-e1rm { background: transparent; color: var(--amber); border: 1px solid var(--amber); }
 
 /* ---- rest timer ---- */
+/* iOS draws the home indicator over the bottom of the viewport in standalone
+   mode (viewport-fit=cover, index.html:11); WebKit's rule is that content
+   under it is untappable, so the timer's own controls need this padding to
+   clear it. */
 .timer {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
   background: var(--timer-bg); color: var(--timer-ink);
   transform: translateY(105%); transition: transform .25s cubic-bezier(.2,.8,.3,1);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 .timer.up { transform: translateY(0); }
 .timer-fill { height: 3px; background: var(--signal); transition: width 1s linear; }
@@ -572,7 +578,7 @@ body {
 /* One-line notices that need an answer (a new version is ready, another tab
    changed the log). Sits above the rest timer so it is never hidden by it. */
 .toast {
-  position: fixed; left: 50%; transform: translateX(-50%); bottom: 14px; z-index: 70;
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(14px + env(safe-area-inset-bottom)); z-index: 70;
   /* width, not max-width: shrink-to-fit squeezed the message into a three-line
      column beside the buttons */
   display: flex; align-items: center; gap: 9px; width: min(520px, calc(100% - 24px));
@@ -583,7 +589,7 @@ body {
 .toast[hidden] { display: none; }
 .toast > span { flex: 1; min-width: 0; }
 .toast .sm { flex: 0 0 auto; }
-.timer.up ~ .toast { bottom: 86px; }
+.timer.up ~ .toast { bottom: calc(86px + env(safe-area-inset-bottom)); }
 
 /* ---- sheets (modals) ---- */
 .sheet {
