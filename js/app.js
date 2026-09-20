@@ -1578,7 +1578,13 @@ function entry(profile, blockId, w, dayId, exId, n) {
   return a.slice(0, n);
 }
 
-const rowUsed = r => !!(r && (r.done || (r.w !== '' && r.w != null) || (r.r !== '' && r.r != null) || dropsOf(r).some(dropUsed)));
+/* What makes a row worth keeping: something the person put in it. `rir`
+   is one of those since plans/035 — it is the record now, not a parallel
+   map — and leaving it out meant a reserve written before any set was
+   ticked lived on a row pruneLog deleted on the next save and
+   blockShareLog never sent. */
+const rowUsed = r => !!(r && (r.done || (r.w !== '' && r.w != null) || (r.r !== '' && r.r != null) ||
+                              rowRir(r) != null || dropsOf(r).some(dropUsed)));
 
 /* ---------- rep-decay flag ----------
    Free, because it needs no input at all: derived from the reps already
@@ -1712,19 +1718,33 @@ function sessionRirs(rows, legacy) {
   return out;
 }
 
+/* The row the session's RIR is read off: the last SET ACTUALLY DONE that
+   carries one, and only if no set done carries one, the last row that
+   does. That second pass is what keeps the chip from being a dead control
+   on an untouched day — before anything is ticked there is no set done to
+   write on, so the value lands on a padding row (rirRowFor), and a reader
+   that only looked at the sets done could not see it. The first pass is
+   why that padding row cannot then shadow a set ticked afterwards. */
+function rirRowRead(rows) {
+  if (!Array.isArray(rows)) return null;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rowWorked(rows[i]) && rowRir(rows[i]) != null) return rows[i];
+  }
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rowRir(rows[i]) != null) return rows[i];
+  }
+  return null;
+}
+
 /* The exercise-level reader the screens that still say "the session's RIR"
    keep using — the Diagnóstico's signals, the review's buckets, the chip's
-   own pressed state: the last working set that has a value, else the legacy
-   map, else ''. It returns a string either way ('3' or '2+'), because its
-   callers compare it against the chips; take a number through rirNumber. */
+   own pressed state: the row above, else the legacy map, else ''. It
+   returns a string either way ('3' or '2+'), because its callers compare it
+   against the chips; take a number through rirNumber. */
 function getRir(profile, blockId, w, dayId, exId) {
   const bucket = profile.log && profile.log[blockId] && profile.log[blockId][slot(w, dayId)];
-  const rows = bucket && bucket[exId];
-  if (Array.isArray(rows)) {
-    for (let i = rows.length - 1; i >= 0; i--) {
-      if (rowWorked(rows[i]) && rowRir(rows[i]) != null) return String(rowRir(rows[i]));
-    }
-  }
+  const row = rirRowRead(bucket && bucket[exId]);
+  if (row) return String(rowRir(row));
   const slotRir = profile.rir && profile.rir[blockId] && profile.rir[blockId][slot(w, dayId)];
   return (slotRir && slotRir[exId]) || '';
 }
@@ -1950,18 +1970,31 @@ function moveSessionEx(profile, block, w, day, exId, dir) {
   return true;
 }
 
-/* Writes the recorded RIR onto the row, never into the legacy map (see the
-   RIR section). The chip says "RIR último set", so the row it writes is the
-   last one actually done; a session with nothing ticked yet has no last set
-   to speak of, so it falls back to the last row of the exercise rather than
-   silently recording nothing. `val` is anything rirNumber understands — a
-   chip ('2+' → '2') or a digit — and an empty value clears the row. */
+/* The chip's writer: ONE value for the whole exercise-session, onto the
+   rows. The chip says "RIR último set", so the row it writes is the last
+   one actually done; a session with nothing ticked yet has no last set to
+   speak of, so it falls back to the last row of the exercise rather than
+   silently recording nothing (that row is kept — see rowUsed).
+
+   Every row's `rir` is cleared first, so at most one row of the session
+   carries one when this returns. That invariant is what makes the control
+   honest: a value written before anything was ticked lands on a padding
+   row, and without the sweep a later tap — which lands on the set ticked
+   since — would leave the old one behind for getRir to find and the chip
+   would show the wrong number. plans/036 replaces this with a box per set,
+   which writes `r.rir` on its own row and does not come through here.
+
+   `val` is anything rirNumber understands — a chip ('2+' → '2') or a digit
+   — and an empty value clears the session's RIR. */
 function setRir(profile, blockId, w, dayId, exId, val) {
   const bucket = profile.log && profile.log[blockId] && profile.log[blockId][slot(w, dayId)];
-  const row = rirRowFor(bucket && bucket[exId]);
-  if (!row) return;
+  const rows = bucket && bucket[exId];
+  if (!Array.isArray(rows) || !rows.length) return;
+  rows.forEach(r => { if (r && typeof r === 'object') delete r.rir; });
   const n = val === '' || val == null ? null : rirNumber(val);
-  if (n == null) delete row.rir; else row.rir = String(n);
+  if (n == null) return;
+  const row = rirRowFor(rows);
+  if (row) row.rir = String(n);
 }
 
 /* ---------- weight drops ----------
@@ -3222,8 +3255,17 @@ function buildExCard(ctx, ex, i) {
     b.setAttribute('aria-pressed', on ? 'true' : 'false');
     b.setAttribute('aria-label', RIR_LABEL[opt] + ' en la última serie de ' + ex.n);
     b.onclick = () => {
+      /* `wasSession` is read BEFORE the write, exactly like the weight, rep
+         and tick handlers below: writing an RIR starts the session now that
+         rowUsed counts one (the input contract, plans/035 Step H — "counts
+         as starting the session exactly as the weight and rep boxes do"),
+         and reading it afterwards would make every tap look like a start
+         and put the draw-time write back by another route. */
+      const wasSession = rows.some(rowUsed);
       setRir(profile, block.id, profile.week, day.id, ex.id, on ? '' : opt);
-      save(); drawCard(ex.id);
+      save();
+      recordTargetOnStart(profile, block, day, ex, rows, wasSession, est);
+      drawCard(ex.id);
     };
     rirHost.appendChild(b);
   });
