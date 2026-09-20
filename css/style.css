@@ -833,11 +833,29 @@ body {
 .toast[hidden] { display: none; }
 .toast > span { flex: 1; min-width: 0; }
 .toast .sm { flex: 0 0 auto; }
-/* The timer is two lines since plans/037 and no longer one height: 137px on
-   a phone, 157 once the 620px breakpoint puts the coaching line back. Both
-   numbers plus the 13px the toast stands on, in that order — the wide case
-   is the default, the same way the breakpoint below is worded. */
-.timer.up ~ .toast { bottom: calc(170px + env(safe-area-inset-bottom)); }
+/* The timer is two lines since plans/037, and above the 620px breakpoint it
+   has no single height at all: .timer-main's flex basis is the exercise
+   name's own width, so the coaching line gets whatever the name leaves it
+   and wraps into the rest. Measured at 768: 147px with a short name, 157
+   for the shipped plan's "Press de pecho en máquina", 172 for its longest,
+   "Elevaciones laterales en polea", and 296 for an imported 80-character
+   one (IMPORT_LIMITS.name), where .timer-msg is a 20px column 217px tall.
+   At exactly 621 the same names give 147/172/188/296.
+
+   Below the breakpoint there is nothing to measure: .timer-msg is hidden,
+   so the timer is exactly 137px whatever the exercise is called, and 150
+   is that plus the 13px the toast stands on.
+
+   Above it, one constant cannot be exact, so it is the same 190 #app
+   reserves for the same worst shipped case — clearing every name this app
+   ships (43/33/18px at 768, down to 2px at 621 on the longest) at the
+   price of standing 43px clear of the common one. That direction is the
+   safe one: the toast is z-index 70 over the
+   timer's 55, so an offset that is too small covers the timer's controls
+   with the toast's own buttons, while one that is too large only floats a
+   notice higher up a screen that has the room. Anything that changes the
+   timer's height changes both numbers; #app's comment holds the reasoning. */
+.timer.up ~ .toast { bottom: calc(190px + env(safe-area-inset-bottom)); }
 @media (max-width: 620px) {
   .timer.up ~ .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
 }
