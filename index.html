@@ -142,11 +142,13 @@
   </div>
 
   <!-- The three sheets the folded header hands its controls to (plans/034).
-       They sit here, ahead of every other sheet in the markup, on purpose:
+       They sit ahead of every sheet that has to cover them, on purpose:
        .sheet all share z-index 60, so document order is what decides which
        covers which, and the block manager, the importer and the review each
-       open *from* #blockSheet and have to land on top of it. #askSheet is
-       above the lot at z-index 90 either way. -->
+       open *from* #blockSheet and have to land on top of it. The two above
+       them cover nothing: #askSheet is above the lot at z-index 90 either
+       way, and #exMenuSheet closes itself before opening the chart or the
+       calculator, both of which come later in this file regardless. -->
   <div class="sheet" id="profileSheet">
     <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="profileT">
       <div class="sheet-t" id="profileT">¿Quién entrena?</div>
