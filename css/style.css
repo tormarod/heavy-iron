@@ -242,7 +242,7 @@ body {
    the names to the right of it line up card to card whether or not an
    arrow is disabled. */
 .ex-num {
-  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
   padding-top: 1px; width: 20px; flex: 0 0 20px;
 }
 .ex-ord-n {
@@ -251,7 +251,7 @@ body {
 }
 .ex.complete .ex-ord-n { color: var(--signal); }
 .ex-ord {
-  width: 20px; height: 14px; padding: 0; border: none; background: transparent;
+  width: 24px; height: 20px; padding: 0; border: none; background: transparent;
   color: var(--soft); font-size: 11px; line-height: 1; cursor: pointer; opacity: .55;
   border-radius: 2px;
 }
@@ -285,7 +285,8 @@ body {
 .ex-rest { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--soft); margin-top: 3px; text-align: right; }
 .ex-chart-btn {
   margin-top: 5px; background: transparent; border: 1px solid var(--edge); color: var(--soft);
-  font-size: 10px; font-family: var(--font-sans); font-weight: 600; padding: 3px 7px; border-radius: 2px; cursor: pointer;
+  font-size: 11px; font-family: var(--font-sans); font-weight: 600; padding: 5px 9px; border-radius: 2px; cursor: pointer;
+  min-height: 28px;
 }
 .ex-chart-btn:hover { border-color: var(--signal); color: var(--signal); }
 
@@ -333,7 +334,8 @@ body {
 .ex-setup-btn {
   background: transparent; border: none; color: var(--soft);
   font-family: 'IBM Plex Mono', monospace; font-size: 10.5px;
-  padding: 2px 0 6px; cursor: pointer; text-align: left;
+  padding: 6px 0; cursor: pointer; text-align: left;
+  min-height: 28px;
 }
 .ex-setup-btn:hover { color: var(--ink); }
 .ex-setup-box { padding-bottom: 8px; }
