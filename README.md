@@ -62,7 +62,8 @@ rest together. All state lives in `localStorage`, and `sw.js` precaches
 the shell so the app opens with no connection — a new release installs
 behind the running one and is offered as an **Actualizar** prompt rather
 than swapped under a session. A strict Content-Security-Policy in
-`index.html` lets the page reach nothing external but Google Fonts; the two QR libraries
+`index.html` lets the page reach nothing external but Google Fonts — the
+typefaces are Barlow, Barlow Condensed and JetBrains Mono; the two QR libraries
 are vendored in `js/vendor/`. Anything that arrives from a file, a paste,
 `blocks/` or a QR scan is untrusted: it goes through the
 `normalizeImported*` validators and the limits under
