@@ -1607,6 +1607,28 @@ function repDecay(rows) {
   return drop >= floor ? drop : 0;
 }
 
+/* The line the card prints for that drop, or '' when there is no drop. It
+   used to ask the question — "¿primera serie al fallo?" — because the log
+   held nothing that could answer it. Since plans/035 the first set can say
+   so itself, and the line says what it said instead of guessing: at 0 or 1
+   in reserve the drop is explained, at 2 or more it is not and the rests
+   are the next thing to look at. Its OWN value only, never the inherited
+   one: a reserve nobody typed on the first set is not evidence about the
+   first set.
+
+   A pure function of `rows` so the unit suite can read the four texts
+   without a browser; the flag's job — naming what phi[k] cannot — has not
+   changed. */
+function decayLine(rows) {
+  const drop = repDecay(rows);
+  if (!drop) return '';
+  const head = '⚠ caída de ' + drop + ' reps';
+  const first = rowRir((rows || [])[0]);
+  if (first == null) return head + ': ¿primera serie al fallo?';
+  if (first >= 2) return head + ' con la primera serie holgada (RIR ' + first + '): ¿descansos cortos?';
+  return head + ': primera serie a ' + first + ' RIR — las de después se vacían';
+}
+
 /* The top of a rep range like "8–12" or "8-12" — the last number in the
    string, so it also copes with a plain "12" (no range at all). Used by
    copyPrev to decide whether double progression's condition ("top of range
@@ -3102,7 +3124,7 @@ function buildExCard(ctx, ex, i) {
     (parked ? '<div class="ex-parked"></div>' : '');
 
   if (decay) {
-    card.querySelector('.ex-decay').textContent = '⚠ caída de ' + decay + ' reps: ¿primera serie al fallo?';
+    card.querySelector('.ex-decay').textContent = decayLine(rows);
   }
 
   if (est) {
