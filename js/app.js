@@ -4376,15 +4376,18 @@ function targetFor(profile, block, day, ex, week, now, brake) {
      true ratio is at most this one.
 
      No code here changed for plans/035 and the reading did: every `e` is
-     now priced at the reserve its own set was done at. A session run
-     3 → 2 → 1 → 0 RIR down four sets — what a well-paced session looks like
-     — used to be read at one reserve throughout, so the reps coming down
-     were the only thing in the ratio and it reported something like a 15 %
-     loss of capacity by set four. Priced per set, the reserve coming down
-     pays for most of that drop and what is left is the fatigue that was
-     actually there. `upper[k]` follows the same way: a censored set bounds
-     the drop out of itself because THAT set is a floor, not because the
-     whole session was.
+     now priced at the reserve its own set was done at, so the two sides of
+     each ratio are comparable. Take a session run 3 → 2 → 1 → 0 RIR down
+     four sets at 60 kg — 10, 9, 8, 8 reps, what a well-paced session looks
+     like. Read at the one chip the lifter tapped for the last set, every
+     set was priced as if it had gone to failure: the first set's capacity
+     came out at 80 and the drop by set four at 5 %. Read per set the first
+     set is worth 86, which is what it actually proved, and the measured
+     drop is 10 % — the reserve that was genuinely spent down the session,
+     which the single chip had hidden. The level rises further than the
+     decay costs, so the last set is asked for more rather than less.
+     `upper[k]` follows the same way: a censored set bounds the drop out of
+     itself because THAT set is a floor, not because the whole session was.
 
      This is also what prices the set `ex.add` brings in mid-block, which
      has never been done at all. */

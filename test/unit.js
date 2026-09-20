@@ -608,7 +608,9 @@ const dupIdRoundTrip = call(`
     const ad0 = ab.days[0], ad2 = ab.days[2];
     const s0 = (after.log[ab.id] || {})[slot(1, ad0.id)] || {};
     const s2 = (after.log[ab.id] || {})[slot(1, ad2.id)] || {};
-    const rir2 = (after.rir[ab.id] || {})[slot(1, ad2.id)] || {};
+    /* Since plans/035 the RIR is on the row, so this is the same question
+       asked of the new record: the value written on day B's set must come
+       back on day B's set, not on day A's. */
     /* Looked up under the id the RESTORED exercise carries, not the one it
        had before: a row filed under an id no card on that day reads is the
        bug, and asserting against src.id would pass straight through it. */
@@ -619,7 +621,8 @@ const dupIdRoundTrip = call(`
       notRenamed: id2 === src.id,
       day0Row: !!(s0[id0] && s0[id0][0] && s0[id0][0].w === '60'),
       day2Row: !!(s2[id2] && s2[id2][0] && s2[id2][0].w === '75'),
-      day2Rir: rir2[id2] === '1',
+      day2Rir: !!(s2[id2] && s2[id2][0] && s2[id2][0].rir === '1') &&
+              !(s0[id0] && s0[id0][0] && 'rir' in s0[id0][0]),
       sameOrder: JSON.stringify(after.order) === beforeOrder,
       orderResolves: order2.length === 3 && order2.every(id => live2.indexOf(id) >= 0),
       srcId: src.id, keptId: id2,
@@ -633,7 +636,8 @@ ok('the same id on two days is not renamed on the restore path',
 ok("...the first day's sets are still under it", dupIdRoundTrip.day0Row, dupIdRoundTrip.s2keys);
 ok("...the second day's sets are too, not merged into the first's",
    dupIdRoundTrip.day2Row, dupIdRoundTrip.s2keys);
-ok("...and the second day's RIR chip with them", dupIdRoundTrip.day2Rir, dupIdRoundTrip.s2keys);
+ok("...and the second day's RIR with them, on its own set and not on the first day's",
+   dupIdRoundTrip.day2Rir, dupIdRoundTrip.s2keys);
 ok('...and the recorded session order is unchanged',
    dupIdRoundTrip.sameOrder, dupIdRoundTrip.beforeOrder + ' vs ' + dupIdRoundTrip.afterOrder);
 ok('...naming exercises that day actually has', dupIdRoundTrip.orderResolves,
@@ -1092,7 +1096,13 @@ console.log('\n== objetivo: los quince casos de la v3 ==');
    `{ sets: [[weight, reps], …], rir: '0'|'1'|'2+'|undefined, day }` where
    `day` is days from an arbitrary Monday and defaults to one a week. The
    target is asked for the week after the last one, at `day + 7`, unless
-   `opts.week` / `opts.now` say otherwise. */
+   `opts.week` / `opts.now` say otherwise.
+
+   `rirs: ['3', null, …]` is the plans/035 record — one value per set,
+   written on the rows — and it is what the per-set cases below use. `rir`
+   stays the legacy one-per-session chip in the parallel map, which is what
+   every case written before that plan uses, and what the inheritance rule
+   has to keep reading exactly as it always did. */
 const targetProbe = `
   (function (sessions, opts) {
     opts = opts || {};
@@ -1115,13 +1125,14 @@ const targetProbe = `
     sessions.forEach(function (s, i) {
       const d = s.day != null ? s.day : i * 7;
       lastDay = d;
-      profile.log.B['w' + (i + 1) + '-D'] = { E: s.sets.map(function (p) {
+      profile.log.B['w' + (i + 1) + '-D'] = { E: s.sets.map(function (p, k) {
         const row = { w: String(p[0]), r: String(p[1]), done: true, ts: T0 + d * DAY };
         /* A third element is the unit the row was written in. The key is
            added only when there is one, because that is what the app writes:
            a row logged in the profile's own unit carries no u at all, and a
            literal u: undefined is a shape no restore ever produces. */
         if (p[2] === 'lb') row.u = 'lb';
+        if (s.rirs && s.rirs[k] != null) row.rir = String(s.rirs[k]);
         return row;
       }) };
       if (s.rir) profile.rir.B['w' + (i + 1) + '-D'] = { E: s.rir };
@@ -1861,6 +1872,373 @@ ok('the lateral-raise rename is seeded with both names',
    latSeed.length === 2 && latSeed[0].n === 'Elevaciones laterales en polea', JSON.stringify(latSeed));
 ok('dated at the oldest session it has, so it cuts nothing',
    latSeed[1].since === '2026-03-02', JSON.stringify(latSeed));
+
+console.log('\n== RIR por serie: el registro vive en la fila (plans/035) ==');
+/* The RIR used to be one value per exercise per session, in a parallel map.
+   It is `r.rir` on the log row now, one digit per set, and the map is read
+   as a fallback and never written.
+
+   The load-bearing assertion of the whole change is not in this section: it
+   is that every objetivo case above still expects the same numbers. A log
+   with no per-set values has to read EXACTLY as it did, and the inheritance
+   rule below is what makes that true — a set with nothing typed takes the
+   reserve of the next set that has one, which is what the single chip did
+   to every set of the session. */
+
+ok('rirNumber reads a typed digit', call("rirNumber('3')") === 3);
+ok('...and still reads the three legacy chips',
+   call("[rirNumber('2+'), rirNumber('1'), rirNumber('0')].join(',')") === '2,1,0');
+ok('...and refuses what is neither', call("rirNumber('x')") === null && call("rirNumber('')") === null);
+ok('...including a digit past RIR_MAX', call("rirNumber('6')") === null);
+
+const rirsOf = (rows, legacy) => call(
+  'sessionRirs(' + JSON.stringify(rows) + ', ' + JSON.stringify(legacy == null ? null : legacy) +
+  ').map(function (v) { return v == null ? "x" : v; }).join(",")');
+ok('sessionRirs: a set with nothing typed takes the next set that has one',
+   rirsOf([{}, {}, { rir: '1' }, {}]) === '1,1,1,x', rirsOf([{}, {}, { rir: '1' }, {}]));
+ok('...a session with nothing typed anywhere is empty throughout',
+   rirsOf([{}, {}, {}]) === 'x,x,x', rirsOf([{}, {}, {}]));
+ok('...and a typed value reaches backwards only as far as the next one that has its own',
+   rirsOf([{ rir: '3' }, {}, {}, { rir: '0' }]) === '3,0,0,0',
+   rirsOf([{ rir: '3' }, {}, {}, { rir: '0' }]));
+ok('...the legacy chip fills a session whose rows carry nothing, as if typed on the last set',
+   rirsOf([{}, {}, {}], 2) === '2,2,2', rirsOf([{}, {}, {}], 2));
+ok('...and is ignored the moment any row carries one of its own',
+   rirsOf([{}, { rir: '0' }, {}], 2) === '0,0,x', rirsOf([{}, { rir: '0' }, {}], 2));
+
+const setRirProbe = call(`
+  (function () {
+    const rows = [{ w: '60', r: '10', done: true },
+                  { w: '60', r: '9', done: true },
+                  { w: '60', r: '', done: false }];
+    const p = { log: { B: { 'w1-D': { E: rows } } }, rir: {} };
+    const shot = function () { return rows.map(function (r) { return r.rir == null ? 'x' : r.rir; }).join(','); };
+    setRir(p, 'B', 1, 'D', 'E', '2+');
+    const wrote = shot(), map = JSON.stringify(p.rir);
+    setRir(p, 'B', 1, 'D', 'E', '');
+    const cleared = shot();
+    setRir(p, 'B', 1, 'D', 'E', '4');
+    return { wrote: wrote, map: map, cleared: cleared, digit: shot() };
+  })()
+`);
+ok('setRir writes the value onto the last set actually done, as a digit',
+   setRirProbe.wrote === 'x,2,x', JSON.stringify(setRirProbe));
+ok('...and never into the legacy map again', setRirProbe.map === '{}', JSON.stringify(setRirProbe));
+ok('...an empty value clears the row rather than leaving a wrong answer',
+   setRirProbe.cleared === 'x,x,x', JSON.stringify(setRirProbe));
+ok('...and a digit is stored as itself', setRirProbe.digit === 'x,4,x', JSON.stringify(setRirProbe));
+
+const getRirProbe = call(`
+  (function () {
+    const rows = [{ w: '60', r: '10', done: true, rir: '3' }, { w: '60', r: '9', done: true, rir: '1' }];
+    const p = { log: { B: { 'w1-D': { E: rows } } }, rir: { B: { 'w1-D': { E: '2+' } } } };
+    const fromRow = getRir(p, 'B', 1, 'D', 'E');
+    delete rows[0].rir; delete rows[1].rir;
+    const fromMap = getRir(p, 'B', 1, 'D', 'E');
+    delete p.rir.B['w1-D'].E;
+    return [fromRow, fromMap, getRir(p, 'B', 1, 'D', 'E')].join('|');
+  })()
+`);
+ok('getRir reads the last working set that carries a value, the legacy map behind it, and nothing beyond that',
+   getRirProbe === '1|2+|', getRirProbe);
+
+const foldProbe = call(`
+  (function () {
+    const mk = function () {
+      return { log: { B: { 'w1-D': { E: [{ w: '60', r: '10', done: true },
+                                         { w: '60', r: '9', done: true },
+                                         { w: '60', r: '', done: false }] } } },
+               rir: { B: { 'w1-D': { E: '2+' } } } };
+    };
+    const shot = function (p) {
+      return p.log.B['w1-D'].E.map(function (r) { return r.rir == null ? 'x' : r.rir; }).join(',');
+    };
+    const p = mk();
+    foldRirMap(p, 'B');
+    const once = shot(p), kept = p.rir.B['w1-D'].E;
+    foldRirMap(p, 'B');
+    const twice = shot(p);
+    const q = mk();
+    q.log.B['w1-D'].E[1].rir = '0';
+    foldRirMap(q, 'B');
+    return { once: once, kept: kept, twice: twice, own: shot(q) };
+  })()
+`);
+ok('foldRirMap lands a 2+ chip on the last set done, as the digit it stands for',
+   foldProbe.once === 'x,2,x', JSON.stringify(foldProbe));
+ok('...and leaves the map entry where it is, as the fallback it still is',
+   foldProbe.kept === '2+', JSON.stringify(foldProbe));
+ok('...a second run changes nothing', foldProbe.twice === 'x,2,x', JSON.stringify(foldProbe));
+ok('...and a row that already carries a value is never overwritten',
+   foldProbe.own === 'x,0,x', JSON.stringify(foldProbe));
+
+const exSess = call(`
+  (function (rirs, chip) {
+    const rows = [10, 9, 9, 8].map(function (n, i) {
+      const row = { w: '60', r: String(n), done: true };
+      if (rirs[i] != null) row.rir = String(rirs[i]);
+      return row;
+    });
+    const p = { log: { B: { 'w1-D': { E: rows } } }, rir: {} };
+    if (chip) { p.rir.B = { 'w1-D': { E: chip } }; }
+    const s = exSession(p, 'B', 1, 'D', 'E', 8, 15);
+    return { rho: s.sets.map(function (x) { return x.rho; }).join(','),
+             cens: s.sets.map(function (x) { return x.cens ? 'c' : '.'; }).join(''),
+             rir: s.rir, sessionRho: s.rho };
+  })
+`);
+const paced4 = exSess(['3', '2', '1', '0']);
+ok('exSession prices every set at its own reserve', paced4.rho === '3,2,1,0', JSON.stringify(paced4));
+ok('...and censors the sets held at two or more in reserve rather than the whole session',
+   paced4.cens === 'cc..', JSON.stringify(paced4));
+ok('...while the session itself still reads as its last set',
+   paced4.rir === '0' && paced4.sessionRho === 0, JSON.stringify(paced4));
+const lastOnly = exSess([null, null, null, '1']);
+ok('a session whose only value is on the last set prices every set at it — the old chip, exactly',
+   lastOnly.rho === '1,1,1,1' && lastOnly.cens === '....', JSON.stringify(lastOnly));
+const legacyChip = exSess([null, null, null, null], '1');
+ok('...and the legacy chip in the map reads identically',
+   legacyChip.rho === lastOnly.rho && legacyChip.cens === lastOnly.cens, JSON.stringify(legacyChip));
+const nothing = exSess([null, null, null, null]);
+ok('a session with nothing recorded is every set at zero and every set a floor',
+   nothing.rho === '0,0,0,0' && nothing.cens === 'cccc' && nothing.rir === null, JSON.stringify(nothing));
+
+/* The session the whole change is about: 60 kg for 10, 9, 8, 8 reps, paced
+   3 → 2 → 1 → 0 down the four sets. Read at the one chip the lifter tapped
+   for the last set, every set was priced as if it had gone to failure. */
+const pacedOpts = { range: '10–15', inc: 2.5, sets: 4, rirWeek: 2 };
+const pacedRows = [[60, 10], [60, 9], [60, 8], [60, 8]];
+const pacedT = target([{ sets: pacedRows, rirs: ['3', '2', '1', '0'] }], pacedOpts);
+const chipT = target([{ sets: pacedRows, rir: '0' }], pacedOpts);
+ok('a session paced down its sets reads its first set at what that set proved, not at the last set’s reserve',
+   pacedT.level === 86 && chipT.level === 80, JSON.stringify({ paced: pacedT.level, chip: chipT.level }));
+ok('...so the first set is asked for the reps it earned instead of a back-off',
+   pacedT.show.indexOf('60×12 · 60×10') === 0 && chipT.show.indexOf('57,5×10↓') === 0,
+   pacedT.show + '  vs  ' + chipT.show);
+ok('...the between-set decay is measured on capacities that are comparable, so it reports the reserve really spent',
+   pacedT.phi === '1.000 0.974 0.927 0.903' && chipT.phi === '1.000 0.975 0.950 0.950',
+   pacedT.phi + '  vs  ' + chipT.phi);
+ok('...and the level rises further than that decay costs, so the last set is asked for more rather than less',
+   pacedT.show.slice(-6) === '55×11↓' && chipT.show.slice(-5) === '55×10',
+   pacedT.show + '  vs  ' + chipT.show);
+
+/* The same-weight floor discounts only what a stricter week honestly costs
+   THAT set. A first set held at 3 RIR asked for 2 gives up nothing, whatever
+   the last set of the session was done at — here under a brake, so the trend
+   term is zero and the arithmetic is nothing but the reserves. */
+const heldOpts = { range: '8–12', inc: 2.5, sets: 3, rirWeek: 2, brake: true };
+const heldT = target([{ sets: [[60, 10], [60, 10], [60, 10]], rirs: ['3', '0', '0'] }], heldOpts);
+const heldChipT = target([{ sets: [[60, 10], [60, 10], [60, 10]], rir: '0' }], heldOpts);
+ok('a set held at 3 RIR and asked for 2 keeps its reps even when the last set of that session went to failure',
+   heldT.show === '60×11 · 60×8 · 60×8' && heldChipT.show === '60×8 · 60×8 · 60×8',
+   heldT.show + '  vs  ' + heldChipT.show);
+
+/* oneRep is the FIRST set's rep-equivalent, so it is priced at the first
+   set's reserve: 1/(30 + 10 + 3). Reading the last set's instead — what the
+   code did while one chip was all there was — gives 1/(30 + 10 + 0), which
+   is the number this assertion refuses. */
+const oneRepT = target([{ sets: [[60, 10], [60, 10]], rirs: ['3', '0'] }],
+                       { range: '8–12', inc: 2.5, sets: 2, rirWeek: 2 });
+ok('the expected gain is the first set’s rep-equivalent, not the last set’s',
+   Math.abs(oneRepT.g - 1 / 43) < 1e-12 && Math.abs(oneRepT.g - 1 / 40) > 1e-6, String(oneRepT.g));
+
+const levelProbe = call(`
+  (function (rir) {
+    const p = { log: { B: { 'w1-D': { E: [{ w: '60', r: '10', done: true, rir: rir },
+                                          { w: '60', r: '10', done: true, rir: '0' }] } } }, rir: {} };
+    const lv = levelOf(capSeq([exSession(p, 'B', 1, 'D', 'E', 8, 15)]));
+    return lv.cens + '|' + lv.level;
+  })
+`);
+ok('a first set typed at 1 in reserve is a reading, and the level can move on it',
+   levelProbe('1') === 'false|82', levelProbe('1'));
+ok('...typed at 2 it stays a floor', levelProbe('2') === 'true|84', levelProbe('2'));
+const sixSessions = n => Array.from({ length: 6 }, () => ({ sets: [[60, 10], [60, 9], [60, 8]], rirs: [n, null, '0'] }));
+ok('and the confidence chip is what typing the first set buys: it climbs from baja to alta',
+   target(sixSessions('1'), { range: '8–12', inc: 2.5, sets: 3, rirWeek: 2 }).conf === 'alta' &&
+   target(sixSessions('2'), { range: '8–12', inc: 2.5, sets: 3, rirWeek: 2 }).conf === 'baja');
+
+const recProbe = call(`
+  (function () {
+    const p = { obj: {} };
+    recordTarget(p, 'B', 1, 'D', 'E', { conf: 'alta', kind: 'objetivo', rirWeek: 2, sets: [{ w: 60, r: 10, move: '' }] });
+    recordTarget(p, 'B', 1, 'D', 'F', { conf: 'baja', kind: 'descarga', sets: [{ w: 40, r: 10, move: '' }] });
+    const sl = p.obj.B['w1-D'];
+    return [sl.E.rir, sl.F.rir === null ? 'null' : String(sl.F.rir)].join('|');
+  })()
+`);
+ok('recordTarget keeps the week’s RIR the reps were solved for, and none for a descarga that was solved for no reserve',
+   recProbe === '2|null', recProbe);
+const objRir = call(`
+  (function () {
+    const rawBlock = { name: 'B', weeks: 8, deload: 0, days: [{ id: 'd0', name: 'D', ex: [{ id: 'e1', n: 'Ex', sets: 3, reps: '10-15' }] }] };
+    const normalized = normalizeImportedBlock(rawBlock);
+    const run = function (v) {
+      const raw = { 'w1-d0': { e1: { v: 3, at: 1, conf: 'media', rir: v, sets: [{ w: 45, r: 9, m: '' }] } } };
+      const kept = normalizeImportedObj(raw, rawBlock, normalized)['w1-' + normalized.days[0].id][normalized.days[0].ex[0].id];
+      return 'rir' in kept ? String(kept.rir) : 'x';
+    };
+    return [run(3), run('x'), run(9), run(2.5)].join(',');
+  })()
+`);
+ok('normalizeImportedObj keeps an integer inside the range and drops everything else, like kind',
+   objRir === '3,x,x,x', objRir);
+
+const line = rows => call('decayLine(' + JSON.stringify(rows) + ')');
+ok('decayLine says the first set went to failure when that is what was typed',
+   line([{ r: '12', rir: '0' }, { r: '8' }]) === '⚠ caída de 4 reps: primera serie a 0 RIR — las de después se vacían',
+   line([{ r: '12', rir: '0' }, { r: '8' }]));
+ok('...makes no such claim at 1 in reserve',
+   line([{ r: '12', rir: '1' }, { r: '8' }]) === '⚠ caída de 4 reps: primera serie a 1 RIR — las de después se vacían',
+   line([{ r: '12', rir: '1' }, { r: '8' }]));
+ok('...points at the rests when the first set was typed holgada',
+   line([{ r: '12', rir: '3' }, { r: '8' }]) === '⚠ caída de 4 reps con la primera serie holgada (RIR 3): ¿descansos cortos?',
+   line([{ r: '12', rir: '3' }, { r: '8' }]));
+ok('...and still asks the question when nothing was typed',
+   line([{ r: '12' }, { r: '8' }]) === '⚠ caída de 4 reps: ¿primera serie al fallo?',
+   line([{ r: '12' }, { r: '8' }]));
+ok('...and says nothing at all without a drop worth naming',
+   line([{ r: '12' }, { r: '11' }]) === '', line([{ r: '12' }, { r: '11' }]));
+
+/* The Diagnóstico's three effort signals, read end to end through diagRows:
+   three flat sessions of one exercise, and the verdict the signals pick. */
+const diagProbe = call(`
+  (function (sessions, useMap) {
+    state = defaultState(); migrate();
+    const p = state.profiles.hombre;
+    const block = p.blocks['block-1'];
+    const day = block.days[0];
+    const ex = day.ex[0];
+    ex.reps = '8-12'; ex.sets = 3; delete ex.add;
+    const DAY = 86400000, start = Date.now() - 28 * DAY;
+    p.log['block-1'] = {}; p.rir['block-1'] = {};
+    sessions.forEach(function (rows, i) {
+      const bucket = {};
+      bucket[ex.id] = rows.map(function (x) {
+        const row = { w: '40', r: String(x[0]), done: true, ts: start + i * 7 * DAY };
+        if (!useMap && x[1] != null) row.rir = String(x[1]);
+        return row;
+      });
+      p.log['block-1'][slot(i + 1, day.id)] = bucket;
+      const last = rows[rows.length - 1][1];
+      if (useMap && last != null) {
+        const m = {}; m[ex.id] = String(last);
+        p.rir['block-1'][slot(i + 1, day.id)] = m;
+      }
+    });
+    p.week = sessions.length + 1; p.day = 0;
+    resetRenderCache();
+    const row = diagRows(p, block, 'block').find(function (r) { return r.id === ex.id; });
+    return row.trend + ' | ' + row.lectura;
+  })
+`);
+const decaySess = (first, last) => [[12, first], [10, null], [8, last]];
+const easySess = last => [[12, null], [11, null], [11, last]];
+const three = f => [f, f, f];
+ok('easy counts a typed 3 exactly as the old 2+ chip did',
+   diagProbe(three(easySess('3')), false) === 'flat | Falta intensidad — RIR 2+ repetido' &&
+   diagProbe(three(easySess('2+')), true) === 'flat | Falta intensidad — RIR 2+ repetido',
+   diagProbe(three(easySess('3')), false));
+ok('failure fires on a 0 typed on the row and on the legacy chip alike',
+   diagProbe([easySess(null), easySess(null), easySess('0')], false) === 'flat | Fatiga, no falta de esfuerzo' &&
+   diagProbe([easySess(null), easySess(null), easySess('0')], true) === 'flat | Fatiga, no falta de esfuerzo',
+   diagProbe([easySess(null), easySess(null), easySess('0')], false));
+ok('decay no longer blames a first set the lifter typed at 2 in reserve',
+   diagProbe(three(decaySess('2', '1')), false) ===
+     'flat | Estancado de verdad — ni la serie tope ni los kilos por serie se mueven',
+   diagProbe(three(decaySess('2', '1')), false));
+ok('...and still fires when the first set was typed at 0',
+   diagProbe(three(decaySess('0', '1')), false) === 'flat | Primera serie al fallo — las de después se vacían',
+   diagProbe(three(decaySess('0', '1')), false));
+ok('...or when nothing was typed at all, which is every session logged before this',
+   diagProbe(three(decaySess(null, null)), false) === 'flat | Primera serie al fallo — las de después se vacían',
+   diagProbe(three(decaySess(null, null)), false));
+
+const logRir = call(`
+  (function () {
+    const rawBlock = { name: 'B', weeks: 8, deload: 0, days: [{ id: 'd0', name: 'D', ex: [{ id: 'e1', n: 'Ex', sets: 3, reps: '10-15' }] }] };
+    const normalized = normalizeImportedBlock(rawBlock);
+    const dayId = normalized.days[0].id, exId = normalized.days[0].ex[0].id;
+    const raw = { 'w1-d0': { e1: [{ w: '60', r: '10', done: true, rir: '4' },
+                                  { w: '60', r: '10', done: true, rir: '2+' },
+                                  { w: '60', r: '10', done: true, rir: '7' },
+                                  { w: '60', r: '10', done: true, rir: 7 },
+                                  { w: '60', r: '10', done: true, rir: '' }] } };
+    const out = normalizeImportedLog(raw, rawBlock, normalized)['w1-' + dayId][exId];
+    return out.map(function (r) { return r.rir == null ? 'x' : r.rir; }).join(',');
+  })()
+`);
+ok('normalizeImportedLog keeps one digit on the row and drops a chip, a digit past the cap and an empty value',
+   logRir === '4,x,x,x,x', logRir);
+
+const rirCsvProbe = call(`
+  (function () {
+    state = defaultState(); migrate();
+    Object.keys(state.profiles).forEach(function (k) { if (k !== 'hombre') delete state.profiles[k]; });
+    state.activeProfile = 'hombre';
+    const p = state.profiles.hombre;
+    p.label = 'H';
+    const block = p.blocks['block-1'];
+    block.name = 'B';
+    p.blockOrder = ['block-1'];
+    const day = block.days[0];
+    const ex = day.ex[0];
+    ex.n = 'Press';
+    p.log['block-1'] = {}; p.rir['block-1'] = {};
+    const w1 = {}; w1[ex.id] = [{ w: '60', r: '10', done: true, rir: '3' },
+                                { w: '60', r: '9', done: true },
+                                { w: '60', r: '8', done: true }];
+    p.log['block-1'][slot(1, day.id)] = w1;
+    /* A session from before plans/035: the chip in the map, folded on load
+       onto the last set and nowhere else. */
+    const w2 = {}; w2[ex.id] = [{ w: '55', r: '10', done: true }, { w: '55', r: '9', done: true }];
+    p.log['block-1'][slot(2, day.id)] = w2;
+    const m = {}; m[ex.id] = '2+';
+    p.rir['block-1'][slot(2, day.id)] = m;
+    foldRirMap(p, 'block-1');
+    const lines = buildCsv().split('\\r\\n');
+    const col = function (i) { return lines[i].split(',')[12]; };
+    return { head: lines[0].split(',')[12],
+             week1: [col(1), col(2), col(3)].join(','),
+             week2: [col(4), col(5)].join(',') };
+  })()
+`);
+ok('the CSV column is still called rir', rirCsvProbe.head === 'rir', JSON.stringify(rirCsvProbe));
+ok('...and holds each set’s own typed value, blank where nothing was typed',
+   rirCsvProbe.week1 === '3,,', JSON.stringify(rirCsvProbe));
+ok('...while a folded legacy chip shows on the session’s last row only',
+   rirCsvProbe.week2 === ',2', JSON.stringify(rirCsvProbe));
+
+const shareProbe = call(`
+  (function (rirs) {
+    state = defaultState(); migrate();
+    const p = state.profiles.hombre;
+    const block = p.blocks['block-1'];
+    const day = block.days[0];
+    const ex = day.ex[0];
+    p.log['block-1'] = {}; p.rir['block-1'] = {};
+    const bucket = {}; bucket[ex.id] = rirs.map(function (v, i) {
+      const row = { w: '60', r: String(10 - i), done: true };
+      if (v != null) row.rir = v;
+      return row;
+    });
+    p.log['block-1'][slot(1, day.id)] = bucket;
+    const plan = blockSharePlan(block);
+    const log = blockShareLog(p, block);
+    const chips = blockShareRir(p, block);
+    const normalized = normalizeImportedBlock(plan);
+    const back = normalizeImportedLog(log, plan, normalized);
+    const rows = back[slot(1, normalized.days[0].id)][normalized.days[0].ex[0].id];
+    return { back: rows.map(function (r) { return r.rir == null ? 'x' : r.rir; }).join(','),
+             chip: chips[slot(1, day.id)][ex.id] };
+  })
+`);
+const shared = shareProbe(['3', null, '1']);
+ok('a share carries each set’s own value on the row, through the validator on the other side',
+   shared.back === '3,x,1', JSON.stringify(shared));
+ok('...and the legacy map it still sends is derived from those rows, for a phone that reads nothing else',
+   shared.chip === '1' && shareProbe(['1', null, '3']).chip === '2+',
+   JSON.stringify(shared) + ' / ' + JSON.stringify(shareProbe(['1', null, '3'])));
 
 console.log('\n== __proto__ / constructor / prototype ids are never trusted as keys (plans/008 item 2) ==');
 ok('safeKey blocks __proto__', call("safeKey('__proto__')") === '');
@@ -3110,13 +3488,17 @@ console.log('\n== commit() is both halves, and installBlockData refuses a bad id
   })()`);
   ok('commit() persists and redraws, once each', halves === '1,1', halves);
 
+  /* The log row comes out carrying the RIR the map brought with it: a block
+     that arrives from a phone on an older shell sends the legacy map beside
+     the log (blockShareRir), and installBlockData folds it onto the rows the
+     same way a load does. The map itself is left where it is. */
   const installed = call(`(function () {
     const p = { log: {}, rir: {}, order: {} };
     const done = installBlockData(p, 'b1', { log: { 'w1-d1': { e1: [{ w: 1 }] } }, rir: { 'w1-d1': { e1: 2 } } });
     return [done, JSON.stringify(p.log.b1), JSON.stringify(p.rir.b1), JSON.stringify(p.order)].join('|');
   })()`);
-  ok('installBlockData files the maps it was given and leaves the rest alone',
-     installed === 'true|{"w1-d1":{"e1":[{"w":1}]}}|{"w1-d1":{"e1":2}}|{}', installed);
+  ok('installBlockData files the maps it was given, folds the RIR onto the rows, and leaves the rest alone',
+     installed === 'true|{"w1-d1":{"e1":[{"w":1,"rir":"2"}]}}|{"w1-d1":{"e1":2}}|{}', installed);
 
   /* plans/008 item 2's class of key: a block id is a key on five maps, and a
      hand-edited file can carry a name Object.prototype already answers for. */
