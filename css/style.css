@@ -515,8 +515,11 @@ body {
 .ex-est-n { display: block; color: var(--soft); font-size: 11px; margin-top: 2px; }
 
 /* ---- energy at session start ----
-   Same shape as the RIR chips, asked before the sets instead of after. */
-.energy { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; flex-wrap: wrap; }
+   Same shape as the RIR chips, asked before the sets instead of after.
+   The top margin matches .week-row's own: the row above is the week selector
+   (or the pair note, whose 12px bottom margin collapses with this one), and
+   without it the chips sit flush against the selector's border. */
+.energy { display: flex; align-items: center; gap: 8px; margin: 12px 0 10px; flex-wrap: wrap; }
 .energy-lbl {
   font-family: var(--font-display); font-size: 11px; font-weight: 600;
   letter-spacing: .08em; text-transform: uppercase; color: var(--soft);
