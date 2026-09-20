@@ -216,8 +216,31 @@ const ok = (name, cond, extra) => {
        way until asked for and still writes to the plan when it is. */
     console.log('\n== what is behind the name ==');
     ok('the fold starts closed', await page.locator('.ex').first().locator('.ex-more[hidden]').count() === 1);
+    /* Nothing said the card opened at all before: the name and the meta line
+       looked like a title, so the alternative, the cue and the machine
+       settings were behind a tap only someone who already knew would try.
+       Read as rotation rather than as presence, so a chevron that stopped
+       answering the disclosure still fails. */
+    const chev = async () => page.evaluate(() => {
+      const e = document.querySelector('.ex .ex-name-btn .chev');
+      return e ? { hidden: e.getAttribute('aria-hidden'), t: getComputedStyle(e).transform } : null;
+    });
+    const chevShut = await chev();
+    ok('the head carries a chevron, out of the accessibility tree',
+       !!chevShut && chevShut.hidden === 'true', JSON.stringify(chevShut));
     await openExMore(page, 0);
     ok('the name says it is open', await page.locator('.ex').first().locator('.ex-name-btn').getAttribute('aria-expanded') === 'true');
+    /* Waited for, not read straight away: .chev transitions over .12s, so an
+       immediate read catches the identity matrix it starts from. A condition
+       wait rather than a sleep, and a miss comes back as this assertion
+       failing with both matrices rather than as a timeout that would take the
+       rest of the section with it. */
+    const chevTurned = await page.waitForFunction(
+      () => { const e = document.querySelector('.ex .ex-name-btn .chev');
+              return !!e && getComputedStyle(e).transform.replace(/\s/g, '').startsWith('matrix(-1,'); },
+      { timeout: 3000 }).then(() => true, () => false);
+    const chevOpen = await chev();
+    ok('and the chevron turns over with it', chevTurned, chevShut.t + ' → ' + chevOpen.t);
     await page.locator('.ex').first().locator('.ex-setup-in').fill('asiento 4');
     await page.waitForFunction(() => !saveT && !held);
     ok('the machine settings write straight to the plan',
