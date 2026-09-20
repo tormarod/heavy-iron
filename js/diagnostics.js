@@ -318,7 +318,7 @@ function buildHeatmapSVG(days) {
   labels.forEach((l, r) => {
     if (r % 2) return;  /* every other row, or they collide at this size */
     svg += '<text x="0" y="' + (padT + r * (cell + gap) + cell - 1) + '" font-size="7.5" fill="var(--soft)" ' +
-      'font-family="IBM Plex Mono, monospace">' + l + '</text>';
+      'font-family="JetBrains Mono, monospace">' + l + '</text>';
   });
   for (let c = 0; c < weeks; c++) {
     for (let r = 0; r < 7; r++) {

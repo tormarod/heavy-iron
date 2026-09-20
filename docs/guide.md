@@ -142,7 +142,7 @@ On a device with nothing saved, the first thing you get is a short setup:
 |---|---|
 | **¿Quién entrena?** | Two people, or just you. Switches solo mode on or off; changeable any time. |
 | **Nombres** | What each profile is called everywhere in the app, including backups and the CSV. |
-| **Color** | The accent for each profile — blue or green — so you can tell whose session is on screen at a glance. |
+| **Color** | The accent for each profile — ember or cyan (brasa / cian) — so you can tell whose session is on screen at a glance. |
 | **Unidad de peso** | `kg` or `lb`. |
 | **Plan de partida** | The built-in 8-week example plan; a blank block with one day and one empty exercise; or **Traer un JSON**, which takes a pasted block (with the same template download and AI prompt buttons as [Importar JSON](#importing-blocks-from-json)) and makes it the starting plan for both profiles. A paste that doesn't validate is refused there and then, leaving the sheet as it was. |
 
@@ -366,15 +366,16 @@ Two smaller safeguards worth knowing about:
 
 ## Offline and installing
 
-The typefaces come from Google, and they are loaded so that they cannot
-hold the app up: the stylesheet is parked on `media="print"` — which is
-not render-blocking — and switched on once it has arrived. A stylesheet
-in front of the scripts holds them back until it resolves, so a slow font
-host, a captive portal or a dead connection used to mean a minute of
-"Cargando tu registro…" from an app that needs no network at all. Every
-rule that names `Archivo` names the fallback stack with it, so the first
-paint of a cold start is the right shape in the wrong face rather than
-somebody's default serif.
+The three typefaces — Barlow Condensed, Barlow and JetBrains Mono — come
+from Google, and they are loaded so that they cannot hold the app up: the
+stylesheet is parked on `media="print"` — which is not render-blocking —
+and switched on once it has arrived. A stylesheet in front of the scripts
+holds them back until it resolves, so a slow font host, a captive portal
+or a dead connection used to mean a minute of "Cargando tu registro…" from
+an app that needs no network at all. Every rule reads one of the three
+`--font-*` tokens rather than naming a face itself, and each token carries
+its own fallback stack, so the first paint of a cold start is the right
+shape in the wrong face rather than somebody's default serif.
 
 The app registers a service worker that caches the page, styles, script
 and fonts, so after the first visit it opens with no connection at all —

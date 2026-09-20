@@ -69,10 +69,10 @@ function buildBarSVG(rows) {
     const y = padT + i * rowH;
     const barY = y + (rowH - barH) / 2;
     const w = r.value > 0 ? Math.max(2, (r.value / max) * barMaxW) : 0;
-    svg += '<text x="0" y="' + (y + rowH / 2 + 4) + '" font-size="11" fill="var(--ink)" font-family="IBM Plex Mono, monospace">' + esc(r.label) + '</text>';
+    svg += '<text x="0" y="' + (y + rowH / 2 + 4) + '" font-size="11" fill="var(--ink)" font-family="JetBrains Mono, monospace">' + esc(r.label) + '</text>';
     svg += '<rect x="' + labelW + '" y="' + barY + '" width="' + barMaxW + '" height="' + barH + '" fill="var(--sunk)" rx="2"/>';
     if (w > 0) svg += '<rect x="' + labelW + '" y="' + barY + '" width="' + w + '" height="' + barH + '" fill="var(--signal)" rx="2"/>';
-    svg += '<text x="' + (labelW + barMaxW + 6) + '" y="' + (y + rowH / 2 + 4) + '" font-size="11" fill="var(--soft)" font-family="IBM Plex Mono, monospace">' + r.value + '</text>';
+    svg += '<text x="' + (labelW + barMaxW + 6) + '" y="' + (y + rowH / 2 + 4) + '" font-size="11" fill="var(--soft)" font-family="JetBrains Mono, monospace">' + r.value + '</text>';
   });
   svg += '</svg>';
   return svg;

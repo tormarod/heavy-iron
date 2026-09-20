@@ -2,8 +2,8 @@
   <!-- The scalable "any" icon: full bleed, used by browsers that take an SVG.
        The masked home screen icon is icon-maskable-512.png, which is this
        artwork shrunk to 80% so a round or squircle mask cannot clip a plate. -->
-  <rect width="512" height="512" fill="#17191C"/>
-  <g fill="#E4E2DA">
+  <rect width="512" height="512" fill="#0F1113"/>
+  <g fill="#F2F1EC">
     <!-- outer plates -->
     <rect x="86" y="176" width="34" height="160" rx="8"/>
     <rect x="392" y="176" width="34" height="160" rx="8"/>
@@ -14,7 +14,7 @@
     <rect x="176" y="238" width="160" height="36" rx="6"/>
   </g>
   <!-- collars, in the accent used for a completed set -->
-  <g fill="#B87400">
+  <g fill="#FF7A2F">
     <rect x="186" y="222" width="16" height="68" rx="5"/>
     <rect x="310" y="222" width="16" height="68" rx="5"/>
   </g>
