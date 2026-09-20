@@ -2814,12 +2814,17 @@ function drawApp() {
   const pairNote = soloMode() ? '' : (day.pair || '');
   const pairBtn = $('pair');
   pairBtn.hidden = !pairNote;
-  /* Emptied, not just hidden: the note used to be one textContent write, so
-     turning solo mode on cleared it by writing ''. Leaving the markup
-     standing behind `hidden` left a JUNTOS badge in a document that is
-     supposed to have none. */
-  if (!pairNote) pairBtn.innerHTML = '';
-  else {
+  /* Emptied and closed, not just hidden: the note used to be one textContent
+     write, so turning solo mode on cleared it by writing ''. Leaving the
+     markup standing behind `hidden` left a JUNTOS badge in a document that
+     is supposed to have none — and leaving `open` and aria-expanded on the
+     button says a note you walked away from is still showing, of a note
+     that is not there at all. */
+  if (!pairNote) {
+    pairBtn.innerHTML = '';
+    pairBtn.classList.remove('open');
+    pairBtn.setAttribute('aria-expanded', 'false');
+  } else {
     pairBtn.innerHTML =
       '<span class="badge together">JUNTOS</span><span class="pair-text"></span>' +
       '<span class="chev" aria-hidden="true">▾</span>';
