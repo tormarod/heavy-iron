@@ -31,8 +31,24 @@ function renderBlockBar() {
     if (id === profile.activeBlock) opt.selected = true;
     select.appendChild(opt);
   });
-  select.onchange = () => { profile.activeBlock = select.value; profile.week = 1; profile.day = 0; stopRest(); commit(); };
+  /* Same reasoning as the profile switcher: choosing is the whole errand, so
+     the sheet closes behind the choice (plans/034). */
+  select.onchange = () => {
+    closeSheet('blockSheet');
+    profile.activeBlock = select.value; profile.week = 1; profile.day = 0;
+    stopRest(); commit();
+  };
   host.appendChild(select);
+
+  /* The header chip is this picker's face. Read off the option the browser
+     actually has selected rather than blockPickerLabel(activeBlock): a
+     profile pointing at a block that is not in blockOrder selects the first
+     option instead, and the chip has to say what the picker says. */
+  const chip = $('blockBtn');
+  const label = (select.selectedOptions && select.selectedOptions[0] && select.selectedOptions[0].textContent) || 'Bloque';
+  chip.innerHTML = '<span class="chip-lbl"></span><span class="chev" aria-hidden="true">▾</span>';
+  chip.querySelector('.chip-lbl').textContent = label;
+  chip.setAttribute('aria-label', 'Bloque: ' + label + '. Cambiar');
 
   const newBtn = document.createElement('button');
   newBtn.className = 'sm';

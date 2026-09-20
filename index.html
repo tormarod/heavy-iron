@@ -45,27 +45,42 @@
   <datalist id="muscleSuggestions"></datalist>
   <datalist id="patternSuggestions"></datalist>
   <datalist id="typeSuggestions"></datalist>
-  <div class="top">
+  <!-- Two rows stay stuck to the top and nothing else does: who is training
+       and which block (both chips onto a sheet), then the three days. The
+       week, the profile switcher, the block actions and the theme all used
+       to live up here, and 295px of chrome put the first set row below the
+       fold of a 667px phone (plans/031 § "The numbers", plans/034). -->
+  <header class="top">
     <div class="wrap">
-      <div class="profiles" id="profiles"></div>
-      <div class="blockbar" id="blockbar"></div>
-      <div class="title-row">
-        <div class="title" id="title"></div>
-        <button class="icon-btn" id="themeBtn" type="button" aria-label="Cambiar tema"></button>
+      <div class="top-row">
+        <button class="chip" id="profileBtn" type="button" aria-haspopup="dialog"></button>
+        <button class="chip chip-grow" id="blockBtn" type="button" aria-haspopup="dialog"></button>
+        <button class="icon-btn" id="moreBtn" type="button" aria-label="Más acciones" aria-haspopup="dialog">⋯</button>
       </div>
-      <div class="weeks" id="weeks" role="tablist" aria-label="Semanas del bloque"></div>
+      <!-- The page needs one real heading, and the line it used to be drawn
+           as only repeated the two chips above. Hidden from the screen, not
+           from the accessibility tree. -->
+      <h1 class="u-visually-hidden" id="title"></h1>
       <div class="days" id="days" role="tablist" aria-label="Días de entrenamiento"></div>
     </div>
-  </div>
-  <div class="wrap">
-    <div id="banner"></div>
+  </header>
+  <main class="wrap" id="main">
+    <div class="week-row">
+      <button class="icon-btn" id="weekPrev" type="button" aria-label="Semana anterior">‹</button>
+      <button class="week-btn" id="weekBtn" type="button" aria-expanded="false" aria-controls="weekPanel"></button>
+      <button class="icon-btn" id="weekNext" type="button" aria-label="Semana siguiente">›</button>
+    </div>
+    <div class="week-panel" id="weekPanel" hidden>
+      <div id="banner"></div>
+      <div class="weeks" id="weeks" role="tablist" aria-label="Semanas del bloque"></div>
+    </div>
+    <button class="pair" id="pair" type="button" aria-expanded="false" hidden></button>
     <div class="energy" id="energy"></div>
     <p class="deload-check" id="deloadCheck" hidden></p>
     <p class="brake-note" id="brakeNote" hidden></p>
-    <div class="pair" id="pair"></div>
     <div class="bar"><i id="barfill" class="u-bar-empty"></i></div>
     <div class="ord-note" id="ordNote" hidden></div>
-    <div id="list"><div class="skel">Cargando tu registro…</div></div>
+    <div id="list" role="tabpanel"><div class="skel">Cargando tu registro…</div></div>
     <div class="foot">
       <div class="ses-note">
         <label class="ses-note-lbl" for="sesNote">Nota de la sesión</label>
@@ -90,7 +105,7 @@
            the page rather than by a constant that could be out of date. -->
       <div class="version" id="version" hidden></div>
     </div>
-  </div>
+  </main>
 
   <!-- confirmations, warnings and the one text prompt -->
   <div class="sheet" id="askSheet">
@@ -101,6 +116,47 @@
       <div class="sheet-btns">
         <button class="sm key" id="askOk" type="button">Aceptar</button>
         <button class="sm" id="askCancel" type="button">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- The three sheets the folded header hands its controls to (plans/034).
+       They sit here, ahead of every other sheet in the markup, on purpose:
+       .sheet all share z-index 60, so document order is what decides which
+       covers which, and the block manager, the importer and the review each
+       open *from* #blockSheet and have to land on top of it. #askSheet is
+       above the lot at z-index 90 either way. -->
+  <div class="sheet" id="profileSheet">
+    <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="profileT">
+      <div class="sheet-t" id="profileT">¿Quién entrena?</div>
+      <div class="profiles" id="profiles"></div>
+      <div class="sheet-btns">
+        <button class="sm" id="profileClose" type="button">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="sheet" id="blockSheet">
+    <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="blockT">
+      <div class="sheet-t" id="blockT">Bloque</div>
+      <div class="blockbar" id="blockbar"></div>
+      <div class="sheet-btns">
+        <button class="sm" id="blockClose" type="button">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- "Más" holds what the top row has no width for. The theme is all of it
+       for now; plans/037 moves the rest of the shell in here. -->
+  <div class="sheet" id="moreSheet">
+    <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="moreT">
+      <div class="sheet-t" id="moreT">Más</div>
+      <div class="more-row">
+        <span class="more-lbl">Tema</span>
+        <button class="icon-btn" id="themeBtn" type="button" aria-label="Cambiar tema"></button>
+      </div>
+      <div class="sheet-btns">
+        <button class="sm" id="moreClose" type="button">Cerrar</button>
       </div>
     </div>
   </div>

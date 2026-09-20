@@ -10,6 +10,11 @@ let ready = false;
    the other's. */
 const expandedSetup = new Set();
 const setupKey = (block, ex) => state.activeProfile + '|' + block.id + '|' + ex.id;
+/* Same shape, same reason, for the pair note under the week row: it opens on
+   a tap and stays open for the rest of the session, and because the day is
+   in the key, walking to the next day starts it folded again (plans/034). */
+const expandedPair = new Set();
+const pairKey = (block, day) => state.activeProfile + '|' + block.id + '|' + day.id;
 /* Set by the ↓ and ⚙ buttons so the draw they trigger can put the cursor
    straight into a box that does not exist until that draw has run. Both are
    honoured by takeFocusMark() once the card is in the document, because the
@@ -2225,9 +2230,20 @@ function renderProfiles() {
     b.className = 'profile-btn' + (key === state.activeProfile ? ' on' : '');
     b.textContent = p.label;
     b.setAttribute('aria-pressed', key === state.activeProfile ? 'true' : 'false');
-    b.onclick = () => { state.activeProfile = key; stopRest(); commit(); };
+    /* Picking somebody puts the sheet away: the answer to "who is training"
+       is one tap, not a tap and a dismissal. */
+    b.onclick = () => { closeSheet('profileSheet'); state.activeProfile = key; stopRest(); commit(); };
     host.appendChild(b);
   });
+  /* The header carries the answer, not the question: a dot in the profile's
+     own accent, the name, and the chevron that says the sheet above is
+     behind it. The dot takes its colour from #app.profile-* through
+     --signal, so nothing here has to know which accent is in play. */
+  const chip = $('profileBtn');
+  chip.style.display = soloMode() ? 'none' : 'flex';
+  chip.innerHTML = '<span class="dot"></span><span class="chip-lbl"></span><span class="chev" aria-hidden="true">▾</span>';
+  chip.querySelector('.chip-lbl').textContent = getProfile().label;
+  chip.setAttribute('aria-label', 'Perfil: ' + getProfile().label + '. Cambiar');
   $('app').className = 'profile-' + accentOf(getProfile()) + (soloMode() ? ' solo' : '');
 }
 
@@ -2356,6 +2372,21 @@ function refreshWeekDot(profile, block) {
   }
 }
 
+/* ---------- the week selector ----------
+   The strip of week buttons used to be a permanent row in the header, for a
+   choice that is made once a week. It is behind #weekBtn now, and this pair
+   is what remembers whether it is showing. Open only for the day, block and
+   profile it was opened on: stepping somewhere else is a new question, and a
+   panel left open would push the first set row back below the fold — which
+   is the entire point of folding the header (plans/034). */
+let expandedWeek = false;
+let weekPanelFor = '';
+
+function applyWeekPanel() {
+  $('weekPanel').hidden = !expandedWeek;
+  $('weekBtn').setAttribute('aria-expanded', expandedWeek ? 'true' : 'false');
+}
+
 function renderNav() {
   const profile = getProfile();
   const block = getBlock();
@@ -2365,6 +2396,26 @@ function renderNav() {
 
   $('weeks').innerHTML = '';
   const weeks = blockWeeks(block), dl = deloadWeek(block);
+
+  /* The selector says which week and what it asks for, because with the
+     strip folded away that line is the only place either is written. */
+  const ph = block.phase[profile.week] || { r: '', t: '' };
+  const wkBtn = $('weekBtn');
+  wkBtn.innerHTML = '<span class="week-lbl"></span><span class="week-rir"></span><span class="chev" aria-hidden="true">▾</span>';
+  wkBtn.querySelector('.week-lbl').textContent = 'Semana ' + profile.week + ' de ' + weeks;
+  wkBtn.querySelector('.week-rir').textContent = ph.r ? '· ' + ph.r : '';
+  const scope = state.activeProfile + '|' + block.id + '|' + profile.day;
+  if (scope !== weekPanelFor) { expandedWeek = false; weekPanelFor = scope; }
+  applyWeekPanel();
+
+  /* The arrows are the common case — next week, last week — and take the
+     same route a .wk click does, so a step and a tap are the same event. */
+  const prev = $('weekPrev'), next = $('weekNext');
+  prev.disabled = profile.week <= 1;
+  next.disabled = profile.week >= weeks;
+  prev.onclick = () => { if (profile.week > 1) { profile.week--; stopRest(); commit(); } };
+  next.onclick = () => { if (profile.week < weeks) { profile.week++; stopRest(); commit(); } };
+
   for (let w = 1; w <= weeks; w++) {
     const b = document.createElement('button');
     b.type = 'button';
@@ -2383,15 +2434,47 @@ function renderNav() {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'day' + (i === profile.day ? ' on' : '');
+    b.id = 'day-' + i;
     b.innerHTML = '<span class="day-n">Día ' + (i + 1) + '</span><span class="day-t"></span>';
     b.querySelector('.day-t').textContent = d.name;
     b.setAttribute('role', 'tab');
     b.setAttribute('aria-selected', i === profile.day ? 'true' : 'false');
+    b.setAttribute('aria-controls', 'list');
     b.setAttribute('aria-label', 'Día ' + (i + 1) + ': ' + d.name);
+    /* Roving tabindex, the other half of what role="tab" promises: one stop
+       for the whole strip in the Tab order, the arrows move within it. */
+    b.tabIndex = i === profile.day ? 0 : -1;
     b.onclick = () => { profile.day = i; stopRest(); commit(); };
     $('days').appendChild(b);
   });
+  /* The cards are this tab's panel, and which day they belong to is the tab
+     that is on — so the label has to be re-pointed every draw. */
+  $('list').setAttribute('aria-labelledby', 'day-' + profile.day);
 }
+
+/* role="tab" is a promise that the arrow keys work, and a tablist that only
+   answers clicks is a worse lie than a row of plain buttons would have been.
+   The WAI tabs pattern with automatic activation: moving the focus selects
+   the day, exactly as a tap does. Bound once to the container, because
+   renderNav replaces every button underneath it on every draw — which is
+   also why the focus has to be put back by hand afterwards. */
+$('days').addEventListener('keydown', e => {
+  const tabs = Array.prototype.slice.call($('days').querySelectorAll('.day'));
+  const at = tabs.indexOf(document.activeElement);
+  if (at < 0) return;
+  let to = -1;
+  if (e.key === 'ArrowRight') to = (at + 1) % tabs.length;
+  else if (e.key === 'ArrowLeft') to = (at - 1 + tabs.length) % tabs.length;
+  else if (e.key === 'Home') to = 0;
+  else if (e.key === 'End') to = tabs.length - 1;
+  if (to < 0) return;
+  e.preventDefault();
+  getProfile().day = to;
+  stopRest();
+  commit();
+  const fresh = $('days').querySelectorAll('.day')[to];
+  if (fresh) fresh.focus();
+});
 
 /* ---------- keeping the keyboard's place across a redraw ----------
    Redrawing anything destroys the control the keyboard was on, even when the
@@ -2704,9 +2787,11 @@ function drawApp() {
   $('banner').innerHTML = '';
   const bannerDiv = document.createElement('div');
   bannerDiv.className = 'banner' + (dl ? ' deload' : '');
-  bannerDiv.innerHTML =
-    '<div><div class="banner-l">Objetivo semana ' + profile.week + '</div>' +
-    '<div class="banner-v"></div></div><div class="banner-r"></div>';
+  /* No "Objetivo semana N" label any more: the row that opens this panel
+     already says which week it is, and the panel that repeats its own
+     trigger is the kind of line that made the header 295px tall. What is
+     left is the RIR target and the week's own sentence (plans/034). */
+  bannerDiv.innerHTML = '<div class="banner-v"></div><div class="banner-r"></div>';
   bannerDiv.querySelector('.banner-v').textContent = ph.r;
   bannerDiv.querySelector('.banner-r').textContent = ph.t;
   $('banner').appendChild(bannerDiv);
@@ -2719,9 +2804,22 @@ function drawApp() {
   drawDeloadCheck(profile, block);
   drawBrakeNote(profile, block);
   drawSessionNote(profile, block, day);
+  /* One line until it is asked for. These notes run to two or three lines of
+     "who takes which machine first", read once at the start of the session
+     and never again, and at the top of the page that was three lines of the
+     first screen every time (plans/034). */
   const pairNote = soloMode() ? '' : (day.pair || '');
-  $('pair').textContent = pairNote;
-  $('pair').style.display = pairNote ? 'flex' : 'none';
+  const pairBtn = $('pair');
+  pairBtn.hidden = !pairNote;
+  if (pairNote) {
+    pairBtn.innerHTML =
+      '<span class="badge together">JUNTOS</span><span class="pair-text"></span>' +
+      '<span class="chev" aria-hidden="true">▾</span>';
+    pairBtn.querySelector('.pair-text').textContent = pairNote;
+    const openNote = expandedPair.has(pairKey(block, day));
+    pairBtn.classList.toggle('open', openNote);
+    pairBtn.setAttribute('aria-expanded', openNote ? 'true' : 'false');
+  }
 
   const list = $('list');
   list.innerHTML = '';
@@ -5081,6 +5179,33 @@ $('bCsv').onclick = () => {
   if (!lines) { mark('No hay ninguna serie registrada todavía', true); return; }
   downloadFile('heavy-iron-series-' + new Date().toISOString().slice(0, 10) + '.csv', csv, 'text/csv;charset=utf-8');
   mark(lines === 1 ? '1 serie exportada' : lines + ' series exportadas');
+};
+
+/* ---------- the folded header's three sheets and two disclosures ----------
+   Unguarded registrations, unlike the wire*() list below: these three sheets
+   are app.js's own, so there is no shell old enough to be served this file
+   without them. */
+registerSheet('profileSheet', { closeBtn: 'profileClose' });
+registerSheet('blockSheet', { closeBtn: 'blockClose' });
+registerSheet('moreSheet', { closeBtn: 'moreClose' });
+$('profileBtn').onclick = () => openSheet('profileSheet');
+$('blockBtn').onclick = () => openSheet('blockSheet');
+$('moreBtn').onclick = () => openSheet('moreSheet');
+
+$('weekBtn').onclick = () => { expandedWeek = !expandedWeek; applyWeekPanel(); };
+
+/* The note itself is redrawn on every draw, but the button holding it is in
+   the markup, so this is bound once and reads the day it is standing on at
+   click time rather than closing over one. */
+$('pair').onclick = () => {
+  const block = getBlock();
+  const day = dayList(block)[getProfile().day];
+  if (!day) return;
+  const k = pairKey(block, day);
+  const openNote = !expandedPair.has(k);
+  if (openNote) expandedPair.add(k); else expandedPair.delete(k);
+  $('pair').classList.toggle('open', openNote);
+  $('pair').setAttribute('aria-expanded', openNote ? 'true' : 'false');
 };
 
 /* block-editor.js, diagnostics.js and profile-transfer.js load before
