@@ -245,13 +245,15 @@ body {
 
 .days { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; padding-bottom: 10px; }
 
-/* A <button>'s default text colour follows the OS scheme through the
-   color-scheme meta (index.html:12), not data-theme — every other button
-   class in this file states its own colour, and this was the one that
-   didn't. */
-/* 60px, two lines, and the only row of the header that is touched every
-   session. The fixed height is what lets .top be budgeted at all; the clamp
-   below is what stops it truncating a name to buy that height. */
+/* 60px and two lines: the only row of the header that is touched every
+   session, and the fixed height is what lets .top be budgeted at all — the
+   clamp on .day-t below is what stops it truncating a name to buy that
+   height.
+
+   The explicit colour is older and answers something else: a <button>'s
+   default text colour follows the OS scheme through the color-scheme meta
+   (index.html:12), not data-theme — every other button class in this file
+   states its own colour, and this was the one that didn't. */
 .day {
   height: 60px; overflow: hidden;
   border: 1px solid var(--edge); background: transparent; cursor: pointer;
