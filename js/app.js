@@ -1615,29 +1615,101 @@ function repRangeBottom(reps) {
 }
 
 /* ---------- RIR (reps in reserve) ----------
-   The app prescribes an RIR target per week in `phase`, but used to record
-   nothing about what actually happened — so there was no way to tell a hard
-   set from a grinder short of guessing at rep decay. This is that record:
-   one chip per exercise per session, not per set (mid-set entry is too much
-   friction), optional and absent by default like `share`/`ss`. Filed
-   separately from `profile.log` — a parallel map with the same
-   blockId → slot → exId shape — rather than folded into a log row, so
-   nothing that reads rows as a plain array of {w,r,done} has to change. */
+   The app prescribes an RIR target per week in `phase`, and this is the
+   record of what actually happened — the only thing that tells a hard set
+   from a grinder short of guessing at rep decay.
+
+   It used to be ONE value per exercise per session, filed in a parallel map
+   (`profile.rir[blockId][slot][exId]`, the three chips below), on the theory
+   that mid-set entry was too much friction. The cost was paid by every
+   reader: one RIR priced every set of the session, so a session run 3 → 2 →
+   1 → 0 down its four sets — which is what a well-paced session looks like —
+   read as a lifter who lost far more capacity between sets than they did.
+
+   Since plans/035 the record is `r.rir` on the log row: one digit '0'–'5',
+   absent by default like `share`/`ss`, the same shape as `r.r` (a string out
+   of an input, read with num()). On the row it travels with every purge,
+   move, share, backup and import the row already survives, and there is one
+   value per set for the rule to read.
+
+   The old map is legacy: folded onto the rows on load and on import
+   (foldRirMap), read as a fallback by getRir and by exSession, and never
+   written again. The chip below is still the writer for one more plan —
+   plans/036 draws the box next to the reps — and it writes onto the row.
+
+   The inheritance rule (sessionRirs) is what makes a log with no per-set
+   values read exactly as it always did: a set with nothing typed takes the
+   reserve of the nearest LATER set that has one, and sets after the last
+   typed value have none. A set done before a set typed at N RIR had at
+   least N left, so pricing it at N under-reads it — the safe direction (see
+   the censoring note) — and it is precisely what the one chip used to do to
+   every set of the session. */
 const RIR_OPTIONS = ['2+', '1', '0'];
 const RIR_LABEL = { '2+': '2+ RIR', '1': '1 RIR', '0': '0 RIR (al fallo)' };
+/* Past five reps in reserve the number stops saying anything a lifter can
+   feel: it says "easy", which '5' already says. One digit, so the box in
+   plans/036 is one keypress and maxlength="1" is the whole validation. */
+const RIR_MAX = 5;
 
+/* The row's own value as a number, or null when the row has none. Nothing
+   else reads r.rir directly — a reader that wants the session's reading
+   wants sessionRirs or getRir. */
+const rowRir = r => {
+  const v = r && r.rir;
+  return /^[0-5]$/.test(String(v)) ? +v : null;
+};
+
+/* Working sets are what the rule reads and what the RIR belongs to: a row
+   nobody ticked, or one with no weight or no reps, is not a set that had
+   anything left in reserve. Same filter exSession applies. */
+const rowWorked = r => !!(r && r.done && rowWeight(r) > 0 && num(r.r) > 0);
+
+/* The per-set reading of one exercise-session, with the inheritance rule
+   above. `legacy` is the old one-chip value as a number, used only when NO
+   row carries one of its own: the chip then behaves exactly as if it had
+   been typed on the last set, which is the reading every session logged
+   before plans/035 has always had. */
+function sessionRirs(rows, legacy) {
+  const out = (rows || []).map(rowRir);
+  if (out.length && legacy != null && !out.some(v => v != null)) out[out.length - 1] = legacy;
+  let carry = null;
+  for (let i = out.length - 1; i >= 0; i--) {
+    if (out[i] == null) out[i] = carry; else carry = out[i];
+  }
+  return out;
+}
+
+/* The exercise-level reader the screens that still say "the session's RIR"
+   keep using — the Diagnóstico's signals, the review's buckets, the chip's
+   own pressed state: the last working set that has a value, else the legacy
+   map, else ''. It returns a string either way ('3' or '2+'), because its
+   callers compare it against the chips; take a number through rirNumber. */
 function getRir(profile, blockId, w, dayId, exId) {
-  const slotRir = profile.rir[blockId] && profile.rir[blockId][slot(w, dayId)];
+  const bucket = profile.log && profile.log[blockId] && profile.log[blockId][slot(w, dayId)];
+  const rows = bucket && bucket[exId];
+  if (Array.isArray(rows)) {
+    for (let i = rows.length - 1; i >= 0; i--) {
+      if (rowWorked(rows[i]) && rowRir(rows[i]) != null) return String(rowRir(rows[i]));
+    }
+  }
+  const slotRir = profile.rir && profile.rir[blockId] && profile.rir[blockId][slot(w, dayId)];
   return (slotRir && slotRir[exId]) || '';
 }
 
-/* The chip as a number the arithmetic can use. '2+' is open-ended — it may
-   have been four — so it is read as exactly 2, which makes every estimate
-   built on it come out low. That is the right direction to be wrong in:
-   under-shooting costs one week of a slightly light set, over-shooting
-   costs a failed session. */
+/* Any recorded value as a number the arithmetic can use: a typed digit, or
+   one of the three legacy chips. '2+' is open-ended — it may have been four
+   — so it is read as exactly 2, which makes every estimate built on it come
+   out low. That is the right direction to be wrong in: under-shooting costs
+   one week of a slightly light set, over-shooting costs a failed session.
+   Everything that used to compare a raw value against '2+' or '0' goes
+   through this instead; the only string comparisons left are in
+   normalizeImportedRir (the legacy map's own enum) and the review's
+   buckets. */
 const RIR_VALUE = { '2+': 2, '1': 1, '0': 0 };
-const rirNumber = v => (Object.prototype.hasOwnProperty.call(RIR_VALUE, v) ? RIR_VALUE[v] : null);
+const rirNumber = v => {
+  if (Object.prototype.hasOwnProperty.call(RIR_VALUE, v)) return RIR_VALUE[v];
+  return /^[0-5]$/.test(String(v)) ? +v : null;
+};
 
 /* The RIR the *plan* asks for in a given week, dug out of the free text in
    `phase[w].r` — which is prose ("2–3 RIR", "0–1 RIR", "Descarga"), not a
@@ -1807,12 +1879,22 @@ function moveSessionEx(profile, block, w, day, exId, dir) {
   return true;
 }
 
+/* Writes the recorded RIR onto the row, never into the legacy map (see the
+   RIR section). The chip says "RIR último set", so the row it writes is the
+   last one actually done; a session with nothing ticked yet has no last set
+   to speak of, so it falls back to the last row of the exercise rather than
+   silently recording nothing. `val` is anything rirNumber understands — a
+   chip ('2+' → '2') or a digit — and an empty value clears the row. */
 function setRir(profile, blockId, w, dayId, exId, val) {
-  if (!profile.rir[blockId]) profile.rir[blockId] = {};
-  const k = slot(w, dayId);
-  if (!profile.rir[blockId][k]) profile.rir[blockId][k] = {};
-  if (val) profile.rir[blockId][k][exId] = val;
-  else delete profile.rir[blockId][k][exId];
+  const bucket = profile.log && profile.log[blockId] && profile.log[blockId][slot(w, dayId)];
+  const rows = bucket && bucket[exId];
+  if (!Array.isArray(rows) || !rows.length) return;
+  let at = -1;
+  rows.forEach((r, i) => { if (rowWorked(r)) at = i; });
+  const row = rows[at >= 0 ? at : rows.length - 1];
+  if (!row) return;
+  const n = val === '' || val == null ? null : rirNumber(val);
+  if (n == null) delete row.rir; else row.rir = String(n);
 }
 
 /* ---------- weight drops ----------
