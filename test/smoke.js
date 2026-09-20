@@ -2766,6 +2766,30 @@ const ok = (name, cond, extra) => {
     const week1Rir = await rirPlaceholders();
     ok('the RIR box greys in the week\'s own target',
        week1Rir.length === 4 && week1Rir.every(p => p === '3'), JSON.stringify(week1Rir));
+
+    /* And a week that prescribes no RIR at all greys in nothing. Week 8 of
+       the seed plan is "Descarga": phaseRir finds no number in it and
+       returns null, while weekRir answers 0 — 0 is what it falls back to
+       when nothing has been prescribed, and it is also a real reserve
+       meaning "to failure". Read weekRir alone, as plans/036 Step C.3
+       literally asks, and every box on a deload card greys in a 0 telling
+       you to take a back-off set to failure; the '—' branch that plan
+       names is unreachable. The probe reads both numbers so the assertion
+       carries the trap in its own diagnostic. render() runs synchronously
+       off the week click, so there is nothing to wait for. */
+    await openWeeks(page);
+    await page.locator('.wk').nth(7).click();
+    const deloadRir = await page.evaluate(() => {
+      const b = getBlock(), ex = b.days[0].ex[0];
+      return { phase: phaseRir(b, 8), raw: weekRir(b, ex, 8, null),
+               boxes: [...document.querySelectorAll('.ex')[0].querySelectorAll('.rir-in')].map(e => e.placeholder) };
+    });
+    ok('a deload week greys in an em dash, not the 0 weekRir falls back to',
+       deloadRir.phase === null && deloadRir.raw === 0 &&
+       deloadRir.boxes.length === 3 && deloadRir.boxes.every(p => p === '—'),
+       JSON.stringify(deloadRir));
+    await openWeeks(page);
+    await page.locator('.wk').nth(0).click();
     await rirBox.fill('1');
     await page.waitForFunction(() => !saveT && !held);
     ok('typing one on a day with nothing ticked records it on the row',
