@@ -157,6 +157,10 @@ function installBlockData(profile, blockId, data) {
     if (!profile[name]) profile[name] = {};
     profile[name][id] = d[name];
   });
+  /* A phone on an older shell still sends the legacy RIR map beside the log
+     (blockShareRir), so a block arriving by QR or by paste gets the same
+     fold a block already on disk got on load. */
+  foldRirMap(profile, id);
   return true;
 }
 
@@ -342,6 +346,13 @@ function migrate() {
     if (ACCENTS.indexOf(profile.theme) < 0 && !LEGACY_ACCENT[profile.theme]) profile.theme = seed.theme;
     if (!profile.log || typeof profile.log !== 'object') profile.log = {};
     if (!profile.rir || typeof profile.rir !== 'object') profile.rir = {};
+    /* The record is `row.rir` since plans/035; this map is what every
+       session logged before it has. Folded onto the rows here rather than
+       behind a version gate: the fold is idempotent and costs one pass over
+       a map most profiles barely have, and a gate that skipped it would be
+       one more thing to be wrong about — the fallback read in getRir and
+       exSession means a skipped fold is a slower reader, not data loss. */
+    Object.keys(profile.rir).forEach(bk => foldRirMap(profile, bk));
     /* Two more parallel maps with the same blockId → slot shape as `rir`,
        and absent by default for the same reason. Unlike RIR they describe
        the *session* rather than a set, which is why they are keyed by slot
@@ -1711,6 +1722,44 @@ const rirNumber = v => {
   return /^[0-5]$/.test(String(v)) ? +v : null;
 };
 
+/* Where a value recorded for the whole session goes on the rows: the last
+   set actually done, else the last row of the exercise — a session nobody
+   has ticked yet still has somewhere to put it. One rule, used by both the
+   chip (setRir) and the fold below, so a chip written last week and a chip
+   written today land on the same row. */
+function rirRowFor(rows) {
+  if (!Array.isArray(rows) || !rows.length) return null;
+  let at = -1;
+  rows.forEach((r, i) => { if (rowWorked(r)) at = i; });
+  return rows[at >= 0 ? at : rows.length - 1] || null;
+}
+
+/* The one-time move of the legacy map onto the rows, run on load (migrate)
+   and on every block that arrives with one (installBlockData — an old phone
+   still sends the map with its QR). The map entry is left where it is: it
+   costs nothing, it is what getRir and exSession fall back to when a slot
+   has no rows to fold onto, and a receiver on an older shell still needs it.
+
+   Idempotent by construction — a row that already carries a value is never
+   overwritten — so running it on every load is cheap and a skipped run is
+   not data loss. A malformed entry is skipped rather than thrown on, like
+   every other repair in migrate. */
+function foldRirMap(profile, blockId) {
+  if (!profile || !profile.rir || !profile.log) return;
+  forEachSlot(profile.rir, blockId, (key, w, dayId, slotRir) => {
+    if (!slotRir || typeof slotRir !== 'object' || Array.isArray(slotRir)) return;
+    const slotLog = profile.log[blockId] && profile.log[blockId][key];
+    if (!slotLog || typeof slotLog !== 'object' || Array.isArray(slotLog)) return;
+    Object.keys(slotRir).forEach(exId => {
+      const n = rirNumber(slotRir[exId]);
+      if (n == null) return;
+      const row = rirRowFor(slotLog[exId]);
+      if (!row || typeof row !== 'object' || rowRir(row) != null) return;
+      row.rir = String(n);
+    });
+  });
+}
+
 /* The RIR the *plan* asks for in a given week, dug out of the free text in
    `phase[w].r` — which is prose ("2–3 RIR", "0–1 RIR", "Descarga"), not a
    field. The LOWEST number in the range wins: "2–3 RIR" is a week you are
@@ -1887,11 +1936,7 @@ function moveSessionEx(profile, block, w, day, exId, dir) {
    chip ('2+' → '2') or a digit — and an empty value clears the row. */
 function setRir(profile, blockId, w, dayId, exId, val) {
   const bucket = profile.log && profile.log[blockId] && profile.log[blockId][slot(w, dayId)];
-  const rows = bucket && bucket[exId];
-  if (!Array.isArray(rows) || !rows.length) return;
-  let at = -1;
-  rows.forEach((r, i) => { if (rowWorked(r)) at = i; });
-  const row = rows[at >= 0 ? at : rows.length - 1];
+  const row = rirRowFor(bucket && bucket[exId]);
   if (!row) return;
   const n = val === '' || val == null ? null : rirNumber(val);
   if (n == null) delete row.rir; else row.rir = String(n);
