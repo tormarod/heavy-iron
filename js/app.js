@@ -5014,6 +5014,10 @@ function blockShareLog(profile, block) {
         kept[exId] = rows.slice(0, last + 1).map(r => {
           const row = { w: r && r.w != null ? String(r.w) : '', r: r && r.r != null ? String(r.r) : '', done: !!(r && r.done) };
           if (r && Number.isFinite(+r.ts) && +r.ts > 0) row.ts = +r.ts;
+          /* The field list here is mirrored by normalizeImportedLog on the
+             other side: a field added to one and not the other is a field
+             that crosses the camera and is thrown away on arrival. */
+          if (rowRir(r) != null) row.rir = String(rowRir(r));
           /* Half-typed segments are dropped rather than sent: they are worth
              nothing on the other phone and every byte here costs QR frames.
              `dk` only travels when there is something for it to describe. */
@@ -5029,24 +5033,34 @@ function blockShareLog(profile, block) {
   return out;
 }
 
-/* Every RIR chip logged against one block, in the same {slot: {exId: value}}
-   shape blockShareLog uses for rows — kept separate from it (see the RIR
-   section near getRir/setRir) so a receiver that doesn't know about `rir`
-   yet still parses the rest of the payload fine. */
+/* The legacy one-per-session RIR map, in the same {slot: {exId: value}}
+   shape blockShareLog uses for rows — still emitted, and still separate
+   from the log, because the phone on the other side of the camera may be
+   running a shell from before plans/035: it reads this map and nothing
+   else, and a share that dropped it would land there with no RIR at all.
+
+   Derived from the rows now rather than copied out of profile.rir, so a
+   value typed this week travels to that old phone too: getRir is the
+   exercise-level reading (the last working set, or the legacy map behind
+   it) and it is squeezed back into the three chips the old receiver knows.
+   The rows carry the real per-set values beside it; a receiver that
+   understands them reads those and folds this map onto rows that already
+   have one, which changes nothing. */
 function blockShareRir(profile, block) {
-  const src = profile.rir[block.id];
+  const src = profile.log[block.id];
   if (!src) return {};
   const liveDays = dayList(block);
   const out = {};
   liveDays.forEach(day => {
-    const liveEx = new Set(exList(day).map(e => e.id));
+    const liveEx = exList(day).map(e => e.id);
     for (let w = 1; w <= MAX_WEEKS; w++) {
       const key = slot(w, day.id);
-      const slotRir = src[key];
-      if (!slotRir) continue;
+      if (!src[key]) continue;
       const kept = {};
-      Object.keys(slotRir).forEach(exId => {
-        if (liveEx.has(exId) && RIR_OPTIONS.indexOf(slotRir[exId]) >= 0) kept[exId] = slotRir[exId];
+      liveEx.forEach(exId => {
+        const v = rirNumber(getRir(profile, block.id, w, day.id, exId));
+        if (v == null) return;
+        kept[exId] = v >= 2 ? '2+' : String(v);
       });
       if (Object.keys(kept).length) out[key] = kept;
     }
@@ -5195,6 +5209,12 @@ function normalizeImportedLog(rawLog, rawBlock, normalized) {
         if (!r || typeof r !== 'object' || Array.isArray(r)) return { w: '', r: '', done: false };
         const row = { w: txt(r.w, LOG_LIMITS.val), r: txt(r.r, LOG_LIMITS.val), done: !!r.done };
         if (Number.isFinite(+r.ts) && +r.ts > 0) row.ts = +r.ts;
+        /* One digit or nothing: anything else is dropped rather than
+           coerced. A '2+' on a row is not a row value — the legacy map
+           carries those, and normalizeImportedRir validates them there — so
+           coercing it here would invent a measurement out of a chip that
+           belonged to the whole session. */
+        if (/^[0-5]$/.test(String(r.rir))) row.rir = String(r.rir);
         const drops = (Array.isArray(r.d) ? r.d : []).slice(0, MAX_DROPS)
           .filter(d => d && typeof d === 'object' && !Array.isArray(d))
           .map(d => ({ w: txt(d.w, LOG_LIMITS.val), r: txt(d.r, LOG_LIMITS.val) }))
@@ -5212,7 +5232,12 @@ function normalizeImportedLog(rawLog, rawBlock, normalized) {
   return out;
 }
 
-/* The RIR twin of normalizeImportedLog, re-keyed the same way. */
+/* The legacy RIR map's twin of normalizeImportedLog, re-keyed the same way.
+   Unchanged by plans/035 on purpose: the map is still valid input — an old
+   phone sends one with every QR, and every backup written before that plan
+   has one — and the fold that moves it onto the rows runs afterwards, in
+   installBlockData. The three chips stay its enum; a row's own digit is
+   validated by normalizeImportedLog instead. */
 function normalizeImportedRir(rawRir, rawBlock, normalized) {
   if (!rawRir || typeof rawRir !== 'object' || Array.isArray(rawRir)) return {};
   const { dayMap, exMap } = importIdMaps(rawBlock, normalized);
@@ -5279,6 +5304,11 @@ function normalizeImportedObj(rawObj, rawBlock, normalized) {
       if (TARGET_KIND_OPTIONS.indexOf(rec.kind) >= 0) keep.kind = rec.kind;
       if (rec.hold === true) keep.hold = true;
       if (rec.brake === true) keep.brake = true;
+      /* The week's RIR the reps were solved for, when the record has one:
+         an integer inside the same range a row can hold, dropped otherwise
+         like `kind`. A descarga or a vuelta was never solved for one, so a
+         record without it is not a record that lost it. */
+      if (Number.isInteger(rec.rir) && rec.rir >= 0 && rec.rir <= RIR_MAX) keep.rir = rec.rir;
       kept[exId] = keep;
     });
     if (Object.keys(kept).length) out[slot(w, dayId)] = kept;
@@ -5360,13 +5390,10 @@ function buildCsv() {
             const s = profile.log[bId] && profile.log[bId][slot(w, day.id)];
             const arr = s && s[ex.id];
             if (!Array.isArray(arr)) continue;
-            /* The RIR chip is per exercise per session, not per set, so it
-               repeats on every row of that exercise/week rather than
-               belonging to any one of them. */
-            const rir = getRir(profile, bId, w, day.id, ex.id);
-            /* Per session, not per set — like the RIR chip, repeated on every
-               row of that session so a spreadsheet filter on the column finds
-               the whole session. */
+            /* Per session, repeated on every row of that session so a
+               spreadsheet filter on the column finds the whole session.
+               Unlike `rir`, which is per set from plans/035 on — see the
+               column below. */
             const note = getNote(profile, bId, w, day.id);
             const energy = getEnergy(profile, bId, w, day.id);
             arr.forEach((r, i) => {
@@ -5382,8 +5409,14 @@ function buildCsv() {
                  unit happened to be selected at export time; `unidad` is
                  what says which one it is. The drops share that stamp —
                  they have none of their own. */
+              /* The set's OWN value, blank where nothing was typed — the
+                 file is the record as written, not as the rule reads it,
+                 so the inheritance rule stays out of it. A session logged
+                 before plans/035 carries its one chip on the row the fold
+                 put it on, which is the last set of that session. */
               rows.push([profile.label, block.name, w, day.name, ex.n, ordAt[w][ex.id] || '', i + 1, r.w, rowUnit(r), r.r,
-                         r.done ? 'si' : 'no', r.ts ? new Date(r.ts).toISOString().slice(0, 10) : '', rir,
+                         r.done ? 'si' : 'no', r.ts ? new Date(r.ts).toISOString().slice(0, 10) : '',
+                         rowRir(r) == null ? '' : String(rowRir(r)),
                          drops, used.length ? DROP_LABEL[dropKind(r)] : '', note, energy]);
             });
           }
