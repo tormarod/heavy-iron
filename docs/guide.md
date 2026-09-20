@@ -22,12 +22,12 @@ that week's goal text and the full strip, where a dot marks every week you
 have logged something in. A shared-station note is one line under that
 until you tap it, and stays open for the rest of the session. Each exercise
 below is one card: its position, its name, and one line saying what it wants
-— `4 × 6–10 · desc. 2,5 min · asiento 4`. Under that, one row per set, headed
+— `4 × 6–10 · desc. 2.5 min · asiento 4`. Under that, one row per set, headed
 once by `kg · rep · RIR`:
 
 | Control | What it does |
 |---|---|
-| the three boxes | the weight, the reps and the RIR of that set. The greyed number in each is what the week asks of it — the objetivo's weight and reps for that set, and the week's own RIR. `22,5` works. Tick without typing and the set takes the **weight** showing; the other two stay empty, because a rep count or a reserve nobody reported is not a measurement. |
+| the three boxes | the weight, the reps and the RIR of that set. The greyed number in each is what the week asks of it — the objetivo's weight and reps for that set, and the week's own RIR; before there is an objetivo to ask anything, the weight box shows what you lifted on that set the last week you logged it and the rep box shows the plan's range. `22,5` works. Tick without typing and the set takes the **weight** showing; the other two stay empty, because a rep count or a reserve nobody reported is not a measurement. |
 | **↓** | records weight coming off *that* set — a dropset, or the drop you needed to finish the reps. Adds an indented row with its own boxes; up to four per set. See [Weight drops](#weight-drops). |
 | **✓** | marks the set done, and starts the rest timer. This is the control that counts: only ticked sets feed the chart, the **RÉCORD** badge and the totals. |
 | the name | tap it for what the card does not print: the alternative exercise, the amber cue, and the machine settings — seat height, pin position, saved to the plan rather than to the log. |
