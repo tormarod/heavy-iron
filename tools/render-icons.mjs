@@ -32,7 +32,7 @@ const page = size => `<!doctype html><meta charset="utf-8">
 const masked = size => `<!doctype html><meta charset="utf-8">
 <style>html,body{margin:0;padding:0}svg{display:block}</style>
 <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 512 512">
-<rect width="512" height="512" fill="#17191C"/>
+<rect width="512" height="512" fill="#0F1113"/>
 <g transform="translate(256 256) scale(0.8) translate(-256 -256)">${art}</g></svg>`;
 
 const jobs = [
