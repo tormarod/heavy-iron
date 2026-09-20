@@ -975,9 +975,13 @@ body {
    A calendar strip and a row per muscle. The strip is here because the
    shape of the gaps is the point, and a column of numbers hides it. */
 .freq-cal { margin-bottom: 12px; }
+/* Holds a counted sentence ("3 días entrenados en este bloque"), not a
+   label, so it keeps the display face and tracking but drops the
+   uppercase the other small-caps labels use — no mockup shouts a
+   sentence (plans/033 fix round 1). */
 .freq-cal-t {
   font-family: var(--font-display); font-size: 11px; font-weight: 600;
-  letter-spacing: .08em; text-transform: uppercase;
+  letter-spacing: .08em;
   color: var(--soft); margin-bottom: 5px;
 }
 .freq-cal-g { overflow-x: auto; }
@@ -1060,9 +1064,11 @@ body {
 .rev-notes {
   margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px;
 }
+/* Same reasoning as .freq-cal-t just above: "2 notas de sesión" is a
+   counted sentence, not a label. */
 .rev-notes-t {
   font-family: var(--font-display); font-size: 11px; font-weight: 600;
-  letter-spacing: .08em; text-transform: uppercase;
+  letter-spacing: .08em;
   color: var(--soft); margin-bottom: 5px;
 }
 .rev-note { font-size: 11.5px; color: var(--ink); line-height: 1.5; margin-bottom: 3px; }
