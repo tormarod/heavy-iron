@@ -2748,13 +2748,24 @@ const ok = (name, cond, extra) => {
        this is the same round trip through the box. */
     const rirCard = page.locator('.ex').first();
     const rirBox = rirCard.locator('.set-row').first().locator('.rir-in');
-    ok('the RIR boxes start empty', await rirCard.locator('.rir-in').evaluateAll(
-       els => els.every(e => e.value === '')));
-    /* Week 1 of the seed plan asks for 3 RIR, and the box says so in grey
+    const rirBoxes = rirCard.locator('.rir-in');
+    /* Counted before it is read, and read through evaluateAll rather than
+       one locator at a time. Both halves matter: `every` over an empty
+       match is vacuously TRUE, so a renamed class would sail through this
+       and take the section down four cases later instead — and asking a
+       locator that matches nothing for an attribute waits thirty seconds
+       and then takes the whole section down with it. The count is what
+       makes the class name itself part of what is being asserted. */
+    const rirPlaceholders = () => rirBoxes.evaluateAll(els => els.map(e => e.placeholder));
+    ok('there is one RIR box per set row, and every one starts empty',
+       await rirBoxes.count() === 4 &&
+       await rirBoxes.evaluateAll(els => els.every(e => e.value === '')),
+       'boxes: ' + await rirBoxes.count());
+    /* Week 1 of the seed plan asks for 3 RIR, and every box says so in grey
        the way the weight box shows the objetivo's weight. */
+    const week1Rir = await rirPlaceholders();
     ok('the RIR box greys in the week\'s own target',
-       await rirBox.getAttribute('placeholder') === '3',
-       await rirBox.getAttribute('placeholder'));
+       week1Rir.length === 4 && week1Rir.every(p => p === '3'), JSON.stringify(week1Rir));
     await rirBox.fill('1');
     await page.waitForFunction(() => !saveT && !held);
     ok('typing one on a day with nothing ticked records it on the row',
