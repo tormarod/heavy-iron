@@ -3767,9 +3767,12 @@ const hasReps = r => r.r !== '' && r.r != null && !isNaN(num(r.r)) && num(r.r) >
    unchanged, and it is what stops a lifter who put 32×15/15/12/12 on a
    10-15 range being told to jump to 35 and restart at 10.
 
-   Nothing new is typed for any of it: the weights and reps are in the log,
-   the RIR chip is optional with the week's own prescription standing in,
-   and the range, the step and the phase text are in the plan. */
+   Almost nothing new is typed for any of it: the weights and reps are in
+   the log, the RIR is optional per set with the week's own prescription
+   standing in, and the range, the step and the phase text are in the plan.
+   Since plans/035 every set carries its own reserve, so each of the three
+   estimates is priced on the set it is actually about rather than on one
+   number stretched across the session. */
 
 /* Epley's denominator. est1RM() above bakes the same 30 in for the chart;
    here it is named because three different formulas divide by it. */
@@ -3782,14 +3785,20 @@ const EPLEY_A = 30;
 const EST_MAX_REPS = 15;
 
 /* ---- censoring ----
-   A set that ends at the top of the range, or is marked "2+", or carries no
-   chip at all, or ran past twelve reps, is not a measurement of what that
-   set could do — it is a floor under it. Halperin et al. (2022) found
-   lifters under-estimate the reps they have left by nearly one on average,
-   and that the error grows sharply past twelve; a set cut off at the top of
-   the range never went near failure in the first place. Both biases push the
-   estimate DOWN, which is the safe side: a target one rep light costs one
-   slightly easy set, a target one rep heavy costs the session.
+   A set that ends at the top of the range, or was recorded at two or more
+   reps in reserve, or has nothing recorded at all, or ran past twelve reps,
+   is not a measurement of what that set could do — it is a floor under it.
+   Read per set since plans/035: it is the set's own reserve that decides,
+   so a first set typed at 0 is a reading even when the fourth ended at 3,
+   and the "nothing recorded" case is a set the inheritance rule could not
+   reach — no later set in the session carried a value either.
+
+   Halperin et al. (2022) found lifters under-estimate the reps they have
+   left by nearly one on average, and that the error grows sharply past
+   twelve; a set cut off at the top of the range never went near failure in
+   the first place. Both biases push the estimate DOWN, which is the safe
+   side: a target one rep light costs one slightly easy set, a target one
+   rep heavy costs the session.
 
    So a censored set may only ever RAISE the level, never lower it, and the
    set that has to guess how much is in reserve gets one rep of slack when it
@@ -3835,9 +3844,11 @@ const PSI_PRIOR = 0.97, PSI_MIN = 0.8;
 const WEIGHT_EPS = 1e-6;
 const DAY_MS = 86400000;
 
-/* The chip as the reps it stands for, with a missing chip read as zero —
-   and a session with no chip is censored anyway (see above), so reading it
-   as "went to failure" can only make the estimate lower, never higher. */
+/* A set's reserve as the reps it stands for, with nothing recorded read as
+   zero — and a set with nothing recorded is censored anyway (see above), so
+   reading it as "went to failure" can only make the estimate lower, never
+   higher. Takes a number, a legacy chip or null, because a session logged
+   before plans/035 arrives as a chip. */
 const rhoOf = raw => { const v = rirNumber(raw); return v == null ? 0 : v; };
 
 /* Epley with the reserve added back in: what the set would have been worth
@@ -3916,21 +3927,35 @@ function exSession(profile, blockId, week, dayId, exId, lo, hi) {
   if (!Array.isArray(rows)) return null;
   const work = rows.filter(r => r && r.done && rowWeight(r) > 0 && num(r.r) > 0);
   if (!work.length) return null;
+  /* One reserve per set since plans/035. `raw` is the exercise-level
+     reading — the last working set that carries a value, or the legacy map
+     for a session logged before the rows carried one — and it is passed in
+     as sessionRirs' fallback so that a session with nothing on its rows is
+     read exactly as the one chip always read it: the chip on the last set,
+     inherited backwards over all of them. */
   const raw = getRir(profile, blockId, week, dayId, exId) || null;
-  const rho = rhoOf(raw);
+  const rirs = sessionRirs(work, rirNumber(raw));
   const stamps = work.map(r => +r.ts).filter(t => t > 0);
+  const lastRho = rhoOf(rirs.length ? rirs[rirs.length - 1] : null);
   return {
-    blockId: blockId, week: week, dayId: dayId, rir: raw, rho: rho,
+    blockId: blockId, week: week, dayId: dayId,
+    /* The session's own `rir`/`rho` are the LAST working set's — what
+       rhoLast, the chip's label and the Diagnóstico all mean by "the
+       session's RIR". Every set carries its own below. */
+    rir: rirs.length && rirs[rirs.length - 1] != null ? String(rirs[rirs.length - 1]) : null,
+    rho: lastRho,
     ts: stamps.length ? median(stamps) : 0,
-    sets: work.map(r => {
+    sets: work.map((r, k) => {
       const w = rowWeight(r), n = num(r.r);
+      const rk = rirs[k];
       /* `conv` marks a row that was logged in the other unit, so loadLadder
          can leave it out: the capacity it proves is real, but the number it
          converts to was never a pin on this stack. Nothing else reads it —
          a reader that wants "the weight as logged" should read
          rowWeight(r, rowUnit(r)) at the row, not un-convert this one. */
-      return { w: w, r: n, e: capOf(w, n, rho), conv: rowUnit(r) !== units(),
-               cens: n >= hi || raw === '2+' || raw == null || n > CENSOR_REPS };
+      return { w: w, r: n, e: capOf(w, n, rhoOf(rk)), conv: rowUnit(r) !== units(),
+               rir: rk, rho: rhoOf(rk),
+               cens: n >= hi || n > CENSOR_REPS || rk == null || rk >= 2 };
     }),
   };
 }
@@ -4061,14 +4086,20 @@ function recordTargetOnStart(profile, block, day, ex, rows, wasSession, est) {
    vuelta de parón is not a prescription the rule can be wrong about — it is
    the rule deliberately asking for less — and a record that cannot say
    which of the three it was turns every deload week into evidence the rule
-   overshot. */
+   overshot.
+
+   `rir` is the week's RIR the reps were solved for (rirWeek, a number or
+   null). Now that every set records its own reserve, asked-versus-done is
+   the only way the record can say whether the rule was right: without the
+   number it asked for, a set that missed its reps at 0 RIR and one that
+   stopped at 3 are the same row. */
 function recordTarget(profile, blockId, week, dayId, exId, t) {
   const k = slot(week, dayId);
   const blk = profile.obj[blockId] || (profile.obj[blockId] = Object.create(null));
   const sl = blk[k] || (blk[k] = Object.create(null));
   if (sl[exId]) return false;
   sl[exId] = { v: 3, at: Date.now(), conf: t.conf, kind: t.kind,
-               hold: !!t.hold, brake: !!t.brake,
+               hold: !!t.hold, brake: !!t.brake, rir: t.rirWeek == null ? null : t.rirWeek,
                sets: t.sets.map(x => ({ w: x.w, r: x.r, m: x.move })) };
   return true;
 }
@@ -4169,6 +4200,14 @@ function prevLoad(ladder, w, inc) {
    A decline is a session at least DECLINE_DROP under the best of the three
    before it, read off a set that was not censored — a session that ended at
    the top of the range is a floor, and a floor cannot say you got weaker.
+
+   `sets[0].cens` is the FIRST set's own state since plans/035, not the
+   whole session's: a 0 or 1 typed on the first set makes it a reading and
+   the level can move on it, a 2 or more (or nothing typed) keeps it a
+   floor. That is what typing the first set's RIR buys, and `conf` in
+   targetFor — the count of un-censored first sets over the last six
+   sessions — is where the lifter sees it: the confidence chip climbs from
+   "baja" to "alta" on the one set per session that matters most.
    One of those stops the weights going up for a day (a set the range says
    is out of reach still comes down). Two in a row is the level itself
    moving, which is the only thing that lowers it. */
@@ -4274,8 +4313,14 @@ function targetFor(profile, block, day, ex, week, now, brake) {
      up a rung IS the progression and adding a rep on top of it is asking
      for both at once. The floor is always one more rep on the first set:
      a flat trend still gets asked for a rep, and whether that ask keeps
-     failing is the Diagnóstico's question, not this one's. */
-  const oneRep = 1 / (EPLEY_A + r1Last + rhoLast);
+     failing is the Diagnóstico's question, not this one's.
+
+     It is the FIRST set's rep-equivalent, so it is priced at the first
+     set's own reserve (plans/035). The last set's used to stand in here
+     only because one chip was all there was; on a session run 3 → 2 → 1 → 0
+     those are different numbers, and the one this term is about is the one
+     the first set was done at. */
+  const oneRep = 1 / (EPLEY_A + r1Last + last.sets[0].rho);
   let g;
   if (hold || brake) g = 0;
   else if (sessions.length <= LEARNING_SESSIONS) g = oneRep;
@@ -4296,6 +4341,17 @@ function targetFor(profile, block, day, ex, week, now, brake) {
      could be anything above it) but it does bound the drop OUT of it from
      above — the true capacity it came from was at least that high, so the
      true ratio is at most this one.
+
+     No code here changed for plans/035 and the reading did: every `e` is
+     now priced at the reserve its own set was done at. A session run
+     3 → 2 → 1 → 0 RIR down four sets — what a well-paced session looks like
+     — used to be read at one reserve throughout, so the reps coming down
+     were the only thing in the ratio and it reported something like a 15 %
+     loss of capacity by set four. Priced per set, the reserve coming down
+     pays for most of that drop and what is left is the fatigue that was
+     actually there. `upper[k]` follows the same way: a censored set bounds
+     the drop out of itself because THAT set is a floor, not because the
+     whole session was.
 
      This is also what prices the set `ex.add` brings in mid-block, which
      has never been done at all. */
@@ -4358,8 +4414,12 @@ function targetFor(profile, block, day, ex, week, now, brake) {
       r = repsAt(W, base * (1 + g), rirWeek);
       /* At the same weight the target never asks for less than was already
          done, minus only what a stricter RIR this week honestly costs.
-         Anything else is the model contradicting the log. */
-      if (L && sameLoad(W, L.w)) r = Math.max(r, L.r - Math.max(0, rirWeek - rhoLast));
+         Anything else is the model contradicting the log.
+
+         The discount is priced on THIS set's own reserve (plans/035): a set
+         done at 3 RIR and asked for 2 this week gives up nothing, whatever
+         the last set of that session was done at. */
+      if (L && sameLoad(W, L.w)) r = Math.max(r, L.r - Math.max(0, rirWeek - L.rho));
       r = Math.min(r, hi);
       /* Coming down needs the model AND that floor to agree the bottom of
          the range is out of reach — three rungs at most, because past that
