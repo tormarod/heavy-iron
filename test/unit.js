@@ -125,8 +125,18 @@ ok('every js/ entry in SHELL exists on disk',
    (ten lines, as plans/032 describes it). --soft's three backgrounds are
    bundled into one assertion per theme, which is why reverting light
    --soft alone (see this plan's Verify step) produces exactly one FAIL
-   here, not three. */
-console.log('\n== css tokens keep WCAG contrast (plans/032) ==');
+   here, not three. Plan 033 fix round 1 widens the net: it made --signal
+   a text colour, not just a fill, and gave --amber a second role
+   (--amber-ink carries the text/border cases), and every failure that
+   round found was invisible to this section because it only read the
+   base :root blocks and only the pairs already in its own table. So it
+   now also asserts --signal as text, --on-share on its --amber fill,
+   --share-ink on the JUNTOS chip's --share-soft, and the four
+   profile-scoped --on-signal/--signal pairs (light/dark x azul/verde),
+   parsed straight out of the #app.profile-* rules rather than the plain
+   :root blocks, where they were previously invisible to this section
+   entirely. */
+console.log('\n== css tokens keep WCAG contrast (plans/032, plans/033) ==');
 const cssSrc = fs.readFileSync(path.join(ROOT, 'css/style.css'), 'utf8');
 function tokenMap(blockSrc) {
   const map = {};
@@ -158,6 +168,43 @@ const darkTokens = tokenMap(/:root\[data-theme="dark"\]\s*\{([\s\S]*?)\}/.exec(c
   ok(label + ': --ink is >= 4.5:1 on --card', ink >= 4.5, ink.toFixed(2));
   const onSignal = contrast(t['on-signal'], t.signal);
   ok(label + ': --on-signal is >= 4.5:1 on --signal', onSignal >= 4.5, onSignal.toFixed(2));
+
+  /* --signal reads as text (.ex-ord:hover, .deload-check.good, .pe-log-tag,
+     the primary button's outline state, …), not only as a fill, so it has
+     to clear 4.5:1 everywhere it sits, not just against --card. */
+  const signalRatios = ['card', 'paper', 'sunk', 'signal-soft'].map(bg => contrast(t.signal, t[bg]));
+  ok(label + ': --signal is >= 4.5:1 on --card, --paper, --sunk and --signal-soft',
+     signalRatios.every(r => r >= 4.5),
+     'card/paper/sunk/signal-soft: ' + signalRatios.map(r => r.toFixed(2)).join('/'));
+  const onShareAmber = contrast(t['on-share'], t.amber);
+  ok(label + ': --on-share is >= 4.5:1 on --amber', onShareAmber >= 4.5, onShareAmber.toFixed(2));
+  const shareInkSoft = contrast(t['share-ink'], t['share-soft']);
+  ok(label + ': --share-ink is >= 4.5:1 on --share-soft', shareInkSoft >= 4.5, shareInkSoft.toFixed(2));
+});
+
+/* The profile accents override --signal (and, for dark verde, --on-signal
+   too) inside #app.profile-* rules that the plain :root blocks above never
+   contain, so the loop above cannot see them — light azul alone hid the
+   whole reason this round exists. Parsed straight out of the selectors
+   rather than hand-copied, so a hex that drifts here fails loudly instead
+   of quietly. */
+function profileOverride(selectorPattern) {
+  const re = new RegExp(selectorPattern.replace(/ /g, '\\s+') + '\\s*\\{([^}]*)\\}');
+  const m = re.exec(cssSrc);
+  if (!m) throw new Error('profile rule not found: ' + selectorPattern);
+  return tokenMap(m[1]);
+}
+[
+  ['light azul', '#app\\.profile-hombre, #app\\.profile-azul', lightTokens],
+  ['light verde', '#app\\.profile-mujer, #app\\.profile-verde', lightTokens],
+  ['dark azul', ':root\\[data-theme="dark"\\] #app\\.profile-hombre,\\s*:root\\[data-theme="dark"\\] #app\\.profile-azul', darkTokens],
+  ['dark verde', ':root\\[data-theme="dark"\\] #app\\.profile-mujer,\\s*:root\\[data-theme="dark"\\] #app\\.profile-verde', darkTokens],
+].forEach(([label, pattern, base]) => {
+  const override = profileOverride(pattern);
+  const signal = override.signal;
+  const onSignal = override['on-signal'] || base['on-signal'];
+  const r = contrast(onSignal, signal);
+  ok(label + ': --on-signal is >= 4.5:1 on --signal', r >= 4.5, onSignal + ' on ' + signal + ' = ' + r.toFixed(2));
 });
 
 const app = loadApp();
