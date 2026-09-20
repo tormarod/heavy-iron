@@ -169,7 +169,7 @@ const darkTokens = tokenMap(/:root\[data-theme="dark"\]\s*\{([\s\S]*?)\}/.exec(c
   const onSignal = contrast(t['on-signal'], t.signal);
   ok(label + ': --on-signal is >= 4.5:1 on --signal', onSignal >= 4.5, onSignal.toFixed(2));
 
-  /* --signal reads as text (.ex-ord:hover, .deload-check.good, .pe-log-tag,
+  /* --signal reads as text (.ex-menu-btn:hover, .deload-check.good, .pe-log-tag,
      the primary button's outline state, …), not only as a fill, so it has
      to clear 4.5:1 everywhere it sits, not just against --card. */
   const signalRatios = ['card', 'paper', 'sunk', 'signal-soft'].map(bg => contrast(t.signal, t[bg]));
@@ -437,7 +437,8 @@ ok('...and resolves to the same rendered accent', roundTrip.sameAccent);
    normalizer must accept every backup the app itself has ever produced.
    The round trip above only covers an untouched profile (empty log); this
    one populates every parallel map through the app's own writers
-   (entry/setRir/setNoteText/setEnergy/setOrder) — the shape a real week of
+   (entry/setNoteText/setEnergy/setOrder, plus the RIR box's own write onto
+   the row it belongs to) — the shape a real week of
    training actually produces, now that item 4 runs log/rir through the
    same per-row limits and RIR enum the QR path does — and checks nothing
    in it is trimmed, re-keyed or dropped. Two different exercises on the
@@ -459,11 +460,13 @@ const populatedRoundTrip = call(`
     }
     const row2 = entry(profile, block.id, 1, day.id, ex2.id, ex2.sets)[0];
     row2.w = '20'; row2.r = '12'; row2.done = true;
-    setRir(profile, block.id, 1, day.id, ex1.id, '1');
-    /* setRir writes the row since plans/035, so the legacy map needs a
-       session of its own here or "...RIR chips too" would be comparing two
-       empty objects. A profile logged before that plan carries exactly
-       this, and a restore still has to hand it back untouched. */
+    /* What typing '1' into the last set's RIR box leaves on disk: the digit
+       on that row and nothing anywhere else (plans/035, plans/036). */
+    entry(profile, block.id, 1, day.id, ex1.id, ex1.sets)[ex1.sets - 1].rir = '1';
+    /* The record is the row now, so the legacy map needs a session of its
+       own here or "...RIR chips too" would be comparing two empty objects.
+       A profile logged before plans/035 carries exactly this, and a restore
+       still has to hand it back untouched. */
     profile.rir[block.id] = { [slot(2, day.id)]: { [ex2.id]: '2+' } };
     setNoteText(profile, block.id, 1, day.id, 'Buena sesión');
     setEnergy(profile, block.id, 1, day.id, 'alta');
@@ -604,7 +607,7 @@ const dupIdRoundTrip = call(`
     r0.w = '60'; r0.r = '8'; r0.done = true;
     const r2 = entry(profile, block.id, 1, d2.id, src.id, src.sets)[0];
     r2.w = '75'; r2.r = '5'; r2.done = true;
-    setRir(profile, block.id, 1, d2.id, src.id, '1');
+    r2.rir = '1';
     setOrder(profile, block.id, 1, d2.id, [src.id].concat(d2.ex.slice(0, 2).map(e => e.id)));
     const beforeOrder = JSON.stringify(profile.order);
 
@@ -1911,27 +1914,30 @@ ok('...the legacy chip fills a session whose rows carry nothing, as if typed on 
 ok('...and is ignored the moment any row carries one of its own',
    rirsOf([{}, { rir: '0' }, {}], 2) === '0,0,x', rirsOf([{}, { rir: '0' }, {}], 2));
 
-const setRirProbe = call(`
+/* All that is left of the chip's writer (plans/036): the box writes its own
+   row, and the only thing it cannot do for itself is stop the legacy map
+   putting an old value back on the next load. The row sweep that went with
+   the chip is pinned here by its absence — with a box per set, clearing the
+   other rows would wipe the three boxes beside the one being typed in. */
+const dropLegacyProbe = call(`
   (function () {
-    const rows = [{ w: '60', r: '10', done: true },
-                  { w: '60', r: '9', done: true },
-                  { w: '60', r: '', done: false }];
-    const p = { log: { B: { 'w1-D': { E: rows } } }, rir: {} };
-    const shot = function () { return rows.map(function (r) { return r.rir == null ? 'x' : r.rir; }).join(','); };
-    setRir(p, 'B', 1, 'D', 'E', '2+');
-    const wrote = shot(), map = JSON.stringify(p.rir);
-    setRir(p, 'B', 1, 'D', 'E', '');
-    const cleared = shot();
-    setRir(p, 'B', 1, 'D', 'E', '4');
-    return { wrote: wrote, map: map, cleared: cleared, digit: shot() };
+    const rows = [{ w: '60', r: '10', done: true, rir: '3' },
+                  { w: '60', r: '9', done: true, rir: '1' }];
+    const p = { log: { B: { 'w1-D': { E: rows } } },
+                rir: { B: { 'w1-D': { E: '2+', F: '0' } } } };
+    dropLegacyRir(p, 'B', 1, 'D', 'E');
+    const one = JSON.stringify(p.rir.B['w1-D']);
+    const kept = rows.map(function (r) { return r.rir == null ? 'x' : r.rir; }).join(',');
+    dropLegacyRir(p, 'B', 1, 'D', 'F');
+    return { one: one, kept: kept, empty: JSON.stringify(p.rir.B) };
   })()
 `);
-ok('setRir writes the value onto the last set actually done, as a digit',
-   setRirProbe.wrote === 'x,2,x', JSON.stringify(setRirProbe));
-ok('...and never into the legacy map again', setRirProbe.map === '{}', JSON.stringify(setRirProbe));
-ok('...an empty value clears the row rather than leaving a wrong answer',
-   setRirProbe.cleared === 'x,x,x', JSON.stringify(setRirProbe));
-ok('...and a digit is stored as itself', setRirProbe.digit === 'x,4,x', JSON.stringify(setRirProbe));
+ok('dropLegacyRir drops the exercise-session it is handed and no other',
+   dropLegacyProbe.one === '{"F":"0"}', JSON.stringify(dropLegacyProbe));
+ok('...and leaves every row where it is: the chip\'s sweep went with the chip',
+   dropLegacyProbe.kept === '3,1', JSON.stringify(dropLegacyProbe));
+ok('...and takes the slot with the last exercise out of it',
+   dropLegacyProbe.empty === '{}', JSON.stringify(dropLegacyProbe));
 
 const getRirProbe = call(`
   (function () {
@@ -1977,12 +1983,15 @@ ok('...a second run changes nothing', foldProbe.twice === 'x,2,x', JSON.stringif
 ok('...and a row that already carries a value is never overwritten',
    foldProbe.own === 'x,0,x', JSON.stringify(foldProbe));
 
-/* The two ways the chip could record nothing at all, both of which shipped
-   past the unit suite and the browser suite because neither had ever
-   pressed a `.rir-chip` (AGENTS.md's testing policy: a case goes in
-   whenever a bug turns out to have been invisible from the outside; these
-   are arithmetic and data repair, so they go here rather than in
-   smoke.js — one visible round trip is pinned there). */
+/* The two ways a reserve typed before anything is ticked could be recorded
+   and then lost, both of which shipped past the unit suite and the browser
+   suite because neither had ever written one (AGENTS.md's testing policy: a
+   case goes in whenever a bug turns out to have been invisible from the
+   outside; these are arithmetic and data repair, so they go here rather
+   than in smoke.js — the visible round trip is pinned there). The box that
+   writes it is the RIR box in the set row since plans/036; the two lines
+   below are its handler's write, which is all the handler does to the
+   log. */
 const untouchedDay = call(`
   (function () {
     state = defaultState(); migrate();
@@ -1992,7 +2001,8 @@ const untouchedDay = call(`
     p.log['block-1'] = {};
     /* Exactly what opening a day does: pad the rows out, tick nothing. */
     const rows = entry(p, 'block-1', 1, day.id, 'chestpress', 3);
-    setRir(p, 'block-1', 1, day.id, 'chestpress', '1');
+    rows[2].rir = '1';
+    dropLegacyRir(p, 'block-1', 1, day.id, 'chestpress');
     const read = getRir(p, 'block-1', 1, day.id, 'chestpress');
     const used = rows.some(rowUsed);
     const shared = blockShareLog(p, block);
@@ -2000,37 +2010,41 @@ const untouchedDay = call(`
     drawnSlot = null;
     pruneLog();
     const survived = getRir(p, 'block-1', 1, day.id, 'chestpress');
-    /* A set ticked afterwards must not be shadowed by the padding row the
-       value landed on, and clearing has to reach it wherever it is. Read
-       defensively: before this was fixed pruneLog above deleted the whole
-       slot, and reaching into it threw rather than failing an assertion —
-       which takes the suite down and hides every case after it. */
+    /* Read defensively: before this was fixed pruneLog above deleted the
+       whole slot, and reaching into it threw rather than failing an
+       assertion — which takes the suite down and hides every case after
+       it. */
     const live = ((p.log['block-1'] || {})[slot(1, day.id)] || {}).chestpress;
     if (!Array.isArray(live)) {
       return { read: read, used: used, sentRir: sentRir, survived: survived,
-               moved: 'the slot is gone', cleared: 'the slot is gone' };
+               beside: 'the slot is gone', cleared: 'the slot is gone' };
     }
+    /* A reserve typed into another set's box, on a set that WAS done: it
+       has to leave the first one where it is — the chip's sweep is exactly
+       what would have wiped it — and the session's own reading is still the
+       last working set's. */
     live[0].w = '60'; live[0].r = '10'; live[0].done = true;
-    setRir(p, 'block-1', 1, day.id, 'chestpress', '0');
-    const moved = getRir(p, 'block-1', 1, day.id, 'chestpress') + '|' +
-                  live.filter(function (r) { return rowRir(r) != null; }).length;
-    setRir(p, 'block-1', 1, day.id, 'chestpress', '');
-    return { read: read, used: used, sentRir: sentRir, survived: survived, moved: moved,
+    live[0].rir = '0';
+    dropLegacyRir(p, 'block-1', 1, day.id, 'chestpress');
+    const beside = live.map(function (r) { return r.rir == null ? 'x' : r.rir; }).join(',') +
+                   '|' + getRir(p, 'block-1', 1, day.id, 'chestpress');
+    delete live[0].rir; delete live[2].rir;
+    return { read: read, used: used, sentRir: sentRir, survived: survived, beside: beside,
              cleared: getRir(p, 'block-1', 1, day.id, 'chestpress') };
   })()
 `);
-ok('the chip on a day with nothing ticked writes a value the readers can see',
+ok('an RIR typed on a day with nothing ticked writes a value the readers can see',
    untouchedDay.read === '1', JSON.stringify(untouchedDay));
 ok('...the row it lands on counts as used, so pruneLog keeps it',
    untouchedDay.used === true && untouchedDay.survived === '1', JSON.stringify(untouchedDay));
 ok('...and a share carries it', untouchedDay.sentRir === true, JSON.stringify(untouchedDay));
-ok('...a set ticked afterwards takes the value over, and only one row ever holds it',
-   untouchedDay.moved === '0|1', JSON.stringify(untouchedDay));
-ok('...and it can be cleared again', untouchedDay.cleared === '', JSON.stringify(untouchedDay));
+ok('...a second box keeps its own value, and the session still reads the last working set',
+   untouchedDay.beside === '0,x,1|0', JSON.stringify(untouchedDay));
+ok('...and emptying the boxes clears it', untouchedDay.cleared === '', JSON.stringify(untouchedDay));
 
 /* Writing an RIR is starting the session, so the objetivo record has to be
    written on it exactly as it is on a weight or a rep — which is only true
-   because rowUsed counts one. The order here is the chip handler's. */
+   because rowUsed counts one. The order here is the RIR box's handler. */
 const rirStarts = call(`
   (function () {
     state = defaultState(); migrate();
@@ -2050,31 +2064,34 @@ const rirStarts = call(`
     const rows = entry(p, 'block-1', 4, day.id, ex.id, 3);
     const est = targetNow(p, block, day, ex, 4);
     const wasSession = rows.some(rowUsed);
-    setRir(p, 'block-1', 4, day.id, ex.id, '1');
+    rows[0].rir = '1';
+    dropLegacyRir(p, 'block-1', 4, day.id, ex.id);
     recordTargetOnStart(p, block, day, ex, rows, wasSession, est);
     return (est ? 'est' : 'no-est') + '|' + wasSession + '|' +
            !!(p.obj['block-1'] && p.obj['block-1'][slot(4, day.id)] && p.obj['block-1'][slot(4, day.id)][ex.id]);
   })()
 `);
-ok('the RIR chip starts the session, so the objetivo shown is recorded with it',
+ok('typing an RIR starts the session, so the objetivo shown is recorded with it',
    rirStarts === 'est|false|true', rirStarts);
 
 /* The legacy map is the fallback getRir reads and foldRirMap re-applies on
-   every load, so clearing the chip has to reach it too or "tap the same
-   chip again to clear it" is false for every session logged before this. */
+   every load, so emptying the box has to reach it too or "empty it to clear
+   it" is false for every session logged before plans/035. */
 const clearFolded = call(`
   (function () {
     const rows = [{ w: '60', r: '10', done: true }, { w: '60', r: '9', done: true }];
     const p = { log: { B: { 'w1-D': { E: rows } } }, rir: { B: { 'w1-D': { E: '2+' } } } };
     foldRirMap(p, 'B');
     const folded = getRir(p, 'B', 1, 'D', 'E');
-    setRir(p, 'B', 1, 'D', 'E', '');
+    /* Emptying the box the fold landed the old chip in. */
+    delete rows[1].rir;
+    dropLegacyRir(p, 'B', 1, 'D', 'E');
     const cleared = getRir(p, 'B', 1, 'D', 'E');
     foldRirMap(p, 'B');
     return [folded, cleared, getRir(p, 'B', 1, 'D', 'E'), JSON.stringify(p.rir.B)].join('|');
   })()
 `);
-ok('clearing the chip on a session logged before plans/035 clears it, and the next load does not put it back',
+ok('emptying the box on a session logged before plans/035 clears it, and the next load does not put it back',
    clearFolded === '2|||{}', clearFolded);
 
 const exSess = call(`

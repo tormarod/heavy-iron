@@ -1661,8 +1661,11 @@ function repRangeBottom(reps) {
    from a grinder short of guessing at rep decay.
 
    It used to be ONE value per exercise per session, filed in a parallel map
-   (`profile.rir[blockId][slot][exId]`, the three chips below), on the theory
-   that mid-set entry was too much friction. The cost was paid by every
+   (`profile.rir[blockId][slot][exId]`) and tapped into a row of three chips
+   under the sets, on the theory that mid-set entry was too much friction.
+   plans/036 answered that by putting the box IN the set row, beside the
+   reps, where it is one keypress on the keyboard already up. The cost was
+   paid by every
    reader: one RIR priced every set of the session, so a session run 3 → 2 →
    1 → 0 down its four sets — which is what a well-paced session looks like —
    read as a lifter who lost far more capacity between sets than they did.
@@ -1675,13 +1678,11 @@ function repRangeBottom(reps) {
 
    The old map is legacy: folded onto the rows on load and on import
    (foldRirMap), and read as a fallback by getRir and by exSession. Nothing
-   writes a VALUE into it again; setRir deletes the entry for the
-   exercise-session it is recording, and that deletion is the one exception
-   — without it, clearing the chip on anything logged before this plan does
-   nothing, because getRir falls back to the map and foldRirMap puts the
-   value straight back. See setRir. The chip below is still the writer for
-   one more plan —
-   plans/036 draws the box next to the reps — and it writes onto the row.
+   writes a VALUE into it again; dropLegacyRir deletes the entry for the
+   exercise-session a box is recording, and that deletion is the one
+   exception — without it, emptying a box on anything logged before
+   plans/035 does nothing, because getRir falls back to the map and
+   foldRirMap puts the value straight back. See dropLegacyRir.
 
    The inheritance rule (sessionRirs) is what makes a log with no per-set
    values read exactly as it always did: a set with nothing typed takes the
@@ -1690,17 +1691,21 @@ function repRangeBottom(reps) {
    least N left, so pricing it at N under-reads it — the safe direction (see
    the censoring note) — and it is precisely what the one chip used to do to
    every set of the session. */
+/* The three values the retired chip offered. No control draws them any
+   more (plans/036); they survive as the legacy map's own enum, which
+   normalizeImportedRir and blockShareRir still have to validate against,
+   and as the buckets js/review.js counts sessions into. */
 const RIR_OPTIONS = ['2+', '1', '0'];
-const RIR_LABEL = { '2+': '2+ RIR', '1': '1 RIR', '0': '0 RIR (al fallo)' };
 /* Past five reps in reserve the number stops saying anything a lifter can
    feel: it says "easy", which '5' already says. One digit, so the box in
-   plans/036 is one keypress and maxlength="1" is the whole validation.
+   the set row is one keypress and maxlength="1" is most of the validation.
 
-   Read by normalizeImportedObj only. The three places that validate a row's
-   own value spell the range out as /^[0-5]$/ — rowRir, rirNumber and
-   normalizeImportedLog — because a regex is what they need and building one
-   from the constant would be the harder thing to read. Raising this number
-   means editing those three as well; grep for the literal. */
+   Read by normalizeImportedObj only. The four places that validate a row's
+   own value spell the range out as a literal — rowRir, rirNumber and
+   normalizeImportedLog as /^[0-5]$/, and the box's own oninput as
+   /[^0-5]/g — because a regex is what they need and building one from the
+   constant would be the harder thing to read. Raising this number means
+   editing those four as well; grep for the literal. */
 const RIR_MAX = 5;
 
 /* The row's own value as a number, or null when the row has none. Nothing
@@ -1779,9 +1784,11 @@ const rirNumber = v => {
 
 /* Where a value recorded for the whole session goes on the rows: the last
    set actually done, else the last row of the exercise — a session nobody
-   has ticked yet still has somewhere to put it. One rule, used by both the
-   chip (setRir) and the fold below, so a chip written last week and a chip
-   written today land on the same row. */
+   has ticked yet still has somewhere to put it. The chip that used to write
+   through this is gone (plans/036), so the fold below is its only caller;
+   it is still a rule of its own because what it encodes is the reading the
+   chip always had — "RIR último set" — and every legacy value in the
+   installed base has to keep landing where it did. */
 function rirRowFor(rows) {
   if (!Array.isArray(rows) || !rows.length) return null;
   let at = -1;
@@ -1983,50 +1990,33 @@ function moveSessionEx(profile, block, w, day, exId, dir) {
   return true;
 }
 
-/* The chip's writer: ONE value for the whole exercise-session, onto the
-   rows. The chip says "RIR último set", so the row it writes is the last
-   one actually done; a session with nothing ticked yet has no last set to
-   speak of, so it falls back to the last row of the exercise rather than
-   silently recording nothing (that row is kept — see rowUsed).
+/* Dropping this exercise-session's entry from the legacy map, which is the
+   ONE change this file makes to it — the single exception the RIR section
+   above names, and all that survives of the chip's writer (plans/035's
+   setRir, retired with the chip in plans/036).
 
-   Every row's `rir` is cleared first, so at most one row of the session
-   carries one when this returns. That invariant is what makes the control
-   honest: a value written before anything was ticked lands on a padding
-   row, and without the sweep a later tap — which lands on the set ticked
-   since — would leave the old one behind for getRir to find and the chip
-   would show the wrong number. plans/036 replaces this with a box per set,
-   which writes `r.rir` on its own row and does not come through here.
+   It has to survive: getRir falls back to the map and foldRirMap would put
+   the old value straight back on the row on the next load, so without this,
+   emptying a box on any session logged before plans/035 does nothing at all
+   — the guide's "clear it by emptying the box" would be false for the whole
+   of the installed base's history. It is a deletion and not a write, so it
+   can only ever drop a value the person just asked to change; the
+   alternative — making getRir ignore the map once the rows carry values —
+   cannot tell a slot that has been folded from one that has not, and would
+   silently re-read every session logged before that release as having no
+   RIR at all.
 
-   It also drops this exercise-session's entry from the legacy map, and that
-   deletion is the ONE change this file makes to it — the single exception
-   the RIR section above names. It has to be:
-   getRir falls back to the map, and foldRirMap would put the chip straight
-   back on the row on the next load, so without this, clearing the chip on
-   any session logged before plans/035 does nothing at all — the guide's
-   "tapping the same chip again clears it" would be false for the whole of
-   the installed base's history. It is a deletion and not a write, so it can
-   only ever drop a value the person just asked to change; the alternative
-   — making getRir ignore the map once the rows exist — cannot tell a slot
-   that has been folded from one that has not, and would silently re-read
-   every session logged before this release as having no RIR at all.
-
-   `val` is anything rirNumber understands — a chip ('2+' → '2') or a digit
-   — and an empty value clears the session's RIR. */
-function setRir(profile, blockId, w, dayId, exId, val) {
-  const key = slot(w, dayId);
-  const bucket = profile.log && profile.log[blockId] && profile.log[blockId][key];
-  const rows = bucket && bucket[exId];
-  if (!Array.isArray(rows) || !rows.length) return;
-  rows.forEach(r => { if (r && typeof r === 'object') delete r.rir; });
-  const slotRir = profile.rir && profile.rir[blockId] && profile.rir[blockId][key];
-  if (slotRir && typeof slotRir === 'object') {
-    delete slotRir[exId];
-    if (!Object.keys(slotRir).length) delete profile.rir[blockId][key];
-  }
-  const n = val === '' || val == null ? null : rirNumber(val);
-  if (n == null) return;
-  const row = rirRowFor(rows);
-  if (row) row.rir = String(n);
+   What did NOT survive is the sweep. setRir cleared every row's `rir`
+   before writing, because one chip stood for the whole exercise-session and
+   two rows carrying values would have made getRir read the wrong one. With
+   a box per set the row a value belongs to is the row it was typed in, and
+   the same sweep would wipe the three boxes beside the one being typed in.
+   plans/036 is the commit that deletes both halves together, on purpose. */
+function dropLegacyRir(profile, blockId, w, dayId, exId) {
+  const slotRir = profile.rir && profile.rir[blockId] && profile.rir[blockId][slot(w, dayId)];
+  if (!slotRir || typeof slotRir !== 'object') return;
+  delete slotRir[exId];
+  if (!Object.keys(slotRir).length) delete profile.rir[blockId][slot(w, dayId)];
 }
 
 /* ---------- weight drops ----------
@@ -3196,7 +3186,6 @@ function buildExCard(ctx, ex, i) {
     (est ? '<div class="ex-est ' + (est.dir || 'flat') + '"><span class="ex-est-l"></span>' +
       '<span class="ex-est-c ' + est.conf + '"></span>' +
       targetNotes(est).map(() => '<span class="ex-est-n"></span>').join('') + '</div>' : '') +
-    '<div class="ex-rir"><span class="ex-rir-lbl">RIR último set</span><div class="rir-chips"></div></div>' +
     (parked ? '<div class="ex-parked"></div>' : '');
 
   if (decay) {
@@ -3274,43 +3263,31 @@ function buildExCard(ctx, ex, i) {
      a field nobody had asked for. */
   if (focusSetup === ex.id) setupIn.dataset.focusMark = '1';
 
-  /* The chip is still the writer, for one plan more — plans/036 puts a box
-     next to the reps and this goes away. What changed underneath it is
-     where the value lands: setRir writes the row of the last set actually
-     done, and a session with nothing ticked yet has no such set, so the
-     chip falls back to the last row of the exercise rather than recording
-     nothing.
-
-     The pressed state is read back through rirNumber, not compared as a
-     string: the row holds a digit now, so a '2+' tapped last week comes
-     back as '2' and a value typed at 3 reserve is still "2 or more". */
-  const rirHost = card.querySelector('.rir-chips');
-  const rirNow = rirNumber(getRir(profile, block.id, profile.week, day.id, ex.id));
-  RIR_OPTIONS.forEach(opt => {
-    const on = rirNow != null && (opt === '2+' ? rirNow >= 2 : rirNumber(opt) === rirNow);
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'rir-chip' + (on ? ' on' : '');
-    b.textContent = opt;
-    b.setAttribute('aria-pressed', on ? 'true' : 'false');
-    b.setAttribute('aria-label', RIR_LABEL[opt] + ' en la última serie de ' + ex.n);
-    b.onclick = () => {
-      /* `wasSession` is read BEFORE the write, exactly like the weight, rep
-         and tick handlers below: writing an RIR starts the session now that
-         rowUsed counts one (the input contract, plans/035 Step H — "counts
-         as starting the session exactly as the weight and rep boxes do"),
-         and reading it afterwards would make every tap look like a start
-         and put the draw-time write back by another route. */
-      const wasSession = rows.some(rowUsed);
-      setRir(profile, block.id, profile.week, day.id, ex.id, on ? '' : opt);
-      save();
-      recordTargetOnStart(profile, block, day, ex, rows, wasSession, est);
-      drawCard(ex.id);
-    };
-    rirHost.appendChild(b);
-  });
+  /* The week's own reserve, greyed into every RIR box the way the
+     objetivo's weight is greyed into the weight box. phaseRir first rather
+     than weekRir alone: weekRir answers 0 for a phase with no number in it
+     (a deload, or a week somebody wrote in their own words), and a box
+     that quietly says "0" is telling you to go to failure. No number in
+     the phase, no placeholder. */
+  const wkRir = phaseRir(block, profile.week) == null
+    ? null : weekRir(block, ex, profile.week, null);
 
   const box = card.querySelector('.sets');
+  /* One column line for the card instead of a unit glued inside every box
+     and a rep label beside it — three headings read once, and the boxes
+     under them are free to be numbers and nothing else. aria-hidden
+     because each box states its own column in its label. */
+  const setHead = document.createElement('div');
+  setHead.className = 'set-head';
+  setHead.setAttribute('aria-hidden', 'true');
+  setHead.innerHTML = '<span>' + esc(units()) + '</span><span>rep</span><span>RIR</span><span></span><span></span>';
+  box.appendChild(setHead);
+
+  /* The set you are about to do: the first one not yet ticked, marked only
+     when there is an objetivo to do it against — without one the boxes are
+     empty and there is nothing to point at. */
+  const nextAt = est ? rows.findIndex(r => !r.done) : -1;
+
   rows.forEach((r, si) => {
     if (r.done) {
       stat.tonnage += setVolume(r);
@@ -3318,20 +3295,26 @@ function buildExCard(ctx, ex, i) {
     }
 
     const row = document.createElement('div');
-    row.className = 'set-row' + (r.done ? ' done' : '') + (isPr(r) ? ' pr' : '') + (isPrE(r) ? ' pr-e1rm' : '');
-    /* text + inputmode rather than type=number: a Spanish keyboard sends a
+    row.className = 'set-row' + (r.done ? ' done' : '') + (si === nextAt ? ' next' : '') +
+      (isPr(r) ? ' pr' : '') + (isPrE(r) ? ' pr-e1rm' : '');
+    /* No set number: four rows in a column ARE first, second, third,
+       fourth, and a 26px column spent saying so was 26px the boxes did not
+       have (plans/031 § "The numbers", plans/036). The labels still say
+       which set each box belongs to, which is where it was ever needed.
+
+       text + inputmode rather than type=number: a Spanish keyboard sends a
        comma, and type=number throws the whole value away when it sees one,
        so "22,5" silently became an empty box. */
     const drops = dropsOf(r);
     row.innerHTML =
-      '<div class="set-n">' + (si + 1) + '</div>' +
-      '<div class="fld"><input type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next"><u>' + esc(units()) + '</u></div>' +
-      '<div class="fld"><input type="text" inputmode="numeric" autocomplete="off" enterkeyhint="next"><u>rep</u></div>' +
+      '<input type="text" class="w-in" inputmode="decimal" autocomplete="off" enterkeyhint="next">' +
+      '<input type="text" class="r-in" inputmode="numeric" autocomplete="off" enterkeyhint="next">' +
+      '<input type="text" class="rir-in" inputmode="numeric" autocomplete="off" enterkeyhint="done" maxlength="1">' +
       '<button type="button" class="drop-add' + (drops.length ? ' on' : '') + '"' +
         (drops.length >= MAX_DROPS ? ' disabled' : '') + '>↓</button>' +
       '<button type="button" class="tick' + (r.done ? ' on' : '') + '" aria-pressed="' + (r.done ? 'true' : 'false') + '">✓</button>';
 
-    const [wIn, rIn] = row.querySelectorAll('input');
+    const [wIn, rIn, rirIn] = row.querySelectorAll('input');
     /* The greyed number in the weight box is the target's own weight for
        THIS set — one rule, one number, and the contract the box has always
        had ("tick without typing takes what it shows") now adopts the
@@ -3351,10 +3334,16 @@ function buildExCard(ctx, ex, i) {
       : ownHint ? 'lo de la semana anterior'
       : (priorRow ? 'lo de "' + prior.block.name + '", semana ' + prior.week : '');
     wIn.value = r.w; rIn.value = r.r;
+    rirIn.value = r.rir == null ? '' : r.rir;
     wIn.placeholder = hint || '—';
-    rIn.placeholder = '—';
+    /* Same contract as the weight box, one column over: what the objetivo
+       asks of THIS set. Without one — the first session of a lift — the
+       plan's own rep range, which is the only thing there is to ask for. */
+    rIn.placeholder = tgtRow && tgtRow.r ? String(tgtRow.r) : (ex.reps || '—');
+    rirIn.placeholder = wkRir == null ? '—' : String(wkRir);
     wIn.setAttribute('aria-label', 'Peso, serie ' + (si + 1) + ' de ' + ex.n);
     rIn.setAttribute('aria-label', 'Repeticiones, serie ' + (si + 1) + ' de ' + ex.n);
+    rirIn.setAttribute('aria-label', 'RIR, serie ' + (si + 1) + ' de ' + ex.n);
     /* `wasSession` is read BEFORE the assignment in every one of these, and
        that order is the whole mechanism: read it after and the row is
        already used, every keystroke looks like a start, and the draw-time
@@ -3369,6 +3358,28 @@ function buildExCard(ctx, ex, i) {
       r.r = e.target.value.replace(/[^0-9]/g, ''); if (r.r !== e.target.value) e.target.value = r.r; save();
       recordTargetOnStart(profile, block, day, ex, rows, wasSession, est);
     };
+    /* One digit, 0-5, and the box refuses anything else rather than
+       storing it and hoping a reader copes — the fourth place that spells
+       RIR_MAX's range out as a literal, for the same reason as the other
+       three (rowRir, rirNumber, normalizeImportedLog): a regex is what is
+       needed here and building one from the constant would be the harder
+       thing to read. Raising RIR_MAX means editing all four.
+
+       `wasSession` first, and recordTargetOnStart after, exactly as the
+       weight and rep boxes do: a reserve typed into an otherwise-empty row
+       starts the session, because rowUsed counts r.rir since plans/035 —
+       without the first half pruneLog would delete it, without the second
+       typing an RIR first would suppress that session's objetivo record
+       (plans/035 § "One thing 036 must not undo"). */
+    rirIn.oninput = e => {
+      const wasSession = rows.some(rowUsed);
+      const v = e.target.value.replace(/[^0-5]/g, '').slice(0, 1);
+      if (v !== e.target.value) e.target.value = v;
+      if (v) r.rir = v; else delete r.rir;
+      dropLegacyRir(profile, block.id, profile.week, day.id, ex.id);
+      save();
+      recordTargetOnStart(profile, block, day, ex, rows, wasSession, est);
+    };
 
     const tick = row.querySelector('.tick');
     tick.setAttribute('aria-label', (r.done ? 'Desmarcar' : 'Marcar') + ' serie ' + (si + 1) + ' de ' + ex.n);
@@ -3380,7 +3391,14 @@ function buildExCard(ctx, ex, i) {
       if (!r.done) {
         /* Ticking a set whose weight box is still empty takes the greyed
            number showing in it — last week's weight for this same set. It
-           is the common case, but it is also a guess, so it says so. */
+           is the common case, but it is also a guess, so it says so.
+
+           Only the weight box has this contract. The RIR box's placeholder
+           is what the week ASKS for, and a reserve nobody reported is not a
+           measurement (plans/035 Step H.4): a blank RIR box stays blank on
+           tick and the set reads as a floor, which is what it always did.
+           The rep box has never adopted either — an unreported rep count
+           would go straight into the objetivo's arithmetic. */
         if ((r.w === '' || r.w == null) && hint) { r.w = hint; adopted = hint; stampRowUnit(r); }
         r.ts = Date.now();
       }
@@ -3421,10 +3439,16 @@ function buildExCard(ctx, ex, i) {
       if (!d || typeof d !== 'object' || Array.isArray(d)) return;
       const dRow = document.createElement('div');
       dRow.className = 'drop-row' + (r.done ? ' done' : '');
+      /* The same five columns as the set above it, so the weight and rep
+         boxes line up with the ones they came off — that alignment is what
+         makes the pair read as one set at a glance. The ↳ went with the
+         set number; what marks the sub-row now is its shorter boxes and
+         the rule down the left. The third column is empty on purpose: a
+         drop is part of the set's reserve, not a reserve of its own. */
       dRow.innerHTML =
-        '<div class="drop-n">↳</div>' +
-        '<div class="fld"><input type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next"><u>' + esc(units()) + '</u></div>' +
-        '<div class="fld"><input type="text" inputmode="numeric" autocomplete="off" enterkeyhint="next"><u>rep</u></div>' +
+        '<input type="text" class="w-in" inputmode="decimal" autocomplete="off" enterkeyhint="next">' +
+        '<input type="text" class="r-in" inputmode="numeric" autocomplete="off" enterkeyhint="next">' +
+        '<span></span>' +
         '<span></span>' +
         '<button type="button" class="drop-x">✕</button>';
 
