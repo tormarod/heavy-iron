@@ -87,6 +87,17 @@ identical to an oversight unless someone writes down which it is:
      `blockShare*` builders and the `normalizeImported*` validators
      stayed behind while their screens left.
 
+  Both rules are about symbols, and **both read the same on ids**: an id
+  that is new to `index.html` and looked up by a split file needs a null
+  guard (`const b = $('reviewBtn'); if (b) b.onclick = …`), because a
+  precache hole can serve the new copy of that file against a shell whose
+  `index.html` has never heard of the id. An id that merely *moved* needs
+  nothing — every shell that has the file has the id. plans/037 added four
+  new ones (`#reviewBtn`, `#newBlockBtn`, `#importBtn`, `#manageBtn`, plus
+  `#tnext` and `#navBar` in `js/rest-timer.js`) and guarded every read;
+  `wireBlockEditor()` is one of the two unguarded calls in the tail above,
+  so a throw inside it takes `load()` with it and the app never draws.
+
   Both rules have one exception, and it is older than the rules: `js/data.js`,
   `js/block-editor.js` and `js/profile-transfer.js` predate the split and are
   precached in every deployed shell, so a symbol defined in them is treated as

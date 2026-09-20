@@ -76,6 +76,13 @@
     </div>
     <button class="pair" id="pair" type="button" aria-expanded="false" hidden></button>
     <div class="energy" id="energy"></div>
+    <!-- The two actions you reach for with a hand on the bar, above the
+         list instead of 3600px below it: everything else the footer used to
+         hold is a destination in the bar now (plans/031 F2, plans/037). -->
+    <div class="session-tools">
+      <button class="sm key" id="copyPrev">Rellenar con el objetivo</button>
+      <button class="sm" id="calcBtn">Calculadora</button>
+    </div>
     <p class="deload-check" id="deloadCheck" hidden></p>
     <p class="brake-note" id="brakeNote" hidden></p>
     <div class="bar"><i id="barfill" class="u-bar-empty"></i></div>
@@ -89,23 +96,44 @@
       </div>
       <p class="ex-parked" id="beyond" hidden></p>
       <p class="note" id="note"></p>
-      <div class="foot-btns">
-        <button class="sm" id="copyPrev">Rellenar con el objetivo</button>
-        <button class="sm" id="editPlan">Editar plan</button>
-        <button class="sm" id="calcBtn">Calculadora</button>
-        <button class="sm" id="volumeBtn">Volumen muscular</button>
-        <button class="sm" id="diagBtn">Diagnóstico</button>
-        <button class="sm" id="clearDay">Borrar este día</button>
-        <button class="sm" id="backup">Copia de seguridad</button>
-        <button class="sm" id="settings">Ajustes</button>
-        <button class="sm warn" id="wipe">Borrar todos los datos</button>
-      </div>
       <div class="status" id="status" role="status" aria-live="polite"></div>
       <!-- Which version is actually running, answered by the worker serving
            the page rather than by a constant that could be out of date. -->
       <div class="version" id="version" hidden></div>
     </div>
   </main>
+
+  <!-- Four destinations, where fourteen equally-weighted buttons used to sit
+       in two clusters — nine of them in a footer 3600px down the page, with
+       "Borrar todos los datos" one wrap away from "Ajustes" (plans/031 F2).
+       Every guideline read for that pass caps a persistent bar at four or
+       five and puts the rest behind one of them, so Progreso, Plan and Más
+       open hubs and Sesión is the page you are already on.
+
+       Class .navbar, not .bar: .bar is the session's 3px progress line and
+       has been since long before this (css/style.css, ".bar").
+
+       The icons are inline <svg>, which the CSP allows — it is neither a
+       script nor a style — and aria-hidden, because the word underneath
+       each one is the label. -->
+  <nav class="navbar" id="navBar" aria-label="Secciones">
+    <button class="navbar-btn" id="navSession" type="button" aria-current="page">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9v6M6 6.5v11M18 6.5v11M21 9v6M6 12h12"/></svg>
+      <span>Sesión</span>
+    </button>
+    <button class="navbar-btn" id="navProgress" type="button" aria-haspopup="dialog">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l5.5-5.5 3.5 3.5L21 6"/><path d="M15 6h6v6"/></svg>
+      <span>Progreso</span>
+    </button>
+    <button class="navbar-btn" id="navPlan" type="button" aria-haspopup="dialog">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></svg>
+      <span>Plan</span>
+    </button>
+    <button class="navbar-btn" id="navMore" type="button" aria-haspopup="dialog">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5.5" r="1.3" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="12" cy="18.5" r="1.3" fill="currentColor" stroke="none"/></svg>
+      <span>Más</span>
+    </button>
+  </nav>
 
   <!-- confirmations, warnings and the one text prompt -->
   <div class="sheet" id="askSheet">
@@ -169,17 +197,77 @@
     </div>
   </div>
 
-  <!-- "Más" holds what the top row has no width for. The theme is all of it
-       for now; plans/037 moves the rest of the shell in here. -->
+  <!-- The bar's "Progreso" hub. The three ids here are the footer's own,
+       moved rather than renamed, so wireVolumeSheet, wireDiagnostics and
+       wireReview find the buttons they have always found — except
+       #reviewBtn, which js/block-editor.js used to build by hand with no id
+       at all (plans/037). -->
+  <div class="sheet" id="progressSheet">
+    <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="progressT">
+      <div class="sheet-head">
+        <div class="sheet-t" id="progressT">Progreso</div>
+        <button class="sm" id="progressClose" type="button">Cerrar</button>
+      </div>
+      <div class="sheet-rows">
+        <button class="sheet-row" id="volumeBtn" type="button"><span class="sheet-row-lbl">Volumen muscular</span><span class="sheet-row-chev" aria-hidden="true">›</span></button>
+        <button class="sheet-row" id="diagBtn" type="button"><span class="sheet-row-lbl">Diagnóstico</span><span class="sheet-row-chev" aria-hidden="true">›</span></button>
+        <button class="sheet-row" id="reviewBtn" type="button"><span class="sheet-row-lbl">Revisión del bloque</span><span class="sheet-row-chev" aria-hidden="true">›</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- The bar's "Plan" hub: the four block actions js/block-editor.js's
+       renderBlockBar used to draw into #blockbar on every render. They are
+       markup now, so the block sheet is the picker and nothing else. -->
+  <div class="sheet" id="planHubSheet">
+    <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="planHubT">
+      <div class="sheet-head">
+        <div class="sheet-t" id="planHubT">Plan</div>
+        <button class="sm" id="planHubClose" type="button">Cerrar</button>
+      </div>
+      <div class="sheet-rows">
+        <button class="sheet-row" id="editPlan" type="button"><span class="sheet-row-lbl">Editar plan</span><span class="sheet-row-chev" aria-hidden="true">›</span></button>
+        <button class="sheet-row" id="newBlockBtn" type="button"><span class="sheet-row-lbl">+ Nuevo bloque</span><span class="sheet-row-chev" aria-hidden="true">›</span></button>
+        <button class="sheet-row" id="importBtn" type="button"><span class="sheet-row-lbl">Importar JSON</span><span class="sheet-row-chev" aria-hidden="true">›</span></button>
+        <button class="sheet-row" id="manageBtn" type="button"><span class="sheet-row-lbl">Gestionar bloques</span><span class="sheet-row-chev" aria-hidden="true">›</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- "Más": what the top row has no width for, and, since plans/037, the
+       rest of the old footer. The danger zone is its own group and last, so
+       "Borrar todos los datos" is nowhere near "Ajustes" (plans/031 F2).
+       The profile transfer and the QR are inside the backup sheet already,
+       which is why "Datos" is one row and not three. -->
   <div class="sheet" id="moreSheet">
     <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="moreT">
-      <div class="sheet-t" id="moreT">Más</div>
-      <div class="more-row">
-        <span class="more-lbl">Tema</span>
-        <button class="icon-btn" id="themeBtn" type="button" aria-label="Cambiar tema"></button>
-      </div>
-      <div class="sheet-btns">
+      <div class="sheet-head">
+        <div class="sheet-t" id="moreT">Más</div>
         <button class="sm" id="moreClose" type="button">Cerrar</button>
+      </div>
+      <div class="sheet-group" role="group" aria-labelledby="moreSecData">
+        <div class="sheet-sec" id="moreSecData">Datos</div>
+        <div class="sheet-rows">
+          <button class="sheet-row" id="backup" type="button"><span class="sheet-row-lbl">Copia de seguridad</span><span class="sheet-row-chev" aria-hidden="true">›</span></button>
+        </div>
+      </div>
+      <div class="sheet-group" role="group" aria-labelledby="moreSecPrefs">
+        <div class="sheet-sec" id="moreSecPrefs">Ajustes</div>
+        <div class="sheet-rows">
+          <button class="sheet-row" id="settings" type="button"><span class="sheet-row-lbl">Ajustes</span><span class="sheet-row-chev" aria-hidden="true">›</span></button>
+          <!-- The one row that cycles in place instead of opening something,
+               so it is also the one the hub must not close under: see
+               data-keep-open in js/app.js. -->
+          <button class="sheet-row" id="themeBtn" type="button" data-keep-open="1"><span class="sheet-row-lbl">Tema</span><span class="sheet-row-hint" id="themeHint"></span></button>
+          <button class="sheet-row" id="bgAlarmBtn" type="button"><span class="sheet-row-lbl">Aviso con la pantalla apagada</span><span class="sheet-row-chev" aria-hidden="true">›</span></button>
+        </div>
+      </div>
+      <div class="sheet-group" role="group" aria-labelledby="moreSecDanger">
+        <div class="sheet-sec danger" id="moreSecDanger">Zona de peligro</div>
+        <div class="sheet-rows">
+          <button class="sheet-row warn" id="clearDay" type="button"><span class="sheet-row-lbl">Borrar este día</span><span class="sheet-row-chev" aria-hidden="true">›</span></button>
+          <button class="sheet-row warn" id="wipe" type="button"><span class="sheet-row-lbl">Borrar todos los datos</span><span class="sheet-row-chev" aria-hidden="true">›</span></button>
+        </div>
       </div>
     </div>
   </div>
@@ -542,19 +630,34 @@
     </div>
   </div>
 
+  <!-- While a rest runs this takes the bar's place (js/rest-timer.js hides
+       #navBar), which is why three controls at 44px fit where four at 29px
+       used to be squeezed. The second line names the set you are walking
+       back to and turns the alarm into a labelled switch, so "Son." stops
+       being a four-letter guess (plans/031 § L8, plans/037). -->
   <div class="timer" id="timer">
-    <div class="timer-fill" id="tfill"></div>
     <div class="timer-in">
-      <div class="timer-main">
-        <div class="timer-lbl" id="tlbl">Descanso</div>
-        <div class="timer-val" id="tval">0:00</div>
+      <div class="timer-top">
+        <div class="timer-main">
+          <div class="timer-lbl" id="tlbl">Descanso</div>
+          <div class="timer-val" id="tval">0:00</div>
+        </div>
+        <div class="timer-msg" id="tmsg" role="status" aria-live="polite"></div>
+        <div class="timer-acts">
+          <button class="timer-btn" id="tminus" type="button" aria-label="Quitar 30 segundos de descanso">−30</button>
+          <button class="timer-btn" id="tplus" type="button" aria-label="Añadir 30 segundos de descanso">+30</button>
+          <button class="timer-btn" id="tskip" type="button">Saltar</button>
+        </div>
       </div>
-      <div class="timer-msg" id="tmsg" role="status" aria-live="polite"></div>
-      <div class="timer-acts">
-        <button class="timer-btn" id="tminus" type="button" aria-label="Quitar 30 segundos de descanso">−30</button>
-        <button class="timer-btn" id="tplus" type="button" aria-label="Añadir 30 segundos de descanso">+30</button>
-        <button class="timer-btn" id="tsound" type="button" aria-pressed="false" aria-label="Aviso sonoro al acabar el descanso">Son.</button>
-        <button class="timer-btn" id="tskip" type="button">Saltar</button>
+      <!-- Under the count rather than above it: the bar reads as the ground
+           the next set's line stands on (plans/031-mockups/opcion4-descanso.png). -->
+      <div class="timer-fill" id="tfill"></div>
+      <div class="timer-foot">
+        <div class="timer-next" id="tnext"></div>
+        <button class="timer-switch" id="tsound" type="button" role="switch" aria-checked="false" aria-label="Aviso sonoro al acabar el descanso">
+          <span>Aviso sonoro</span>
+          <span class="switch" aria-hidden="true"><i></i></span>
+        </button>
       </div>
     </div>
   </div>

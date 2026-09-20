@@ -97,12 +97,15 @@
    that inset is live and .top is really 177-192px tall, not 133. A flat
    140px there would put a focused control 37-52px under the header on
    exactly the devices plans/032's safe-area work was written for.
-   90px covers the rest timer when it is up. Anything that changes the
-   header's height changes the 140 — update it here, rather than adding a
-   second rule. */
+   190px covers the rest timer when it is up — the same number, and for the
+   same reason, as #app's reserve below; see the comment there. The bar is
+   never the thing to reserve for here: #app.kb-open hides it, and typing is
+   the only way focus moves under a keyboard. Anything that changes the
+   header's height changes the 140, and anything that changes the timer's
+   changes the 190 — update them here, rather than adding a second rule. */
 html {
   scroll-padding-top: calc(140px + env(safe-area-inset-top));
-  scroll-padding-bottom: calc(90px + env(safe-area-inset-bottom));
+  scroll-padding-bottom: calc(190px + env(safe-area-inset-bottom));
 }
 
 body {
@@ -112,7 +115,26 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-#app { min-height: 100vh; padding-bottom: calc(100px + env(safe-area-inset-bottom)); }
+/* The reserve at the foot of the page is the TALLEST thing that can be
+   docked there, not the usual one — and that is the rest timer, not the
+   64px bar it replaces while a rest runs. 100px answered an 85px timer
+   before plans/037 (plans/032); 120, sized for the bar, put the version
+   line 17px underneath the two-line timer instead.
+
+   190 is measured, not estimated. Below the 620px breakpoint the timer is
+   exactly 137px whatever the exercise is called, because .timer-msg is
+   hidden there, so that half is 53px of clearance. Above it the coaching
+   line comes back and takes whatever width the exercise's name leaves it,
+   so the height rises with the name: 147px short, 157 for the shipped
+   plan's "Press de pecho en máquina", 172 for its longest,
+   "Elevaciones laterales en polea" — 18px of clearance at the worst name
+   this app ships. An imported 80-character name (IMPORT_LIMITS.name) can
+   still squeeze the coaching line into a 20px column 217px tall and go
+   under; that squeeze predates this plan and no reserve can chase it.
+
+   Over-reserving costs nothing: it is blank scroll past the version line,
+   below everything anyone reads. */
+#app { min-height: 100vh; padding-bottom: calc(190px + env(safe-area-inset-bottom)); }
 /* Each profile carries an accent. `hombre`/`mujer` are the names the app
    shipped with and are kept as aliases so existing saved profiles do not
    change colour; new ones pick `azul` or `verde` by name. */
@@ -156,18 +178,15 @@ body {
    and wrap to two rows at 375px, which is why its buttons carried a 24px
    override against the general .sm face — the only way .top stayed under
    plans/032's HEADER_MAX. In a sheet there is no height to buy back, so the
-   override is gone and these are ordinary 44px buttons. (plans/037 moves the
-   four actions out of here and into the Plan hub.) */
+   override is gone and these are ordinary 44px buttons. plans/037 then took
+   the four actions out of here altogether — into the Plan hub — so what is
+   left is the picker and nothing else. */
 .blockbar { display: flex; align-items: center; gap: 7px; margin-top: 12px; flex-wrap: wrap; }
 .blockbar select {
   flex: 1 1 100%; min-width: 120px; height: 44px; border: 1px solid var(--edge); background: var(--card);
   color: var(--ink); font-family: var(--font-sans); font-size: 14px; font-weight: 600;
   border-radius: 3px; padding: 0 8px;
 }
-
-/* ---- "Más" ---- */
-.more-row { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
-.more-lbl { flex: 1; font-size: 14px; font-weight: 600; }
 
 /* ---- header ---- */
 .top {
@@ -668,23 +687,90 @@ body {
 .set-row.pr-e1rm .tick.on { background: var(--card); border-color: var(--amber-ink); color: var(--amber-ink); }
 .badge.pr-e1rm { background: transparent; color: var(--amber-ink); border: 1px solid var(--amber-ink); }
 
+/* ---- the bar ---- */
+/* Four destinations docked over the home indicator. Named .navbar because
+   .bar is the session's 3px progress line, above, and was here first.
+   z-index 50 is under the rest timer's 55: while a rest runs the timer
+   takes this place outright (js/rest-timer.js hides the bar), and the
+   overlap only has to survive the frame between the two. */
+.navbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+  height: calc(64px + env(safe-area-inset-bottom));
+  padding: 6px 8px env(safe-area-inset-bottom);
+  background: var(--card); border-top: 1px solid var(--line);
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px;
+}
+/* display: grid would otherwise beat the UA's [hidden] rule. */
+.navbar[hidden] { display: none; }
+/* iOS has no `interactive-widget` viewport segment, so the visual viewport
+   does not shrink for the software keyboard and a fixed bar floats on top
+   of it — over the very row being typed into (plans/031 § L8). js/app.js
+   puts kb-open on #app while a box in the list has focus. */
+#app.kb-open .navbar { display: none; }
+.navbar-btn {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  height: 52px; min-width: 0; background: transparent; border: 0; border-radius: 3px;
+  font-family: var(--font-display); font-size: 12px; font-weight: 600;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--soft); cursor: pointer;
+}
+.navbar-btn svg { width: 24px; height: 24px; flex: 0 0 auto; }
+/* "Progreso" is the longest of the four and 375/4 is 94px: it has to be
+   allowed to end in an ellipsis rather than widen its column. */
+.navbar-btn > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.navbar-btn[aria-current="page"] { color: var(--signal); background: var(--signal-soft); }
+
+/* ---- the session's two actions ---- */
+/* The primary grows because it is the one with a sentence in it; the
+   calculator keeps its own width. */
+.session-tools { display: flex; gap: 8px; margin-bottom: 16px; }
+.session-tools .sm.key { flex: 1 1 auto; }
+
 /* ---- rest timer ---- */
 /* iOS draws the home indicator over the bottom of the viewport in standalone
    mode (viewport-fit=cover, index.html:11); WebKit's rule is that content
    under it is untappable, so the timer's own controls need this padding to
    clear it. */
 .timer {
-  position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 55;
   background: var(--timer-bg); color: var(--timer-ink);
   transform: translateY(105%); transition: transform .25s cubic-bezier(.2,.8,.3,1);
   padding-bottom: env(safe-area-inset-bottom);
 }
 .timer.up { transform: translateY(0); }
-.timer-fill { height: 3px; background: var(--signal); transition: width 1s linear; }
+/* Between the count and the next set's line rather than over the top edge
+   (plans/031-mockups/opcion4-descanso.png): the bar reads as the ground the
+   second line stands on, and the top edge is left to the border. */
+.timer-fill { height: 3px; background: var(--signal); transition: width 1s linear; margin: 10px 0; }
 .timer.over .timer-fill { background: var(--amber); }
-.timer-in { display: flex; align-items: center; gap: 14px; padding: 12px 16px; max-width: 640px; margin: 0 auto; }
+.timer-in { padding: 12px 16px; max-width: 640px; margin: 0 auto; }
+.timer-top { display: flex; align-items: center; gap: 14px; }
 .timer-main { flex: 1 1 auto; min-width: 0; }
 .timer-acts { display: flex; gap: 6px; margin-left: auto; flex: 0 0 auto; }
+/* The line the bar's place bought: what the countdown is counting down to,
+   and the alarm as a switch with its name on it instead of "Son." */
+.timer-foot { display: flex; align-items: center; gap: 10px; }
+.timer-next {
+  flex: 1 1 auto; min-width: 0; font-size: 13px; color: var(--timer-dim); line-height: 1.3;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* 32px, not the switch's own 22: the button is the target, and a 22px one
+   would be the only control outside a sheet under SC 2.5.8's floor. */
+.timer-switch {
+  display: flex; align-items: center; gap: 8px; flex: 0 0 auto; height: 32px;
+  background: transparent; border: 0; padding: 0; color: var(--timer-dim);
+  font-family: var(--font-sans); font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.switch {
+  position: relative; flex: 0 0 auto; width: 36px; height: 22px; border-radius: 11px;
+  background: var(--timer-line); transition: background .15s;
+}
+.switch > i {
+  position: absolute; top: 3px; left: 3px; width: 16px; height: 16px;
+  border-radius: 50%; background: var(--timer-ink); transition: transform .15s;
+}
+.timer-switch[aria-checked="true"] { color: var(--timer-ink); }
+.timer-switch[aria-checked="true"] .switch { background: var(--signal); }
+.timer-switch[aria-checked="true"] .switch > i { transform: translateX(14px); }
 .timer-lbl {
   font-family: var(--font-display); font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
   color: var(--timer-dim);
@@ -701,20 +787,20 @@ body {
   font-weight: 600; cursor: pointer; letter-spacing: 0.04em;
 }
 .timer-btn:hover { border-color: var(--timer-ink); }
-.timer-btn[aria-pressed="true"] { background: var(--timer-ink); color: var(--timer-bg); border-color: var(--timer-ink); }
-/* On a phone the four controls and the coaching line do not both fit; the
-   controls are the part you reach for mid-set. */
+/* On a phone the three controls and the coaching line do not both fit; the
+   controls are the part you reach for mid-set. They keep their full 44px
+   here — the fourth control left the row for the switch on the line below,
+   which is what paid for it (plans/037). */
 @media (max-width: 620px) {
   .timer-msg { display: none; }
-  .timer-in { gap: 10px; padding: 10px 14px; }
+  .timer-in { padding: 10px 14px; }
+  .timer-top { gap: 10px; }
   .timer-val { font-size: 46px; }
-  .timer-btn { padding: 8px 9px; font-size: 11px; }
 }
 
 /* ---- footer ---- */
 .foot { margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--line); }
 .note { font-size: 12.5px; color: var(--soft); line-height: 1.5; margin-bottom: 12px; }
-.foot-btns { display: flex; gap: 7px; flex-wrap: wrap; }
 .sm {
   height: 44px; background: transparent; border: 1px solid var(--edge); color: var(--ink);
   padding: 0 16px; border-radius: 3px; font-family: var(--font-sans);
@@ -731,9 +817,12 @@ body {
 .skel { padding: 40px 0; text-align: center; color: var(--soft); font-size: 13px; }
 
 /* One-line notices that need an answer (a new version is ready, another tab
-   changed the log). Sits above the rest timer so it is never hidden by it. */
+   changed the log). Sits above whatever is docked at the foot of the page —
+   the bar normally, the rest timer while one runs — so it never hides either
+   and neither hides it. 78px is the bar's 64 plus the 14 it used to stand on
+   its own. */
 .toast {
-  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(14px + env(safe-area-inset-bottom)); z-index: 70;
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(78px + env(safe-area-inset-bottom)); z-index: 70;
   /* width, not max-width: shrink-to-fit squeezed the message into a three-line
      column beside the buttons */
   display: flex; align-items: center; gap: 9px; width: min(520px, calc(100% - 24px));
@@ -744,24 +833,92 @@ body {
 .toast[hidden] { display: none; }
 .toast > span { flex: 1; min-width: 0; }
 .toast .sm { flex: 0 0 auto; }
-.timer.up ~ .toast { bottom: calc(86px + env(safe-area-inset-bottom)); }
+/* The timer is two lines since plans/037, and above the 620px breakpoint it
+   has no single height at all: .timer-main's flex basis is the exercise
+   name's own width, so the coaching line gets whatever the name leaves it
+   and wraps into the rest. Measured at 768: 147px with a short name, 157
+   for the shipped plan's "Press de pecho en máquina", 172 for its longest,
+   "Elevaciones laterales en polea", and 296 for an imported 80-character
+   one (IMPORT_LIMITS.name), where .timer-msg is a 20px column 217px tall.
+   At exactly 621 the same names give 147/172/188/296.
+
+   Below the breakpoint there is nothing to measure: .timer-msg is hidden,
+   so the timer is exactly 137px whatever the exercise is called, and 150
+   is that plus the 13px the toast stands on.
+
+   Above it, one constant cannot be exact, so it is the same 190 #app
+   reserves for the same worst shipped case — clearing every name this app
+   ships (43/33/18px at 768, down to 2px at 621 on the longest) at the
+   price of standing 43px clear of the common one. That direction is the
+   safe one: the toast is z-index 70 over the
+   timer's 55, so an offset that is too small covers the timer's controls
+   with the toast's own buttons, while one that is too large only floats a
+   notice higher up a screen that has the room. Anything that changes the
+   timer's height changes both numbers; #app's comment holds the reasoning. */
+.timer.up ~ .toast { bottom: calc(190px + env(safe-area-inset-bottom)); }
+@media (max-width: 620px) {
+  .timer.up ~ .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
+}
 
 /* ---- sheets (modals) ---- */
+/* Anchored to the bottom edge since plans/037, which is where a thumb is:
+   a panel centred in the viewport puts its first row in the middle of the
+   screen and its buttons under the reach of the hand holding the phone. */
 .sheet {
   position: fixed; inset: 0; z-index: 60; display: none;
-  background: var(--shade); padding: 16px;
-  align-items: center; justify-content: center; overflow-y: auto;
+  background: var(--shade); padding: 0;
+  align-items: flex-end; justify-content: center; overflow-y: auto;
 }
 .sheet.up { display: flex; }
 /* The dialog takes focus when it opens so the keyboard lands inside it, but
    a ring drawn around the whole panel reads as an error state — the controls
    within it keep their own. */
 .sheet-box:focus, .sheet-box:focus-visible { outline: none; }
+/* Two max-heights on purpose, in this order: dvh tracks the mobile
+   browser's shrinking chrome and is what the sheet should be measured
+   against, and the vh line before it is the answer for anything that does
+   not know the unit and would otherwise drop the declaration entirely.
+   Both phones support dvh (iOS 15.4+, Chrome 108+, plans/031 § "Platform
+   support checked"). */
 .sheet-box {
-  background: var(--card); border: 1px solid var(--line); border-radius: 4px;
-  width: 100%; max-width: 600px; max-height: 88vh; overflow: auto; padding: 18px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 4px 4px 0 0;
+  width: 100%; max-width: none; max-height: 92vh; max-height: 92dvh; overflow: auto;
+  padding: 8px 18px calc(18px + env(safe-area-inset-bottom));
+}
+/* The grabber, drawn rather than marked up: it is decoration — there is
+   nothing to announce and nothing to drag — and a pseudo-element is one
+   rule instead of the same <div> in sixteen sheets. The CSP has no quarrel
+   with it; it is a stylesheet, not an inline style. */
+.sheet-box::before {
+  content: ''; display: block; width: 36px; height: 4px; margin: 0 auto 12px;
+  border-radius: 2px; background: var(--edge);
 }
 .sheet-t { font-family: var(--font-display); font-size: 22px; font-weight: 700; letter-spacing: -0.015em; }
+/* The hubs' and "Más"'s own furniture: a title with its Cerrar beside it,
+   a small caps heading per group, and 52px rows read down a column — the
+   shape of plans/031-mockups/opcion2-mas.png. */
+.sheet-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.sheet-head .sheet-t { flex: 1; min-width: 0; }
+.sheet-group + .sheet-group { margin-top: 6px; }
+.sheet-sec {
+  font-family: var(--font-display); font-size: 11px; font-weight: 600;
+  letter-spacing: .09em; text-transform: uppercase; color: var(--soft);
+  margin: 14px 0 2px;
+}
+.sheet-sec.danger { color: var(--danger); }
+.sheet-rows { display: flex; flex-direction: column; }
+.sheet-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px;
+  padding: 8px 0; background: transparent; border: 0; border-bottom: 1px solid var(--line);
+  font-family: var(--font-sans); font-size: 15px; font-weight: 600; color: var(--ink);
+  text-align: left; cursor: pointer;
+}
+.sheet-rows .sheet-row:last-child { border-bottom: 0; }
+.sheet-row-lbl { flex: 1; min-width: 0; }
+.sheet-row-hint { font-family: var(--font-mono); font-size: 12px; font-weight: 400; color: var(--soft); }
+.sheet-row-chev { color: var(--soft); font-size: 18px; line-height: 1; }
+.sheet-row.warn { color: var(--danger); }
+.sheet-row.warn .sheet-row-chev { color: var(--danger); }
 .sheet-d { font-size: 12.5px; color: var(--soft); line-height: 1.5; margin: 7px 0 12px; }
 .sheet-box textarea {
   width: 100%; height: 130px; resize: vertical;
@@ -958,6 +1115,11 @@ body {
   font-family: var(--font-mono); font-size: 11px; color: var(--danger);
   white-space: pre-wrap; word-break: break-word; margin-bottom: 14px;
 }
+/* The row of ways out. It was `.foot-btns`, shared with the footer's own
+   nine buttons, until plans/037 moved those into the bar and left the
+   recovery screen the only thing wearing the class — so it takes a name of
+   its own rather than inheriting one for a footer that no longer has any. */
+.rec-btns { display: flex; gap: 7px; flex-wrap: wrap; }
 
 /* ---- first-run setup / settings ---- */
 .setup-field { margin-bottom: 18px; }
@@ -1004,8 +1166,16 @@ body {
    editor, replacing a profile from the backup sheet — so it has to sit above
    every other sheet and above the toast. Sharing z-index with .sheet put it
    behind whichever sheet came later in the document and made it unclickable. */
-#askSheet { z-index: 90; }
-.ask-box { max-width: 420px; }
+#askSheet { z-index: 90; align-items: center; padding: 16px; }
+/* The one sheet plans/037 did not dock to the bottom edge: a question is
+   not a screen you work in, so it keeps the centred panel it has always
+   had — and with it the radius on all four corners, the padding, and no
+   grabber, which would be an affordance for a drag that is not there. */
+.ask-box {
+  max-width: 420px; border-radius: 4px; max-height: 88vh; max-height: 88dvh;
+  padding: 18px;
+}
+.ask-box::before { content: none; }
 .ask-box .sheet-d { white-space: pre-line; margin-bottom: 4px; }
 .ask-box .pe-block-name { margin-top: 12px; margin-bottom: 0; font-weight: 600; }
 

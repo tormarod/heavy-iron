@@ -333,6 +333,15 @@ function closeReview() {
 function wireReview() {
   registerSheet('reviewSheet', { closeBtn: 'reviewClose', onClose: closeReview });
 
+  /* "Revisión del bloque" in the bar's "Progreso" hub. Until plans/037 this
+     was a button js/block-editor.js built by hand with no id, so #reviewBtn
+     is new to the shell while this file is precached in every deployed one:
+     a precache hole can pair the two, and an unguarded read would throw
+     here — taking every wire*() call after it in app.js's tail, and load(),
+     with it. AGENTS.md's precache-hole rule applies to ids as to symbols. */
+  const b = $('reviewBtn');
+  if (b) b.onclick = () => openReview();
+
   $('reviewCopy').onclick = async () => {
     if (!reviewCache) return;
     try {

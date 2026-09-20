@@ -117,7 +117,8 @@ The other half drives the real app in a real browser and asserts the things
 a person would notice: that it boots, that a set can be logged and survives
 a reload, that a hostile block renders as text instead of running, that
 broken data lands on the recovery screen instead of a blank page, and that
-the rest timer's controls fit on a 375px phone.
+the bar's four destinations and the rest timer's controls fit on a 375px
+phone.
 
 ```
 npm install --no-save playwright@1.56.1   # once
