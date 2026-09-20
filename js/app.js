@@ -1062,7 +1062,7 @@ document.addEventListener('keydown', e => {
    under "Ajustes" forever after — where the starting-plan question is
    hidden, because by then that is what blocks are for. */
 const ACCENTS = ['azul', 'verde'];
-const ACCENT_LABEL = { azul: 'Azul', verde: 'Verde' };
+const ACCENT_LABEL = { azul: 'Brasa', verde: 'Cian' };
 /* What the two shipped profiles' accents were called before accents had
    names of their own. */
 const LEGACY_ACCENT = { hombre: 'azul', mujer: 'verde' };

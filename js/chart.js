@@ -144,12 +144,12 @@ function buildChartSVG(series, ticks) {
     const i = idx + 1;
     svg += '<line x1="' + x(i) + '" y1="' + padT + '" x2="' + x(i) + '" y2="' + (H - padB) + '" stroke="var(--line)" stroke-width="1"/>';
     if (idx % every === 0 || i === n) {
-      svg += '<text x="' + x(i) + '" y="' + (H - 8) + '" font-size="10" text-anchor="middle" fill="var(--soft)" font-family="IBM Plex Mono, monospace">' + esc(label) + '</text>';
+      svg += '<text x="' + x(i) + '" y="' + (H - 8) + '" font-size="10" text-anchor="middle" fill="var(--soft)" font-family="JetBrains Mono, monospace">' + esc(label) + '</text>';
     }
   });
 
-  svg += '<text x="4" y="' + (y(max - pad) + 4) + '" font-size="10" fill="var(--soft)" font-family="IBM Plex Mono, monospace">' + Math.round(max - pad) + '</text>';
-  svg += '<text x="4" y="' + (y(min + pad) + 4) + '" font-size="10" fill="var(--soft)" font-family="IBM Plex Mono, monospace">' + Math.round(min + pad) + '</text>';
+  svg += '<text x="4" y="' + (y(max - pad) + 4) + '" font-size="10" fill="var(--soft)" font-family="JetBrains Mono, monospace">' + Math.round(max - pad) + '</text>';
+  svg += '<text x="4" y="' + (y(min + pad) + 4) + '" font-size="10" fill="var(--soft)" font-family="JetBrains Mono, monospace">' + Math.round(min + pad) + '</text>';
 
   if (series.length) {
     /* Points the caller marks `muted` (an estimate built from too many reps

@@ -4,44 +4,50 @@
    and re-stated in the dark block below. Nothing hardcodes a hex outside
    these two blocks — that is the whole reason the dark theme is a dozen
    lines instead of a rewrite. `--on-*` tokens are the ink laid *on top* of
-   a filled surface (a signal-blue tick, the near-black timer bar), which is
+   a filled surface (the ember tick, the near-black timer bar), which is
    the one thing that cannot simply be inverted. Among the neutrals: `--line`
    divides (dividers, card borders, the header rule, the progress track),
    `--edge` bounds a control (a button or field's own border), `--amber` is
    a fill and `--amber-ink` is amber text — the two amber tokens exist
    because a fill only needs 3:1 against its neighbour but text needs 4.5:1
-   against what is under it (plans/032). */
+   against what is under it (plans/032). Type is tokenised the same way:
+   the three `--font-*` tokens below (display, sans, mono — Forja's Barlow
+   Condensed, Barlow and JetBrains Mono) are the only place a family name is
+   spelled out, so every rule reads one of them rather than naming a face of
+   its own (plans/033). */
 :root {
   /* The webfont no longer blocks the app from starting (see index.html), so
      the fallback is what every cold start paints with for a moment — it has
-     to be spelled out everywhere 'Archivo' is named, or those elements drop
-     to the browser's default serif until the font lands. */
-  --font-sans: 'Archivo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  --paper: #E4E2DA;
-  --card: #FBFAF7;
-  --sunk: #F2F0EA;
-  --ink: #17191C;
-  --soft: #585B61;
-  --line: #CBC8BE;
-  --edge: #8A887F;
-  --amber: #B87400;
+     to be spelled out in each of the three tokens below, or those elements
+     drop to the browser's default face until the font lands. */
+  --font-sans: 'Barlow', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-display: 'Barlow Condensed', 'Barlow', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --paper: #F4F2EE;
+  --card: #FFFFFF;
+  --sunk: #ECE9E3;
+  --ink: #15171A;
+  --soft: #5A5F66;
+  --line: #DDD9D1;
+  --edge: #8B8781;
+  --amber: #FFC24D;
   --amber-ink: #8C5800;
   --amber-soft: #FBEFD8;
-  --share: #7A4FBF;
-  --share-soft: #EDE5FA;
-  --share-ink: #4A2E7A;
-  --danger: #B02B1E;
-  --signal: #1B3FD0;
-  --signal-soft: #E4E8FA;
+  --share: #6E45C7;
+  --share-soft: #EEE7FF;
+  --share-ink: #6E45C7;
+  --danger: #B8301F;
+  --signal: #C24A10;
+  --signal-soft: #FCE9DE;
   --on-signal: #FFFFFF;
-  --on-share: #FFFFFF;
-  --on-ink-dim: rgba(255,255,255,.6);
+  --on-share: #1A1000;
+  --on-ink-dim: rgba(255,255,255,.65);
   --on-ink-faint: rgba(255,255,255,.5);
   --on-ink-line: rgba(255,255,255,.3);
   --flare: #FFC24D;
   --shade: rgba(20,22,25,.55);
-  --timer-bg: #17191C;
-  --timer-ink: #FBFAF7;
+  --timer-bg: #15171A;
+  --timer-ink: #F4F2EE;
   --timer-dim: rgba(255,255,255,.6);
   --timer-line: rgba(255,255,255,.3);
 }
@@ -52,31 +58,31 @@
    dark only ever needs declaring once, here, rather than a second time under
    a @media(prefers-color-scheme) block for "auto with no attribute set". */
 :root[data-theme="dark"] {
-  --paper: #15161A;
-  --card: #1D1F24;
-  --sunk: #24262C;
-  --ink: #E8E6E0;
-  --soft: #9A9CA3;
-  --line: #33363D;
-  --edge: #6B6F79;
-  --amber: #E0A33C;
+  --paper: #0F1113;
+  --card: #181B1F;
+  --sunk: #22262B;
+  --ink: #F2F1EC;
+  --soft: #A7ADB6;
+  --line: #2A2F36;
+  --edge: #626B78;
+  --amber: #FFC24D;
   --amber-ink: #E0A33C;
   --amber-soft: #33270F;
-  --share: #B79BEA;
-  --share-soft: #292236;
-  --share-ink: #D6C6F4;
-  --danger: #F0736A;
-  --signal: #7C97F7;
-  --signal-soft: #212842;
-  --on-signal: #12141B;
-  --on-share: #1B1428;
+  --share: #C7A8FF;
+  --share-soft: #2B2340;
+  --share-ink: #C7A8FF;
+  --danger: #FF6B5E;
+  --signal: #FF7A2F;
+  --signal-soft: #3A2114;
+  --on-signal: #1A0D06;
+  --on-share: #1A1000;
   --on-ink-dim: rgba(0,0,0,.6);
   --on-ink-faint: rgba(0,0,0,.5);
   --on-ink-line: rgba(0,0,0,.28);
   --flare: #FFC24D;
   --shade: rgba(0,0,0,.66);
-  --timer-bg: #2A2D35;
-  --timer-ink: #E8E6E0;
+  --timer-bg: #181B1F;
+  --timer-ink: #F2F1EC;
   --timer-dim: rgba(255,255,255,.55);
   --timer-line: rgba(255,255,255,.25);
 }
@@ -104,13 +110,12 @@ body {
 /* Each profile carries an accent. `hombre`/`mujer` are the names the app
    shipped with and are kept as aliases so existing saved profiles do not
    change colour; new ones pick `azul` or `verde` by name. */
-#app.profile-hombre, #app.profile-azul { --signal: #1B3FD0; --signal-soft: #E4E8FA; }
-#app.profile-mujer,  #app.profile-verde { --signal: #1D6B4C; --signal-soft: #DFEDE6; }
-:root[data-theme="dark"] #app[class*="profile-"] { --on-signal: #12141B; }
+#app.profile-hombre, #app.profile-azul { --signal: #C24A10; --signal-soft: #FCE9DE; }
+#app.profile-mujer,  #app.profile-verde { --signal: #0B6E7C; --signal-soft: #DDF2F5; }
 :root[data-theme="dark"] #app.profile-hombre,
-:root[data-theme="dark"] #app.profile-azul { --signal: #7C97F7; --signal-soft: #212842; }
+:root[data-theme="dark"] #app.profile-azul { --signal: #FF7A2F; --signal-soft: #3A2114; }
 :root[data-theme="dark"] #app.profile-mujer,
-:root[data-theme="dark"] #app.profile-verde { --signal: #5FC496; --signal-soft: #173226; }
+:root[data-theme="dark"] #app.profile-verde { --signal: #3FD6E8; --signal-soft: #0F2E33; --on-signal: #0F1113; }
 
 /* Solo mode: the shared-station vocabulary is meaningless on your own. */
 #app.solo .badge.together,
@@ -163,7 +168,7 @@ body {
   flex: 0 0 auto; width: 30px; height: 26px; border: 1px solid var(--edge);
   background: transparent; color: var(--soft); border-radius: 2px; cursor: pointer;
   font-size: 15px; line-height: 1; display: flex; align-items: center; justify-content: center;
-  font-family: 'IBM Plex Mono', ui-monospace, monospace; padding-bottom: 1px;
+  font-family: var(--font-mono); padding-bottom: 1px;
 }
 .icon-btn:hover { border-color: var(--ink); color: var(--ink); }
 
@@ -173,7 +178,7 @@ body {
 .wk {
   flex: 0 0 auto; width: 38px; height: 34px; position: relative;
   border: 1px solid var(--edge); background: transparent;
-  font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 500;
+  font-family: var(--font-mono); font-size: 13px; font-weight: 500;
   color: var(--soft); cursor: pointer; border-radius: 2px;
   display: flex; align-items: center; justify-content: center;
   transition: all .12s;
@@ -200,7 +205,10 @@ body {
 }
 .day:hover { border-color: var(--ink); }
 .day.on { background: var(--ink); border-color: var(--ink); }
-.day-n { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--soft); display: block; }
+.day-n {
+  font-family: var(--font-display); font-size: 11px; font-weight: 600;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--soft); display: block;
+}
 .day.on .day-n { color: var(--on-ink-faint); }
 .day-t { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
 .day.on .day-t { color: var(--card); }
@@ -212,7 +220,7 @@ body {
   background: var(--signal-soft); border-left: 3px solid var(--signal); border-radius: 2px;
 }
 .banner.deload { background: var(--amber-soft); border-left-color: var(--amber); }
-.banner-l { font-size: 10px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--soft); }
+.banner-l { font-family: var(--font-display); font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--soft); }
 .banner-v { font-size: 15px; font-weight: 600; margin-top: 2px; }
 .banner-r { text-align: right; font-size: 11px; color: var(--soft); line-height: 1.4; max-width: 47%; }
 
@@ -248,7 +256,7 @@ body {
   padding-top: 1px; width: 24px; flex: 0 0 24px;
 }
 .ex-ord-n {
-  font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600;
   color: var(--soft); line-height: 1;
 }
 .ex.complete .ex-ord-n { color: var(--signal); }
@@ -265,26 +273,26 @@ body {
    drawOrderNote. */
 .ord-note {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  font-size: 11.5px; line-height: 1.45; color: var(--soft);
+  font-size: 12.5px; line-height: 1.45; color: var(--soft);
   background: var(--sunk); border: 1px solid var(--line); border-radius: 2px;
   padding: 7px 10px; margin: 0 0 10px;
 }
 .ord-note[hidden] { display: none; }
 .ord-reset {
   background: transparent; border: 1px solid var(--edge); color: var(--soft);
-  font-size: 10px; font-family: var(--font-sans); font-weight: 600;
+  font-size: 11px; font-family: var(--font-sans); font-weight: 600;
   padding: 3px 7px; border-radius: 2px; cursor: pointer;
 }
 .ord-reset:hover { border-color: var(--signal); color: var(--signal); }
 .ex-body { flex: 1; min-width: 0; }
-.ex-name { font-size: 15px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.25; }
-.ex-alt { font-size: 11.5px; color: var(--soft); margin-top: 3px; }
-.ex-cue { font-size: 11.5px; color: var(--amber-ink); margin-top: 4px; font-weight: 500; }
+.ex-name { font-family: var(--font-display); font-size: 24px; font-weight: 700; letter-spacing: -0.015em; line-height: 1.05; }
+.ex-alt { font-size: 12.5px; color: var(--soft); margin-top: 3px; }
+.ex-cue { font-size: 12.5px; color: var(--amber-ink); margin-top: 4px; font-weight: 500; }
 .ex-target {
-  font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600;
+  font-family: var(--font-mono); font-size: 12px; font-weight: 600;
   text-align: right; white-space: nowrap; padding-top: 2px;
 }
-.ex-rest { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--soft); margin-top: 3px; text-align: right; }
+.ex-rest { font-family: var(--font-mono); font-size: 11px; color: var(--soft); margin-top: 3px; text-align: right; }
 .ex-chart-btn {
   margin-top: 5px; background: transparent; border: 1px solid var(--edge); color: var(--soft);
   font-size: 11px; font-family: var(--font-sans); font-weight: 600; padding: 5px 9px; border-radius: 2px; cursor: pointer;
@@ -293,25 +301,25 @@ body {
 .ex-chart-btn:hover { border-color: var(--signal); color: var(--signal); }
 
 .ss {
-  display: inline-block; font-size: 9px; font-weight: 800; letter-spacing: 0.1em;
+  display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: 0.1em;
   background: var(--ink); color: var(--card); padding: 2px 5px; border-radius: 2px;
   margin-left: 6px; vertical-align: 2px;
 }
 .badge {
-  display: inline-block; font-size: 8.5px; font-weight: 800; letter-spacing: 0.1em;
+  display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: 0.1em;
   padding: 2px 5px; border-radius: 2px; margin-left: 6px; vertical-align: 2px;
 }
 .badge.together { background: var(--share); color: var(--on-share); }
 .badge.solo { background: transparent; color: var(--soft); border: 1px solid var(--line); }
 
 .last {
-  font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+  font-family: var(--font-mono); font-size: 12.5px;
   padding: 6px 13px; background: var(--sunk);
   border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
   color: var(--soft); display: flex; gap: 7px; align-items: baseline;
 }
 .last b { color: var(--ink); font-weight: 600; }
-.last .tag { font-family: var(--font-sans); font-size: 9px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap; }
+.last .tag { font-family: var(--font-display); font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
 
 /* The same lift on another day of the block — or, on a block with nothing
    logged yet, in the block before — stacked under this session's own
@@ -326,7 +334,7 @@ body {
 .sets { padding: 4px 13px 12px; }
 
 .ex-parked {
-  font-size: 11px; line-height: 1.45; color: var(--amber-ink);
+  font-size: 12.5px; line-height: 1.45; color: var(--amber-ink);
   background: var(--amber-soft); border-top: 1px solid var(--line);
   padding: 7px 13px;
 }
@@ -335,7 +343,7 @@ body {
 .ex-setup { padding: 0 13px; }
 .ex-setup-btn {
   background: transparent; border: none; color: var(--soft);
-  font-family: 'IBM Plex Mono', monospace; font-size: 10.5px;
+  font-family: var(--font-mono); font-size: 11px;
   padding: 6px 0; cursor: pointer; text-align: left;
   min-height: 28px;
 }
@@ -350,7 +358,7 @@ body {
 
 /* ---- rep-decay flag ---- */
 .ex-decay {
-  font-size: 11px; line-height: 1.45; color: var(--danger);
+  font-size: 12.5px; line-height: 1.45; color: var(--danger);
   padding: 0 13px 8px;
 }
 
@@ -359,7 +367,7 @@ body {
    read on the way past, never something you operate. Colour carries the
    direction so the number itself does not have to shout. */
 .ex-est {
-  font-size: 11px; line-height: 1.45; color: var(--soft);
+  font-size: 12.5px; line-height: 1.45; color: var(--soft);
   padding: 0 13px 8px;
 }
 .ex-est.up { color: var(--signal); }
@@ -373,18 +381,21 @@ body {
 .ex-est-c {
   display: inline-block; margin-left: 6px; padding: 0 5px;
   border: 1px solid var(--edge); border-radius: 2px;
-  font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; color: var(--soft);
+  font-family: var(--font-mono); font-size: 11px; color: var(--soft);
   white-space: nowrap;
 }
 .ex-est-c.alta { color: var(--signal); border-color: var(--signal); }
 /* The second line always reads as the aside it is, whatever the verdict
    above it is coloured. */
-.ex-est-n { display: block; color: var(--soft); font-size: 10.5px; margin-top: 2px; }
+.ex-est-n { display: block; color: var(--soft); font-size: 11px; margin-top: 2px; }
 
 /* ---- energy at session start ----
    Same shape as the RIR chips, asked before the sets instead of after. */
 .energy { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; flex-wrap: wrap; }
-.energy-lbl { font-size: 10px; color: var(--soft); font-family: 'IBM Plex Mono', monospace; }
+.energy-lbl {
+  font-family: var(--font-display); font-size: 11px; font-weight: 600;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--soft);
+}
 .energy-chips { display: flex; gap: 5px; }
 .energy-chip {
   height: 26px; min-width: 44px; padding: 0 10px;
@@ -396,7 +407,7 @@ body {
 
 /* ---- did the deload work ---- */
 .deload-check {
-  font-size: 11.5px; line-height: 1.45; color: var(--soft);
+  font-size: 12.5px; line-height: 1.45; color: var(--soft);
   background: var(--sunk); border: 1px solid var(--line); border-radius: 2px;
   padding: 8px 10px; margin: 0 0 10px;
 }
@@ -407,7 +418,7 @@ body {
    Same box as the deload check, one notch louder: it is the only thing on
    the screen that overrides every card's own answer. */
 .brake-note {
-  font-size: 11.5px; line-height: 1.45; color: var(--amber-ink);
+  font-size: 12.5px; line-height: 1.45; color: var(--amber-ink);
   background: var(--amber-soft); border: 1px solid var(--line); border-radius: 2px;
   padding: 8px 10px; margin: 0 0 10px;
 }
@@ -415,8 +426,9 @@ body {
 /* ---- session note ---- */
 .ses-note { margin: 0 0 10px; }
 .ses-note-lbl {
-  display: block; font-size: 10px; color: var(--soft);
-  font-family: 'IBM Plex Mono', monospace; margin-bottom: 4px;
+  display: block; font-size: 11px; font-weight: 600; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--soft);
+  font-family: var(--font-display); margin-bottom: 4px;
 }
 #sesNote {
   width: 100%; height: 36px; padding: 0 9px;
@@ -429,18 +441,21 @@ body {
    as a second input. */
 .ses-note-prev {
   margin: 4px 0 0; font-size: 11px; line-height: 1.4; color: var(--soft);
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: var(--font-mono);
 }
 .ses-note-prev b { color: var(--ink); font-weight: 600; }
 
 /* ---- RIR chips ---- */
 .ex-rir { display: flex; align-items: center; gap: 8px; padding: 0 13px 10px; }
-.ex-rir-lbl { font-size: 10px; color: var(--soft); font-family: 'IBM Plex Mono', monospace; }
+.ex-rir-lbl {
+  font-family: var(--font-display); font-size: 11px; font-weight: 600;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--soft);
+}
 .rir-chips { display: flex; gap: 5px; }
 .rir-chip {
   height: 26px; min-width: 30px; padding: 0 8px;
   border: 1px solid var(--edge); border-radius: 2px; background: var(--card);
-  font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600;
   color: var(--soft); cursor: pointer;
 }
 .rir-chip:hover { border-color: var(--signal); color: var(--signal); }
@@ -453,21 +468,21 @@ body {
   display: grid; grid-template-columns: 26px 1fr 1fr 30px 42px;
   gap: 7px; align-items: center; padding: 5px 0;
 }
-.set-n { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--soft); }
+.set-n { font-family: var(--font-display); font-size: 11px; font-weight: 600; letter-spacing: .08em; color: var(--soft); }
 .set-row.done .set-n { color: var(--signal); font-weight: 600; }
 
 .fld { position: relative; }
 .fld input {
   width: 100%; height: 40px; padding: 0 27px 0 9px;
   border: 1px solid var(--edge); border-radius: 2px; background: var(--card);
-  font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 500; color: var(--ink);
+  font-family: var(--font-mono); font-size: 17px; font-weight: 500; color: var(--ink);
   -moz-appearance: textfield;
 }
 .fld input::-webkit-outer-spin-button, .fld input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .fld input:focus { outline: none; border-color: var(--signal); box-shadow: 0 0 0 2px var(--signal-soft); }
 .fld u {
   position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
-  font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--soft); text-decoration: none;
+  font-family: var(--font-mono); font-size: 11px; color: var(--soft); text-decoration: none;
 }
 .set-row.done .fld input { background: var(--sunk); }
 
@@ -476,7 +491,7 @@ body {
   border-radius: 2px; cursor: pointer; font-size: 16px; color: var(--edge);
   display: flex; align-items: center; justify-content: center; transition: all .12s;
 }
-.tick { width: 100%; font-family: 'Archivo', sans-serif; padding: 0; }
+.tick { width: 100%; font-family: var(--font-sans); padding: 0; }
 
 /* ---- weight drops ----
    A drop belongs to the set above it, so the sub-row shares the set row's
@@ -487,7 +502,7 @@ body {
 .drop-add {
   height: 40px; width: 100%; padding: 0;
   border: 1px solid var(--edge); border-radius: 2px; background: var(--card);
-  font-family: 'Archivo', sans-serif; font-size: 14px; color: var(--edge);
+  font-family: var(--font-sans); font-size: 14px; color: var(--edge);
   display: flex; align-items: center; justify-content: center; cursor: pointer;
   transition: all .12s;
 }
@@ -502,13 +517,13 @@ body {
 .drop-row .fld input { height: 34px; font-size: 13px; }
 .drop-row.done .fld input { background: var(--sunk); }
 .drop-n {
-  font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+  font-family: var(--font-mono); font-size: 12px;
   color: var(--soft); text-align: right; padding-right: 3px;
 }
 .drop-x {
   height: 34px; width: 100%; padding: 0;
   border: 1px solid var(--edge); border-radius: 2px; background: var(--card);
-  font-family: 'Archivo', sans-serif; font-size: 11px; color: var(--soft);
+  font-family: var(--font-sans); font-size: 11px; color: var(--soft);
   display: flex; align-items: center; justify-content: center; cursor: pointer;
 }
 .drop-x:hover { border-color: var(--danger); color: var(--danger); }
@@ -519,7 +534,7 @@ body {
 .drop-chip {
   padding: 3px 8px;
   border: 1px solid var(--edge); border-radius: 2px; background: var(--card);
-  font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600;
   color: var(--soft); cursor: pointer;
 }
 .drop-chip:hover { border-color: var(--signal); color: var(--signal); }
@@ -561,13 +576,13 @@ body {
 .timer-main { flex: 1 1 auto; min-width: 0; }
 .timer-acts { display: flex; gap: 6px; margin-left: auto; flex: 0 0 auto; }
 .timer-lbl {
-  font-size: 9.5px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase;
+  font-family: var(--font-display); font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
   color: var(--timer-dim);
   /* the label carries the exercise name, which is long enough to push the
      controls off a phone screen if it is allowed to set the width */
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.timer-val { font-family: 'IBM Plex Mono', monospace; font-size: 30px; font-weight: 500; line-height: 1; margin-top: 3px; }
+.timer-val { font-family: var(--font-display); font-size: 52px; font-weight: 700; line-height: 1; margin-top: 3px; }
 .timer.over .timer-val { color: var(--flare); }
 .timer-msg { flex: 1; min-width: 0; font-size: 11.5px; color: var(--timer-dim); line-height: 1.35; }
 .timer-btn {
@@ -582,13 +597,13 @@ body {
 @media (max-width: 620px) {
   .timer-msg { display: none; }
   .timer-in { gap: 10px; padding: 10px 14px; }
-  .timer-val { font-size: 26px; }
-  .timer-btn { padding: 8px 9px; font-size: 10.5px; }
+  .timer-val { font-size: 46px; }
+  .timer-btn { padding: 8px 9px; font-size: 11px; }
 }
 
 /* ---- footer ---- */
 .foot { margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--line); }
-.note { font-size: 11.5px; color: var(--soft); line-height: 1.5; margin-bottom: 12px; }
+.note { font-size: 12.5px; color: var(--soft); line-height: 1.5; margin-bottom: 12px; }
 .foot-btns { display: flex; gap: 7px; flex-wrap: wrap; }
 .sm {
   background: transparent; border: 1px solid var(--edge); color: var(--soft);
@@ -599,9 +614,9 @@ body {
 .sm.key { border-color: var(--signal); color: var(--signal); font-weight: 600; }
 .sm.warn { border-color: var(--danger); color: var(--danger); }
 
-.status { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--soft); text-align: right; padding: 8px 0 0; }
+.status { font-family: var(--font-mono); font-size: 11px; color: var(--soft); text-align: right; padding: 8px 0 0; }
 .status.err { color: var(--danger); }
-.version { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--soft); text-align: right; padding: 3px 0 0; opacity: .7; }
+.version { font-family: var(--font-mono); font-size: 11px; color: var(--soft); text-align: right; padding: 3px 0 0; opacity: .7; }
 
 .skel { padding: 40px 0; text-align: center; color: var(--soft); font-size: 13px; }
 
@@ -636,12 +651,12 @@ body {
   background: var(--card); border: 1px solid var(--line); border-radius: 3px;
   width: 100%; max-width: 600px; max-height: 88vh; overflow: auto; padding: 18px;
 }
-.sheet-t { font-size: 16px; font-weight: 700; letter-spacing: -0.015em; }
-.sheet-d { font-size: 12px; color: var(--soft); line-height: 1.5; margin: 7px 0 12px; }
+.sheet-t { font-family: var(--font-display); font-size: 22px; font-weight: 700; letter-spacing: -0.015em; }
+.sheet-d { font-size: 12.5px; color: var(--soft); line-height: 1.5; margin: 7px 0 12px; }
 .sheet-box textarea {
   width: 100%; height: 130px; resize: vertical;
   border: 1px solid var(--edge); border-radius: 2px; background: var(--paper);
-  padding: 9px; font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+  padding: 9px; font-family: var(--font-mono); font-size: 11px;
   line-height: 1.45; color: var(--ink); word-break: break-all;
 }
 .sheet-box textarea:focus { outline: none; border-color: var(--signal); }
@@ -652,7 +667,7 @@ body {
 /* ---- plan editor ---- */
 .pe-day { border: 1px solid var(--line); border-radius: 3px; padding: 11px; margin-bottom: 12px; background: var(--paper); }
 .pe-block-name {
-  width: 100%; padding: 8px; font-family: 'Archivo', sans-serif; font-size: 13px; font-weight: 700;
+  width: 100%; padding: 8px; font-family: var(--font-sans); font-size: 13px; font-weight: 700;
   border: 1px solid var(--edge); border-radius: 2px; background: var(--paper); color: var(--ink);
   margin-bottom: 10px;
 }
@@ -660,10 +675,10 @@ body {
 .pe-block-meta input, .pe-block-meta select {
   padding: 7px 8px; border: 1px solid var(--edge); border-radius: 2px;
   background: var(--paper); color: var(--ink);
-  font-family: 'IBM Plex Mono', monospace; font-size: 12.5px;
+  font-family: var(--font-mono); font-size: 12.5px;
 }
 .pe-block-meta input { width: 88px; }
-.pe-block-meta select { min-width: 148px; font-family: 'Archivo', sans-serif; font-weight: 600; }
+.pe-block-meta select { min-width: 148px; font-family: var(--font-sans); font-weight: 600; }
 .pe-day-head input {
   width: 100%; font-size: 14px; font-weight: 700; padding: 6px 8px; margin-bottom: 6px;
   border: 1px solid var(--edge); border-radius: 2px; background: var(--card); color: var(--ink); font-family: var(--font-sans);
@@ -680,22 +695,25 @@ body {
 }
 .pe-row input[type=number] {
   width: 64px; padding: 6px 7px; border: 1px solid var(--edge); border-radius: 2px;
-  font-family: 'IBM Plex Mono', monospace; font-size: 12px; background: var(--paper); color: var(--ink);
+  font-family: var(--font-mono); font-size: 12px; background: var(--paper); color: var(--ink);
 }
-.pe-field-lbl { font-size: 9px; color: var(--soft); text-transform: uppercase; letter-spacing: 0.08em; display: block; margin-bottom: 2px; }
+.pe-field-lbl {
+  font-family: var(--font-display); font-size: 11px; font-weight: 600; color: var(--soft);
+  text-transform: uppercase; letter-spacing: .08em; display: block; margin-bottom: 2px;
+}
 .pe-check { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--soft); }
 
 /* day / exercise toolbar: order, retire, and what is logged under it */
 .pe-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .pe-bar-n {
-  font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600;
-  letter-spacing: 0.1em; text-transform: uppercase; color: var(--soft);
+  font-family: var(--font-display); font-size: 11px; font-weight: 600;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--soft);
 }
-.pe-log-tag { font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; color: var(--signal); }
+.pe-log-tag { font-family: var(--font-mono); font-size: 11px; color: var(--signal); }
 .pe-tools { display: flex; gap: 4px; margin-left: auto; flex-shrink: 0; }
 .pe-icon-btn {
   background: transparent; border: 1px solid var(--edge); border-radius: 2px;
-  color: var(--soft); font-family: var(--font-sans); font-size: 10.5px; line-height: 1;
+  color: var(--soft); font-family: var(--font-sans); font-size: 11px; line-height: 1;
   padding: 5px 7px; cursor: pointer;
 }
 .pe-icon-btn:hover:not(:disabled) { border-color: var(--ink); color: var(--ink); }
@@ -704,7 +722,7 @@ body {
 .pe-icon-btn:disabled { opacity: .3; cursor: default; }
 .pe-move-sel {
   background: transparent; border: 1px solid var(--edge); border-radius: 2px;
-  color: var(--soft); font-family: var(--font-sans); font-size: 10.5px; line-height: 1;
+  color: var(--soft); font-family: var(--font-sans); font-size: 11px; line-height: 1;
   padding: 5px 4px; cursor: pointer; max-width: 108px;
 }
 .pe-move-sel:hover { border-color: var(--ink); color: var(--ink); }
@@ -719,7 +737,7 @@ body {
 .pe-arch-l { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .pe-arch-l b { font-size: 12.5px; font-weight: 600; }
 .pe-arch-l i {
-  font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-style: normal; color: var(--soft);
+  font-family: var(--font-mono); font-size: 11px; font-style: normal; color: var(--soft);
 }
 .pe-add-ex {
   width: 100%; margin-top: 4px; padding: 8px; border: 1px dashed var(--line); background: transparent;
@@ -729,7 +747,7 @@ body {
 
 /* ---- chart sheet ---- */
 .chart-wrap { background: var(--paper); border: 1px solid var(--line); border-radius: 2px; padding: 10px; }
-.chart-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+.chart-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-family: var(--font-mono); font-size: 11px; }
 .chart-table td, .chart-table th { padding: 4px 6px; text-align: right; border-bottom: 1px solid var(--line); }
 .chart-table th { color: var(--soft); font-weight: 600; text-align: right; }
 .chart-table td:first-child, .chart-table th:first-child { text-align: left; }
@@ -743,7 +761,7 @@ body {
   background: var(--sunk); border: 1px solid var(--line); border-radius: 2px;
 }
 .vol-kg b {
-  display: block; font-family: 'IBM Plex Mono', monospace;
+  display: block; font-family: var(--font-mono);
   font-size: 15px; font-weight: 600; color: var(--ink);
 }
 .vol-kg span { display: block; font-size: 11px; color: var(--soft); line-height: 1.4; margin-top: 2px; }
@@ -772,12 +790,12 @@ body {
 }
 .vol-trend-name { font-size: 12.5px; font-weight: 600; color: var(--ink); }
 .vol-trend-n {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 10px; color: var(--soft); text-align: right;
+  font-family: var(--font-mono);
+  font-size: 11px; color: var(--soft); text-align: right;
 }
 .vol-pri {
-  margin-left: 6px; font-family: 'IBM Plex Mono', monospace;
-  font-size: 8.5px; font-weight: 700; letter-spacing: 0.08em;
+  margin-left: 6px; font-family: var(--font-mono);
+  font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
   color: var(--amber-ink); vertical-align: 1px;
 }
 .vol-trend-chart { margin-top: 2px; }
@@ -803,7 +821,7 @@ body {
 .blk-l { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .blk-l b { font-size: 12.5px; font-weight: 600; }
 .blk-l i {
-  font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-style: normal; color: var(--soft);
+  font-family: var(--font-mono); font-size: 11px; font-style: normal; color: var(--soft);
 }
 
 /* ---- import block list ---- */
@@ -822,13 +840,13 @@ body {
 .recovery p { font-size: 12.5px; color: var(--soft); line-height: 1.55; margin-bottom: 12px; }
 .recovery pre {
   background: var(--sunk); border: 1px solid var(--line); border-radius: 2px; padding: 9px;
-  font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--danger);
+  font-family: var(--font-mono); font-size: 11px; color: var(--danger);
   white-space: pre-wrap; word-break: break-word; margin-bottom: 14px;
 }
 
 /* ---- first-run setup / settings ---- */
 .setup-field { margin-bottom: 18px; }
-.setup-hint { font-size: 11.5px; color: var(--soft); line-height: 1.45; margin-top: 6px; }
+.setup-hint { font-size: 12.5px; color: var(--soft); line-height: 1.45; margin-top: 6px; }
 
 /* segmented choice — the app has no radio buttons anywhere else, and a pair
    of buttons that stay pressed reads faster on a phone than a select */
@@ -836,7 +854,7 @@ body {
 .seg-btn {
   flex: 1; min-width: 110px; padding: 9px 10px;
   border: 1px solid var(--edge); background: transparent; color: var(--soft);
-  font-family: 'Archivo', sans-serif; font-size: 12.5px; font-weight: 600;
+  font-family: var(--font-sans); font-size: 12.5px; font-weight: 600;
   border-radius: 2px; cursor: pointer; transition: all .12s;
 }
 .seg-btn:hover { border-color: var(--ink); color: var(--ink); }
@@ -851,7 +869,7 @@ body {
   flex: 1; min-width: 150px; padding: 9px 10px;
   border: 1px solid var(--edge); border-radius: 2px;
   background: var(--paper); color: var(--ink);
-  font-family: 'Archivo', sans-serif; font-size: 13px; font-weight: 600;
+  font-family: var(--font-sans); font-size: 13px; font-weight: 600;
 }
 .setup-name input:focus { outline: none; border-color: var(--signal); }
 .swatches { display: flex; gap: 5px; flex: 0 0 auto; }
@@ -860,8 +878,8 @@ body {
   border: 1px solid var(--line); position: relative;
 }
 .swatch[aria-pressed="true"] { border-color: var(--ink); border-width: 2px; }
-.swatch.azul { background: #1B3FD0; }
-.swatch.verde { background: #1D6B4C; }
+.swatch.azul { background: #FF7A2F; }
+.swatch.verde { background: #3FD6E8; }
 
 /* ---- confirmations and prompts ----
    Deliberately narrower than the other sheets: a question you answer, not a
@@ -895,7 +913,7 @@ body {
 .qr-svg { width: 100%; max-width: 300px; height: auto; display: block; }
 .qr-video { width: 100%; max-width: 360px; border-radius: 2px; display: block; background: #000; }
 .qr-count {
-  font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--soft);
+  font-family: var(--font-mono); font-size: 11px; color: var(--soft);
   margin: 8px 0 0; text-align: center;
 }
 
@@ -918,7 +936,7 @@ body {
 .diag-head { display: flex; align-items: baseline; gap: 8px; justify-content: space-between; }
 .diag-name { font-size: 13px; font-weight: 600; color: var(--ink); }
 .diag-chip {
-  flex: none; font-family: 'IBM Plex Mono', monospace; font-size: 9.5px;
+  flex: none; font-family: var(--font-mono); font-size: 11px;
   font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
   color: var(--soft);
 }
@@ -926,7 +944,7 @@ body {
 .diag-row.flat .diag-chip { color: var(--amber-ink); }
 .diag-row.up .diag-chip { color: var(--signal); }
 .diag-num {
-  font-family: 'IBM Plex Mono', monospace; font-size: 10.5px;
+  font-family: var(--font-mono); font-size: 11px;
   color: var(--soft); margin-top: 3px;
 }
 .diag-read { font-size: 12px; color: var(--ink); margin-top: 6px; line-height: 1.45; }
@@ -937,7 +955,8 @@ body {
    shape of the gaps is the point, and a column of numbers hides it. */
 .freq-cal { margin-bottom: 12px; }
 .freq-cal-t {
-  font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+  font-family: var(--font-display); font-size: 11px; font-weight: 600;
+  letter-spacing: .08em; text-transform: uppercase;
   color: var(--soft); margin-bottom: 5px;
 }
 .freq-cal-g { overflow-x: auto; }
@@ -953,12 +972,12 @@ body {
 }
 .freq-name { font-size: 12.5px; font-weight: 600; color: var(--ink); }
 .freq-gap {
-  font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+  font-family: var(--font-mono); font-size: 11px;
   font-weight: 600; color: var(--ink);
 }
 .freq-row.behind .freq-gap { color: var(--amber-ink); }
 .freq-meta {
-  font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+  font-family: var(--font-mono); font-size: 11px;
   color: var(--soft); margin-top: 3px; line-height: 1.5;
 }
 
@@ -980,13 +999,13 @@ body {
 }
 .idx-name { font-size: 12.5px; font-weight: 600; color: var(--ink); }
 .idx-n {
-  font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+  font-family: var(--font-mono); font-size: 11px;
   font-weight: 600; color: var(--soft);
 }
 .idx-row.up .idx-n { color: var(--signal); }
 .idx-row.down .idx-n { color: var(--danger); }
 .idx-meta {
-  font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+  font-family: var(--font-mono); font-size: 11px;
   color: var(--soft); margin-top: 3px; line-height: 1.5;
 }
 .idx-chart { margin-top: 2px; }
@@ -1010,18 +1029,19 @@ body {
 }
 .rev-name { font-size: 12.5px; font-weight: 600; color: var(--ink); }
 .rev-n {
-  font-family: 'IBM Plex Mono', monospace; font-size: 11.5px;
+  font-family: var(--font-mono); font-size: 11.5px;
   font-weight: 600; color: var(--ink);
 }
 .rev-meta {
-  font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+  font-family: var(--font-mono); font-size: 11px;
   color: var(--soft); margin-top: 3px; line-height: 1.5;
 }
 .rev-notes {
   margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px;
 }
 .rev-notes-t {
-  font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+  font-family: var(--font-display); font-size: 11px; font-weight: 600;
+  letter-spacing: .08em; text-transform: uppercase;
   color: var(--soft); margin-bottom: 5px;
 }
 .rev-note { font-size: 11.5px; color: var(--ink); line-height: 1.5; margin-bottom: 3px; }
