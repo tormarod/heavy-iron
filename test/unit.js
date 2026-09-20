@@ -3262,7 +3262,10 @@ console.log('\n== "borrar registro" reaches a week past the cap (plans/009 item 
      firstRunPrompt.indexOf('Mi bloque actual') < 0 && firstRunPrompt.indexOf('Mi contexto: [tu nivel') >= 0);
 
   /* Three sessions of one exercise is the minimum diagRows needs for a
-     verdict; the RIR chips give the histogram something to count. */
+     verdict; the RIR gives the histogram something to count. Written into
+     the legacy map and then folded onto the rows, exactly as a profile
+     logged before plans/035 arrives on load — so this fixture exercises
+     both the fold and the per-set tally that reads the rows. */
   call(`
     (function() {
       const pr = state.profiles.hombre;
@@ -3277,6 +3280,7 @@ console.log('\n== "borrar registro" reaches a week past the cap (plans/009 item 
       pr.rir[blockId][slot(2, day.id)] = { [exId]: '0' };
       pr.rir[blockId][slot(3, day.id)] = { [exId]: '0' };
       pr.rir[blockId][slot(4, day.id)] = { [exId]: '1' };
+      foldRirMap(pr, blockId);
       pr.notes[blockId] = { [slot(2, day.id)]: 'nota «rara»' };
       day.ex[0].n = 'Press «raro» de banca';
       pr.week = 5;
@@ -3290,8 +3294,9 @@ console.log('\n== "borrar registro" reaches a week past the cap (plans/009 item 
   ok('a trend and a reading for an exercise with enough sessions',
      /«Press raro de banca».*tendencia (subiendo|plano|bajando) [+−]?[\d,]+ % por sesión sobre 4 sesiones/.test(review),
      (review.match(/- «Press.*/) || [''])[0]);
-  ok('and the RIR chips tapped, as a histogram',
-     review.indexOf('RIR marcado: 1×1, 0×2') >= 0, (review.match(/RIR marcado[^.]*/) || [''])[0]);
+  ok('and the RIR written down, as a histogram over sets with the block total behind it',
+     review.indexOf('RIR apuntado: 1 en 1 serie, 0 en 2 (de 4)') >= 0,
+     (review.match(/RIR apuntado[^.]*/) || [''])[0]);
   ok('muscle tags are delimited too', /^- «Pecho»/m.test(review), (review.match(/^- «.*/m) || [''])[0]);
   ok('the review heading delimits the block name',
      review.indexOf('## Cómo fue el bloque anterior («Bloque raro 2»)') >= 0, review.slice(0, 200));
