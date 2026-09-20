@@ -2811,7 +2811,12 @@ function drawApp() {
   const pairNote = soloMode() ? '' : (day.pair || '');
   const pairBtn = $('pair');
   pairBtn.hidden = !pairNote;
-  if (pairNote) {
+  /* Emptied, not just hidden: the note used to be one textContent write, so
+     turning solo mode on cleared it by writing ''. Leaving the markup
+     standing behind `hidden` left a JUNTOS badge in a document that is
+     supposed to have none. */
+  if (!pairNote) pairBtn.innerHTML = '';
+  else {
     pairBtn.innerHTML =
       '<span class="badge together">JUNTOS</span><span class="pair-text"></span>' +
       '<span class="chev" aria-hidden="true">▾</span>';

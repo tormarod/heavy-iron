@@ -33,9 +33,9 @@ const BASE = process.env.BASE || 'http://127.0.0.1:8765';
 /* Plan 032 pins the main screen's current header height and its still-
    undersized set-row floor, so a later redesign cannot quietly widen either
    gap without a red run. Both are the plan's own "current, not final"
-   values: 034 folds the header and lowers HEADER_MAX to 140; 036 raises the
-   set row's own floor, SET_ROW_MIN, to 44. */
-const HEADER_MAX = 300;
+   values: 034 folded the header and lowered HEADER_MAX to 140 (measured:
+   133); 036 raises the set row's own floor, SET_ROW_MIN, to 44. */
+const HEADER_MAX = 140;
 const SET_ROW_MIN = 40;
 let pass = 0, fail = 0, skipped = 0;
 
@@ -76,6 +76,40 @@ const dismissSetup = async page => {
     await page.waitForTimeout(150);
   }
 };
+
+/* plans/034 folded the header: the week strip, the profile switcher, the
+   block bar and the theme toggle are each one tap further in than they
+   were. These are that tap, and they are idempotent so a section can put
+   one in front of every click without tracking what it left open. Always
+   page.click on the control — openSheet() moves the focus into the box it
+   opens, so a keyboard route would type into the wrong place. */
+const openWeeks = async page => {
+  if (await page.locator('#weekPanel[hidden]').count()) {
+    await page.click('#weekBtn');
+    await page.waitForSelector('#weekPanel:not([hidden])', { timeout: 4000 });
+  }
+};
+const openSheetVia = async (page, btn, sheet) => {
+  if (await page.locator(sheet + '.up').count()) return;
+  await page.click(btn);
+  await page.waitForSelector(sheet + '.up', { timeout: 4000 });
+};
+const openProfiles = page => openSheetVia(page, '#profileBtn', '#profileSheet');
+const openBlocks = page => openSheetVia(page, '#blockBtn', '#blockSheet');
+const openMore = page => openSheetVia(page, '#moreBtn', '#moreSheet');
+
+/* #blockSheet's four actions each open a sheet *over* it and leave it
+   standing — that is the point, you came from there — so anything that
+   goes back to the page underneath has to put it away first, exactly as a
+   person would. The profile sheet needs no partner: picking somebody closes
+   it from inside renderProfiles. */
+const closeSheetVia = async (page, btn, sheet) => {
+  if (!(await page.locator(sheet + '.up').count())) return;
+  await page.click(btn);
+  await page.waitForSelector(sheet + '.up', { state: 'hidden', timeout: 4000 });
+};
+const closeBlocks = page => closeSheetVia(page, '#blockClose', '#blockSheet');
+const closeMore = page => closeSheetVia(page, '#moreClose', '#moreSheet');
 
 /* confirm()/alert()/prompt() are gone: answering a question is a click on
    the in-app dialog now. */
@@ -386,6 +420,7 @@ const ok = (name, cond, extra) => {
     ok('weight survives reload', await page.locator('.ex').first().locator('.set-row').first().locator('input').first().inputValue() === '22,5');
 
     console.log('\n== last-week placeholder ==');
+    await openWeeks(page);
     await page.locator('.wk').nth(1).click(); // week 2
     const ph = await page.locator('.ex').first().locator('.set-row').first().locator('input').first().getAttribute('placeholder');
     ok('week 2 placeholder shows week 1 weight', ph === '22,5', 'got ' + ph);
@@ -407,6 +442,7 @@ const ok = (name, cond, extra) => {
     console.log('\n== personal record on estimated 1RM ==');
     /* Week 3, same 30 as the week-2 record but more reps: not a heavier
        weight, so no RÉCORD — but a better estimate, so the outlined one. */
+    await openWeeks(page);
     await page.locator('.wk').nth(2).click();
     const first3 = page.locator('.ex').first();
     await first3.locator('.set-row').first().locator('input').first().fill('30');
@@ -438,6 +474,7 @@ const ok = (name, cond, extra) => {
     ok('undo puts the sets back', await page.locator('.set-row.done').count() === doneBefore);
 
     console.log('\n== block length + deload ==');
+    await openWeeks(page);
     ok('a fresh block shows 8 weeks', await page.locator('.wk').count() === 8);
     ok('week 8 is the deload', (await page.locator('.wk').nth(7).textContent()) === 'DL');
     await page.click('#editPlan');
@@ -447,8 +484,10 @@ const ok = (name, cond, extra) => {
     await page.selectOption('#peDeload', '3');
     await page.click('#peSave');
     await page.waitForTimeout(400);
+    await openWeeks(page);
     ok('the week bar follows the block', await page.locator('.wk').count() === 5);
     ok('week 3 is now the deload', (await page.locator('.wk').nth(2).textContent()) === 'DL');
+    await openWeeks(page);
     await page.locator('.wk').nth(2).click();
     await page.waitForTimeout(250);
     const full = await page.evaluate(() => setsFor(getBlock().days[0].ex[0], 1, getBlock()));
@@ -477,6 +516,7 @@ const ok = (name, cond, extra) => {
     ok('lengthening brings the stranded weeks back', !(await page.locator('#beyond').isVisible()));
 
     console.log('\n== a new block is named in-app ==');
+    await openBlocks(page);
     await page.click('#blockbar >> text=+ Nuevo bloque');
     /* The block being left has sets logged by now, so the review is
        offered first — see the block-review section further down. Decline
@@ -489,6 +529,7 @@ const ok = (name, cond, extra) => {
     ok('the name prompt is an in-app sheet', await page.locator('#askInput').isVisible());
     await answerDialog(page, true, 'Bloque de prueba');
     ok('the block is created with that name', (await page.textContent('#title')).includes('Bloque de prueba'));
+    await closeBlocks(page);
 
     console.log('\n== progress across every block ==');
     await page.locator('.ex').first().locator('.ex-chart-btn').click();
@@ -556,14 +597,17 @@ const ok = (name, cond, extra) => {
     // palette only needs declaring once in css/style.css (plans/008 item 20)
     ok('starts on auto, resolved to the browser default (light)',
        await page.evaluate(() => document.documentElement.getAttribute('data-theme')) === 'light');
+    await openMore(page);
     await page.click('#themeBtn');
     ok('cycles to light', await page.evaluate(() => document.documentElement.getAttribute('data-theme')) === 'light');
+    await openMore(page);
     await page.click('#themeBtn');
     ok('cycles to dark', await page.evaluate(() => document.documentElement.getAttribute('data-theme')) === 'dark');
     const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
     ok('dark theme actually repaints body', bg === 'rgb(15, 17, 19)', bg);
     await page.reload({ waitUntil: 'networkidle' });
     ok('theme choice persists', await page.evaluate(() => document.documentElement.getAttribute('data-theme')) === 'dark');
+    await openMore(page);
     await page.click('#themeBtn'); // back to auto
     ok('back on auto', await page.evaluate(() => document.documentElement.getAttribute('data-theme')) === 'light');
 
@@ -576,9 +620,11 @@ const ok = (name, cond, extra) => {
        await page.evaluate(() => document.documentElement.getAttribute('data-theme')) === 'dark');
     await page.emulateMedia({ colorScheme: 'light' });
     await page.waitForTimeout(150);
+    await closeMore(page);
 
     console.log('\n== XSS: hostile imported block ==');
     await page.evaluate(() => { window.__xss = false; });
+    await openBlocks(page);
     await page.click('#blockbar >> text=Importar JSON');
     const hostile = JSON.stringify({
       name: '<img src=x onerror="window.__xss=true">Bloque malo',
@@ -598,6 +644,7 @@ const ok = (name, cond, extra) => {
     ok('no injected img element in the card', await page.locator('.ex img').count() === 0);
 
     console.log('\n== import validation ==');
+    await openBlocks(page);
     await page.click('#blockbar >> text=Importar JSON');
     await page.fill('#importBlob', JSON.stringify({ name: 'Enorme', days: Array.from({ length: 40 }, (_, i) => ({ name: 'd' + i, ex: [{ n: 'x', reps: '5' }] })) }));
     await page.click('#importFromText');
@@ -618,7 +665,10 @@ const ok = (name, cond, extra) => {
     for (const f of blockIndex.map(e => e.file)) {
       const body = await (await fetch(BASE + '/blocks/' + f)).text();
       // a successful import closes the sheet, so reopen it each time round
-      if (await page.locator('#importSheet.up').count() === 0) await page.click('#blockbar >> text=Importar JSON');
+      if (await page.locator('#importSheet.up').count() === 0) {
+        await openBlocks(page);
+        await page.click('#blockbar >> text=Importar JSON');
+      }
       await page.fill('#importBlob', body);
       await page.click('#importFromText');
       await page.waitForTimeout(300);
@@ -626,6 +676,7 @@ const ok = (name, cond, extra) => {
       ok('blocks/' + f + ' imports cleanly', err === '', err);
       ok('blocks/' + f + ' became the active block', (await page.textContent('#title')).length > 0);
     }
+    await openBlocks(page);
     await page.click('#blockbar >> text=Importar JSON');
 
     console.log('\n== import: freeform muscle field ==');
@@ -646,6 +697,7 @@ const ok = (name, cond, extra) => {
        await page.evaluate(() => !('muscle' in getBlock().days[0].ex[1])));
     ok('a missing muscle tag is left absent',
        await page.evaluate(() => !('muscle' in getBlock().days[0].ex[2])));
+    await openBlocks(page);
     await page.click('#blockbar >> text=Importar JSON');
 
     console.log('\n== import: freeform pattern/type fields ==');
@@ -672,12 +724,18 @@ const ok = (name, cond, extra) => {
       const ex = getBlock().days[0].ex[2];
       return !('pattern' in ex) && !('type' in ex);
     }));
+    await openBlocks(page);
     await page.click('#blockbar >> text=Importar JSON');
 
     console.log('\n== escape closes sheets ==');
     ok('import sheet open', await page.locator('#importSheet.up').count() === 1);
     await page.keyboard.press('Escape');
     ok('escape closed it', await page.locator('#importSheet.up').count() === 0);
+    /* And the sheet it opened from is still there underneath, which is what
+       the stack in openSheet/closeSheet is for. A second Escape would take
+       it too; this takes the documented route. */
+    ok('the block sheet it opened from is still up', await page.locator('#blockSheet.up').count() === 1);
+    await closeBlocks(page);
 
     console.log('\n== backup / restore validation ==');
     await page.click('#backup');
@@ -1035,6 +1093,7 @@ const ok = (name, cond, extra) => {
     await page.click('#peClose');
 
     console.log('\n== profile switch ==');
+    await openProfiles(page);
     await page.click('.profile-btn >> nth=1');
     ok('switched to the second profile', (await page.textContent('#title')).includes('Bruno'), await page.textContent('#title'));
     /* Saving settings normalises the shipped theme names ('mujer') to the
@@ -1043,6 +1102,7 @@ const ok = (name, cond, extra) => {
     ok('its accent class is applied', await page.locator('#app.profile-verde').count() === 1);
 
     console.log('\n== solo mode ==');
+    await openProfiles(page);
     await page.click('.profile-btn >> nth=0');   // back to the first profile
     await page.click('#settings');
     ok('settings hides the starting-plan question', !(await page.locator('#setupPlanField').isVisible()));
@@ -1050,7 +1110,10 @@ const ok = (name, cond, extra) => {
     ok('solo mode asks for one name only', await page.locator('#setupNames input').count() === 1);
     await page.click('#setupSave');
     await page.waitForTimeout(400);
-    ok('the profile switcher is hidden', !(await page.locator('#profiles').isVisible()));
+    /* #profiles itself is inside #profileSheet now (plans/034), so it is
+       invisible whether or not solo mode is on — the chip that opens that
+       sheet is the control solo mode actually has to take away. */
+    ok('the profile chip is hidden', !(await page.locator('#profileBtn').isVisible()));
     ok('no JUNTOS/SOLO badges on any exercise', await page.locator('.badge.together, .badge.solo').count() === 0);
     ok('the pair note is hidden', !(await page.locator('#pair').isVisible()));
     ok('the shared-station stripe is gone', await page.locator('.ex.shared').count() === 0);
@@ -1066,7 +1129,7 @@ const ok = (name, cond, extra) => {
     await page.click('#setupMode >> text=Dos personas');
     await page.click('#setupSave');
     await page.waitForTimeout(300);
-    ok('two-person mode comes back intact', await page.locator('#profiles').isVisible()
+    ok('two-person mode comes back intact', await page.locator('#profileBtn').isVisible()
        && await page.locator('.badge.together, .badge.solo').count() > 0);
 
     console.log('\n== moving one profile between phones ==');
@@ -1101,6 +1164,7 @@ const ok = (name, cond, extra) => {
     console.log('\n== week switch persists on its own ==');
     // A week/day switch must reach localStorage on its own: nothing else is
     // going to write it if the phone goes into a pocket straight after.
+    await openWeeks(page);
     await page.locator('.wk').nth(0).click();
     await page.waitForTimeout(600);
     ok('switching week is saved without any other edit',
@@ -1384,6 +1448,7 @@ const ok = (name, cond, extra) => {
     // and cache these requests — cross-origin, as this used to be, the
     // handler never ran and "importable offline once you've seen it" was
     // dead in production. Seeing it once online is the setup for that.
+    await openBlocks(page);
     await page.click('#blockbar >> text=Importar JSON');
     await page.waitForSelector('.import-item button');
     await page.locator('.import-item button').first().click();
@@ -1394,6 +1459,7 @@ const ok = (name, cond, extra) => {
     await page.reload({ waitUntil: 'domcontentloaded' });
     await dismissSetup(page);
     await page.waitForTimeout(500);
+    await openBlocks(page);
     await page.click('#blockbar >> text=Importar JSON');
     await page.waitForTimeout(500);
     ok('the published-blocks list still loads offline',
@@ -1558,6 +1624,7 @@ const ok = (name, cond, extra) => {
     await dismissSetup(page);
     await page.waitForTimeout(300);
 
+    await openBlocks(page);
     await page.click('#blockbar >> text=Gestionar');
     await page.waitForTimeout(200);
     ok('the block manager sheet opens', await page.locator('#blocksSheet.up').count() === 1);
@@ -1684,6 +1751,7 @@ const ok = (name, cond, extra) => {
       delete blk['w2-d0'];
       return !blk['w2-d0'];
     }));
+    await openWeeks(page);
     await page.locator('.wk').nth(1).click();
     await page.waitForFunction(() => getProfile().week === 2);
     await page.waitForTimeout(150);
@@ -1691,6 +1759,7 @@ const ok = (name, cond, extra) => {
       const blk = getProfile().obj['block-1'] || {};
       return !blk['w2-d0'];
     }));
+    await openWeeks(page);
     await page.locator('.wk').nth(3).click();   /* back to the week the section works in */
     await page.waitForFunction(() => getProfile().week === 4);
     await page.waitForSelector('.ex .ex-est-l');
@@ -2622,6 +2691,7 @@ const ok = (name, cond, extra) => {
     /* The note comes back the next week, on the same day, under the box.
        render() runs synchronously off the click, like the week switch at
        line 381 above, so no wait is needed before reading the DOM. */
+    await openWeeks(page);
     await page.locator('.wk').nth(1).click();   /* the week after the one the note was typed on */
     const prevNote = page.locator('#sesNotePrev');
     ok('last week\'s note shows under the box the following week',
@@ -2630,6 +2700,7 @@ const ok = (name, cond, extra) => {
     await page.locator('.day').nth(1).click();   /* another day, no note before it */
     ok('a day with no earlier note shows nothing', await page.locator('#sesNotePrev').isHidden());
     await page.locator('.day').nth(0).click();
+    await openWeeks(page);
     await page.locator('.wk').nth(0).click();   /* back to where the section left off */
 
     /* The note is keyed by slot with no exercise under it, so unlike the
@@ -2737,6 +2808,7 @@ const ok = (name, cond, extra) => {
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForTimeout(400);
 
+    await openBlocks(page);
     await page.click('#blockbar button:has-text("Revisión")');
     await page.waitForTimeout(400);
     ok('the review opens from the block bar', await page.locator('#reviewSheet.up').count() === 1);
@@ -2776,6 +2848,7 @@ const ok = (name, cond, extra) => {
 
     /* "+ Nuevo bloque" offers the review first, and picking it resumes the
        flow when the sheet closes instead of dead-ending. */
+    await openBlocks(page);
     await page.click('#blockbar button:has-text("+ Nuevo bloque")');
     await page.waitForTimeout(300);
     ok('starting a new block offers the review of the one you are leaving',
@@ -2792,6 +2865,7 @@ const ok = (name, cond, extra) => {
     await page.waitForTimeout(300);
 
     /* Declining goes straight to naming it, with no review in between. */
+    await openBlocks(page);
     await page.click('#blockbar button:has-text("+ Nuevo bloque")');
     await page.waitForTimeout(300);
     await page.click('#askCancel');
@@ -2806,6 +2880,7 @@ const ok = (name, cond, extra) => {
        continuation that would have asked to name a copied block is
        dropped — the pasted block is the next block. */
     const nextBlock = JSON.stringify({ name: 'Bloque siguiente', days: [{ name: 'Día A', ex: [{ n: 'Press banca', reps: '6–10', sets: 3 }] }] });
+    await openBlocks(page);
     await page.click('#blockbar button:has-text("+ Nuevo bloque")');
     await page.waitForSelector('#askSheet.up');
     await page.click('#askOk');
@@ -2848,6 +2923,7 @@ const ok = (name, cond, extra) => {
     });
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForTimeout(400);
+    await openBlocks(page);
     await page.click('#blockbar button:has-text("Revisión")');
     await page.waitForTimeout(300);
     ok('an empty block says there is nothing to review yet',
@@ -2887,6 +2963,7 @@ const ok = (name, cond, extra) => {
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForSelector('.ex');
 
+    await openBlocks(page);
     await page.click('#blockbar button:has-text("+ Nuevo bloque")');
     await answerDialog(page, false);            /* "Crear sin repasar" */
     await answerDialog(page, true, 'Bloque 2'); /* the name prompt */
@@ -3529,7 +3606,34 @@ const ok = (name, cond, extra) => {
 
     // 1. the sticky header
     const topH = await page.evaluate(() => document.querySelector('.top').getBoundingClientRect().height);
-    ok('.top is at most ' + HEADER_MAX + 'px tall at 375 wide (034 lowers this)', topH <= HEADER_MAX, topH + 'px');
+    ok('.top is at most ' + HEADER_MAX + 'px tall at 375 wide', topH <= HEADER_MAX, topH + 'px');
+
+    /* The height above is bought with a fixed 60px day tab, and the cheapest
+       way to buy it would have been one ellipsized line — plans/031's draft
+       renders showed "Tirón + Cuádri…", and a day tab that will not say
+       which day it is has stopped being a day tab. .day-t wraps instead, so
+       every name's scrollWidth is its clientWidth; a switch back to nowrap
+       makes the two diverge and fails here. */
+    const clipped = await page.evaluate(() => [...document.querySelectorAll('.day-t')]
+      .filter(e => e.scrollWidth > e.clientWidth)
+      .map(e => e.textContent + ' ' + e.scrollWidth + '>' + e.clientWidth));
+    ok('the day names are not truncated', clipped.length === 0, clipped.join(', '));
+
+    /* The week strip left the header for a panel behind #weekBtn, and a
+       disclosure that discloses nothing is how a whole screen goes missing.
+       Both halves: hidden to start with, and the strip really there after
+       the tap. */
+    ok('the week strip starts folded away', await page.locator('#weekPanel[hidden]').count() === 1);
+    await openWeeks(page);
+    const strip = await page.evaluate(() => ({
+      hidden: document.getElementById('weekPanel').hidden,
+      weeks: document.querySelectorAll('#weeks .wk').length,
+      goal: (document.querySelector('.banner-r') || {}).textContent || '',
+    }));
+    ok('the week row opens the strip', !strip.hidden && strip.weeks >= 1 && strip.goal.length > 0,
+       JSON.stringify(strip));
+    await page.click('#weekBtn');   /* back to folded, for the probes below */
+    await page.waitForSelector('#weekPanel[hidden]', { state: 'attached', timeout: 4000 });
 
     // 2. every control at least 24x24 outside a sheet (SC 2.5.8); the set
     //    row's own inputs and ticks held to a stricter, already-met floor.
