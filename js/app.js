@@ -4515,7 +4515,23 @@ function targetFor(profile, block, day, ex, week, now, brake) {
 
          The discount is priced on THIS set's own reserve (plans/035): a set
          done at 3 RIR and asked for 2 this week gives up nothing, whatever
-         the last set of that session was done at. */
+         the last set of that session was done at.
+
+         As the arithmetic stands the Math.max always returns `r`, so the
+         floor never actually binds: `base` is at least `L.e`, and
+         repsAt(L.w, L.e, rirWeek) is exactly L.r + L.rho - rirWeek, which
+         is never below L.r - max(0, rirWeek - L.rho). Deleting the line
+         changed none of 4032 probe cases. It is kept because it states what
+         the rule may not do rather than computing a step of it — the day
+         `base`, `g` or repsAt changes shape, this is what stops the model
+         prescribing less than the log already proves. Nothing in
+         test/unit.js can see it, and that is expected.
+
+         Reading `rhoLast` here, which is what it did while one chip was all
+         there was, is not the same dead line: whenever the last set of the
+         session was left with more in reserve than this set, the discount
+         came out too small and the floor rose ABOVE what the model allows —
+         211 of those same 4032 cases. That is why it had to change. */
       if (L && sameLoad(W, L.w)) r = Math.max(r, L.r - Math.max(0, rirWeek - L.rho));
       r = Math.min(r, hi);
       /* Coming down needs the model AND that floor to agree the bottom of

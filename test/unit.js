@@ -2027,14 +2027,18 @@ ok('...and the level rises further than that decay costs, so the last set is ask
    pacedT.show.slice(-6) === '55×11↓' && chipT.show.slice(-5) === '55×10',
    pacedT.show + '  vs  ' + chipT.show);
 
-/* The same-weight floor discounts only what a stricter week honestly costs
-   THAT set. A first set held at 3 RIR asked for 2 gives up nothing, whatever
-   the last set of the session was done at — here under a brake, so the trend
-   term is zero and the arithmetic is nothing but the reserves. */
+/* Three identical sets, 60×10, the first held at 3 in reserve and the rest
+   taken to 0 — under a brake, so the trend term is zero and what is left is
+   nothing but the reserves. It pins per-set CAPACITY pricing, not the
+   same-weight floor: the floor cannot be reached (see its own comment in
+   targetFor), and this case does not move if it is reverted to rhoLast.
+   What it does measure is that the first set is priced at what a set
+   stopped three reps early actually proved, so it is asked for 11 rather
+   than the 8 one chip for the whole session produced. */
 const heldOpts = { range: '8–12', inc: 2.5, sets: 3, rirWeek: 2, brake: true };
 const heldT = target([{ sets: [[60, 10], [60, 10], [60, 10]], rirs: ['3', '0', '0'] }], heldOpts);
 const heldChipT = target([{ sets: [[60, 10], [60, 10], [60, 10]], rir: '0' }], heldOpts);
-ok('a set held at 3 RIR and asked for 2 keeps its reps even when the last set of that session went to failure',
+ok('a first set held at 3 in reserve is priced at what it proved, so a stricter week still asks it for more reps, not fewer',
    heldT.show === '60×11 · 60×8 · 60×8' && heldChipT.show === '60×8 · 60×8 · 60×8',
    heldT.show + '  vs  ' + heldChipT.show);
 
