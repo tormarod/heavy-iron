@@ -14,7 +14,8 @@ it keeps the defaults. See [Making it yours](#making-it-yours).
 
 **A session, top to bottom.** Two rows stay stuck to the top of the screen.
 The first is who is training and which block — two chips, each opening a
-sheet to change it — and **⋯**, which holds the light/dark theme for now.
+sheet to change it — and **⋯**, which opens the same **Más** sheet the bar
+does.
 The second is the three days: tap one, or use the arrow keys once the row
 has the keyboard. Under the header, `‹ Semana 1 de 8 · 3 RIR ›` is the
 week: the arrows step to the one either side, and a tap on the middle opens
@@ -33,14 +34,28 @@ once by `kg · rep · RIR`:
 | the name | tap it for what the card does not print: the alternative exercise, the amber cue, and the machine settings — seat height, pin position, saved to the plan rather than to the log. |
 | **⋯** | the five things that are not typing numbers: **Progreso ↗** (that exercise's weight, or estimated 1RM, over time — across every day of the block that plans it, see [The same lift on two days](#the-same-lift-on-two-days)), the two ways to move the exercise inside the session, the machine settings, and the calculator. |
 
-The rest timer runs along the bottom once a set is ticked: **−30**/**+30**
-move the finish line, **Son.** turns the alarm on, **Saltar** ends it.
+**The two actions you use mid-session** sit above the list, where a hand
+already on the bar can reach them: **Rellenar con el objetivo** and [the
+warm-up calculator](#warm-ups-and-plate-maths).
 
-**The footer buttons**, in order: copy last week's weights into this day,
-edit the plan of the block you are on, [the warm-up
-calculator](#warm-ups-and-plate-maths), [the weekly volume
-view](#weekly-volume-by-muscle-pattern-or-type), clear this day, back up
-your data, settings, and wipe the log.
+**The bar**, along the bottom, is four destinations rather than a row of
+buttons:
+
+| Destination | What it opens |
+|---|---|
+| **Sesión** | the page you are on. Tapping it puts away whatever sheet is up and takes you back to the top of the day. |
+| **Progreso** | [Volumen muscular](#weekly-volume-by-muscle-pattern-or-type), [Diagnóstico](#diagnóstico) and [Revisión del bloque](#the-block-review). |
+| **Plan** | **Editar plan**, **+ Nuevo bloque**, [**Importar JSON**](#importing-blocks-from-json) and [**Gestionar bloques**](#deleting-blocks-you-no-longer-want). |
+| **Más** | **Copia de seguridad** (with [moving a profile to another phone](#two-phones-one-profile-each) and [the QR transfer](#passing-data-with-the-camera-qr) inside it), **Ajustes**, **Tema**, the shortcut to [the pocket alarm](#during-the-session) — and, kept apart under **Zona de peligro**, **Borrar este día** and **Borrar todos los datos**. |
+
+The footer keeps what is not an action: the session note, what is stranded
+past the end of the block, the totals line, the save status and the
+version.
+
+Once a set is ticked the rest timer takes the bar's place: **−30**/**+30**
+move the finish line, **Saltar** ends it, the line underneath names the set
+you are going back to and what it is asking for, and **Aviso sonoro** is
+the switch for the alarm at zero.
 
 **Week to week.** Fill the rep range at the prescribed RIR, then next week
 press **Rellenar con el objetivo** on the same day: it writes the weight
@@ -62,7 +77,7 @@ objetivo, built on the block before it.
 - **Two profiles**, each with their own plan, weeks, and history.
 - **Blocks**: each profile can have several training blocks (e.g. "Bloque
   1", "Bloque 2"). Use **Nuevo bloque** to start the next one from a copy
-  of the current plan, and **Gestionar** to delete the ones you no longer
+  of the current plan, and **Gestionar bloques** to delete the ones you no longer
   want without disturbing the block you are training — see
   [Deleting blocks](#deleting-blocks-you-no-longer-want).
 - **A review at the end of each block**, exportable as the prompt that
@@ -154,7 +169,7 @@ On a device with nothing saved, the first thing you get is a short setup:
 | **Plan de partida** | The built-in 8-week example plan; a blank block with one day and one empty exercise; or **Traer un JSON**, which takes a pasted block (with the same template download and AI prompt buttons as [Importar JSON](#importing-blocks-from-json)) and makes it the starting plan for both profiles. A paste that doesn't validate is refused there and then, leaving the sheet as it was. |
 
 Skipping it keeps the defaults and never asks again. Everything except the
-starting plan stays editable under **Ajustes** in the footer — the starting
+starting plan stays editable under **Ajustes**, in **Más** — the starting
 plan isn't offered later because by then swapping it would throw away real
 history, which is what blocks are for instead.
 
@@ -455,7 +470,7 @@ charge, the line simply isn't there.
   reps over every completed set), records, and the date you last logged
   something on this day.
 - **The rest timer** can be nudged with **−30**/**+30** when the machine
-  is still busy, and **Son.** turns on the alarm at zero for when the phone
+  is still busy, and **Aviso sonoro** turns on the alarm at zero for when the phone
   is face-down or you are wearing headphones. One beep is easy to miss
   mid-set, so it is a burst of four rapid sawtooth pulses — flat and
   klaxon-like rather than a melodic chime, and richer in harmonics than a
@@ -942,7 +957,8 @@ so clearing a day, deleting a block, moving an exercise to another day and
 
 ## Warm-ups and plate maths
 
-**Calculadora**, in the footer, builds a warm-up ramp up to a working
+**Calculadora**, above the list (and in every card's **⋯**), builds a
+warm-up ramp up to a working
 weight: 40%, 60% and 80% of it, then the weight itself. It is tied to no
 exercise and reads nothing from your log — type whatever you are about to
 lift.
@@ -967,7 +983,7 @@ you have just switched.
 
 ## Weekly volume, by muscle, pattern or type
 
-**Volumen muscular**, in the footer, counts the current week's hard sets
+**Volumen muscular**, in **Progreso**, counts the current week's hard sets
 and draws one bar per group, biggest first, with the numbers in a table
 underneath. Groups sitting at zero are listed too — seeing which of *this
 block's own* muscles are getting nothing this week is as much the point as
@@ -1090,7 +1106,7 @@ Twenty-two exercises, each with its own chart behind its own button. Nobody
 opens twenty-two charts — and the diagnosis was never inside any one of
 them anyway. It lives in the comparison, and nothing was making it.
 
-**Diagnóstico** in the footer has three tabs — **Por ejercicio**,
+**Diagnóstico**, in **Progreso**, has three tabs — **Por ejercicio**,
 **Frecuencia** and **Fuerza** — and all three read entirely off what you
 already log.
 
@@ -1291,7 +1307,8 @@ drawing a flat line that would read as "no change".
 
 ## The block review
 
-**Revisión**, in the block bar, is the reckoning `+ Nuevo bloque` never
+**Revisión del bloque**, in **Progreso**, is the reckoning `+ Nuevo bloque`
+never
 used to make. Eight weeks of evidence sat in the log and the block written
 on top of it was written from memory.
 
@@ -1373,7 +1390,7 @@ datos** clears a profile's whole log while leaving the plans in place.
 
 ## Deleting blocks you no longer want
 
-**Gestionar** (in the block bar) lists every block of the current
+**Gestionar bloques** (in **Plan**) lists every block of the current
 profile with its creation date, how many days it has and how many sets
 are logged in it, and deletes the ones you don't want — the trial runs,
 the imports you did twice, the block you abandoned in week 2.
@@ -1414,8 +1431,8 @@ or rep range, is refused with the same message rather than shipped broken.
 ## Importing blocks from JSON
 
 Instead of building a training block by hand in the plan editor, you can
-generate one as JSON and import it via the **Importar JSON** button
-(next to **+ Nuevo bloque**). It always imports into whichever profile
+generate one as JSON and import it via the **Importar JSON** row of the
+bar's **Plan** hub. It always imports into whichever profile
 (Hombre/Mujer) is currently selected, and never overwrites existing
 blocks or logged history — it just adds a new block.
 

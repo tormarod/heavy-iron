@@ -3826,13 +3826,15 @@ const ok = (name, cond, extra) => {
       ok(label + ': page does not scroll sideways', r.scroll <= r.vw, r.scroll + ' > ' + r.vw);
 
       await page.click('#tskip');
-      await page.waitForTimeout(250);
       /* And again for the software keyboard. iOS has no
          `interactive-widget` viewport segment, so the visual viewport does
          not shrink and a fixed bar floats on top of the keyboard — over the
-         very row being typed into. */
+         very row being typed into.
+
+         No sleeps on either side: stopRest() runs inside the click and
+         focusin inside the focus(), and both resolve after the page has
+         run the handler. */
       await page.locator('.ex').first().locator('.set-row').nth(1).locator('input').first().focus();
-      await page.waitForTimeout(200);
       const kb = await page.evaluate(() => ({
         kbOpen: document.getElementById('app').classList.contains('kb-open'),
         display: getComputedStyle(document.getElementById('navBar')).display,
