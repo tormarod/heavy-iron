@@ -1672,8 +1672,13 @@ function repRangeBottom(reps) {
    value per set for the rule to read.
 
    The old map is legacy: folded onto the rows on load and on import
-   (foldRirMap), read as a fallback by getRir and by exSession, and never
-   written again. The chip below is still the writer for one more plan —
+   (foldRirMap), and read as a fallback by getRir and by exSession. Nothing
+   writes a VALUE into it again; setRir deletes the entry for the
+   exercise-session it is recording, and that deletion is the one exception
+   — without it, clearing the chip on anything logged before this plan does
+   nothing, because getRir falls back to the map and foldRirMap puts the
+   value straight back. See setRir. The chip below is still the writer for
+   one more plan —
    plans/036 draws the box next to the reps — and it writes onto the row.
 
    The inheritance rule (sessionRirs) is what makes a log with no per-set
@@ -1991,8 +1996,8 @@ function moveSessionEx(profile, block, w, day, exId, dir) {
    which writes `r.rir` on its own row and does not come through here.
 
    It also drops this exercise-session's entry from the legacy map, and that
-   deletion is the ONE write this file makes to it — the single exception to
-   "the map is never written again" in the RIR section. It has to be:
+   deletion is the ONE change this file makes to it — the single exception
+   the RIR section above names. It has to be:
    getRir falls back to the map, and foldRirMap would put the chip straight
    back on the row on the next load, so without this, clearing the chip on
    any session logged before plans/035 does nothing at all — the guide's

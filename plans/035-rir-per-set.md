@@ -697,6 +697,19 @@ log still reads exactly as before (28 800 cross-version fixtures against
   occurrence of `rir-chip` at all, and the "tapping one records it" cases in
   `nota, energía` are the ENERGY chips. 036 inherits one smoke case and
   seven unit assertions added here instead.
+- Step A.6's "The map is **never written again**", and the Done criterion
+  "The map is never written", hold for values and not for deletions. `setRir`
+  deletes the entry for the exercise-session it records. It has to: getRir
+  falls back to the map and Step B deliberately leaves the entry in place, so
+  without the deletion, clearing the chip on any session logged before this
+  plan does nothing at all and the next load's fold writes the old value
+  straight back onto the row — "tapping the same chip again clears it", which
+  `docs/guide.md` promises, would be false for the entire installed base's
+  history. A deletion cannot resurrect data, which is why it is safe where a
+  write would not be. The alternative — making getRir ignore the map once
+  rows exist — cannot tell a folded slot from an unfolded one, and would read
+  every pre-035 session as having no RIR: the plan's own first STOP
+  condition.
 
 **One thing 036 must not undo.** `rowUsed` counts `r.rir` since this plan,
 and the chip handler reads `wasSession` before writing and calls
