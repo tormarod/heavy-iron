@@ -18,6 +18,11 @@ function blockPickerLabel(profile, id) {
   return name + ' (' + (twins.indexOf(id) + 1) + ')' + (d ? ' · ' + d : '');
 }
 
+/* The picker and nothing else. The four buttons this used to build on every
+   render — "+ Nuevo bloque", "Revisión", "Importar JSON", "Gestionar" — are
+   markup now, three in the bar's "Plan" hub and the review in "Progreso",
+   with ids of their own and handlers bound once in wireBlockEditor and
+   wireReview (plans/037). */
 function renderBlockBar() {
   const profile = getProfile();
   const host = $('blockbar');
@@ -50,11 +55,6 @@ function renderBlockBar() {
   chip.querySelector('.chip-lbl').textContent = label;
   chip.setAttribute('aria-label', 'Bloque: ' + label + '. Cambiar');
 }
-/* The picker and nothing else. The four buttons this used to build on every
-   render — "+ Nuevo bloque", "Revisión", "Importar JSON", "Gestionar" — are
-   markup now, three in the bar's "Plan" hub and the review in "Progreso",
-   with ids of their own and handlers bound once in wireBlockEditor and
-   wireReview (plans/037). */
 
 /* ---------- deleting blocks ----------
    The one rule: deleting somebody else's block must not move you. Only

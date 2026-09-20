@@ -5712,9 +5712,13 @@ $('moreBtn').onclick = () => openSheet('moreSheet');
 
 /* ---------- the bar ----------
    Three of the four open a hub; Sesión is the page you are already on, so
-   it keeps aria-current and does the only two things left: put away
-   whatever hub is up, and take you back to the top of the day. A route
-   model would buy nothing here — there is one screen and three sheets. */
+   it keeps aria-current and takes you back to the top of the day. The
+   closeSheet loop inside it never actually runs: a sheet's backdrop covers
+   the whole viewport at z-index 60, the bar sits at 50, and
+   elementFromPoint over #navSession with any sheet up returns a row of
+   that sheet. It stays as the answer to "what if something is up" rather
+   than as a live path. A route model would buy nothing here either —
+   there is one screen and three sheets. */
 const HUBS = ['progressSheet', 'planHubSheet', 'moreSheet'];
 $('navProgress').onclick = () => openSheet('progressSheet');
 $('navPlan').onclick = () => openSheet('planHubSheet');

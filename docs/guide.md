@@ -43,10 +43,10 @@ buttons:
 
 | Destination | What it opens |
 |---|---|
-| **Sesión** | the page you are on. Tapping it puts away whatever sheet is up and takes you back to the top of the day. |
+| **Sesión** | the page you are already on. A sheet covers the bar while it is open, so the one thing left for this button to do is take you back to the top of the day. |
 | **Progreso** | [Volumen muscular](#weekly-volume-by-muscle-pattern-or-type), [Diagnóstico](#diagnóstico) and [Revisión del bloque](#the-block-review). |
 | **Plan** | **Editar plan**, **+ Nuevo bloque**, [**Importar JSON**](#importing-blocks-from-json) and [**Gestionar bloques**](#deleting-blocks-you-no-longer-want). |
-| **Más** | **Copia de seguridad** (with [moving a profile to another phone](#two-phones-one-profile-each) and [the QR transfer](#passing-data-with-the-camera-qr) inside it), **Ajustes**, **Tema**, the shortcut to [the pocket alarm](#during-the-session) — and, kept apart under **Zona de peligro**, **Borrar este día** and **Borrar todos los datos**. |
+| **Más** | **Copia de seguridad** (with [moving a profile to another phone](#two-phones-one-profile-each) and [the QR transfer](#passing-data-with-the-camera-qr) inside it), **Ajustes**, **Tema** — a tap cycles **automático** (follow the phone), **claro** and **oscuro**, and the choice rides along in backups — the shortcut to [the pocket alarm](#during-the-session) — and, kept apart under **Zona de peligro**, **Borrar este día** and **Borrar todos los datos**. |
 
 The footer keeps what is not an action: the session note, what is stranded
 past the end of the block, the totals line, the save status and the
