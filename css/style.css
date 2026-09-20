@@ -240,10 +240,12 @@ body {
 /* Number in the middle, one arrow above and one below: the column reads as
    "this is where it happened, and here is how to move it". Fixed width so
    the names to the right of it line up card to card whether or not an
-   arrow is disabled. */
+   arrow is disabled. 24px, matching .ex-ord below it: SC 2.5.8 needs a 24px
+   target, and a narrower column let the arrow's own box bleed 2px past it
+   on each side (plan 032 fix round 1). */
 .ex-num {
   display: flex; flex-direction: column; align-items: center; gap: 4px;
-  padding-top: 1px; width: 20px; flex: 0 0 20px;
+  padding-top: 1px; width: 24px; flex: 0 0 24px;
 }
 .ex-ord-n {
   font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600;
