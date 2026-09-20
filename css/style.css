@@ -37,7 +37,7 @@
   --share-soft: #EEE7FF;
   --share-ink: #6E45C7;
   --danger: #B8301F;
-  --signal: #C24A10;
+  --signal: #B5450F;
   --signal-soft: #FCE9DE;
   --on-signal: #FFFFFF;
   --on-share: #1A1000;
@@ -110,7 +110,7 @@ body {
 /* Each profile carries an accent. `hombre`/`mujer` are the names the app
    shipped with and are kept as aliases so existing saved profiles do not
    change colour; new ones pick `azul` or `verde` by name. */
-#app.profile-hombre, #app.profile-azul { --signal: #C24A10; --signal-soft: #FCE9DE; }
+#app.profile-hombre, #app.profile-azul { --signal: #B5450F; --signal-soft: #FCE9DE; }
 #app.profile-mujer,  #app.profile-verde { --signal: #0B6E7C; --signal-soft: #DDF2F5; }
 :root[data-theme="dark"] #app.profile-hombre,
 :root[data-theme="dark"] #app.profile-azul { --signal: #FF7A2F; --signal-soft: #3A2114; }
