@@ -136,7 +136,7 @@ body {
 .profile-btn {
   flex: 1; border: 1px solid var(--edge); background: transparent;
   color: var(--soft); font-family: var(--font-sans); font-weight: 600; font-size: 12.5px;
-  padding: 9px; border-radius: 2px; cursor: pointer; letter-spacing: 0.02em;
+  padding: 9px; border-radius: 3px; cursor: pointer; letter-spacing: 0.02em;
   transition: all .12s;
 }
 .profile-btn:hover { border-color: var(--ink); color: var(--ink); }
@@ -147,7 +147,7 @@ body {
 .blockbar select {
   flex: 1; min-width: 120px; height: 34px; border: 1px solid var(--edge); background: var(--card);
   color: var(--ink); font-family: var(--font-sans); font-size: 12.5px; font-weight: 600;
-  border-radius: 2px; padding: 0 8px;
+  border-radius: 3px; padding: 0 8px;
 }
 
 /* ---- header ---- */
@@ -166,7 +166,7 @@ body {
 .title-row .title { flex: 1; min-width: 0; }
 .icon-btn {
   flex: 0 0 auto; width: 30px; height: 26px; border: 1px solid var(--edge);
-  background: transparent; color: var(--soft); border-radius: 2px; cursor: pointer;
+  background: transparent; color: var(--soft); border-radius: 3px; cursor: pointer;
   font-size: 15px; line-height: 1; display: flex; align-items: center; justify-content: center;
   font-family: var(--font-mono); padding-bottom: 1px;
 }
@@ -179,7 +179,7 @@ body {
   flex: 0 0 auto; width: 38px; height: 34px; position: relative;
   border: 1px solid var(--edge); background: transparent;
   font-family: var(--font-mono); font-size: 13px; font-weight: 500;
-  color: var(--soft); cursor: pointer; border-radius: 2px;
+  color: var(--soft); cursor: pointer; border-radius: 3px;
   display: flex; align-items: center; justify-content: center;
   transition: all .12s;
 }
@@ -200,7 +200,7 @@ body {
    didn't. */
 .day {
   border: 1px solid var(--edge); background: transparent; cursor: pointer;
-  padding: 9px 6px; border-radius: 2px; text-align: left; transition: all .12s;
+  padding: 9px 6px; border-radius: 3px; text-align: left; transition: all .12s;
   color: var(--ink);
 }
 .day:hover { border-color: var(--ink); }
@@ -217,7 +217,7 @@ body {
 .banner {
   display: flex; justify-content: space-between; align-items: center;
   margin: 14px 0; padding: 11px 13px; width: 100%;
-  background: var(--signal-soft); border-left: 3px solid var(--signal); border-radius: 2px;
+  background: var(--signal-soft); border-left: 3px solid var(--signal); border-radius: 3px;
 }
 .banner.deload { background: var(--amber-soft); border-left-color: var(--amber); }
 .banner-l { font-family: var(--font-display); font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--soft); }
@@ -228,18 +228,18 @@ body {
 .pair {
   display: flex; gap: 9px; align-items: center; margin-bottom: 14px;
   padding: 9px 12px; background: var(--share-soft);
-  border-left: 3px solid var(--share); border-radius: 2px;
+  border-left: 3px solid var(--share); border-radius: 3px;
   font-size: 11.5px; color: var(--share-ink); line-height: 1.4;
 }
 
 /* ---- progress ---- */
-.bar { height: 3px; background: var(--line); margin-bottom: 16px; border-radius: 2px; overflow: hidden; }
+.bar { height: 3px; background: var(--line); margin-bottom: 16px; border-radius: 3px; overflow: hidden; }
 .bar > i { display: block; height: 100%; background: var(--signal); transition: width .3s; }
 
 /* ---- exercise card ---- */
 .ex {
   background: var(--card); border: 1px solid var(--line);
-  border-radius: 3px; margin-bottom: 9px; overflow: hidden;
+  border-radius: 4px; margin-bottom: 9px; overflow: hidden;
 }
 .ex.complete { border-color: var(--signal); }
 .ex.shared { border-left: 3px solid var(--share); }
@@ -263,7 +263,7 @@ body {
 .ex-ord {
   width: 24px; height: 20px; padding: 0; border: none; background: transparent;
   color: var(--soft); font-size: 11px; line-height: 1; cursor: pointer; opacity: .55;
-  border-radius: 2px;
+  border-radius: 3px;
 }
 .ex-ord:hover:not(:disabled) { color: var(--signal); background: var(--sunk); opacity: 1; }
 .ex-ord:disabled { opacity: .12; cursor: default; }
@@ -274,14 +274,14 @@ body {
 .ord-note {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   font-size: 12.5px; line-height: 1.45; color: var(--soft);
-  background: var(--sunk); border: 1px solid var(--line); border-radius: 2px;
+  background: var(--sunk); border: 1px solid var(--line); border-radius: 3px;
   padding: 7px 10px; margin: 0 0 10px;
 }
 .ord-note[hidden] { display: none; }
 .ord-reset {
   background: transparent; border: 1px solid var(--edge); color: var(--soft);
   font-size: 11px; font-family: var(--font-sans); font-weight: 600;
-  padding: 3px 7px; border-radius: 2px; cursor: pointer;
+  padding: 3px 7px; border-radius: 3px; cursor: pointer;
 }
 .ord-reset:hover { border-color: var(--signal); color: var(--signal); }
 .ex-body { flex: 1; min-width: 0; }
@@ -295,19 +295,19 @@ body {
 .ex-rest { font-family: var(--font-mono); font-size: 11px; color: var(--soft); margin-top: 3px; text-align: right; }
 .ex-chart-btn {
   margin-top: 5px; background: transparent; border: 1px solid var(--edge); color: var(--soft);
-  font-size: 11px; font-family: var(--font-sans); font-weight: 600; padding: 5px 9px; border-radius: 2px; cursor: pointer;
+  font-size: 11px; font-family: var(--font-sans); font-weight: 600; padding: 5px 9px; border-radius: 3px; cursor: pointer;
   min-height: 28px;
 }
 .ex-chart-btn:hover { border-color: var(--signal); color: var(--signal); }
 
 .ss {
   display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: 0.1em;
-  background: var(--ink); color: var(--card); padding: 2px 5px; border-radius: 2px;
+  background: var(--ink); color: var(--card); padding: 2px 5px; border-radius: 3px;
   margin-left: 6px; vertical-align: 2px;
 }
 .badge {
   display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: 0.1em;
-  padding: 2px 5px; border-radius: 2px; margin-left: 6px; vertical-align: 2px;
+  padding: 2px 5px; border-radius: 3px; margin-left: 6px; vertical-align: 2px;
 }
 .badge.together { background: var(--share); color: var(--on-share); }
 .badge.solo { background: transparent; color: var(--soft); border: 1px solid var(--line); }
@@ -351,7 +351,7 @@ body {
 .ex-setup-box { padding-bottom: 8px; }
 .ex-setup-box input {
   width: 100%; height: 34px; padding: 0 9px;
-  border: 1px solid var(--edge); border-radius: 2px; background: var(--sunk);
+  border: 1px solid var(--edge); border-radius: 3px; background: var(--sunk);
   font-size: 13px; color: var(--ink);
 }
 .ex-setup-box input:focus { outline: none; border-color: var(--signal); box-shadow: 0 0 0 2px var(--signal-soft); }
@@ -380,7 +380,7 @@ body {
    card is a chip nobody reads. */
 .ex-est-c {
   display: inline-block; margin-left: 6px; padding: 0 5px;
-  border: 1px solid var(--edge); border-radius: 2px;
+  border: 1px solid var(--edge); border-radius: 3px;
   font-family: var(--font-mono); font-size: 11px; color: var(--soft);
   white-space: nowrap;
 }
@@ -399,7 +399,7 @@ body {
 .energy-chips { display: flex; gap: 5px; }
 .energy-chip {
   height: 26px; min-width: 44px; padding: 0 10px;
-  border: 1px solid var(--edge); border-radius: 2px; background: var(--card);
+  border: 1px solid var(--edge); border-radius: 3px; background: var(--card);
   font-size: 11px; color: var(--soft); cursor: pointer;
 }
 .energy-chip:hover { border-color: var(--signal); color: var(--signal); }
@@ -408,7 +408,7 @@ body {
 /* ---- did the deload work ---- */
 .deload-check {
   font-size: 12.5px; line-height: 1.45; color: var(--soft);
-  background: var(--sunk); border: 1px solid var(--line); border-radius: 2px;
+  background: var(--sunk); border: 1px solid var(--line); border-radius: 3px;
   padding: 8px 10px; margin: 0 0 10px;
 }
 .deload-check.good { color: var(--signal); background: var(--signal-soft); }
@@ -419,7 +419,7 @@ body {
    the screen that overrides every card's own answer. */
 .brake-note {
   font-size: 12.5px; line-height: 1.45; color: var(--amber-ink);
-  background: var(--amber-soft); border: 1px solid var(--line); border-radius: 2px;
+  background: var(--amber-soft); border: 1px solid var(--line); border-radius: 3px;
   padding: 8px 10px; margin: 0 0 10px;
 }
 
@@ -432,7 +432,7 @@ body {
 }
 #sesNote {
   width: 100%; height: 36px; padding: 0 9px;
-  border: 1px solid var(--edge); border-radius: 2px; background: var(--card);
+  border: 1px solid var(--edge); border-radius: 3px; background: var(--card);
   font-size: 13px; color: var(--ink);
 }
 #sesNote:focus { outline: none; border-color: var(--signal); box-shadow: 0 0 0 2px var(--signal-soft); }
@@ -454,7 +454,7 @@ body {
 .rir-chips { display: flex; gap: 5px; }
 .rir-chip {
   height: 26px; min-width: 30px; padding: 0 8px;
-  border: 1px solid var(--edge); border-radius: 2px; background: var(--card);
+  border: 1px solid var(--edge); border-radius: 3px; background: var(--card);
   font-family: var(--font-mono); font-size: 11px; font-weight: 600;
   color: var(--soft); cursor: pointer;
 }
@@ -474,7 +474,7 @@ body {
 .fld { position: relative; }
 .fld input {
   width: 100%; height: 40px; padding: 0 27px 0 9px;
-  border: 1px solid var(--edge); border-radius: 2px; background: var(--card);
+  border: 1px solid var(--edge); border-radius: 3px; background: var(--card);
   font-family: var(--font-mono); font-size: 17px; font-weight: 500; color: var(--ink);
   -moz-appearance: textfield;
 }
@@ -488,7 +488,7 @@ body {
 
 .tick {
   height: 40px; border: 1px solid var(--edge); background: var(--card);
-  border-radius: 2px; cursor: pointer; font-size: 16px; color: var(--edge);
+  border-radius: 3px; cursor: pointer; font-size: 16px; color: var(--edge);
   display: flex; align-items: center; justify-content: center; transition: all .12s;
 }
 .tick { width: 100%; font-family: var(--font-sans); padding: 0; }
@@ -501,7 +501,7 @@ body {
    one set at a glance. */
 .drop-add {
   height: 40px; width: 100%; padding: 0;
-  border: 1px solid var(--edge); border-radius: 2px; background: var(--card);
+  border: 1px solid var(--edge); border-radius: 3px; background: var(--card);
   font-family: var(--font-sans); font-size: 14px; color: var(--edge);
   display: flex; align-items: center; justify-content: center; cursor: pointer;
   transition: all .12s;
@@ -522,7 +522,7 @@ body {
 }
 .drop-x {
   height: 34px; width: 100%; padding: 0;
-  border: 1px solid var(--edge); border-radius: 2px; background: var(--card);
+  border: 1px solid var(--edge); border-radius: 3px; background: var(--card);
   font-family: var(--font-sans); font-size: 11px; color: var(--soft);
   display: flex; align-items: center; justify-content: center; cursor: pointer;
 }
@@ -533,7 +533,7 @@ body {
 .drop-kind { display: flex; gap: 5px; padding: 2px 0 6px 33px; }
 .drop-chip {
   padding: 3px 8px;
-  border: 1px solid var(--edge); border-radius: 2px; background: var(--card);
+  border: 1px solid var(--edge); border-radius: 3px; background: var(--card);
   font-family: var(--font-mono); font-size: 11px; font-weight: 600;
   color: var(--soft); cursor: pointer;
 }
@@ -587,7 +587,7 @@ body {
 .timer-msg { flex: 1; min-width: 0; font-size: 11.5px; color: var(--timer-dim); line-height: 1.35; }
 .timer-btn {
   background: transparent; border: 1px solid var(--timer-line); color: var(--timer-ink);
-  border-radius: 2px; padding: 8px 13px; font-family: var(--font-sans); font-size: 11px;
+  border-radius: 3px; padding: 8px 13px; font-family: var(--font-sans); font-size: 11px;
   font-weight: 600; cursor: pointer; letter-spacing: 0.04em;
 }
 .timer-btn:hover { border-color: var(--timer-ink); }
@@ -607,7 +607,7 @@ body {
 .foot-btns { display: flex; gap: 7px; flex-wrap: wrap; }
 .sm {
   background: transparent; border: 1px solid var(--edge); color: var(--soft);
-  padding: 7px 11px; border-radius: 2px; font-family: var(--font-sans);
+  padding: 7px 11px; border-radius: 3px; font-family: var(--font-sans);
   font-size: 11px; font-weight: 500; cursor: pointer;
 }
 .sm:hover { border-color: var(--ink); color: var(--ink); }
@@ -627,7 +627,7 @@ body {
   /* width, not max-width: shrink-to-fit squeezed the message into a three-line
      column beside the buttons */
   display: flex; align-items: center; gap: 9px; width: min(520px, calc(100% - 24px));
-  background: var(--card); border: 1px solid var(--ink); border-radius: 3px;
+  background: var(--card); border: 1px solid var(--ink); border-radius: 4px;
   padding: 9px 11px; font-size: 12px; line-height: 1.4;
   box-shadow: 0 6px 22px rgba(0,0,0,.22);
 }
@@ -648,14 +648,14 @@ body {
    within it keep their own. */
 .sheet-box:focus, .sheet-box:focus-visible { outline: none; }
 .sheet-box {
-  background: var(--card); border: 1px solid var(--line); border-radius: 3px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 4px;
   width: 100%; max-width: 600px; max-height: 88vh; overflow: auto; padding: 18px;
 }
 .sheet-t { font-family: var(--font-display); font-size: 22px; font-weight: 700; letter-spacing: -0.015em; }
 .sheet-d { font-size: 12.5px; color: var(--soft); line-height: 1.5; margin: 7px 0 12px; }
 .sheet-box textarea {
   width: 100%; height: 130px; resize: vertical;
-  border: 1px solid var(--edge); border-radius: 2px; background: var(--paper);
+  border: 1px solid var(--edge); border-radius: 3px; background: var(--paper);
   padding: 9px; font-family: var(--font-mono); font-size: 11px;
   line-height: 1.45; color: var(--ink); word-break: break-all;
 }
@@ -665,15 +665,15 @@ body {
 .sheet-hr { border-top: 1px solid var(--line); margin: 16px 0; }
 
 /* ---- plan editor ---- */
-.pe-day { border: 1px solid var(--line); border-radius: 3px; padding: 11px; margin-bottom: 12px; background: var(--paper); }
+.pe-day { border: 1px solid var(--line); border-radius: 4px; padding: 11px; margin-bottom: 12px; background: var(--paper); }
 .pe-block-name {
   width: 100%; padding: 8px; font-family: var(--font-sans); font-size: 13px; font-weight: 700;
-  border: 1px solid var(--edge); border-radius: 2px; background: var(--paper); color: var(--ink);
+  border: 1px solid var(--edge); border-radius: 3px; background: var(--paper); color: var(--ink);
   margin-bottom: 10px;
 }
 .pe-block-meta { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
 .pe-block-meta input, .pe-block-meta select {
-  padding: 7px 8px; border: 1px solid var(--edge); border-radius: 2px;
+  padding: 7px 8px; border: 1px solid var(--edge); border-radius: 3px;
   background: var(--paper); color: var(--ink);
   font-family: var(--font-mono); font-size: 12.5px;
 }
@@ -681,20 +681,20 @@ body {
 .pe-block-meta select { min-width: 148px; font-family: var(--font-sans); font-weight: 600; }
 .pe-day-head input {
   width: 100%; font-size: 14px; font-weight: 700; padding: 6px 8px; margin-bottom: 6px;
-  border: 1px solid var(--edge); border-radius: 2px; background: var(--card); color: var(--ink); font-family: var(--font-sans);
+  border: 1px solid var(--edge); border-radius: 3px; background: var(--card); color: var(--ink); font-family: var(--font-sans);
 }
 .pe-day-head textarea {
   width: 100%; font-size: 11.5px; padding: 6px 8px; height: 50px; resize: vertical;
-  border: 1px solid var(--edge); border-radius: 2px; background: var(--card); color: var(--ink); font-family: var(--font-sans);
+  border: 1px solid var(--edge); border-radius: 3px; background: var(--card); color: var(--ink); font-family: var(--font-sans);
 }
-.pe-ex { border: 1px solid var(--edge); border-radius: 2px; padding: 8px; margin-top: 8px; background: var(--card); }
+.pe-ex { border: 1px solid var(--edge); border-radius: 3px; padding: 8px; margin-top: 8px; background: var(--card); }
 .pe-row { display: flex; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
 .pe-row input[type=text] {
-  flex: 1; min-width: 90px; padding: 6px 7px; border: 1px solid var(--edge); border-radius: 2px;
+  flex: 1; min-width: 90px; padding: 6px 7px; border: 1px solid var(--edge); border-radius: 3px;
   font-family: var(--font-sans); font-size: 12px; background: var(--paper); color: var(--ink);
 }
 .pe-row input[type=number] {
-  width: 64px; padding: 6px 7px; border: 1px solid var(--edge); border-radius: 2px;
+  width: 64px; padding: 6px 7px; border: 1px solid var(--edge); border-radius: 3px;
   font-family: var(--font-mono); font-size: 12px; background: var(--paper); color: var(--ink);
 }
 .pe-field-lbl {
@@ -712,7 +712,7 @@ body {
 .pe-log-tag { font-family: var(--font-mono); font-size: 11px; color: var(--signal); }
 .pe-tools { display: flex; gap: 4px; margin-left: auto; flex-shrink: 0; }
 .pe-icon-btn {
-  background: transparent; border: 1px solid var(--edge); border-radius: 2px;
+  background: transparent; border: 1px solid var(--edge); border-radius: 3px;
   color: var(--soft); font-family: var(--font-sans); font-size: 11px; line-height: 1;
   padding: 5px 7px; cursor: pointer;
 }
@@ -721,14 +721,14 @@ body {
 .pe-icon-btn.danger:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
 .pe-icon-btn:disabled { opacity: .3; cursor: default; }
 .pe-move-sel {
-  background: transparent; border: 1px solid var(--edge); border-radius: 2px;
+  background: transparent; border: 1px solid var(--edge); border-radius: 3px;
   color: var(--soft); font-family: var(--font-sans); font-size: 11px; line-height: 1;
   padding: 5px 4px; cursor: pointer; max-width: 108px;
 }
 .pe-move-sel:hover { border-color: var(--ink); color: var(--ink); }
 
 /* retired days / exercises — out of the plan, log kept */
-.pe-retired { border: 1px dashed var(--line); border-radius: 3px; padding: 11px; margin-top: 14px; }
+.pe-retired { border: 1px dashed var(--line); border-radius: 4px; padding: 11px; margin-top: 14px; }
 .pe-retired-d { font-size: 11px; color: var(--soft); line-height: 1.45; margin: 0 0 6px; }
 .pe-arch {
   display: flex; align-items: center; gap: 10px;
@@ -741,12 +741,12 @@ body {
 }
 .pe-add-ex {
   width: 100%; margin-top: 4px; padding: 8px; border: 1px dashed var(--line); background: transparent;
-  color: var(--soft); font-family: var(--font-sans); font-size: 11.5px; cursor: pointer; border-radius: 2px;
+  color: var(--soft); font-family: var(--font-sans); font-size: 11.5px; cursor: pointer; border-radius: 3px;
 }
 .pe-add-ex:hover { border-color: var(--signal); color: var(--signal); }
 
 /* ---- chart sheet ---- */
-.chart-wrap { background: var(--paper); border: 1px solid var(--line); border-radius: 2px; padding: 10px; }
+.chart-wrap { background: var(--paper); border: 1px solid var(--line); border-radius: 3px; padding: 10px; }
 .chart-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-family: var(--font-mono); font-size: 11px; }
 .chart-table td, .chart-table th { padding: 4px 6px; text-align: right; border-bottom: 1px solid var(--line); }
 .chart-table th { color: var(--soft); font-weight: 600; text-align: right; }
@@ -758,7 +758,7 @@ body {
 .vol-kg { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .vol-kg > div {
   flex: 1; min-width: 130px; padding: 8px 10px;
-  background: var(--sunk); border: 1px solid var(--line); border-radius: 2px;
+  background: var(--sunk); border: 1px solid var(--line); border-radius: 3px;
 }
 .vol-kg b {
   display: block; font-family: var(--font-mono);
@@ -774,10 +774,10 @@ body {
 .vol-warn {
   font-size: 11.5px; line-height: 1.45; color: var(--amber-ink);
   background: var(--amber-soft); border: 1px solid var(--line);
-  border-radius: 2px; padding: 8px 10px; margin-bottom: 10px;
+  border-radius: 3px; padding: 8px 10px; margin-bottom: 10px;
 }
 .vol-trend {
-  border: 1px solid var(--line); border-radius: 2px;
+  border: 1px solid var(--line); border-radius: 3px;
   padding: 7px 10px 4px; margin-bottom: 8px; background: var(--card);
 }
 .vol-trend.flagged { border-color: var(--amber); background: var(--amber-soft); }
@@ -805,7 +805,7 @@ body {
 .pri-chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 4px 0 2px; }
 .pri-chip {
   height: 28px; padding: 0 10px;
-  border: 1px solid var(--edge); border-radius: 2px; background: var(--card);
+  border: 1px solid var(--edge); border-radius: 3px; background: var(--card);
   font-size: 11.5px; color: var(--soft); cursor: pointer;
 }
 .pri-chip:hover { border-color: var(--amber); color: var(--ink); }
@@ -839,7 +839,7 @@ body {
 .recovery h1 { font-size: 17px; font-weight: 700; margin-bottom: 10px; }
 .recovery p { font-size: 12.5px; color: var(--soft); line-height: 1.55; margin-bottom: 12px; }
 .recovery pre {
-  background: var(--sunk); border: 1px solid var(--line); border-radius: 2px; padding: 9px;
+  background: var(--sunk); border: 1px solid var(--line); border-radius: 3px; padding: 9px;
   font-family: var(--font-mono); font-size: 11px; color: var(--danger);
   white-space: pre-wrap; word-break: break-word; margin-bottom: 14px;
 }
@@ -855,7 +855,7 @@ body {
   flex: 1; min-width: 110px; padding: 9px 10px;
   border: 1px solid var(--edge); background: transparent; color: var(--soft);
   font-family: var(--font-sans); font-size: 12.5px; font-weight: 600;
-  border-radius: 2px; cursor: pointer; transition: all .12s;
+  border-radius: 3px; cursor: pointer; transition: all .12s;
 }
 .seg-btn:hover { border-color: var(--ink); color: var(--ink); }
 .seg-btn[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--card); }
@@ -867,14 +867,14 @@ body {
 .setup-name { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .setup-name input {
   flex: 1; min-width: 150px; padding: 9px 10px;
-  border: 1px solid var(--edge); border-radius: 2px;
+  border: 1px solid var(--edge); border-radius: 3px;
   background: var(--paper); color: var(--ink);
   font-family: var(--font-sans); font-size: 13px; font-weight: 600;
 }
 .setup-name input:focus { outline: none; border-color: var(--signal); }
 .swatches { display: flex; gap: 5px; flex: 0 0 auto; }
 .swatch {
-  width: 26px; height: 26px; border-radius: 2px; cursor: pointer; padding: 0;
+  width: 26px; height: 26px; border-radius: 3px; cursor: pointer; padding: 0;
   border: 1px solid var(--line); position: relative;
 }
 .swatch[aria-pressed="true"] { border-color: var(--ink); border-width: 2px; }
@@ -906,12 +906,12 @@ body {
    fight. The video preview shares the box so switching tabs doesn't make the
    sheet jump. */
 .qr-stage {
-  background: #fff; border: 1px solid var(--line); border-radius: 2px;
+  background: #fff; border: 1px solid var(--line); border-radius: 3px;
   padding: 10px; display: flex; align-items: center; justify-content: center;
   min-height: 220px;
 }
 .qr-svg { width: 100%; max-width: 300px; height: auto; display: block; }
-.qr-video { width: 100%; max-width: 360px; border-radius: 2px; display: block; background: #000; }
+.qr-video { width: 100%; max-width: 360px; border-radius: 3px; display: block; background: #000; }
 .qr-count {
   font-family: var(--font-mono); font-size: 11px; color: var(--soft);
   margin: 8px 0 0; text-align: center;
@@ -926,7 +926,7 @@ body {
    sorted worst-first. */
 .diag-row {
   border: 1px solid var(--line); border-left: 3px solid var(--soft);
-  border-radius: 2px; background: var(--card);
+  border-radius: 3px; background: var(--card);
   padding: 9px 11px; margin-bottom: 8px;
 }
 .diag-row.down { border-left-color: var(--danger); }
@@ -962,7 +962,7 @@ body {
 .freq-cal-g { overflow-x: auto; }
 .freq-row {
   border: 1px solid var(--line); border-left: 3px solid var(--soft);
-  border-radius: 2px; background: var(--card);
+  border-radius: 3px; background: var(--card);
   padding: 8px 10px; margin-bottom: 8px;
 }
 .freq-row.behind { border-left-color: var(--amber); }
@@ -986,7 +986,7 @@ body {
    baseline drawn as the reference it is. */
 .idx-row {
   border: 1px solid var(--line); border-left: 3px solid var(--soft);
-  border-radius: 2px; background: var(--card);
+  border-radius: 3px; background: var(--card);
   padding: 8px 10px 4px; margin-bottom: 8px;
 }
 .idx-row.up { border-left-color: var(--signal); }
@@ -1013,13 +1013,13 @@ body {
 /* ---- block review ---- */
 .rev-deload {
   font-size: 11.5px; line-height: 1.45; color: var(--soft);
-  background: var(--sunk); border: 1px solid var(--line); border-radius: 2px;
+  background: var(--sunk); border: 1px solid var(--line); border-radius: 3px;
   padding: 8px 10px; margin-bottom: 10px;
 }
 .rev-deload.good { color: var(--signal); background: var(--signal-soft); }
 .rev-deload.bad { color: var(--amber-ink); background: var(--amber-soft); }
 .rev-row {
-  border: 1px solid var(--line); border-radius: 2px; background: var(--card);
+  border: 1px solid var(--line); border-radius: 3px; background: var(--card);
   padding: 8px 10px; margin-bottom: 6px;
 }
 .rev-row.priority { border-left: 3px solid var(--amber); }
