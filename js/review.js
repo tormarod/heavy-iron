@@ -115,13 +115,27 @@ function buildBlockReview(profile, block) {
      sheet's toggle says. The verdict text is what the reader needs; `est`
      is a live object with functions behind it and stays out. */
   const exercises = diagRows(profile, block, 'block').map(x => {
-    const rir = {};
+    /* Sets, not sessions, since plans/035 made the RIR a per-set value —
+       and read off the rows rather than through getRir, because "apuntado"
+       means written down: the inheritance rule that fills the gaps is the
+       objetivo's business, not the reader's. `n` is every working set of
+       the exercise in the block, so the tally says how much of it the
+       numbers cover instead of leaving "2+ en 6" to be read as all of it. */
+    const rir = { n: 0 };
     RIR_OPTIONS.forEach(k => { rir[k] = 0; });
     dayList(block).forEach(d => {
       if (!exList(d).some(e => e.id === x.id)) return;
       for (let w = 1; w <= weeks; w++) {
-        const chip = getRir(profile, block.id, w, d.id, x.id);
-        if (chip in rir) rir[chip]++;
+        const bucket = profile.log[block.id] && profile.log[block.id][slot(w, d.id)];
+        const rows = bucket && bucket[x.id];
+        if (!Array.isArray(rows)) continue;
+        rows.forEach(r => {
+          if (!rowWorked(r)) return;
+          rir.n++;
+          const v = rowRir(r);
+          if (v == null) return;
+          rir[v >= 2 ? '2+' : String(v)]++;
+        });
       }
     });
     return { name: x.name, day: x.day, trend: x.trend, trendLabel: DIAG_TRENDS[x.trend].label,
@@ -188,15 +202,20 @@ function reviewText(r) {
     L.push('### Por ejercicio');
     L.push('');
     L.push('Tendencia = pendiente del 1RM estimado por sesión, sobre las últimas ' + DIAG_WINDOW +
-      ' sesiones de este bloque. La lectura y el cambio cruzan esa tendencia con el RIR marcado, las caídas de reps y las bajadas forzadas.');
+      ' sesiones de este bloque. La lectura y el cambio cruzan esa tendencia con el RIR apuntado por serie, las caídas de reps y las bajadas forzadas.');
     L.push('');
     r.exercises.slice(0, REVIEW_MAX_EXERCISES).forEach(x => {
       const bits = [];
       bits.push(x.trend === 'none'
         ? 'sin tendencia (' + x.sessions + (x.sessions === 1 ? ' sesión' : ' sesiones') + ')'
         : 'tendencia ' + x.trendLabel + ' ' + diagPct(x.pct) + ' por sesión sobre ' + x.sessions + ' sesiones');
-      const chips = RIR_OPTIONS.filter(k => x.rir[k]).map(k => k + '×' + x.rir[k]);
-      bits.push('RIR marcado: ' + (chips.length ? chips.join(', ') : 'ninguno'));
+      /* "series" on the first bucket only, so the list reads as one
+         sentence rather than as three; the total is what gives the numbers
+         a scale. */
+      const counted = RIR_OPTIONS.filter(k => x.rir[k]).map((k, i) =>
+        k + ' en ' + x.rir[k] + (i ? '' : (x.rir[k] === 1 ? ' serie' : ' series')));
+      bits.push('RIR apuntado: ' +
+        (counted.length ? counted.join(', ') + ' (de ' + x.rir.n + ')' : 'ninguno'));
       L.push('- ' + reviewName(x.name) + ' (' + reviewName(x.day) + '): ' + bits.join(' · ') + '. ' + x.lectura + '. Cambio: ' + x.cambio);
     });
   }

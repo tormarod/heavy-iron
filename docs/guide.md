@@ -246,7 +246,7 @@ Three things can be sent, and the difference matters:
 | | What travels | What it does on the other phone |
 |---|---|---|
 | **Plan** | the block's exercises, sets, reps, rest and cues | adds a new block |
-| **Plan + registro** | the same, **plus every set logged against it and every RIR chip tapped** | adds a new block, with that history attached |
+| **Plan + registro** | the same, **plus every set logged against it, with the RIR written on each one** | adds a new block, with that history attached |
 | **Perfil** | one person entire: all their blocks, all their history | **replaces** that profile, after asking |
 
 The first two only ever *add* a block, so scanning one can't cost you
@@ -424,7 +424,7 @@ charge, the line simply isn't there.
   the change and offers **Volver al orden del plan**, since undoing four
   swaps one arrow at a time is not a way back. Sets stay filed under the
   exercise and not under a position, so moving a card carries its numbers,
-  its RIR chip and its history with it, and the CSV gains an `orden` column
+  its RIR and its history with it, and the CSV gains an `orden` column
   so you can ask a spreadsheet whether the exercises you do last are the
   ones going nowhere.
 - **The weight box already knows what you did last time.** The greyed
@@ -475,18 +475,26 @@ charge, the line simply isn't there.
   resting for, when it ends, and the same **−30** / **+30** / skip — and
   the end of the rest also posts a notification, but only when the app is
   out of sight. Coming back to the app takes the notification down.
-- **RIR, once per exercise.** Three chips — `2+` / `1` / `0` — after the
-  sets, for how the last one actually felt. Optional and empty by default,
-  same as `share`/`ss`: skip it and nothing changes. It is the other half
-  of the RIR target `phase` already prescribes per week — that number says
-  what the set was supposed to cost, this one says what it did, and tapping
-  the same chip again clears it. It travels with a "plan + registro" QR
-  share, and shows up as its own column in the CSV export.
+- **RIR, per set.** Three chips — `2+` / `1` / `0` — after the sets, for
+  how the last one actually felt. Optional and empty by default, same as
+  `share`/`ss`: skip it and nothing changes. It is the other half of the
+  RIR target `phase` already prescribes per week — that number says what
+  the set was supposed to cost, this one says what it did, and tapping the
+  same chip again clears it. From this release the value is stored **on the
+  set**, not once per session, and the chip writes it onto the last set you
+  did; the objetivo then prices each set on its own reserve. It travels
+  with a "plan + registro" QR share on the row itself, and the `rir` column
+  of the CSV export is the set's own value, blank where you typed nothing —
+  a session logged before this release carries its one chip on that
+  session's last row.
 - **A rep-decay warning, for free.** No input needed: if the first set of an
   exercise falls away sharply by the last one, a small line appears under
   the sets — `⚠ caída de 4 reps: ¿primera serie al fallo?` — because that
   drop is usually the first set having been pushed closer to failure than
-  the ones after it. The threshold is **proportional**: a quarter of the
+  the ones after it. Write that first set's RIR and the line stops asking:
+  at 0 or 1 in reserve it says the drop is explained, and at 2 or more it
+  says it is not — `⚠ caída de 4 reps con la primera serie holgada (RIR 3):
+  ¿descansos cortos?` The threshold is **proportional**: a quarter of the
   first set's reps, with a floor of 2. At a fixed load with real rest sets
   taper by something like 10–25 % by the fourth one, so `15·15·12·12` is an
   ordinary session and `8·7·6·5` is not, even though both "drop 3 reps".
@@ -599,9 +607,9 @@ Under the sets of every exercise, one line — and one answer per set:
 ```
 
 It answers the only question you actually have standing in front of the
-machine, and it costs no new input. The weights and reps are in the log,
-the RIR chip is optional with the week's own prescription standing in, and
-the range, the step and the phase text are in the plan.
+machine, and it costs almost no new input. The weights and reps are in the
+log, the RIR is optional — per set, with the week's own prescription
+standing in — and the range, the step and the phase text are in the plan.
 
 **Double progression is still rep-first.** The reps decide the case and the
 estimated 1RM only sizes the step, and only once the reps have earned the
@@ -634,8 +642,8 @@ it — when any of these is true:
 | | why |
 |---|---|
 | it ended at the top of the rep range | it was cut off there; it never went near failure |
-| the chip says `2+` | open-ended: it may have been four |
-| there is no chip at all | nothing says how close to failure it was |
+| you wrote 2 or more in reserve | open-ended: it may have been four |
+| nothing was written for it | nothing says how close to failure it was |
 | it ran past twelve reps | above that the reserve people report stops being reliable |
 
 Every one of those pushes the estimate **down**, which is the safe side: a
@@ -647,6 +655,28 @@ reserve gets one rep of slack when it decides whether the next rung fits.
 Without that slack a set that always finishes at the top of its range could
 never go up: the estimate it is judged on is the very number being
 under-read.
+
+Each of the four rows above is read **per set**, on that set's own number.
+A set you left blank takes the reserve of the next set that has one — the
+set before a set you took to 0 had at least that much left, so pricing it
+there under-reads it, which is the safe direction — and a set with nothing
+after it either is the "nothing was written" row. That inheritance is
+exactly what the one chip per session used to do to every set, which is why
+a log with no per-set values reads precisely as it always did.
+
+**The set worth writing down is the first one.** `level` reads the first set
+of each session, so a first set you marked at 0 or 1 is a *reading* the
+level can move on, while one marked 2 or more — or left blank — stays a
+floor. That is what the `confianza` chip is counting: it climbs from `baja`
+to `alta` as the first sets stop being floors.
+
+**And a session you paced now reads as one.** Run four sets at 3 → 2 → 1 → 0
+in reserve and the old single chip priced every one of them as if it had
+gone to failure: the first set came out worth less than it was, and the
+drop across the session looked smaller than it was. Priced per set the
+first set is read at what it proved, the decline between sets is the
+reserve you really spent, and the last set ends up asked for more rather
+than less.
 
 ### Three estimates, three different questions
 
@@ -710,8 +740,9 @@ reading would otherwise earn the next jump on the same reading, and two
 weeks later the weight is somewhere nobody lifted.
 
 **At the same weight the target never asks for less than was already done**,
-minus only what a stricter RIR this week honestly costs. Anything else is
-the model contradicting the log.
+minus only what a stricter RIR this week honestly costs **that set**. A set
+you did at 3 in reserve, asked for 2 this week, gives up nothing — whatever
+the last set of that session was done at.
 
 **A set is never heavier than the set before it.** That is not a refinement,
 it is the difference between a prescription and a list of numbers: sets get
@@ -812,11 +843,11 @@ They are listed here by what they protect, not in the order the code
 applies them — the code first drops what does not count (deload weeks,
 sessions before a rename, the other day of a split lift), then answers "no
 history, no line", then the deload and the layoff, and only then reads the
-week's RIR.
+week's RIR against the one you typed.
 
-- **`2+` is read as exactly 2**, and a missing chip as 0. Both come out low,
-  which is the right direction to be wrong in — and both censor the session
-  anyway, so neither can raise the estimate on its own.
+- **`2+` is read as exactly 2**, and a set with nothing written as 0. Both
+  come out low, which is the right direction to be wrong in — and both
+  censor that set anyway, so neither can raise the estimate on its own.
 - **A prescribed range reads as its hard end.** `"2–3 RIR"` is a week you
   are meant to be able to take to 2; reading it as 3 quietly under-loads
   everything built on it.
@@ -1092,12 +1123,12 @@ exactly why guessing at a stall goes wrong.
 |---|---|---|---|
 | plano | objetivo por debajo del peso actual (no un reinicio) | Peso mal elegido | Baja al objetivo y sube el rango de reps como es debido |
 | plano | RIR 0, o una bajada forzada | Fatiga, no falta de esfuerzo | Mismo peso, vuelve a 1–2 RIR. Apretar más es la palanca equivocada |
-| plano | caída de reps ≥3 | Primera serie al fallo | Empieza más ligero para que las series 2 y 3 sumen volumen |
+| plano | caída de reps ≥3, y la primera serie no apuntada a 2+ | Primera serie al fallo | Empieza más ligero para que las series 2 y 3 sumen volumen |
 | plano | RIR 2+ repetido | Falta intensidad | Sube carga o reps: te dejas el estímulo sin usar |
 | plano | los kilos por serie suben | Las series de después se ponen al día | Déjalo correr — cuando dejen de sumar, entonces sí es un estancamiento |
 | plano | los kilos por serie bajan | Se vacían las series de después | Empieza más ligero, o quita una serie y haz enteras las que queden |
 | plano | los kilos por serie tampoco se mueven | Estancado de verdad | Haz lo que mande el objetivo de la semana; si lleva medio bloque igual, cambia el ejercicio |
-| plano | ninguna | Estancado sin señal clara | Marca el RIR unas semanas — sin eso no se distingue fatiga de falta de intensidad |
+| plano | ninguna | Estancado sin señal clara | Apunta el RIR de la última serie unas semanas — sin eso no se distingue fatiga de falta de intensidad |
 | bajando | huecos >7 días de mediana | Asistencia, no programa | Nada que tocar en el plan |
 | bajando | sin huecos | Pierde fuerza de verdad | Si varios ejercicios bajan a la vez, mira el descanso y lo que comes — eso la app no lo ve |
 | subiendo | la ficha no sube el peso esta semana | Sube, pero hoy no toca | Mismo peso a la RIR prevista — si las reps vuelven, sube; si vuelve a caer, el nivel se ajusta solo |
@@ -1265,9 +1296,10 @@ done against sets prescribed from
 session notes. Priority muscles come first. It invents nothing; it gathers.
 
 Under the muscle rows, the exported text lists every exercise of the plan
-with its trend, the RIR chips you tapped and the reading Diagnóstico gives
-it — so whatever writes the next block knows which press stalled, not
-only that chest went nowhere.
+with its trend, the RIR you typed on each set — counted as sets, against
+the block's own total — and the reading Diagnóstico gives it, so whatever
+writes the next block knows which press stalled, not only that chest went
+nowhere.
 
 **The export is the feature.** *Copiar prompt con la revisión* hands you
 the same JSON-format prompt the import sheet gives out — with the evidence

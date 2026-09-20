@@ -2682,6 +2682,33 @@ const ok = (name, cond, extra) => {
          return !e || e['w1-d0'] === undefined;
        }));
 
+    /* The RIR chip's own round trip, on a day where nothing has been ticked
+       — the shape that used to write a value getRir could not read and
+       pruneLog deleted on the next save (plans/035). Nothing had ever
+       pressed a .rir-chip in either suite, which is how it got that far. */
+    const rirCard = page.locator('.ex').first();
+    ok('the RIR chips start empty', await rirCard.locator('.rir-chip.on').count() === 0);
+    await rirCard.locator('.rir-chip').nth(1).click();    /* RIR_OPTIONS[1] === '1' */
+    await page.waitForFunction(() => !saveT && !held);
+    ok('tapping one on a day with nothing ticked records it on the row',
+       await page.evaluate(() => {
+         const sl = JSON.parse(localStorage.getItem('heavy-iron-v1'))
+           .profiles.hombre.log['block-1']['w1-d0'] || {};
+         return Object.keys(sl).some(k => (sl[k] || []).some(r => r && r.rir === '1'));
+       }));
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForFunction(() => document.querySelectorAll('.rir-chip').length > 0);
+    /* Counted rather than read: before this was fixed nothing came back
+       pressed, and asking a locator that matches nothing for its text waits
+       thirty seconds and then takes the whole section down with it. */
+    const pressed = page.locator('.ex').first().locator('.rir-chip.on');
+    ok('...and it is still pressed after a reload',
+       await pressed.count() === 1 && await pressed.first().textContent() === '1',
+       'chips pressed: ' + await pressed.count());
+    await rirCard.locator('.rir-chip').nth(1).click();
+    await page.waitForFunction(() => !saveT && !held);
+    ok('...and tapping it again clears it', await pressed.count() === 0);
+
     await page.fill('#sesNote', 'Dormí 5 h');
     await page.waitForTimeout(500);
     await page.reload({ waitUntil: 'networkidle' });

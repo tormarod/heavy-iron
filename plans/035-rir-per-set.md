@@ -637,3 +637,84 @@ travels with every purge, move and share the row does". The guide:
 - `RIR_OPTIONS` and `RIR_LABEL` stay until 036 removes the chip; after
   036 they serve only `normalizeImportedRir`, `blockShareRir`'s legacy map
   and the review's buckets.
+
+### Correction, recorded during execution (read this before quoting the Steps)
+
+The Steps above are left as the historical record. Three claims in them
+about the DIRECTION the decay term moves are inverted, and 036 should not
+quote them. The implementation and the unit section follow the corrected
+reading; the executor and the reviewer derived it independently and agree.
+
+**What is wrong.** "Why this matters" bullet 3, Step C.3 ("used to read as a
+15 % capacity drop by set four") and Step I(a) ("a `phi[3]` **above** the
+same session read with one rho of 0") all say the single chip made a paced
+session look MORE fatigued than it was. It is the other way round. The chip
+is the LAST set's reserve, so on a session paced down its sets the chip is
+the low number, and pricing every set at it reads the first set as if it had
+gone to failure — which under-reads that set and therefore UNDER-states the
+drop across the session.
+
+**The numbers**, for the plan's own example — 60 kg for 10, 9, 8, 8 reps,
+paced 3 → 2 → 1 → 0, on a 10–15 range with the week asking 2 RIR:
+
+| | `e` per set | `phi` | `level` | the target |
+|---|---|---|---|---|
+| one chip `'0'` | 80, 78, 76, 76 | 1.000 0.975 0.950 0.950 | 80 | `57,5×10↓ · 55×11↓ · 55×10 · 55×10` |
+| per set | 86, 82, 78, 76 | 1.000 0.974 0.927 0.903 | 86 | `60×12 · 60×10 · 57,5×10↓ · 55×11↓` |
+
+So `phi[3]` comes out **lower** per set (0.903 against 0.950): a 10 % drop
+measured instead of a 5 % one, and the 10 % is the reserve that was really
+spent. What the change buys is not a smaller decay — it is a first set read
+at what it proved (86, not 80), and a level that rises further than the
+decay costs, so the LAST set is asked for more rather than less (`55×11`
+against `55×10`). Step C's "the per-set reading sees less fatigue" is true
+of the prescription, never of `phi[k]`.
+
+None of this changes what the Steps ask for in code: Step C.1's per-set
+pricing and censoring are what produce the table above, and a legacy-shaped
+log still reads exactly as before (28 800 cross-version fixtures against
+`fb3061b`, zero differences in `show`/`level`/`conf`/`kind`/`notes`/`g`/
+`phi`/`rirWeek`).
+
+**Three smaller corrections from the same pass**, also for 036:
+
+- Step C.1's `sessionRirs(work)` has to be `sessionRirs(work, rirNumber(raw))`.
+  Taken literally the call drops the legacy map, every objetivo fixture in
+  `test/unit.js` writes that map directly with no fold, and all fifteen v3
+  cases move — the plan's own first STOP condition. The second argument is
+  the chip behaving as if typed on the last set, which is the reading it has
+  always had.
+- Step C.2's same-weight floor is unreachable as written: `base` is at least
+  `L.e` and `repsAt(L.w, L.e, rirWeek)` is exactly `L.r + L.rho - rirWeek`,
+  so the `Math.max` always returns its left argument (deleting the line
+  changed 0 of 4 032 probe cases). The change from `rhoLast` still mattered
+  — reading the last set's reserve lifted the floor ABOVE the model's answer
+  whenever that set had more left than the set being decided, 211 of the
+  same 4 032 cases — and the line is kept as a statement of what the rule
+  may not do.
+- Step H's "Current state" says `test/smoke.js` clicks the chips by
+  `.rir-chip`. It does not, on `fb3061b` or since: that file had no
+  occurrence of `rir-chip` at all, and the "tapping one records it" cases in
+  `nota, energía` are the ENERGY chips. 036 inherits one smoke case and
+  seven unit assertions added here instead.
+- Step A.6's "The map is **never written again**", and the Done criterion
+  "The map is never written", hold for values and not for deletions. `setRir`
+  deletes the entry for the exercise-session it records. It has to: getRir
+  falls back to the map and Step B deliberately leaves the entry in place, so
+  without the deletion, clearing the chip on any session logged before this
+  plan does nothing at all and the next load's fold writes the old value
+  straight back onto the row — "tapping the same chip again clears it", which
+  `docs/guide.md` promises, would be false for the entire installed base's
+  history. A deletion cannot resurrect data, which is why it is safe where a
+  write would not be. The alternative — making getRir ignore the map once
+  rows exist — cannot tell a folded slot from an unfolded one, and would read
+  every pre-035 session as having no RIR: the plan's own first STOP
+  condition.
+
+**One thing 036 must not undo.** `rowUsed` counts `r.rir` since this plan,
+and the chip handler reads `wasSession` before writing and calls
+`recordTargetOnStart` after — which is Step H.3's "counts as starting the
+session exactly as the weight and rep boxes do", already true for the chip.
+The per-set box has to keep both halves: without the first, a reserve typed
+into an otherwise-empty row is unreadable and `pruneLog` deletes it; without
+the second, typing an RIR first suppresses that session's objetivo record.

@@ -63,8 +63,9 @@ let diagView = 'trend';   /* 'trend' per exercise | 'freq' | 'index' per muscle 
 /* Every session this exercise was logged in, oldest first, as one e1RM
    point each. Modelled on collectHistoryAll(), but it keeps what the charts
    have no use for and the diagnosis does: which rows the point came from
-   (for rep decay and forced drops), the RIR chip filed against it, and the
-   timestamp, so a gap between sessions can be told from a gap in progress.
+   (for rep decay and forced drops), the RIR of its last working set — the
+   session's own reading, see getRir — and the timestamp, so a gap between
+   sessions can be told from a gap in progress.
 
    Sets above EST_MAX_REPS reps are dropped rather than plotted: Epley
    drifts badly up there, and one 20-rep back-off set would otherwise fake a
@@ -560,7 +561,7 @@ function diagMedianGap(points) {
    change come from crossing it with what the log says about HOW those
    sessions went. Checked in the order the rows are written, so the
    most specific signal wins: a stall with a forced drop behind it is a
-   fatigue problem even if the RIR chip also said 2+ three weeks ago. */
+   fatigue problem even if the RIR also read 2+ three weeks ago. */
 function diagVerdict(trend, sig) {
   if (trend === 'down') {
     if (sig.gap > DIAG_GAP_DAYS) {
@@ -624,7 +625,7 @@ function diagVerdict(trend, sig) {
                cambio: 'No hay progreso escondido en las series de después: haz lo que mande el objetivo de la semana, y si lleva medio bloque igual, cambia el ejercicio.' };
     }
     return { lectura: 'Estancado, sin una señal clara en el registro',
-             cambio: 'Marca el RIR unas semanas: sin eso no se puede distinguir fatiga de falta de intensidad.' };
+             cambio: 'Apunta el RIR de la última serie unas semanas: sin eso no se puede distinguir fatiga de falta de intensidad.' };
   }
   if (trend === 'up') {
     /* The row that stops this screen contradicting the session's own
@@ -698,9 +699,19 @@ function diagRows(profile, block, scope) {
       const last = points[points.length - 1];
       const recent = points.slice(-3);
       const sig = {
-        easy: recent.filter(p => p.rir === '2+').length >= 2,
-        failure: !!last && (last.rir === '0' || forcedDrop(last.rows)),
-        decay: !!last && repDecay(last.rows) >= 3,
+        /* Read through rirNumber since plans/035, so a typed '3' counts the
+           same as the old '2+' chip did and a typed '0' the same as the old
+           '0'. `p.rir` is the session's last working set (getRir), which is
+           what "the session's RIR" has always meant on this screen. */
+        easy: recent.filter(p => rirNumber(p.rir) >= 2).length >= 2,
+        failure: !!last && (rirNumber(last.rir) === 0 || forcedDrop(last.rows)),
+        /* A first set the lifter typed as two or more in reserve did not go
+           to failure, so the drop after it is not "primera serie al fallo"
+           and this signal stands down: the verdict falls through to the
+           work-axis rows below, which is where a session that drains
+           without a hard first set belongs. Its own value only — an
+           inherited reserve says nothing about the first set. */
+        decay: !!last && repDecay(last.rows) >= 3 && !(rowRir(last.rows[0]) >= 2),
         /* A stall reset is also `down`, but it is not "the weight was
            picked wrong" — it is the target rule's own answer to the
            stall this screen is about to name, so it reads as the stall,
