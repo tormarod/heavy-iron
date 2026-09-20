@@ -120,6 +120,46 @@ ok('every js/ entry in SHELL exists on disk',
    shellFiles.filter(f => f.startsWith('js/')).every(f => fs.existsSync(path.join(ROOT, f))),
    JSON.stringify(shellFiles.filter(f => f.startsWith('js/') && !fs.existsSync(path.join(ROOT, f)))));
 
+/* WCAG 2.x contrast, computed from css/style.css's own hex values rather
+   than eyeballed: sRGB -> linear -> relative luminance -> the ratio itself
+   (ten lines, as plans/032 describes it). --soft's three backgrounds are
+   bundled into one assertion per theme, which is why reverting light
+   --soft alone (see this plan's Verify step) produces exactly one FAIL
+   here, not three. */
+console.log('\n== css tokens keep WCAG contrast (plans/032) ==');
+const cssSrc = fs.readFileSync(path.join(ROOT, 'css/style.css'), 'utf8');
+function tokenMap(blockSrc) {
+  const map = {};
+  for (const m of blockSrc.matchAll(/--([\w-]+):\s*(#[0-9a-fA-F]{6})\s*;/g)) map[m[1]] = m[2];
+  return map;
+}
+function luminance(hex) {
+  const chan = [1, 3, 5].map(i => {
+    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * chan[0] + 0.7152 * chan[1] + 0.0722 * chan[2];
+}
+function contrast(hexA, hexB) {
+  const a = luminance(hexA), b = luminance(hexB);
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+const lightTokens = tokenMap(/:root\s*\{([\s\S]*?)\}/.exec(cssSrc)[1]);
+const darkTokens = tokenMap(/:root\[data-theme="dark"\]\s*\{([\s\S]*?)\}/.exec(cssSrc)[1]);
+[['light', lightTokens], ['dark', darkTokens]].forEach(([label, t]) => {
+  const softRatios = ['paper', 'card', 'sunk'].map(bg => contrast(t.soft, t[bg]));
+  ok(label + ': --soft is >= 4.5:1 on --paper, --card and --sunk',
+     softRatios.every(r => r >= 4.5), 'paper/card/sunk: ' + softRatios.map(r => r.toFixed(2)).join('/'));
+  const amberInk = contrast(t['amber-ink'], t.card);
+  ok(label + ': --amber-ink is >= 4.5:1 on --card', amberInk >= 4.5, amberInk.toFixed(2));
+  const edge = contrast(t.edge, t.card);
+  ok(label + ': --edge is >= 3:1 on --card', edge >= 3, edge.toFixed(2));
+  const ink = contrast(t.ink, t.card);
+  ok(label + ': --ink is >= 4.5:1 on --card', ink >= 4.5, ink.toFixed(2));
+  const onSignal = contrast(t['on-signal'], t.signal);
+  ok(label + ': --on-signal is >= 4.5:1 on --signal', onSignal >= 4.5, onSignal.toFixed(2));
+});
+
 const app = loadApp();
 const call = expr => vm.runInContext(expr, app);
 const throws = expr => { try { call(expr); return false; } catch (e) { return true; } };
