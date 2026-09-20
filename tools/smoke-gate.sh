@@ -15,6 +15,12 @@
 # anything that is not a PR being opened. It is also fine to run by hand
 # before pushing.
 #
+# It tests the tree the pull request is being opened from, which is not always
+# the one this file sits in: the hook runs "$CLAUDE_PROJECT_DIR"/tools/smoke-gate.sh
+# and that is the main checkout, so a branch built in a git worktree would
+# otherwise be "gated" by running the suite against a clean main. See "which
+# tree" below.
+#
 # What it does, in order: syntax-check every script, run test/unit.js,
 # install Playwright + Chromium if they are missing (pinned to the version
 # CI used, so results stay comparable), serve the repo on a free local
@@ -59,8 +65,8 @@ set -u
 # and the gate would wave through every red run.
 set -o pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT" || exit 2
+SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$SCRIPT_ROOT"
 
 command -v node >/dev/null 2>&1 || { echo "smoke-gate: node is not installed" >&2; exit 2; }
 
@@ -72,27 +78,59 @@ command -v node >/dev/null 2>&1 || { echo "smoke-gate: node is not installed" >&
 # once unless a pull request is really being opened. No stdin, or stdin that
 # is not hook JSON, means someone ran it by hand: run in full. A quote is a
 # separator too, so `bash -c "gh pr create …"` runs the gate.
+#
+# The call also says where it was made, which is the second thing needed —
+# see "which tree" below. Two lines out: the skip verdict, then that cwd.
+hook_cwd=""
 if [ ! -t 0 ]; then
-  verdict="$(node -e '
+  parsed="$(node -e '
     let s = "";
+    const out = (verdict, cwd) => { console.log(verdict); console.log(cwd); };
     process.stdin.on("data", d => { s += d; }).on("end", () => {
       let call;
-      try { call = JSON.parse(s); } catch (e) { return; }   // not a hook: run
+      try { call = JSON.parse(s); } catch (e) { return out("", ""); }  // not a hook: run
+      const cwd = String(call.cwd || "");
       const tool = String(call.tool_name || "");
-      if (/^mcp__.*create_pull_request$/.test(tool)) return;
+      if (/^mcp__.*create_pull_request$/.test(tool)) return out("", cwd);
       if (tool === "Bash") {
         const cmd = String((call.tool_input && call.tool_input.command) || "");
-        if (/(^|[;&|("\x27]|\n)\s*gh\s+pr\s+create\b/.test(cmd)) return;
-        console.log("a Bash call that is not `gh pr create`");
-        return;
+        if (/(^|[;&|("\x27]|\n)\s*gh\s+pr\s+create\b/.test(cmd)) return out("", cwd);
+        return out("a Bash call that is not `gh pr create`", cwd);
       }
-      console.log("a " + tool + " call");
+      out("a " + tool + " call", cwd);
     });')"
+  verdict="$(printf '%s\n' "$parsed" | sed -n 1p)"
+  hook_cwd="$(printf '%s\n' "$parsed" | sed -n 2p)"
   if [ -n "$verdict" ]; then
     echo "smoke-gate: hook fired on $verdict — not a pull request being opened, skipping"
     exit 0
   fi
 fi
+
+# Which tree to test. The hook's command is "$CLAUDE_PROJECT_DIR"/tools/smoke-gate.sh
+# and CLAUDE_PROJECT_DIR is the MAIN checkout, so when a pull request is opened
+# from a git worktree — which is how every agent-built branch in plans 032-037
+# was made — this script's own directory is the wrong tree. Rooting there diffs
+# a clean main against origin/main, finds nothing, prints "nothing the tests can
+# see changed" and exits 0: a silent pass on a branch nothing ran against, which
+# is worse than having no gate at all. So the tree to test is where the call came
+# from — the hook's own cwd, else this process's — and either is taken only when
+# it is a worktree of the SAME repository, compared by the shared git directory
+# every worktree of one repo points at. Anything else falls back to this script's
+# own tree, which is what a plain by-hand run in the main checkout wants.
+repo_key() { ( cd "$1" 2>/dev/null && d="$(git rev-parse --git-common-dir 2>/dev/null)" && cd "$d" 2>/dev/null && pwd ) 2>/dev/null; }
+script_key="$(repo_key "$SCRIPT_ROOT")"
+for cand in "$hook_cwd" "$PWD"; do
+  [ -n "$cand" ] && [ -d "$cand" ] || continue
+  [ -n "$script_key" ] && [ "$(repo_key "$cand")" = "$script_key" ] || continue
+  # Through `cd`+`pwd`, so it is spelled the way SCRIPT_ROOT is and the two can
+  # be compared: on Windows `git rev-parse` answers C:/… where the shell says /c/….
+  cand_top="$(cd "$cand" && d="$(git rev-parse --show-toplevel 2>/dev/null)" && cd "$d" && pwd)"
+  [ -n "$cand_top" ] && ROOT="$cand_top"
+  break
+done
+cd "$ROOT" || exit 2
+[ "$ROOT" = "$SCRIPT_ROOT" ] || echo "smoke-gate: testing the worktree the call came from: $ROOT"
 
 PLAYWRIGHT_VERSION="${PLAYWRIGHT_VERSION:-1.56.1}"
 SMOKE_GATE_BASE="${SMOKE_GATE_BASE:-origin/main}"

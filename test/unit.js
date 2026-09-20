@@ -3057,8 +3057,14 @@ ok('blocks/mujer-bloque-1.json priority matches DEFAULT_PRIORITY_PAREJA',
 console.log('\n== the PR gate recognises gh pr create wherever it hides (plans/029) ==');
 {
   const gate = fs.readFileSync(path.join(ROOT, 'tools/smoke-gate.sh'), 'utf8');
-  const m = /if \((\/\(\^\|\[[^\]]*\]\|\\n\)\\s\*gh\\s\+pr\\s\+create\\b\/)\.test\(cmd\)\) return;/.exec(gate);
-  ok('the gate regex is where the plan left it', !!m, gate.slice(0, 0));
+  // Anchored on the literal and the string it is tested against, not on the
+  // statement around it: what matters is that this regex still decides whether
+  // a command opens a pull request. Pinning `if (…) return;` as well made the
+  // whole section vanish the first time the surrounding function changed shape
+  // (it grew a second return value when the gate learned to find the worktree),
+  // and a section that stops running is worse than one that fails.
+  const m = /(\/\(\^\|\[[^\]]*\]\|\\n\)\\s\*gh\\s\+pr\\s\+create\\b\/)\.test\(cmd\)/.exec(gate);
+  ok('the gate still decides on the command with the plan\'s regex', !!m, gate.slice(0, 0));
   if (m) {
     const re = eval(m[1]);   // the literal, as JS
     const gated = ['gh pr create --title x', 'git push -u origin HEAD && gh pr create --fill', 'cd /repo; gh pr create',
