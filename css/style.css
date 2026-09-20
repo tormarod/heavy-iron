@@ -90,12 +90,18 @@
 /* Without this, a keyboard user tabbing to a control the sticky header
    covers gets a focus ring the browser scrolled to the top edge of, not
    below the header — WCAG 2.4.11 (Focus Not Obscured), failure F110,
-   technique C43. 140px covers the folded header (.top measures 133px at
-   375px wide, plans/034) plus slack; 90px covers the rest timer when it is
-   up. Anything that changes the header's height changes this number —
-   update it here, rather than adding a second rule. */
+   technique C43. The band reserved at the top is the folded header (.top
+   measures 133px at 375px wide, plans/034) plus slack, plus the same top
+   inset .top itself is padded with below — index.html asks for
+   viewport-fit=cover and the manifest is standalone, so on a notched phone
+   that inset is live and .top is really 177-192px tall, not 133. A flat
+   140px there would put a focused control 37-52px under the header on
+   exactly the devices plans/032's safe-area work was written for.
+   90px covers the rest timer when it is up. Anything that changes the
+   header's height changes the 140 — update it here, rather than adding a
+   second rule. */
 html {
-  scroll-padding-top: 140px;
+  scroll-padding-top: calc(140px + env(safe-area-inset-top));
   scroll-padding-bottom: calc(90px + env(safe-area-inset-bottom));
 }
 

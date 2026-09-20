@@ -3716,6 +3716,20 @@ const ok = (name, cond, extra) => {
     ok('.timer has a paddingBottom length declared (0px is correct with no inset)', /^-?\d/.test(timerPad), timerPad);
     const cssText = await page.evaluate(() => fetch('css/style.css').then(r => r.text()));
     ok('css/style.css declares safe-area-inset-bottom', cssText.includes('safe-area-inset-bottom'));
+    /* Not merely that the string is in the file — .top's own padding-top
+       already puts safe-area-inset-top in it, so the only form of this
+       check that guards anything is that the scroll-padding-top
+       *declaration* carries the inset too. Without it, .top is 177-192px on
+       a notched phone against a flat 140px reserved band, and a focused
+       control lands 37-52px underneath it: F110 again, on exactly the
+       devices plans/032's safe-area work was for (plans/034 fix round 1).
+       The computed value is read as well, because a calc() malformed enough
+       to be dropped would leave the source string in place and the rule
+       gone. */
+    const scrollPadTop = await page.evaluate(() => getComputedStyle(document.documentElement).scrollPaddingTop);
+    ok('scroll-padding-top reserves the header plus the top safe-area inset',
+       /scroll-padding-top:\s*calc\([^;]*safe-area-inset-top/.test(cssText) && /^\d/.test(scrollPadTop),
+       scrollPadTop);
 
     await ctx.close();
   });
