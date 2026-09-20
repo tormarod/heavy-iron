@@ -72,6 +72,18 @@
   --timer-line: rgba(255,255,255,.25);
 }
 
+/* Without this, a keyboard user tabbing to a control the sticky header
+   covers gets a focus ring the browser scrolled to the top edge of, not
+   below the header — WCAG 2.4.11 (Focus Not Obscured), failure F110,
+   technique C43. 310px covers the header (.top measures 295px at 375px
+   wide, plan 031) plus slack; 90px covers the rest timer when it is up.
+   Plan 034 folds the header to one row and lowers scroll-padding-top to
+   140 — that executor should update this value, not add a second rule. */
+html {
+  scroll-padding-top: 310px;
+  scroll-padding-bottom: calc(90px + env(safe-area-inset-bottom));
+}
+
 body {
   font-family: var(--font-sans);
   background: var(--paper);
