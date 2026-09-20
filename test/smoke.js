@@ -1778,6 +1778,30 @@ const ok = (name, cond, extra) => {
        await card.locator('.set-row').first().locator('input').first().inputValue());
     ok('y dice de dónde salió',
        (await page.textContent('#status')).includes('el objetivo de esta semana'), await page.textContent('#status'));
+    /* Only the weight box has the adoption contract, and the tick that just
+       fired is the one place that could quietly break it. The RIR box was
+       showing the week's own target in grey at that moment — week 4 of the
+       seed plan reads "1–2 RIR" — and a reserve nobody reported is not a
+       measurement (plans/035 Step H.4, plans/036 Step C.5): the set has to
+       read as a floor, which is what sessionRirs, the objetivo's censoring
+       and the Diagnóstico all assume of a blank one. Adopting it would
+       feed the rule a number the lifter never gave it.
+
+       Here rather than in test/unit.js only because it cannot go there:
+       the handler is a closure inside buildExCard, and loadApp's inert
+       document hands querySelectorAll an empty array, so there is no row
+       to tick. */
+    const adopt = await page.evaluate(() => {
+      const row = document.querySelectorAll('.ex')[0].querySelector('.set-row');
+      const saved = getProfile().log['block-1']['w4-d0'].chestpress[0];
+      return { rirShown: row.querySelector('.rir-in').placeholder,
+               rirTyped: row.querySelector('.rir-in').value,
+               keys: Object.keys(saved).sort().join(','), w: saved.w };
+    });
+    ok('marcar no adopta el RIR que enseña la casilla, sólo el peso',
+       adopt.rirShown === '1' && adopt.rirTyped === '' &&
+       adopt.w === '47,25' && !adopt.keys.split(',').includes('rir'),
+       JSON.stringify(adopt));
     if (await page.locator('#timer.up').count()) await page.click('#tskip');
 
     /* The record of what was shown — the one thing that can later tell a
