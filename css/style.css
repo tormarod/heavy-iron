@@ -5,7 +5,12 @@
    these two blocks — that is the whole reason the dark theme is a dozen
    lines instead of a rewrite. `--on-*` tokens are the ink laid *on top* of
    a filled surface (a signal-blue tick, the near-black timer bar), which is
-   the one thing that cannot simply be inverted. */
+   the one thing that cannot simply be inverted. Among the neutrals: `--line`
+   divides (dividers, card borders, the header rule, the progress track),
+   `--edge` bounds a control (a button or field's own border), `--amber` is
+   a fill and `--amber-ink` is amber text — the two amber tokens exist
+   because a fill only needs 3:1 against its neighbour but text needs 4.5:1
+   against what is under it (plans/032). */
 :root {
   /* The webfont no longer blocks the app from starting (see index.html), so
      the fallback is what every cold start paints with for a moment — it has
@@ -16,9 +21,11 @@
   --card: #FBFAF7;
   --sunk: #F2F0EA;
   --ink: #17191C;
-  --soft: #71747A;
+  --soft: #585B61;
   --line: #CBC8BE;
+  --edge: #8A887F;
   --amber: #B87400;
+  --amber-ink: #8C5800;
   --amber-soft: #FBEFD8;
   --share: #7A4FBF;
   --share-soft: #EDE5FA;
@@ -51,7 +58,9 @@
   --ink: #E8E6E0;
   --soft: #9A9CA3;
   --line: #33363D;
+  --edge: #6B6F79;
   --amber: #E0A33C;
+  --amber-ink: #E0A33C;
   --amber-soft: #33270F;
   --share: #B79BEA;
   --share-soft: #292236;
@@ -72,6 +81,18 @@
   --timer-line: rgba(255,255,255,.25);
 }
 
+/* Without this, a keyboard user tabbing to a control the sticky header
+   covers gets a focus ring the browser scrolled to the top edge of, not
+   below the header — WCAG 2.4.11 (Focus Not Obscured), failure F110,
+   technique C43. 310px covers the header (.top measures 295px at 375px
+   wide, plan 031) plus slack; 90px covers the rest timer when it is up.
+   Plan 034 folds the header to one row and lowers scroll-padding-top to
+   140 — that executor should update this value, not add a second rule. */
+html {
+  scroll-padding-top: 310px;
+  scroll-padding-bottom: calc(90px + env(safe-area-inset-bottom));
+}
+
 body {
   font-family: var(--font-sans);
   background: var(--paper);
@@ -79,7 +100,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-#app { min-height: 100vh; padding-bottom: 100px; }
+#app { min-height: 100vh; padding-bottom: calc(100px + env(safe-area-inset-bottom)); }
 /* Each profile carries an accent. `hombre`/`mujer` are the names the app
    shipped with and are kept as aliases so existing saved profiles do not
    change colour; new ones pick `azul` or `verde` by name. */
@@ -108,7 +129,7 @@ body {
 /* ---- profile switcher ---- */
 .profiles { display: flex; gap: 6px; padding-top: 14px; }
 .profile-btn {
-  flex: 1; border: 1px solid var(--line); background: transparent;
+  flex: 1; border: 1px solid var(--edge); background: transparent;
   color: var(--soft); font-family: var(--font-sans); font-weight: 600; font-size: 12.5px;
   padding: 9px; border-radius: 2px; cursor: pointer; letter-spacing: 0.02em;
   transition: all .12s;
@@ -119,7 +140,7 @@ body {
 /* ---- block bar ---- */
 .blockbar { display: flex; align-items: center; gap: 7px; padding: 10px 0 4px; flex-wrap: wrap; }
 .blockbar select {
-  flex: 1; min-width: 120px; height: 34px; border: 1px solid var(--line); background: var(--card);
+  flex: 1; min-width: 120px; height: 34px; border: 1px solid var(--edge); background: var(--card);
   color: var(--ink); font-family: var(--font-sans); font-size: 12.5px; font-weight: 600;
   border-radius: 2px; padding: 0 8px;
 }
@@ -129,6 +150,7 @@ body {
   position: sticky; top: 0; z-index: 40;
   background: var(--paper);
   border-bottom: 1px solid var(--line);
+  padding-top: env(safe-area-inset-top);
 }
 
 .title {
@@ -138,7 +160,7 @@ body {
 .title-row { display: flex; align-items: center; gap: 8px; }
 .title-row .title { flex: 1; min-width: 0; }
 .icon-btn {
-  flex: 0 0 auto; width: 30px; height: 26px; border: 1px solid var(--line);
+  flex: 0 0 auto; width: 30px; height: 26px; border: 1px solid var(--edge);
   background: transparent; color: var(--soft); border-radius: 2px; cursor: pointer;
   font-size: 15px; line-height: 1; display: flex; align-items: center; justify-content: center;
   font-family: 'IBM Plex Mono', ui-monospace, monospace; padding-bottom: 1px;
@@ -150,7 +172,7 @@ body {
 
 .wk {
   flex: 0 0 auto; width: 38px; height: 34px; position: relative;
-  border: 1px solid var(--line); background: transparent;
+  border: 1px solid var(--edge); background: transparent;
   font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 500;
   color: var(--soft); cursor: pointer; border-radius: 2px;
   display: flex; align-items: center; justify-content: center;
@@ -167,9 +189,14 @@ body {
 
 .days { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; padding-bottom: 12px; }
 
+/* A <button>'s default text colour follows the OS scheme through the
+   color-scheme meta (index.html:12), not data-theme — every other button
+   class in this file states its own colour, and this was the one that
+   didn't. */
 .day {
-  border: 1px solid var(--line); background: transparent; cursor: pointer;
+  border: 1px solid var(--edge); background: transparent; cursor: pointer;
   padding: 9px 6px; border-radius: 2px; text-align: left; transition: all .12s;
+  color: var(--ink);
 }
 .day:hover { border-color: var(--ink); }
 .day.on { background: var(--ink); border-color: var(--ink); }
@@ -213,10 +240,12 @@ body {
 /* Number in the middle, one arrow above and one below: the column reads as
    "this is where it happened, and here is how to move it". Fixed width so
    the names to the right of it line up card to card whether or not an
-   arrow is disabled. */
+   arrow is disabled. 24px, matching .ex-ord below it: SC 2.5.8 needs a 24px
+   target, and a narrower column let the arrow's own box bleed 2px past it
+   on each side (plan 032 fix round 1). */
 .ex-num {
-  display: flex; flex-direction: column; align-items: center; gap: 1px;
-  padding-top: 1px; width: 20px; flex: 0 0 20px;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding-top: 1px; width: 24px; flex: 0 0 24px;
 }
 .ex-ord-n {
   font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600;
@@ -224,7 +253,7 @@ body {
 }
 .ex.complete .ex-ord-n { color: var(--signal); }
 .ex-ord {
-  width: 20px; height: 14px; padding: 0; border: none; background: transparent;
+  width: 24px; height: 20px; padding: 0; border: none; background: transparent;
   color: var(--soft); font-size: 11px; line-height: 1; cursor: pointer; opacity: .55;
   border-radius: 2px;
 }
@@ -242,7 +271,7 @@ body {
 }
 .ord-note[hidden] { display: none; }
 .ord-reset {
-  background: transparent; border: 1px solid var(--line); color: var(--soft);
+  background: transparent; border: 1px solid var(--edge); color: var(--soft);
   font-size: 10px; font-family: var(--font-sans); font-weight: 600;
   padding: 3px 7px; border-radius: 2px; cursor: pointer;
 }
@@ -250,15 +279,16 @@ body {
 .ex-body { flex: 1; min-width: 0; }
 .ex-name { font-size: 15px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.25; }
 .ex-alt { font-size: 11.5px; color: var(--soft); margin-top: 3px; }
-.ex-cue { font-size: 11.5px; color: var(--amber); margin-top: 4px; font-weight: 500; }
+.ex-cue { font-size: 11.5px; color: var(--amber-ink); margin-top: 4px; font-weight: 500; }
 .ex-target {
   font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600;
   text-align: right; white-space: nowrap; padding-top: 2px;
 }
 .ex-rest { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--soft); margin-top: 3px; text-align: right; }
 .ex-chart-btn {
-  margin-top: 5px; background: transparent; border: 1px solid var(--line); color: var(--soft);
-  font-size: 10px; font-family: var(--font-sans); font-weight: 600; padding: 3px 7px; border-radius: 2px; cursor: pointer;
+  margin-top: 5px; background: transparent; border: 1px solid var(--edge); color: var(--soft);
+  font-size: 11px; font-family: var(--font-sans); font-weight: 600; padding: 5px 9px; border-radius: 2px; cursor: pointer;
+  min-height: 28px;
 }
 .ex-chart-btn:hover { border-color: var(--signal); color: var(--signal); }
 
@@ -296,7 +326,7 @@ body {
 .sets { padding: 4px 13px 12px; }
 
 .ex-parked {
-  font-size: 11px; line-height: 1.45; color: var(--amber);
+  font-size: 11px; line-height: 1.45; color: var(--amber-ink);
   background: var(--amber-soft); border-top: 1px solid var(--line);
   padding: 7px 13px;
 }
@@ -306,13 +336,14 @@ body {
 .ex-setup-btn {
   background: transparent; border: none; color: var(--soft);
   font-family: 'IBM Plex Mono', monospace; font-size: 10.5px;
-  padding: 2px 0 6px; cursor: pointer; text-align: left;
+  padding: 6px 0; cursor: pointer; text-align: left;
+  min-height: 28px;
 }
 .ex-setup-btn:hover { color: var(--ink); }
 .ex-setup-box { padding-bottom: 8px; }
 .ex-setup-box input {
   width: 100%; height: 34px; padding: 0 9px;
-  border: 1px solid var(--line); border-radius: 2px; background: var(--sunk);
+  border: 1px solid var(--edge); border-radius: 2px; background: var(--sunk);
   font-size: 13px; color: var(--ink);
 }
 .ex-setup-box input:focus { outline: none; border-color: var(--signal); box-shadow: 0 0 0 2px var(--signal-soft); }
@@ -332,7 +363,7 @@ body {
   padding: 0 13px 8px;
 }
 .ex-est.up { color: var(--signal); }
-.ex-est.down { color: var(--amber); }
+.ex-est.down { color: var(--amber-ink); }
 /* Inline so the confidence chip sits beside the numbers rather than under
    them — "47,25×9 · 45×9  confianza media" reads as one sentence. */
 .ex-est-l { display: inline; }
@@ -341,7 +372,7 @@ body {
    card is a chip nobody reads. */
 .ex-est-c {
   display: inline-block; margin-left: 6px; padding: 0 5px;
-  border: 1px solid var(--line); border-radius: 2px;
+  border: 1px solid var(--edge); border-radius: 2px;
   font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; color: var(--soft);
   white-space: nowrap;
 }
@@ -357,7 +388,7 @@ body {
 .energy-chips { display: flex; gap: 5px; }
 .energy-chip {
   height: 26px; min-width: 44px; padding: 0 10px;
-  border: 1px solid var(--line); border-radius: 2px; background: var(--card);
+  border: 1px solid var(--edge); border-radius: 2px; background: var(--card);
   font-size: 11px; color: var(--soft); cursor: pointer;
 }
 .energy-chip:hover { border-color: var(--signal); color: var(--signal); }
@@ -370,13 +401,13 @@ body {
   padding: 8px 10px; margin: 0 0 10px;
 }
 .deload-check.good { color: var(--signal); background: var(--signal-soft); }
-.deload-check.bad { color: var(--amber); background: var(--amber-soft); }
+.deload-check.bad { color: var(--amber-ink); background: var(--amber-soft); }
 
 /* ---- the global brake ----
    Same box as the deload check, one notch louder: it is the only thing on
    the screen that overrides every card's own answer. */
 .brake-note {
-  font-size: 11.5px; line-height: 1.45; color: var(--amber);
+  font-size: 11.5px; line-height: 1.45; color: var(--amber-ink);
   background: var(--amber-soft); border: 1px solid var(--line); border-radius: 2px;
   padding: 8px 10px; margin: 0 0 10px;
 }
@@ -389,7 +420,7 @@ body {
 }
 #sesNote {
   width: 100%; height: 36px; padding: 0 9px;
-  border: 1px solid var(--line); border-radius: 2px; background: var(--card);
+  border: 1px solid var(--edge); border-radius: 2px; background: var(--card);
   font-size: 13px; color: var(--ink);
 }
 #sesNote:focus { outline: none; border-color: var(--signal); box-shadow: 0 0 0 2px var(--signal-soft); }
@@ -408,7 +439,7 @@ body {
 .rir-chips { display: flex; gap: 5px; }
 .rir-chip {
   height: 26px; min-width: 30px; padding: 0 8px;
-  border: 1px solid var(--line); border-radius: 2px; background: var(--card);
+  border: 1px solid var(--edge); border-radius: 2px; background: var(--card);
   font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600;
   color: var(--soft); cursor: pointer;
 }
@@ -428,7 +459,7 @@ body {
 .fld { position: relative; }
 .fld input {
   width: 100%; height: 40px; padding: 0 27px 0 9px;
-  border: 1px solid var(--line); border-radius: 2px; background: var(--card);
+  border: 1px solid var(--edge); border-radius: 2px; background: var(--card);
   font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 500; color: var(--ink);
   -moz-appearance: textfield;
 }
@@ -441,8 +472,8 @@ body {
 .set-row.done .fld input { background: var(--sunk); }
 
 .tick {
-  height: 40px; border: 1px solid var(--line); background: var(--card);
-  border-radius: 2px; cursor: pointer; font-size: 16px; color: var(--line);
+  height: 40px; border: 1px solid var(--edge); background: var(--card);
+  border-radius: 2px; cursor: pointer; font-size: 16px; color: var(--edge);
   display: flex; align-items: center; justify-content: center; transition: all .12s;
 }
 .tick { width: 100%; font-family: 'Archivo', sans-serif; padding: 0; }
@@ -455,8 +486,8 @@ body {
    one set at a glance. */
 .drop-add {
   height: 40px; width: 100%; padding: 0;
-  border: 1px solid var(--line); border-radius: 2px; background: var(--card);
-  font-family: 'Archivo', sans-serif; font-size: 14px; color: var(--line);
+  border: 1px solid var(--edge); border-radius: 2px; background: var(--card);
+  font-family: 'Archivo', sans-serif; font-size: 14px; color: var(--edge);
   display: flex; align-items: center; justify-content: center; cursor: pointer;
   transition: all .12s;
 }
@@ -476,7 +507,7 @@ body {
 }
 .drop-x {
   height: 34px; width: 100%; padding: 0;
-  border: 1px solid var(--line); border-radius: 2px; background: var(--card);
+  border: 1px solid var(--edge); border-radius: 2px; background: var(--card);
   font-family: 'Archivo', sans-serif; font-size: 11px; color: var(--soft);
   display: flex; align-items: center; justify-content: center; cursor: pointer;
 }
@@ -487,7 +518,7 @@ body {
 .drop-kind { display: flex; gap: 5px; padding: 2px 0 6px 33px; }
 .drop-chip {
   padding: 3px 8px;
-  border: 1px solid var(--line); border-radius: 2px; background: var(--card);
+  border: 1px solid var(--edge); border-radius: 2px; background: var(--card);
   font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600;
   color: var(--soft); cursor: pointer;
 }
@@ -513,10 +544,15 @@ body {
 .badge.pr-e1rm { background: transparent; color: var(--amber); border: 1px solid var(--amber); }
 
 /* ---- rest timer ---- */
+/* iOS draws the home indicator over the bottom of the viewport in standalone
+   mode (viewport-fit=cover, index.html:11); WebKit's rule is that content
+   under it is untappable, so the timer's own controls need this padding to
+   clear it. */
 .timer {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
   background: var(--timer-bg); color: var(--timer-ink);
   transform: translateY(105%); transition: transform .25s cubic-bezier(.2,.8,.3,1);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 .timer.up { transform: translateY(0); }
 .timer-fill { height: 3px; background: var(--signal); transition: width 1s linear; }
@@ -555,7 +591,7 @@ body {
 .note { font-size: 11.5px; color: var(--soft); line-height: 1.5; margin-bottom: 12px; }
 .foot-btns { display: flex; gap: 7px; flex-wrap: wrap; }
 .sm {
-  background: transparent; border: 1px solid var(--line); color: var(--soft);
+  background: transparent; border: 1px solid var(--edge); color: var(--soft);
   padding: 7px 11px; border-radius: 2px; font-family: var(--font-sans);
   font-size: 11px; font-weight: 500; cursor: pointer;
 }
@@ -572,7 +608,7 @@ body {
 /* One-line notices that need an answer (a new version is ready, another tab
    changed the log). Sits above the rest timer so it is never hidden by it. */
 .toast {
-  position: fixed; left: 50%; transform: translateX(-50%); bottom: 14px; z-index: 70;
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(14px + env(safe-area-inset-bottom)); z-index: 70;
   /* width, not max-width: shrink-to-fit squeezed the message into a three-line
      column beside the buttons */
   display: flex; align-items: center; gap: 9px; width: min(520px, calc(100% - 24px));
@@ -583,7 +619,7 @@ body {
 .toast[hidden] { display: none; }
 .toast > span { flex: 1; min-width: 0; }
 .toast .sm { flex: 0 0 auto; }
-.timer.up ~ .toast { bottom: 86px; }
+.timer.up ~ .toast { bottom: calc(86px + env(safe-area-inset-bottom)); }
 
 /* ---- sheets (modals) ---- */
 .sheet {
@@ -604,7 +640,7 @@ body {
 .sheet-d { font-size: 12px; color: var(--soft); line-height: 1.5; margin: 7px 0 12px; }
 .sheet-box textarea {
   width: 100%; height: 130px; resize: vertical;
-  border: 1px solid var(--line); border-radius: 2px; background: var(--paper);
+  border: 1px solid var(--edge); border-radius: 2px; background: var(--paper);
   padding: 9px; font-family: 'IBM Plex Mono', monospace; font-size: 11px;
   line-height: 1.45; color: var(--ink); word-break: break-all;
 }
@@ -617,12 +653,12 @@ body {
 .pe-day { border: 1px solid var(--line); border-radius: 3px; padding: 11px; margin-bottom: 12px; background: var(--paper); }
 .pe-block-name {
   width: 100%; padding: 8px; font-family: 'Archivo', sans-serif; font-size: 13px; font-weight: 700;
-  border: 1px solid var(--line); border-radius: 2px; background: var(--paper); color: var(--ink);
+  border: 1px solid var(--edge); border-radius: 2px; background: var(--paper); color: var(--ink);
   margin-bottom: 10px;
 }
 .pe-block-meta { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
 .pe-block-meta input, .pe-block-meta select {
-  padding: 7px 8px; border: 1px solid var(--line); border-radius: 2px;
+  padding: 7px 8px; border: 1px solid var(--edge); border-radius: 2px;
   background: var(--paper); color: var(--ink);
   font-family: 'IBM Plex Mono', monospace; font-size: 12.5px;
 }
@@ -630,20 +666,20 @@ body {
 .pe-block-meta select { min-width: 148px; font-family: 'Archivo', sans-serif; font-weight: 600; }
 .pe-day-head input {
   width: 100%; font-size: 14px; font-weight: 700; padding: 6px 8px; margin-bottom: 6px;
-  border: 1px solid var(--line); border-radius: 2px; background: var(--card); color: var(--ink); font-family: var(--font-sans);
+  border: 1px solid var(--edge); border-radius: 2px; background: var(--card); color: var(--ink); font-family: var(--font-sans);
 }
 .pe-day-head textarea {
   width: 100%; font-size: 11.5px; padding: 6px 8px; height: 50px; resize: vertical;
-  border: 1px solid var(--line); border-radius: 2px; background: var(--card); color: var(--ink); font-family: var(--font-sans);
+  border: 1px solid var(--edge); border-radius: 2px; background: var(--card); color: var(--ink); font-family: var(--font-sans);
 }
-.pe-ex { border: 1px solid var(--line); border-radius: 2px; padding: 8px; margin-top: 8px; background: var(--card); }
+.pe-ex { border: 1px solid var(--edge); border-radius: 2px; padding: 8px; margin-top: 8px; background: var(--card); }
 .pe-row { display: flex; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
 .pe-row input[type=text] {
-  flex: 1; min-width: 90px; padding: 6px 7px; border: 1px solid var(--line); border-radius: 2px;
+  flex: 1; min-width: 90px; padding: 6px 7px; border: 1px solid var(--edge); border-radius: 2px;
   font-family: var(--font-sans); font-size: 12px; background: var(--paper); color: var(--ink);
 }
 .pe-row input[type=number] {
-  width: 64px; padding: 6px 7px; border: 1px solid var(--line); border-radius: 2px;
+  width: 64px; padding: 6px 7px; border: 1px solid var(--edge); border-radius: 2px;
   font-family: 'IBM Plex Mono', monospace; font-size: 12px; background: var(--paper); color: var(--ink);
 }
 .pe-field-lbl { font-size: 9px; color: var(--soft); text-transform: uppercase; letter-spacing: 0.08em; display: block; margin-bottom: 2px; }
@@ -658,7 +694,7 @@ body {
 .pe-log-tag { font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; color: var(--signal); }
 .pe-tools { display: flex; gap: 4px; margin-left: auto; flex-shrink: 0; }
 .pe-icon-btn {
-  background: transparent; border: 1px solid var(--line); border-radius: 2px;
+  background: transparent; border: 1px solid var(--edge); border-radius: 2px;
   color: var(--soft); font-family: var(--font-sans); font-size: 10.5px; line-height: 1;
   padding: 5px 7px; cursor: pointer;
 }
@@ -667,7 +703,7 @@ body {
 .pe-icon-btn.danger:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
 .pe-icon-btn:disabled { opacity: .3; cursor: default; }
 .pe-move-sel {
-  background: transparent; border: 1px solid var(--line); border-radius: 2px;
+  background: transparent; border: 1px solid var(--edge); border-radius: 2px;
   color: var(--soft); font-family: var(--font-sans); font-size: 10.5px; line-height: 1;
   padding: 5px 4px; cursor: pointer; max-width: 108px;
 }
@@ -718,7 +754,7 @@ body {
    behind it. A dozen muscles superimposed on one chart is spaghetti on a
    phone, and the band can only be read behind one series at a time. */
 .vol-warn {
-  font-size: 11.5px; line-height: 1.45; color: var(--amber);
+  font-size: 11.5px; line-height: 1.45; color: var(--amber-ink);
   background: var(--amber-soft); border: 1px solid var(--line);
   border-radius: 2px; padding: 8px 10px; margin-bottom: 10px;
 }
@@ -742,7 +778,7 @@ body {
 .vol-pri {
   margin-left: 6px; font-family: 'IBM Plex Mono', monospace;
   font-size: 8.5px; font-weight: 700; letter-spacing: 0.08em;
-  color: var(--amber); vertical-align: 1px;
+  color: var(--amber-ink); vertical-align: 1px;
 }
 .vol-trend-chart { margin-top: 2px; }
 
@@ -751,7 +787,7 @@ body {
 .pri-chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 4px 0 2px; }
 .pri-chip {
   height: 28px; padding: 0 10px;
-  border: 1px solid var(--line); border-radius: 2px; background: var(--card);
+  border: 1px solid var(--edge); border-radius: 2px; background: var(--card);
   font-size: 11.5px; color: var(--soft); cursor: pointer;
 }
 .pri-chip:hover { border-color: var(--amber); color: var(--ink); }
@@ -799,7 +835,7 @@ body {
 .seg { display: flex; gap: 6px; flex-wrap: wrap; }
 .seg-btn {
   flex: 1; min-width: 110px; padding: 9px 10px;
-  border: 1px solid var(--line); background: transparent; color: var(--soft);
+  border: 1px solid var(--edge); background: transparent; color: var(--soft);
   font-family: 'Archivo', sans-serif; font-size: 12.5px; font-weight: 600;
   border-radius: 2px; cursor: pointer; transition: all .12s;
 }
@@ -813,7 +849,7 @@ body {
 .setup-name { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .setup-name input {
   flex: 1; min-width: 150px; padding: 9px 10px;
-  border: 1px solid var(--line); border-radius: 2px;
+  border: 1px solid var(--edge); border-radius: 2px;
   background: var(--paper); color: var(--ink);
   font-family: 'Archivo', sans-serif; font-size: 13px; font-weight: 600;
 }
@@ -887,7 +923,7 @@ body {
   color: var(--soft);
 }
 .diag-row.down .diag-chip { color: var(--danger); }
-.diag-row.flat .diag-chip { color: var(--amber); }
+.diag-row.flat .diag-chip { color: var(--amber-ink); }
 .diag-row.up .diag-chip { color: var(--signal); }
 .diag-num {
   font-family: 'IBM Plex Mono', monospace; font-size: 10.5px;
@@ -920,7 +956,7 @@ body {
   font-family: 'IBM Plex Mono', monospace; font-size: 11px;
   font-weight: 600; color: var(--ink);
 }
-.freq-row.behind .freq-gap { color: var(--amber); }
+.freq-row.behind .freq-gap { color: var(--amber-ink); }
 .freq-meta {
   font-family: 'IBM Plex Mono', monospace; font-size: 10px;
   color: var(--soft); margin-top: 3px; line-height: 1.5;
@@ -962,7 +998,7 @@ body {
   padding: 8px 10px; margin-bottom: 10px;
 }
 .rev-deload.good { color: var(--signal); background: var(--signal-soft); }
-.rev-deload.bad { color: var(--amber); background: var(--amber-soft); }
+.rev-deload.bad { color: var(--amber-ink); background: var(--amber-soft); }
 .rev-row {
   border: 1px solid var(--line); border-radius: 2px; background: var(--card);
   padding: 8px 10px; margin-bottom: 6px;

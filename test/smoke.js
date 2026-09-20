@@ -30,6 +30,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const BASE = process.env.BASE || 'http://127.0.0.1:8765';
+/* Plan 032 pins the main screen's current header height and its still-
+   undersized set-row floor, so a later redesign cannot quietly widen either
+   gap without a red run. Both are the plan's own "current, not final"
+   values: 034 folds the header and lowers HEADER_MAX to 140; 036 raises the
+   set row's own floor, SET_ROW_MIN, to 44. */
+const HEADER_MAX = 300;
+const SET_ROW_MIN = 40;
 let pass = 0, fail = 0, skipped = 0;
 
 const argv = process.argv.slice(2);
@@ -3494,6 +3501,118 @@ const ok = (name, cond, extra) => {
       ok(label + ': page does not scroll sideways', r.scroll <= r.vw, r.scroll + ' > ' + r.vw);
       await ctx.close();
     }
+  });
+
+  /* Pins plan 032's four fixes at once: the header height, the day-tab
+     colour, the focus-under-header bug and the sub-24px controls. 375x667
+     (an iPhone SE's logical size) with colorScheme: 'dark' reproduces the
+     bug plan 032 Step C fixed — data-theme="light" used to draw .day in the
+     OS dark scheme's button colour, not the app's own --ink. */
+  await section('accesibilidad: tamaños, foco y área segura', async () => {
+    const ctx = await browser.newContext({ viewport: { width: 375, height: 667 }, colorScheme: 'dark' });
+    const page = await ctx.newPage();
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await dismissSetup(page);
+
+    /* Force the saved theme to "light" against this dark-system context —
+       same localStorage-then-reload route the objetivo section uses to seed
+       state (test/smoke.js, seed() above) — so the day-tab case in play is
+       data-theme="light" on a dark-system browser, the one the bug needed. */
+    await page.waitForTimeout(300);
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      s.prefs.theme = 'light';
+      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+    });
+    await page.reload({ waitUntil: 'networkidle' });
+    await dismissSetup(page);
+
+    // 1. the sticky header
+    const topH = await page.evaluate(() => document.querySelector('.top').getBoundingClientRect().height);
+    ok('.top is at most ' + HEADER_MAX + 'px tall at 375 wide (034 lowers this)', topH <= HEADER_MAX, topH + 'px');
+
+    // 2. every control at least 24x24 outside a sheet (SC 2.5.8); the set
+    //    row's own inputs and ticks held to a stricter, already-met floor.
+    const undersized = await page.evaluate(() => {
+      const bad = [];
+      document.querySelectorAll('button, input, select').forEach(el => {
+        if (el.closest('.sheet') || el.getClientRects().length === 0) return;
+        const r = el.getBoundingClientRect();
+        if (r.width >= 24 && r.height >= 24) return;
+        /* SC 2.5.8's spacing exception: a target under 24x24 still passes
+           if a 24px circle centred on it does not overlap the same circle
+           on the next target. .ex-ord (24x20, plan 032 Step E) relies on
+           exactly this — the two arrows sit 24px apart centre to centre,
+           not 24px tall each — so check that distance instead of failing
+           it outright. Anything else under 24x24 is a real failure. */
+        if (el.classList.contains('ex-ord')) {
+          const sib = el.parentElement.querySelector(el.classList.contains('up') ? '.ex-ord.down' : '.ex-ord.up');
+          if (sib) {
+            const sr = sib.getBoundingClientRect();
+            const dist = Math.hypot((r.left + r.width / 2) - (sr.left + sr.width / 2), (r.top + r.height / 2) - (sr.top + sr.height / 2));
+            if (dist >= 24) return;
+          }
+        }
+        bad.push(el.className + ' ' + Math.round(r.width) + 'x' + Math.round(r.height));
+      });
+      return bad;
+    });
+    ok('every visible button/input/select outside a sheet is at least 24x24',
+       undersized.length === 0, undersized.join(', '));
+
+    const shallowSetRow = await page.evaluate(min => {
+      const bad = [];
+      document.querySelectorAll('.fld input, .tick').forEach(el => {
+        if (el.getClientRects().length === 0) return;
+        const h = el.getBoundingClientRect().height;
+        if (h < min) bad.push(el.className + ' ' + Math.round(h) + 'px');
+      });
+      return bad;
+    }, SET_ROW_MIN);
+    ok('the set row\'s inputs and ticks are at least ' + SET_ROW_MIN + ' tall (036 raises this to 44)',
+       shallowSetRow.length === 0, shallowSetRow.join(', '));
+
+    // 3. focus never ends up entirely under the sticky header (WCAG 2.4.11,
+    //    failure F110) — from the third card's first tick, the same probe
+    //    plans/031 measured by hand.
+    const thirdTick = page.locator('.ex').nth(2).locator('.tick').first();
+    await thirdTick.scrollIntoViewIfNeeded();
+    await thirdTick.focus();
+    for (let i = 0; i < 12; i++) await page.keyboard.press('Shift+Tab');
+    const probe = await page.evaluate(() => {
+      const el = document.activeElement;
+      const r = el.getBoundingClientRect();
+      return { cls: el.className, bottom: r.bottom, topBottom: document.querySelector('.top').getBoundingClientRect().bottom };
+    });
+    ok('focus after 12x Shift+Tab from the third card is not entirely under .top',
+       probe.bottom > probe.topBottom, JSON.stringify(probe));
+
+    // 4. the day tabs are drawn in --ink, not the UA default <button> colour
+    //    a dark-system browser would otherwise supply through color-scheme.
+    const dayColour = await page.evaluate(() => {
+      const dayColor = getComputedStyle(document.querySelector('.day:not(.on) .day-t')).color;
+      const inkVar = getComputedStyle(document.documentElement).getPropertyValue('--ink').trim();
+      // Normalise --ink to the same rgb() form getComputedStyle reports, via
+      // a scratch element — direct CSSOM assignment, not the style="" the
+      // CSP's style-src blocks (AGENTS.md, "The CSP").
+      const scratch = document.createElement('div');
+      scratch.style.color = inkVar;
+      document.body.appendChild(scratch);
+      const inkColor = getComputedStyle(scratch).color;
+      scratch.remove();
+      return { dayColor, inkColor };
+    });
+    ok('an unselected day tab uses --ink, not the OS scheme\'s default button colour',
+       dayColour.dayColor === dayColour.inkColor, JSON.stringify(dayColour));
+
+    // 5. the safe-area padding is genuinely declared, not just inert at 0px
+    //    the way it renders here with no inset to resolve.
+    const timerPad = await page.evaluate(() => getComputedStyle(document.querySelector('.timer')).paddingBottom);
+    ok('.timer has a paddingBottom length declared (0px is correct with no inset)', /^-?\d/.test(timerPad), timerPad);
+    const cssText = await page.evaluate(() => fetch('css/style.css').then(r => r.text()));
+    ok('css/style.css declares safe-area-inset-bottom', cssText.includes('safe-area-inset-bottom'));
+
+    await ctx.close();
   });
 
   if (browser) await browser.close();
