@@ -18,7 +18,7 @@ what each screen does and why — is in **[the guide](docs/guide.md)**.
   [Block length](docs/guide.md#block-length-and-the-deload-week),
   [Editing a block mid-way](docs/guide.md#editing-a-block-mid-way).
 - **A session view** with last week's weight already in the box, a rest
-  timer whose alarm survives a locked screen, RIR and energy chips, a note
+  timer whose alarm survives a locked screen, RIR per set, energy chips, a note
   per session and **RÉCORD** badges —
   [During the session](docs/guide.md#during-the-session).
 - **A weight and rep target for every set, every week**, read off the
@@ -282,8 +282,8 @@ Field notes:
 - `ex.alt`, `ex.cue`: optional free text.
 - `ex.setup`: optional free text (max 200 characters) — machine settings
   (seat height, pin position) rather than a technique reminder, which is
-  what `cue` is for. Shown collapsed in the session, behind a `⚙` button,
-  and editable inline from there.
+  what `cue` is for. Previewed on the card's own line in the session and
+  editable inline behind the exercise's name.
 - `ex.muscle`: optional free text — which muscle the exercise counts
   towards in the weekly volume dashboard (e.g. `"Pecho"`, `"Espalda"`).
   This is an anatomical grouping: hack squat and leg press both count as

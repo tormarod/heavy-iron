@@ -21,16 +21,17 @@ week: the arrows step to the one either side, and a tap on the middle opens
 that week's goal text and the full strip, where a dot marks every week you
 have logged something in. A shared-station note is one line under that
 until you tap it, and stays open for the rest of the session. Each exercise
-below shows what it wants — `4 × 6–10`, rest time — over one row per set:
+below is one card: its position, its name, and one line saying what it wants
+— `4 × 6–10 · desc. 2,5 min · asiento 4`. Under that, one row per set, headed
+once by `kg · rep · RIR`:
 
 | Control | What it does |
 |---|---|
-| the two boxes | the weight and the reps you did. The greyed number is what you lifted on that set the last week you logged it — tick without typing and it takes that. `22,5` works. |
+| the three boxes | the weight, the reps and the RIR of that set. The greyed number in each is what the week asks of it — the objetivo's weight and reps for that set, and the week's own RIR. `22,5` works. Tick without typing and the set takes the **weight** showing; the other two stay empty, because a rep count or a reserve nobody reported is not a measurement. |
 | **↓** | records weight coming off *that* set — a dropset, or the drop you needed to finish the reps. Adds an indented row with its own boxes; up to four per set. See [Weight drops](#weight-drops). |
 | **✓** | marks the set done, and starts the rest timer. This is the control that counts: only ticked sets feed the chart, the **RÉCORD** badge and the totals. |
-| **⚙** | machine settings for that exercise — seat height, pin position. Saved to the plan, not to the log. |
-| **RIR último set** — `2+` `1` `0` | how the last set actually felt. Optional; tap the same chip again to clear it. |
-| **Progreso ↗** | that exercise's weight, or estimated 1RM, over time — across every day of the block that plans it. See [The same lift on two days](#the-same-lift-on-two-days). |
+| the name | tap it for what the card does not print: the alternative exercise, the amber cue, and the machine settings — seat height, pin position, saved to the plan rather than to the log. |
+| **⋯** | the five things that are not typing numbers: **Progreso ↗** (that exercise's weight, or estimated 1RM, over time — across every day of the block that plans it, see [The same lift on two days](#the-same-lift-on-two-days)), the two ways to move the exercise inside the session, the machine settings, and the calculator. |
 
 The rest timer runs along the bottom once a set is ticked: **−30**/**+30**
 move the finish line, **Son.** turns the alarm on, **Saltar** ends it.
@@ -416,10 +417,12 @@ charge, the line simply isn't there.
 
 - **The order you actually did them in.** The plan is a prescription, not a
   record: the bench is taken, so you do the lateral raises first and come
-  back to it. The **↑ / ↓** arrows beside each exercise's number move it up
-  or down the session, and the number is the position it was actually done
-  in. It is recorded per session, so the same day next week starts from the
-  plan again, and only when the sequence differs from the plan's — an
+  back to it. The card's **⋯** menu offers **"Hiciste este antes"** and
+  **"Hiciste este después"**, each naming the position the card lands in,
+  and the number in the square beside the name is the position it was
+  actually done in. It is recorded per session, so the same day next week
+  starts from the plan again, and only when the sequence differs from the
+  plan's — an
   untouched session stores nothing at all. A line above the list confirms
   the change and offers **Volver al orden del plan**, since undoing four
   swaps one arrow at a time is not a way back. Sets stay filed under the
@@ -475,18 +478,20 @@ charge, the line simply isn't there.
   resting for, when it ends, and the same **−30** / **+30** / skip — and
   the end of the rest also posts a notification, but only when the app is
   out of sight. Coming back to the app takes the notification down.
-- **RIR, per set.** Three chips — `2+` / `1` / `0` — after the sets, for
-  how the last one actually felt. Optional and empty by default, same as
-  `share`/`ss`: skip it and nothing changes. It is the other half of the
-  RIR target `phase` already prescribes per week — that number says what
-  the set was supposed to cost, this one says what it did, and tapping the
-  same chip again clears it. From this release the value is stored **on the
-  set**, not once per session, and the chip writes it onto the last set you
-  did; the objetivo then prices each set on its own reserve. It travels
-  with a "plan + registro" QR share on the row itself, and the `rir` column
-  of the CSV export is the set's own value, blank where you typed nothing —
-  a session logged before this release carries its one chip on that
-  session's last row.
+- **RIR, per set.** A third box in the set row, next to the reps: one
+  digit, `0` to `5`, for how that set actually felt. Optional and empty by
+  default, same as `share`/`ss`: skip it and nothing changes. It is the
+  other half of the RIR target `phase` already prescribes per week — that
+  number says what the set was supposed to cost, this one says what it did
+  — and the week's own target is the greyed number in the box. Empty it to
+  clear it. Anything outside `0`–`5` is refused rather than stored: past
+  five in reserve the number stops saying anything a lifter can feel. The
+  objetivo prices each set on its own reserve; the Diagnóstico and the
+  block review read the last set's as the session's. It travels with a
+  "plan + registro" QR share on the row itself, and the `rir` column of the
+  CSV export is the set's own value, blank where you typed nothing — a
+  session logged before the release that moved the record onto the row
+  carries its one chip on that session's last row.
 - **A rep-decay warning, for free.** No input needed: if the first set of an
   exercise falls away sharply by the last one, a small line appears under
   the sets — `⚠ caída de 4 reps: ¿primera serie al fallo?` — because that
@@ -511,9 +516,9 @@ charge, the line simply isn't there.
   [The weekly objetivo](#the-weekly-objetivo) below for what it does and
   does not claim.
 - **Energía, three chips before you start.** `baja` / `normal` / `alta`,
-  the same shape as the RIR chips but asked at the top of the session,
-  because how you arrived is a different question from how it went.
-  Optional and absent by default. It is never fed into any estimate and
+  asked at the top of the session rather than inside it, because how you
+  arrived is a different question from how it went. Optional and absent by
+  default. It is never fed into any estimate and
   never plotted as a line — it comes back as context in the block review
   ("las sesiones flojas movieron un 18 % menos"), which is all an optional
   input can honestly support.
@@ -533,11 +538,14 @@ charge, the line simply isn't there.
   length.
 - **A ↓ on every set, for the weight that came off.** See
   [Weight drops](#weight-drops) below.
-- **Ajustes**, collapsed. A `⚙` button under each exercise's name opens a
-  one-line field for seat height, pin position — whatever you'd otherwise
-  have crammed into the technique cue. It is a plan field, not a log one:
-  editing it here writes straight to the exercise, same as **Editar plan**
-  would, just from where you actually notice it needs setting.
+- **Ajustes de máquina**, behind the name. Tapping an exercise's name opens
+  a one-line field for seat height, pin position — whatever you'd otherwise
+  have crammed into the technique cue — along with the alternative exercise
+  and the technique cue themselves. The card's own line previews what is in
+  it, so you rarely have to open it at all. It is a plan field, not a log
+  one: editing it here writes straight to the exercise, same as **Editar
+  plan** would, just from where you actually notice it needs setting. The
+  **⋯** menu opens the same fold with the cursor already in the field.
 - **Rellenar con el objetivo writes what the objetivo says**, set by set.
   It calls the same rule the line under the sets shows and the same one the
   placeholder in each weight box shows, so the three can never disagree:
@@ -574,11 +582,11 @@ they were never the same lift.
 - The card shows a **second history band** under the first, tagged with
   the other session's day (`SEM. 2 · PECHO/BRAZO…`). The first band is
   still this session's own last time.
-- **Progreso ↗** plots every session of that lift in the block on one
-  line. A week can now hold two points, which a week axis has nowhere to
-  put, so for these lifts the axis counts sessions and the labels name the
-  day (`S3 · Empuje`). A lift planned on one day only keeps the week axis
-  exactly as before.
+- **Progreso ↗**, in the card's **⋯** menu, plots every session of that
+  lift in the block on one line. A week can now hold two points, which a
+  week axis has nowhere to put, so for these lifts the axis counts
+  sessions and the labels name the day (`S3 · Empuje`). A lift planned on
+  one day only keeps the week axis exactly as before.
 
 [The objetivo](#the-weekly-objetivo) keeps the two days apart inside the
 block, and that is the whole reason the card keeps two bands instead of
@@ -1089,7 +1097,7 @@ already log.
 **Por ejercicio** fits a line through the *level* of every exercise in the
 current plan at once and sorts them **worst first**: `bajando` · `plano` ·
 `subiendo`. Like everything else here it asks for no new input — it reads
-the weights, reps, RIR chips and timestamps you are already recording.
+the weights, reps, RIR and timestamps you are already recording.
 
 - **The slope** is least squares over the last 6 sessions of the same
   `level` [the weekly objetivo](#the-weekly-objetivo) is built on,
