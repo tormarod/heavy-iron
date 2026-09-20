@@ -52,6 +52,13 @@ below so it is not lost or re-audited.
 | 028 | [A rename compares slugs and says what it cut](done/028-rename-compares-slugs-and-says-what-it-cut.md) | P2 | S | LOW–MED | — | DONE (optional smoke step skipped — the only "Guardar cambios" section never renames an exercise; four of the five new assertions fail on revert, not three — see PR #103) |
 | 029 | [Docs, briefing and self-description match the code; Node 22; gate regex; doc-link check; `.editorconfig`](done/029-docs-and-dx-sync.md) | P2 | S | LOW | 021 (soft: the `obj` bullet) | DONE (the slug rule uses `\s`, not `\s+`, so "Data & privacy" resolves as GitHub does — see PR #104) |
 | 030 | [Sixth pass: user-facing features, direction only](030-user-facing-features-research.md) | — | — | — | — | TODO — a menu, not a plan: 31 new options ranked with `file:line` evidence, the fourth audit's 15 open options carried, a market comparison of 17 apps, and a platform table; nothing is planned until the maintainer picks |
+| 031 | [Seventh pass: the main screen's layout and accessibility, direction and mockups](031-frontend-layout-research.md) | — | — | — | — | TODO — a menu, not a plan: the main screen measured at phone sizes (a 295 px sticky header, 28 controls under WCAG's 24 px, two real bugs: keyboard focus hidden under the header and the day tabs' colour following the OS), 18 layout options ranked with `file:line` evidence, a landing order, and twenty mockups in `031-mockups/` across four directions; **option 4 was picked on 2026-09-20 and is planned as 032–037 below** |
+| 032 | [Safe areas, focus under the header, the day-tab colour, contrast tokens and target sizes — pinned by a smoke section](032-safe-areas-focus-contrast-targets.md) | P1 | S | nil | — | TODO |
+| 033 | [Forja — the new design language, as tokens, type and radii on the existing structure](033-forja-language.md) | P1 | M | LOW–MED | 032 | TODO |
+| 034 | [Fold the chrome — one top row, 60 px day tabs, the week as a selector, the pair note behind a tap, landmarks](034-fold-the-chrome.md) | P1 | S–M | LOW–MED | 032, 033 | TODO |
+| 035 | [RIR per set — the row carries it, the objetivo prices every set on its own RIR, the signals and exports follow, and the input's contract](035-rir-per-set.md) | P1 | M–L | MED | — (land alone in `js/app.js`) | TODO |
+| 036 | [The card — one header row, `kg · rep · RIR` rows, no set number, the "⋯" menu, the plan text behind the name](036-the-card.md) | P1 | M | MED | 033, 034, 035 | TODO |
+| 037 | [The app shell — a four-destination bar, "Más", the session's two actions above the list, the timer in the bar's place, bottom sheets](037-app-shell.md) | P1 | M–L | MED | 034, 036 | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
@@ -90,6 +97,18 @@ REJECTED (with one-line rationale)
   009 item 8 ↔ 015 Step 1 (AGENTS.md line references).
   009 items 5–6 (import write path, one entry point per shape) touch the
   same functions as 010 and 012; land 010 and 012 first, they are bug fixes.
+
+- **032–037 are option 4 of plans/031, in landing order.** 032 first
+  (CSS-only fixes plus the smoke section and the unit contrast assertion
+  every later plan is measured against); 033 next (the Forja tokens, type
+  and radii, so 034, 036 and 037 draw their screens in the final look);
+  034 (the header); **035 is a data-model change and lands alone in
+  `js/app.js`** — it does not depend on 032–034 and can be worked in
+  parallel by another executor, but it must be merged before 036; 036 (the
+  card) needs 033, 034 and 035; 037 (the shell) needs 034 and 036 and lands
+  last. Every one bumps `CACHE_VERSION`: land them one at a time and take
+  the highest version on conflict. 035 and 036 both edit `buildExCard`'s
+  neighbourhood; 036's drift check compares against 035's result.
 
 ## A rule that applies to every plan touching `index.html`, `css/` or `js/`
 
@@ -609,6 +628,68 @@ market lens corrected on the way: the app-icon badge is iOS-only (Android
 Chrome has no `setAppBadge`), and "stop the timer after the last set" is
 the fourth-highest idea on Liftosaur's board, so it joined the timer
 option.
+
+## Seventh pass (2026-09-20) — the main screen's layout and accessibility
+
+A direction-only pass at commit `efc6eca` (the merge of PR #106), asked
+for as "how can the main page be more accessible and less crowded", in
+[031-frontend-layout-research.md](031-frontend-layout-research.md), with
+twenty mockups rendered to `031-mockups/` and, editable, on a private
+design canvas linked from that file. Three lenses: the screen measured
+in a real browser at 375×812, 375×667, 768 and 1280 (every height,
+control size and contrast ratio is a measurement on the app's own
+tokens); the code that draws it, with `file:line` for every finding; and
+the standards — WCAG 2.2, the Apple HIG, Material 3 including its 2025
+changes, WebKit's safe-area rules, NN/g — plus the documented in-session
+layouts of nine comparable apps, read by a research subagent.
+
+**The numbers**: the sticky header is 295 px (44 % of a 667 px phone;
+310 px of session are left once the timer is up); 19 controls live in
+it; 14 global actions sit in two flat rows at 28 px; 28 controls are
+under WCAG 2.2's 24 px minimum and 190 of 193 under the 44 px both
+platforms recommend; 60 of 118 font sizes are 11 px or less; light-theme
+secondary text is 3.3–4.5:1 and control borders 1.3–1.6:1 in both
+themes.
+
+**Two bugs, not density**: Shift+Tab can land keyboard focus entirely
+under the sticky header (SC 2.4.11, failure F110 — no `scroll-padding`
+anywhere), and `.day` sets no `color`, so with an explicit theme that
+differs from the OS scheme the unselected day names paint white on the
+light paper. Two more only show on an installed iPhone: `viewport-fit=
+cover` with no `env(safe-area-inset-*)` puts the timer and the toast in
+the home-indicator zone, and the 15 px set inputs trigger Safari's
+focus zoom.
+
+**The options worth weighing**, in landing order: the three CSS fixes
+and a smoke section that pins them (L6, L7, L13 — one PR, first); fold
+the chrome to two rows, 134 px, with the week as one line and the plan
+text behind a tap (L1, L2, L3, with landmarks L10); group the footer
+(L4); the card on a diet with 44–48 px controls and a per-exercise "⋯"
+(L5), and finished cards that fold (L15); a `rem` type scale (L9); and,
+only after a block on those, the app shell — a four-destination bottom
+bar with the timer taking its place while a rest runs (L8, with L11 and
+L14 and 030's N2). Each option names the smoke selectors it moves.
+
+**Two more directions, drawn on request and recorded as choices rather
+than findings**: option 3, "Enfoque" (L16), turns the list into a flow —
+one exercise per screen under a strip of exercise chips, the rest timer
+inline under the set that started it, a `Resumen` checklist for the day
+and everything else behind ≡; and option 4, "Forja" (L17), a new design
+language on option 2's structure — graphite and ember, Barlow Condensed
+and JetBrains Mono, square corners, in dark and light with a style
+tile. Both are choices to make after a block on option 1, not
+answers to the measurements.
+
+**Picked (2026-09-20): option 4**, revised on the canvas by the
+maintainer — square corners, the week as a 40 px selector with the goal
+text behind a tap, no set number on the card, and RIR per set typed next
+to the reps in place of the per-exercise chips. Its landing order is six
+plans: [032](032-safe-areas-focus-contrast-targets.md) the CSS fixes
+pinned by tests, [033](033-forja-language.md) the language,
+[034](034-fold-the-chrome.md) the header, [035](035-rir-per-set.md) the
+per-set RIR model (a data change, independent of the others, before the
+card), [036](036-the-card.md) the card, [037](037-app-shell.md) the shell.
+See "Dependency notes".
 
 ## Worth doing, not yet planned
 
