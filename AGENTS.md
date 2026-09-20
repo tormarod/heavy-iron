@@ -208,7 +208,11 @@ computed at runtime (a chart's max-width) goes
 through a real CSSOM property assignment (`el.style.maxWidth = ...`), which
 the CSP does not restrict, never `setAttribute('style', ...)` or
 `.style.cssText`, which it does. This is why the webfont flip lives in a
-real script rather than an inline `onload`.
+real script rather than an inline `onload`. Colour tokens follow a similar
+one-place rule: control borders use `--edge`, dividers `--line`, amber text
+`--amber-ink` (fills stay `--amber`), and the unit suite computes the
+contrast of every token pair straight from `css/style.css`, so a new pair
+below 4.5:1 (text) or 3:1 (borders) fails `node test/unit.js` (plans/032).
 
 ## Comment style
 
