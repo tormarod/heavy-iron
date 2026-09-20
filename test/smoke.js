@@ -3811,6 +3811,21 @@ const ok = (name, cond, extra) => {
          bar.btns.length === 4 && bar.btns.every(x => x.l >= 0 && x.r <= bar.vw && x.bot <= bar.vh && x.h >= 48),
          JSON.stringify(bar.btns) + ' in ' + bar.vw + 'x' + bar.vh);
 
+      /* The energy chips shipped flush against the week selector's border: the
+         row's only separation came from the pair note between them, so it read
+         correctly for a pair and touched for anyone training alone. Measured
+         with the note hidden, which is the case that was broken. */
+      const gap = await page.evaluate(() => {
+        const pair = document.querySelector('.pair'), was = pair.hidden;
+        pair.hidden = true;
+        const top = document.querySelector('.energy').getBoundingClientRect().top;
+        const bottom = document.querySelector('.week-row').getBoundingClientRect().bottom;
+        pair.hidden = was;
+        return Math.round(top - bottom);
+      });
+      ok(label + ': the energy chips do not touch the week selector with no pair note',
+         gap >= 8, gap + 'px');
+
       await page.locator('.ex').first().locator('.set-row').first().locator('input').first().fill('60');
       await page.locator('.ex').first().locator('.set-row').first().locator('.tick').click();
       await page.waitForTimeout(300);
