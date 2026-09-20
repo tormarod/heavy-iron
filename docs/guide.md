@@ -12,10 +12,16 @@ The app is in Spanish. This is what the screens do.
 to start from — then you are looking at week 1, day 1 of a block. Skipping
 it keeps the defaults. See [Making it yours](#making-it-yours).
 
-**A session, top to bottom.** Pick the week and the day in the two rows
-under the title. The banner states that week's goal and RIR target. Each
-exercise below it shows what it wants — `4 × 6–10`, rest time — over one
-row per set:
+**A session, top to bottom.** Two rows stay stuck to the top of the screen.
+The first is who is training and which block — two chips, each opening a
+sheet to change it — and **⋯**, which holds the light/dark theme for now.
+The second is the three days: tap one, or use the arrow keys once the row
+has the keyboard. Under the header, `‹ Semana 1 de 8 · 3 RIR ›` is the
+week: the arrows step to the one either side, and a tap on the middle opens
+that week's goal text and the full strip, where a dot marks every week you
+have logged something in. A shared-station note is one line under that
+until you tap it, and stays open for the rest of the session. Each exercise
+below shows what it wants — `4 × 6–10`, rest time — over one row per set:
 
 | Control | What it does |
 |---|---|
