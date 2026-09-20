@@ -2403,7 +2403,10 @@ function renderNav() {
   const wkBtn = $('weekBtn');
   wkBtn.innerHTML = '<span class="week-lbl"></span><span class="week-rir"></span><span class="chev" aria-hidden="true">▾</span>';
   wkBtn.querySelector('.week-lbl').textContent = 'Semana ' + profile.week + ' de ' + weeks;
-  wkBtn.querySelector('.week-rir').textContent = ph.r ? '· ' + ph.r : '';
+  /* The leading space is for the accessible name, not the pixels: .week-rir
+     is a flex item, so it is stripped before it is drawn, and the gap either
+     side of the separator is the 6px one. */
+  wkBtn.querySelector('.week-rir').textContent = ph.r ? ' · ' + ph.r : '';
   const scope = state.activeProfile + '|' + block.id + '|' + profile.day;
   if (scope !== weekPanelFor) { expandedWeek = false; weekPanelFor = scope; }
   applyWeekPanel();
