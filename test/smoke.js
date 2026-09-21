@@ -4061,6 +4061,84 @@ const ok = (name, cond, extra) => {
     await ctx.close();
   });
 
+  // ---------- the bar's fourth destination and the card's "⋯" (plans/036, plans/037) ----------
+  /* Three paths the shell rework left with no assertion in either suite:
+     the one hub row that must keep its hub up (data-keep-open — "Tema"
+     cycles in place and has to still be there to show what it cycled to),
+     the "⋯" rows that hand the keyboard into the fold and open the
+     calculator, and Sesión itself. Plus the keyboard each set box asks the
+     phone for — the one thing about the boxes headless Chromium can still
+     see (js/app.js, "text + inputmode rather than type=number"). */
+  await section('la barra y el menú de la tarjeta (plans/036, plans/037)', async () => {
+    const ctx = await browser.newContext({ viewport: { width: 375, height: 667 } });
+    const page = await ctx.newPage();
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await dismissSetup(page);
+
+    // 1. data-keep-open: "Tema" leaves the hub up; every other row puts it away.
+    //    closeSheet() and applyTheme() both run synchronously inside the
+    //    click handler (js/app.js), so there is nothing to wait on here —
+    //    the existing theme cases at :695-696 read data-theme the same way,
+    //    right after the click (plans/008 item 21: a condition or nothing,
+    //    never a fixed sleep).
+    await openHub(page, 'more');
+    await page.click('#themeBtn');
+    ok('"Tema" leaves the Más hub up (data-keep-open)', await page.locator('#moreSheet.up').count() === 1);
+    await page.click('#settings');
+    await page.waitForSelector('#setupSheet.up', { timeout: 4000 });
+    ok('...and "Ajustes" closes the hub on its way to the settings sheet',
+       await page.locator('#moreSheet.up').count() === 0 && await page.locator('#setupSheet.up').count() === 1);
+    await page.click('#setupClose');
+    await page.waitForSelector('#setupSheet.up', { state: 'hidden', timeout: 4000 });
+
+    // 2. Sesión: back to the top of the day. Neither scrollTo nor
+    //    $('main').scrollIntoView() (js/app.js) asks for smooth scrolling —
+    //    css/style.css sets no scroll-behavior — so each is a same-tick
+    //    jump; waiting on the scroll position itself is both correct and
+    //    faster than a guessed sleep.
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.waitForFunction(() => window.scrollY > 0, null, { timeout: 4000 });
+    const before = await page.evaluate(() => window.scrollY);
+    await page.click('#navSession');
+    await page.waitForFunction(prev => window.scrollY < prev, before, { timeout: 4000 });
+    const after = await page.evaluate(() => window.scrollY);
+    ok('Sesión scrolls the day back up', before > 0 && after < before, before + ' → ' + after);
+    ok('...and is the current page in the bar', await page.getAttribute('#navSession', 'aria-current') === 'page');
+
+    // 3. "Ajustes de máquina" from the "⋯" hands the keyboard into that card's fold
+    await openExMenu(page, 0);
+    await page.click('#exMenuSetup');
+    await page.waitForSelector('#exMenuSheet.up', { state: 'hidden', timeout: 4000 });
+    const setupFocus = await page.evaluate(() => {
+      const card = document.querySelector('.ex');
+      const fold = card.querySelector('.ex-more');
+      const el = document.activeElement;
+      return { open: !fold.hidden, focused: !!el && el.classList.contains('ex-setup-in') && card.contains(el) };
+    });
+    ok('"Ajustes de máquina" opens the first card\'s fold', setupFocus.open, JSON.stringify(setupFocus));
+    ok('...and puts the keyboard in that card\'s settings box', setupFocus.focused, JSON.stringify(setupFocus));
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
+
+    // 4. "Calculadora" from the "⋯"
+    await openExMenu(page, 0);
+    await page.click('#exMenuCalc');
+    await page.waitForSelector('#calcSheet.up', { timeout: 4000 });
+    ok('"Calculadora" from the menu opens the calculator sheet', await page.locator('#calcSheet.up').count() === 1);
+    await page.click('#calcClose');
+    await page.waitForSelector('#calcSheet.up', { state: 'hidden', timeout: 4000 });
+
+    // 5. the keyboard each box asks for — counted first, so a renamed class fails here and not vacuously
+    const boxes = page.locator('.ex').first().locator('.set-row input');
+    const modes = await boxes.evaluateAll(els =>
+      els.map(e => e.className + ':' + e.inputMode + (e.maxLength > 0 ? ':' + e.maxLength : '')));
+    ok('every set row asks for a number pad: weight decimal, reps numeric, RIR numeric and one digit',
+       modes.length >= 3 && modes.length % 3 === 0 &&
+       modes.every((m, i) => m === ['w-in:decimal', 'r-in:numeric', 'rir-in:numeric:1'][i % 3]),
+       modes.join(' '));
+
+    await ctx.close();
+  });
+
   if (browser) await browser.close();
   if (LIST) process.exit(0);
   if (wanted.length && !ran) {

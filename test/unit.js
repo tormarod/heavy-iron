@@ -138,9 +138,13 @@ ok('every js/ entry in SHELL exists on disk',
    entirely. */
 console.log('\n== css tokens keep WCAG contrast (plans/032, plans/033) ==');
 const cssSrc = fs.readFileSync(path.join(ROOT, 'css/style.css'), 'utf8');
+/* Hex or rgba(): the timer's --timer-dim/--timer-line and the --on-ink-*
+   tokens are translucent, and a regex that only read hex dropped them out
+   of this table silently — the one section whose job is to fail when a
+   token drifts (plans/042). */
 function tokenMap(blockSrc) {
   const map = {};
-  for (const m of blockSrc.matchAll(/--([\w-]+):\s*(#[0-9a-fA-F]{6})\s*;/g)) map[m[1]] = m[2];
+  for (const m of blockSrc.matchAll(/--([\w-]+):\s*(#[0-9a-fA-F]{6}|rgba?\([^)]*\))\s*;/g)) map[m[1]] = m[2];
   return map;
 }
 function luminance(hex) {
@@ -150,8 +154,16 @@ function luminance(hex) {
   });
   return 0.2126 * chan[0] + 0.7152 * chan[1] + 0.0722 * chan[2];
 }
-function contrast(hexA, hexB) {
-  const a = luminance(hexA), b = luminance(hexB);
+/* A translucent colour has no contrast of its own: it is composited over
+   the surface it sits on first, and the ratio is taken of the result. */
+function over(token, bgHex) {
+  if (token[0] === '#') return token;
+  const [r, g, b, a = 1] = /rgba?\(([^)]*)\)/.exec(token)[1].split(',').map(Number);
+  const bg = [1, 3, 5].map(i => parseInt(bgHex.slice(i, i + 2), 16));
+  return '#' + [r, g, b].map((v, i) => Math.round(a * v + (1 - a) * bg[i]).toString(16).padStart(2, '0')).join('');
+}
+function contrast(fg, bgHex) {
+  const a = luminance(over(fg, bgHex)), b = luminance(bgHex);
   return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
 }
 const lightTokens = tokenMap(/:root\s*\{([\s\S]*?)\}/.exec(cssSrc)[1]);
@@ -180,6 +192,25 @@ const darkTokens = tokenMap(/:root\[data-theme="dark"\]\s*\{([\s\S]*?)\}/.exec(c
   ok(label + ': --on-share is >= 4.5:1 on --amber', onShareAmber >= 4.5, onShareAmber.toFixed(2));
   const shareInkSoft = contrast(t['share-ink'], t['share-soft']);
   ok(label + ': --share-ink is >= 4.5:1 on --share-soft', shareInkSoft >= 4.5, shareInkSoft.toFixed(2));
+
+  /* The rest timer is its own dark surface in both themes (plans/037) and
+     every line on it is text: the second line and the switch at 13px in
+     --timer-dim, the label at 11px, the 52px/700 numeral in --signal and,
+     once the rest is over, in --flare. The numeral is large text, so 3:1;
+     everything else 4.5:1. */
+  ok(label + ': the timer tokens are all present', ['timer-bg', 'timer-ink', 'timer-dim'].every(k => !!t[k]),
+     ['timer-bg', 'timer-ink', 'timer-dim'].map(k => k + '=' + t[k]).join(' '));
+  const timerInk = contrast(t['timer-ink'], t['timer-bg']);
+  ok(label + ': --timer-ink is >= 4.5:1 on --timer-bg', timerInk >= 4.5, timerInk.toFixed(2));
+  const timerDim = contrast(t['timer-dim'], t['timer-bg']);
+  ok(label + ': --timer-dim, composited, is >= 4.5:1 on --timer-bg', timerDim >= 4.5, timerDim.toFixed(2));
+  const timerVal = contrast(t.signal, t['timer-bg']), timerOver = contrast(t.flare, t['timer-bg']);
+  ok(label + ': --signal and --flare are >= 3:1 on --timer-bg (the 52px numeral is large text)',
+     timerVal >= 3 && timerOver >= 3, timerVal.toFixed(2) + '/' + timerOver.toFixed(2));
+  /* --danger is text on --card (.sm.warn, .sheet-sec.danger) and on --paper. */
+  const dangerRatios = ['card', 'paper'].map(bg => contrast(t.danger, t[bg]));
+  ok(label + ': --danger is >= 4.5:1 on --card and --paper',
+     dangerRatios.every(r => r >= 4.5), 'card/paper: ' + dangerRatios.map(r => r.toFixed(2)).join('/'));
 });
 
 /* The profile accents override --signal (and, for dark verde, --on-signal
@@ -3204,6 +3235,7 @@ const pruneLiveProbe = `
     profile.log[blockId][slot(2, day.id)] = { [ex]: [{ w: '', r: '', done: false }] };
     drawnSlot = { profile: state.activeProfile, block: blockId, key: slot(1, day.id) };
     pruneLog();
+    drawnSlot = null;   /* left set, this makes every later pruneLog probe quieter than it should be (plans/042) */
     return {
       liveKept: profile.log[blockId][slot(1, day.id)][ex].length,
       otherPruned: slot(2, day.id) in profile.log[blockId],
@@ -3269,9 +3301,11 @@ console.log('\n== docs cross-links resolve (README.md, docs/guide.md, AGENTS.md,
   const headings = file => (fs.readFileSync(path.join(ROOT, file), 'utf8').match(/^#{1,6} .+$/gm) || [])
     .map(h => slug(h.replace(/^#+ /, '')));
   const docs = ['README.md', 'docs/guide.md', 'AGENTS.md', 'plans/README.md'];
+  let linksChecked = 0;
   docs.forEach(file => {
     const src = fs.readFileSync(path.join(ROOT, file), 'utf8');
     const links = [...src.matchAll(/\]\(([^)\s]+)\)/g)].map(x => x[1]).filter(l => !/^(https?:|mailto:)/.test(l));
+    linksChecked += links.length;
     links.forEach(link => {
       const [rel, anchor] = link.split('#');
       const target = rel ? path.normalize(path.join(path.dirname(file), rel)) : file;
@@ -3280,6 +3314,12 @@ console.log('\n== docs cross-links resolve (README.md, docs/guide.md, AGENTS.md,
       if (exists && anchor && /\.md$/.test(target)) ok(file + ' → #' + anchor + ' is a heading', headings(target).includes(anchor), headings(target).join(' | '));
     });
   });
+  /* A floor under the loop above: if the link regex stops matching, it runs
+     zero times and this section is green having checked nothing. One
+     assertion for the four docs rather than one each, because AGENTS.md
+     names files in backticks and carries no markdown link at all, so a
+     per-file floor cannot hold there (plans/042). */
+  ok('the docs cross-link loop had links to check', linksChecked > 0, String(linksChecked));
 }
 
 /* blocks/index.json is what "Importar JSON" offers, and the only thing that
