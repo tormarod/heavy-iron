@@ -2480,11 +2480,18 @@ ok('decay no longer blames a first set the lifter typed at 2 in reserve',
    diagProbe(three(decaySess('2', '1')), false) ===
      'flat | Estancado de verdad — ni la serie tope ni los kilos por serie se mueven',
    diagProbe(three(decaySess('2', '1')), false));
+ok('...and still fires when the first set was typed at 0',
+   diagProbe(three(decaySess('0', '1')), false) === 'flat | Primera serie al fallo — las de después se vacían',
+   diagProbe(three(decaySess('0', '1')), false));
+ok('...or when nothing was typed at all, which is every session logged before this',
+   diagProbe(three(decaySess(null, null)), false) === 'flat | Primera serie al fallo — las de después se vacían',
+   diagProbe(three(decaySess(null, null)), false));
+
 /* Per set, reduced by the median — the session's typical reserve
    (plans/044). A log typed the old way, one value on the last set, still
-   reads through the inheritance rule as it always did (the two cases
-   above pin that); these pin what the per-set record can say that one
-   number could not. */
+   reads through the inheritance rule as it always did (the two legacy-chip
+   cases above pin that); these pin what the per-set record can say that
+   one number could not. */
 /* Reps held at the top of the range on purpose: a set at the bottom of the
    range at 0 RIR can make the objetivo come down a rung, and the "Peso mal
    elegido" row is checked before either signal — these cases are about
@@ -2507,12 +2514,6 @@ ok('diagSessionRir is the median of the typed sets, null when none is typed',
    dsr([3, 2, 1, 0]) === 1.5 && dsr([3, 3, 3, 0]) === 3 && dsr([0, 0, 1]) === 0 &&
    dsr([null, null]) === null && dsr([]) === null,
    [dsr([3, 2, 1, 0]), dsr([3, 3, 3, 0]), dsr([0, 0, 1]), dsr([null, null]), dsr([])].join(','));
-ok('...and still fires when the first set was typed at 0',
-   diagProbe(three(decaySess('0', '1')), false) === 'flat | Primera serie al fallo — las de después se vacían',
-   diagProbe(three(decaySess('0', '1')), false));
-ok('...or when nothing was typed at all, which is every session logged before this',
-   diagProbe(three(decaySess(null, null)), false) === 'flat | Primera serie al fallo — las de después se vacían',
-   diagProbe(three(decaySess(null, null)), false));
 
 const logRir = call(`
   (function () {
