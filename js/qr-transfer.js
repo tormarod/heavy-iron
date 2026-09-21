@@ -540,16 +540,19 @@ async function applyQrPayload(payload) {
   }
 
   if (payload.kind === 'block' || payload.kind === 'blocklog') {
-    let normalized;
+    /* The log is inside the try too: normalizeImportedLog rejects a row
+       array too long to be a real session, and that reason belongs under
+       the same "no se puede usar" as a bad block, not bare in the footer. */
+    let normalized, log, rir, order;
     try {
       normalized = normalizeImportedBlock(payload.block);
+      log = payload.kind === 'blocklog' ? normalizeImportedLog(payload.log, payload.block, normalized) : null;
+      rir = payload.kind === 'blocklog' ? normalizeImportedRir(payload.rir, payload.block, normalized) : null;
+      order = payload.kind === 'blocklog' ? normalizeImportedOrder(payload.order, payload.block, normalized) : null;
     } catch (e) {
       mark('Ese bloque no se puede usar: ' + e.message, true);
       return;
     }
-    const log = payload.kind === 'blocklog' ? normalizeImportedLog(payload.log, payload.block, normalized) : null;
-    const rir = payload.kind === 'blocklog' ? normalizeImportedRir(payload.rir, payload.block, normalized) : null;
-    const order = payload.kind === 'blocklog' ? normalizeImportedOrder(payload.order, payload.block, normalized) : null;
     const sets = log ? countShareLog(log) : 0;
     const doneSets = log ? countShareLog(log, true) : 0;
     const profile = getProfile();

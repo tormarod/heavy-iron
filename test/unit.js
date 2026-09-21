@@ -514,6 +514,70 @@ const weirdThemeProfile = { blocks: { b1: validBlock }, blockOrder: ['b1'], log:
 ok('an invalid theme comes back as a value in ACCENTS',
    call('ACCENTS.indexOf(normalizeImportedProfile(' + JSON.stringify(weirdThemeProfile) + ').theme) >= 0'));
 
+/* JSON.parse hands back `{"toString": null}` without complaint, and String()
+   or Number() on it throws a TypeError (toString is not callable, valueOf
+   returns the object itself). Every field a normalizer coerces gets one
+   here, through all three import doors: the pasted block, the QR log and
+   the backup/profile file. Nothing may throw; an object reads as absent. */
+console.log('\n== hostile objects in string and number fields ==');
+const H = { toString: null };
+const errorOf = expr => { try { call(expr); return null; } catch (e) { return e; } };
+const hostileEx = {
+  id: H, n: 'Ex', reps: '10-15', sets: H, rest: H, alt: H, cue: H, setup: H,
+  inc: H, minRir: H, muscle: H, pattern: H, type: H,
+};
+const hostileBlock = {
+  name: H, weeks: H, deload: H, priority: [H], phase: { 1: { r: H, t: H } },
+  days: [{ id: 'd1', name: H, pair: H, ex: [Object.assign({}, hostileEx, { id: 'e1' }), hostileEx] }],
+};
+const hostileBlockErr = errorOf('normalizeImportedBlock(' + JSON.stringify(hostileBlock) + ')');
+ok('normalizeImportedBlock does not throw on {"toString": null} fields', hostileBlockErr === null, hostileBlockErr && hostileBlockErr.message);
+ok('...and an object name reads as absent', call('normalizeImportedBlock(' + JSON.stringify(hostileBlock) + ').name') === 'Bloque importado');
+const hostileAddErr = errorOf('normalizeImportedBlock(' + JSON.stringify(
+  { days: [{ name: 'D', ex: [{ n: 'Ex', reps: '10', add: H }] }] }) + ')');
+ok('an object "add" is rejected with the import\'s own message, not a TypeError',
+   !!hostileAddErr && hostileAddErr.name !== 'TypeError' && /add/.test(hostileAddErr.message),
+   hostileAddErr && hostileAddErr.name + ': ' + hostileAddErr.message);
+
+const hostileRow = { w: H, r: H, ts: H, rir: H, u: H, dk: H, done: true, d: [{ w: H, r: H }] };
+const hostileLog = { 'w1-d1': { e1: [hostileRow, { w: '40', r: '8', ts: H, rir: H }] } };
+/* Ids in the raw block that are objects too: importIdMaps keys a map by them. */
+const hostileIdBlock = { name: 'B', days: [{ id: H, name: 'D', ex: [{ id: H, n: 'Ex', reps: '10' }] }] };
+const hostileLogErr = errorOf(`(function() {
+  const raw = ${JSON.stringify(hostileBlock)};
+  normalizeImportedLog(${JSON.stringify(hostileLog)}, raw, normalizeImportedBlock(raw));
+  const rawIds = ${JSON.stringify(hostileIdBlock)};
+  normalizeImportedLog(${JSON.stringify(hostileLog)}, rawIds, normalizeImportedBlock(rawIds));
+})()`);
+ok('normalizeImportedLog does not throw on {"toString": null} fields', hostileLogErr === null, hostileLogErr && hostileLogErr.message);
+const hostileLogOut = call(`(function() {
+  const raw = ${JSON.stringify(hostileBlock)};
+  return normalizeImportedLog(${JSON.stringify(hostileLog)}, raw, normalizeImportedBlock(raw));
+})()`);
+ok('...and the typed row next to the hostile one still lands',
+   JSON.stringify(hostileLogOut['w1-d1'].e1[1]) === JSON.stringify({ w: '40', r: '8', done: false }),
+   JSON.stringify(hostileLogOut));
+
+const hostileProfile = {
+  blocks: { b1: Object.assign({}, hostileBlock, { createdAt: H }) }, blockOrder: ['b1', H], activeBlock: H,
+  log: { b1: hostileLog },
+  rir: { b1: { 'w1-d1': { e1: H } } },
+  obj: { b1: { 'w1-d1': { e1: { at: H, conf: H, kind: H, rir: H, sets: [{ w: H, r: H, m: H }] } } } },
+  order: { b1: { 'w1-d1': [H, 'e1'] } },
+  notes: { b1: { 'w1-d1': H } }, energy: { b1: { 'w1-d1': H } },
+  variants: { e1: [{ n: H, since: H }] },
+  label: H, theme: H,
+};
+const hostileProfileErr = errorOf('normalizeImportedProfile(' + JSON.stringify(hostileProfile) + ')');
+ok('normalizeImportedProfile does not throw on {"toString": null} fields', hostileProfileErr === null, hostileProfileErr && hostileProfileErr.message);
+ok('...and an object createdAt is replaced, not stored',
+   call('typeof Object.values(normalizeImportedProfile(' + JSON.stringify(hostileProfile) + ').blocks)[0].createdAt') === 'string');
+const hostileBadBlockErr = errorOf('normalizeImportedProfile(' + JSON.stringify(
+  { blocks: { orphan: { name: H, days: [] } }, blockOrder: ['orphan'], log: {} }) + ')');
+ok('a rejected block with an object name still gets the import\'s own message',
+   !!hostileBadBlockErr && hostileBadBlockErr.name !== 'TypeError' && hostileBadBlockErr.message.indexOf('orphan') >= 0,
+   hostileBadBlockErr && hostileBadBlockErr.name + ': ' + hostileBadBlockErr.message);
+
 const orphanMapProfile = {
   blocks: { b1: validBlock }, blockOrder: ['b1'],
   log: { b1: { 'w1-d0': {} }, ghost: { 'w1-d0': {} } },

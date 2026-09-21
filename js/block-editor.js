@@ -281,7 +281,7 @@ function normalizeImportedBlock(raw, opts) {
          genuinely a decimal (a weight step), so it goes through clampNum,
          which is built for that, not this guard. */
       if (e.add != null) {
-        const av = +e.add;
+        const av = isObj(e.add) ? NaN : +e.add;
         if (!Number.isFinite(av) || !Number.isInteger(av) || av < 1) {
           throw new Error('El incremento de series ("add") de "' + n + '" tiene que ser un número entero de al menos 1 (llegó ' + JSON.stringify(e.add) + ').');
         }
@@ -408,7 +408,7 @@ async function loadRepoBlockList() {
     if (!Array.isArray(list) || !list.length) { host.textContent = 'No hay bloques publicados todavía en blocks/.'; return; }
     host.innerHTML = '';
     list.slice(0, 60).forEach(item => {
-      if (!item || typeof item !== 'object' || !item.file) return;
+      if (!item || typeof item !== 'object' || typeof item.file !== 'string') return;
       /* The file name is pasted into a URL, so it may only ever name a file
          sitting in blocks/ — no directory hops, no absolute URLs. */
       const file = String(item.file);

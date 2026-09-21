@@ -110,7 +110,7 @@ function normalizeImportedProfile(p) {
     try {
       normalized = normalizeImportedBlock(raw, { own: true });
     } catch (e) {
-      throw new Error('el bloque "' + (raw && raw.name || bk) + '": ' + e.message);
+      throw new Error('el bloque "' + (txt(raw && raw.name, IMPORT_LIMITS.name) || bk) + '": ' + e.message);
     }
     let id = safeKey(bk) || uid('block');
     while (blocks[id]) id = uid('block');
@@ -120,7 +120,7 @@ function normalizeImportedProfile(p) {
        everywhere else in the app (log/rir/notes/energy/order are all keyed
        by it too), so that is the id kept here, not whatever raw.id says. */
     normalized.id = id;
-    normalized.createdAt = (raw && raw.createdAt) || new Date().toISOString();
+    normalized.createdAt = txt(raw && raw.createdAt, 40) || new Date().toISOString();
     blocks[id] = normalized;
 
     /* Filled here, inside the loop, because it needs `normalized` — the
@@ -241,7 +241,7 @@ function normalizeImportedProfile(p) {
       const exId = exIdMap.get(rawExId) || safeKey(rawExId);
       const list = p.variants[rawExId];
       if (!exId || !Array.isArray(list)) return;
-      const clean = list.filter(v => v && typeof v === 'object' && VARIANT_SINCE_RE.test(String(v.since)))
+      const clean = list.filter(v => v && typeof v === 'object' && !isObj(v.since) && VARIANT_SINCE_RE.test(String(v.since)))
         .map(v => ({ n: txt(v.n, IMPORT_LIMITS.exName) || '', since: String(v.since) }))
         .slice(-VARIANT_LIMIT);
       if (clean.length) vars[exId] = clean;
