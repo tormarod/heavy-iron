@@ -2171,12 +2171,14 @@ function convertedSetVolume(r) {
    you have to count digits on. */
 const fmtKg = n => Math.round(n).toLocaleString('es-ES') + ' ' + units();
 
-/* "60×8" for the set, "60×8 ↓45×5" once it has a drop — the one string used
-   by the previous-week line and the CSV both. */
-function setSummary(r) {
-  const head = String(r.w == null ? '' : r.w) + '×' + (r.r === '' || r.r == null ? '?' : r.r);
-  const tail = dropsOf(r).filter(dropUsed)
-    .map(d => '↓' + (d.w === '' || d.w == null ? '?' : d.w) + '×' + (d.r === '' || d.r == null ? '?' : d.r));
+/* "60×8" for the set, "60×8 ↓45×5" once it has a drop — the one string
+   every band on the card prints. Takes a session's set (sessionsOf), and
+   prints it the way it was typed: wLogged and rLogged are the row's own
+   strings, so a comma decimal or an lb weight reads back exactly as it sits
+   in the boxes. Its drops are already the ones with something in them. */
+function setSummary(x) {
+  const head = x.wLogged + '×' + (x.rLogged === '' ? '?' : x.rLogged);
+  const tail = x.drops.map(d => '↓' + (d.wLogged === '' ? '?' : d.wLogged) + '×' + (d.rLogged === '' ? '?' : d.rLogged));
   return tail.length ? head + ' ' + tail.join(' ') : head;
 }
 
@@ -2367,13 +2369,24 @@ function blockLoggedSets(profile, blockId) {
   return n;
 }
 
+/* The card's first band: the latest earlier week of this same session —
+   this block, this day, this lift — with a ticked set that has a weight,
+   and those sets. A ticked set with no weight is left out of the band; a
+   week whose ticked sets all lack one is passed over for the week before.
+
+   'logged' rather than 'plan' because it is exact for any week it is
+   handed: the week on screen is never past the block's end (drawApp clamps
+   it), so no stranded week comes before it and the two would agree. Deload
+   weeks are kept — the band says what happened, not what to aim for. */
 function lastTime(profile, blockId, dayId, exId, beforeWeek) {
-  for (let w = beforeWeek - 1; w >= 1; w--) {
-    const s = profile.log[blockId] && profile.log[blockId][slot(w, dayId)];
-    if (s && s[exId]) {
-      const done = s[exId].filter(x => x.done && x.w !== '');
-      if (done.length) return { week: w, sets: done };
-    }
+  const sessions = sessionsOf(profile, {
+    weeks: 'logged', lift: { id: exId }, day: dayId,
+    blocks: [blockId], before: { block: blockId, week: beforeWeek },
+  });
+  for (let i = sessions.length - 1; i >= 0; i--) {
+    /* A new array of the cached sets, never a trim of the cached one. */
+    const sets = sessions[i].sets.filter(x => x.wLogged !== '');
+    if (sets.length) return { week: sessions[i].week, sets: sets };
   }
   return null;
 }
@@ -2440,24 +2453,34 @@ function dayTag(block, dayId) {
    what the card shows underneath its own history rather than in place of
    it. Walks weeks back from the current one, and inside the current week
    counts every other day: which of them you actually trained first is not
-   recorded, and a set logged this week is this week's news either way. */
+   recorded, and a set logged this week is this week's news either way.
+   Of two days in the same week, the later one in the plan wins.
+
+   One question per planned slot, by id and day, rather than one `like`
+   question for the lift: a tick on this card's own day then leaves every
+   one of them in the history cache (a `like` answer over this block would
+   be read again after every tick, since the cache cannot rule it out by
+   lift — plans/045). The same sets as lastTime: ticked, with a weight. */
 function lastTimeOtherDay(profile, block, day, ex, week) {
   const slots = liftSlotsCached(block, ex).filter(s => s.dayId !== day.id);
-  const blk = slots.length && profile.log[block.id];
-  if (!blk) return null;
-  for (let w = week; w >= 1; w--) {
-    let best = null;
-    slots.forEach(s => {
-      const bucket = blk[slot(w, s.dayId)];
-      const rows = bucket && bucket[s.exId];
-      if (!Array.isArray(rows)) return;
-      const done = rows.filter(x => x.done && x.w !== '');
-      if (!done.length) return;
-      if (!best || s.dayIdx > best.dayIdx) best = { week: w, dayId: s.dayId, dayIdx: s.dayIdx, sets: done };
+  if (!slots.length || !profile.log[block.id]) return null;
+  let best = null;
+  slots.forEach(s => {
+    const sessions = sessionsOf(profile, {
+      weeks: 'logged', lift: { id: s.exId }, day: s.dayId,
+      blocks: [block.id], before: { block: block.id, week: week + 1 },
     });
-    if (best) return best;
-  }
-  return null;
+    for (let i = sessions.length - 1; i >= 0; i--) {
+      const x = sessions[i];
+      const sets = x.sets.filter(t => t.wLogged !== '');
+      if (!sets.length) continue;
+      if (!best || x.week > best.week || (x.week === best.week && s.dayIdx > best.dayIdx)) {
+        best = { week: x.week, dayId: s.dayId, dayIdx: s.dayIdx, sets: sets };
+      }
+      break;
+    }
+  });
+  return best;
 }
 
 /* ---------- sessions: the one reading of the log ----------
@@ -2488,7 +2511,8 @@ function lastTimeOtherDay(profile, block, day, ex, week) {
    string the row had — the chart's table prints `rLogged`, not `r`, so a
    comma, a leading zero or a stray character an import left in the field
    (normalizeImportedLog only trims it) still reads back the way it was
-   typed.
+   typed. A drop carries the same pair, for the same reason: the card's
+   bands print a drop's reps back too (setSummary).
 
    Answered from the history cache below whenever the log has not moved
    since the same question was last asked, so what comes back is SHARED:
@@ -2593,6 +2617,7 @@ function readSession(profile, block, week, dayId, exId, rows, day) {
         w: convertWeight(num(d.w), unit, units()),
         wLogged: d.w == null ? '' : String(d.w),
         r: num(d.r),
+        rLogged: d.r == null ? '' : String(d.r),
       })),
       dropKind: dropKind(r),
       ts: ts,
@@ -3167,69 +3192,75 @@ function render() {
   }
 }
 
-/* One rule for both scans below: the heaviest completed weight, and the
-   best estimated 1RM among the sets that can honestly carry one — reps
-   present and at or under EST_MAX_REPS, where Epley stops drifting. `e` is
-   null until a set with reps has been logged. Raw num(r.w), not
-   rowWeight(): the badge is judged against the number the row shows, the
-   decision the weight badge already made (plans/README.md, third audit
-   item 17). */
-function noteBest(best, exId, r) {
-  if (!r || !r.done) return;
-  const w = num(r.w);
-  if (isNaN(w)) return;
-  if (!(exId in best)) best[exId] = { w: w, e: null };
-  else if (w > best[exId].w) best[exId].w = w;
-  if (hasReps(r) && num(r.r) <= EST_MAX_REPS) {
-    const e = est1RM(w, num(r.r));
-    if (best[exId].e == null || e > best[exId].e) best[exId].e = e;
-  }
+/* The bar a set has to clear to count as a personal record: the heaviest
+   completed weight, and the best estimated 1RM among the sets that can
+   honestly carry one — reps present and at or under EST_MAX_REPS, where
+   Epley stops drifting. `e` is null until a set with reps has been logged.
+   The weight as typed (wLogged), not the converted `w`: the badge is judged
+   against the number the row shows, the decision the weight badge already
+   made (plans/README.md, third audit item 17). Null for no weighed set. */
+function bestOf(sessions) {
+  let b = null;
+  sessions.forEach(s => s.sets.forEach(x => {
+    const w = num(x.wLogged);
+    if (isNaN(w)) return;
+    if (!b) b = { w: w, e: null };
+    else if (w > b.w) b.w = w;
+    /* hasReps, on a parsed set: `r` is NaN when the box was empty. */
+    if (x.r > 0 && x.r <= EST_MAX_REPS) {
+      const e = est1RM(w, x.r);
+      if (b.e == null || e > b.e) b.e = e;
+    }
+  }));
+  return b;
 }
 
-/* The best weight ever completed on each exercise, and the best estimated
-   1RM alongside it, across every block of the profile — the bar a set has
-   to clear to count as a personal record. The session being drawn is
-   excluded, or its own sets would beat themselves. */
-function bestByExercise(profile, skipBlockId, skipSlot) {
-  /* Prototype-less for the same reason rowsFor's slot objects are: exercise
-     ids arrive from storage and from imports, and `best['__proto__'] = 90`
-     on a plain {} is silently dropped, so that one exercise could never show
-     a RECORD badge however heavy the set. */
-  const best = Object.create(null);
-  Object.keys(profile.log).forEach(bId => {
-    const blk = profile.log[bId];
-    if (!blk) return;
-    Object.keys(blk).forEach(k => {
-      if (bId === skipBlockId && k === skipSlot) return;
-      const s = blk[k];
-      if (!s) return;
-      Object.keys(s).forEach(exId => {
-        const rows = s[exId];
-        if (!Array.isArray(rows)) return;
-        rows.forEach(r => noteBest(best, exId, r));
-      });
-    });
-  });
-  return best;
+/* Two bars as one: each half is a max, so the order does not matter. */
+function bestJoin(a, b) {
+  if (!a || !b) return a || b;
+  return { w: Math.max(a.w, b.w), e: a.e == null ? b.e : b.e == null ? a.e : Math.max(a.e, b.e) };
 }
 
-/* The same answer for one exercise. Rebuilding a single card (drawCard)
-   needs one id's bar, and walking the other six exercises' history only to
-   throw it away is most of what made a set tick cost a whole render. The
-   full draw still asks for all of them, in the one pass above. */
+/* The best weight ever completed on one exercise, and the best estimated
+   1RM alongside it, across every block of the profile — including a
+   shortened block's stranded weeks ('logged', plans/008 item 20): a record
+   is about the lifter over time. The session being drawn is excluded, or
+   its own sets would beat themselves. Returns { [exId]: { w, e } }, or an
+   empty map for an exercise with no weighed set; prototype-less, because
+   exercise ids arrive from storage and from imports, and `best['__proto__']`
+   on a plain {} is not an own property.
+
+   Asked as two questions rather than one, split at the week being drawn,
+   because every tick on this card asks again (drawCard): everything before
+   that week is a slice the tick cannot reach, so the history cache keeps
+   it and the bar made from it (historyDerived); only this block from that
+   week on is read again. One question over every block would re-read the
+   lift's whole history on every tick. */
 function bestForExercise(profile, exId, skipBlockId, skipSlot) {
-  const best = Object.create(null);
-  Object.keys(profile.log).forEach(bId => {
-    const blk = profile.log[bId];
-    if (!blk) return;
-    Object.keys(blk).forEach(k => {
-      if (bId === skipBlockId && k === skipSlot) return;
-      const rows = blk[k] && blk[k][exId];
-      if (!Array.isArray(rows)) return;
-      rows.forEach(r => noteBest(best, exId, r));
-    });
-  });
-  return best;
+  const out = Object.create(null);
+  const order = profile.blockOrder || [];
+  const at = order.indexOf(skipBlockId);
+  const skip = parseSlot(skipSlot);
+  const lift = { id: exId };
+  const drawn = s => s.block === skipBlockId && slot(s.week, s.day) === skipSlot;
+  let bar;
+  if (at >= 0 && skip) {
+    const head = sessionsOf(profile, { weeks: 'logged', lift: lift, before: { block: skipBlockId, week: skip.week } });
+    const memo = historyDerived(head);
+    let headBar = memo && memo.has('best') ? memo.get('best') : undefined;
+    if (headBar === undefined) {
+      headBar = bestOf(head);
+      if (headBar) Object.freeze(headBar);
+      if (memo) memo.set('best', headBar);
+    }
+    const tail = sessionsOf(profile, { weeks: 'logged', lift: lift, blocks: order.slice(at) })
+      .filter(s => (s.block !== skipBlockId || s.week >= skip.week) && !drawn(s));
+    bar = bestJoin(headBar, bestOf(tail));
+  } else {
+    bar = bestOf(sessionsOf(profile, { weeks: 'logged', lift: lift }).filter(s => !drawn(s)));
+  }
+  if (bar) out[exId] = { w: bar.w, e: bar.e };
+  return out;
 }
 
 /* What you put on the bar for this set last time round, used as the greyed
@@ -3261,65 +3292,64 @@ function priorWeight(profile, blockId, w, dayId, exId, idx) {
    The same lift is matched the way the chart's "Todos los bloques" matches
    it, by id and then by name (liftSlots), so a block that arrived as JSON
    with its own ids still finds the machine by its name. Newest earlier
-   block first; within it, the latest week with a ticked set. */
+   block first; within it, the latest week with a ticked set that has a
+   weight, and of two days in that week the earlier one in the plan.
+
+   'plan' weeks: a week stranded above the earlier block's end is hidden
+   from every screen about that block, and this band names the block. The
+   deload is skipped by skipDeload, which is deloadAt — the definition the
+   rule uses (exHistory), so the band and the objetivo cannot disagree
+   about which week was the deload (a deload written by hand into the
+   phase text used to show its ~60 % weights here while the rule ignored
+   them).
+
+   Asked one block at a time, newest first, because the band is about the
+   block before this one and nearly always stops there: asking for every
+   earlier block at once would read the lift's whole history to use one
+   block of it. Each block's answer is its own entry in the history cache,
+   and none of them can see a tick in the block being trained. */
 function priorBlockSets(profile, block, ex) {
   const order = profile.blockOrder || [];
   let at = order.indexOf(block.id);
   if (at < 0) at = order.length;
   for (let b = at - 1; b >= 0; b--) {
     const prev = profile.blocks[order[b]];
-    if (!prev || !profile.log[prev.id]) continue;
-    const slots = liftSlots(prev, ex);
-    if (!slots.length) continue;
-    for (let w = blockWeeks(prev); w >= 1; w--) {
-      /* deloadAt, not `w === deloadWeek(prev)`: the same definition the rule
-         uses (exHistory), so the band and the objetivo cannot disagree about
-         which week was the deload. A block whose deload was written by hand
-         into the phase text used to show its ~60 % weights here while the
-         rule correctly ignored them. */
-      if (deloadAt(prev, w)) continue;
-      for (let i = 0; i < slots.length; i++) {
-        const s = profile.log[prev.id][slot(w, slots[i].dayId)];
-        const arr = s && s[slots[i].exId];
-        if (!Array.isArray(arr)) continue;
-        const done = arr.filter(x => x && x.done && x.w !== '' && x.w != null);
-        if (done.length) return { block: prev, week: w, dayId: slots[i].dayId, sets: done };
-      }
+    if (!prev) continue;
+    const sessions = sessionsOf(profile, { weeks: 'plan', lift: { like: ex }, blocks: [order[b]], skipDeload: true });
+    let hit = null;
+    for (let i = sessions.length - 1; i >= 0; i--) {
+      const x = sessions[i];
+      if (hit && x.week !== hit.week) break;
+      const sets = x.sets.filter(t => t.wLogged !== '');
+      if (sets.length) hit = { block: prev, week: x.week, dayId: x.day, sets: sets };
     }
+    if (hit) return hit;
   }
   return null;
 }
 
-/* Once per card, not once per set row: the walk above visits every earlier
-   block, and buildExCard asks for the hint on every row. Held in
-   renderCache like lastTime is. */
-function priorBlockSetsCached(profile, block, ex) {
-  const key = block.id + '|' + ex.id;
-  const c = renderLogFresh() && renderCache.priorBlock;
-  if (c && key in c) return c[key];
-  const v = priorBlockSets(profile, block, ex);
-  if (c) c[key] = v;
-  return v;
-}
-
 /* Everything below is asked for the same answer several times inside one
-   draw — lastTime twice per card, liftSlots once per card over every card,
-   the objetivo once per card and again in every weight box — and held for
-   that draw. Two kinds, dropped at two different moments:
+   draw — liftSlots once per card over every card, the objetivo once per
+   card and again in every weight box — and held for that draw. Two kinds,
+   dropped at two different moments:
      - facts about the PLAN (liftSlots, slug): dropped at the start of the
        next full draw, which every plan change goes through (commit()).
-     - facts about the LOG (lastTime, priorBlock, target, brake): dropped
-       as well the moment the log moves (renderLogFresh), so a card
-       redrawn after a tick (drawCard) rebuilds them instead of trusting
-       that the tick could not have reached them. Rebuilding is cheap
-       because the history they are made of is not dropped with them: it
-       lives in the history cache, which keeps every answer the tick could
-       not see (logChanged). */
+     - facts about the LOG (target, brake): dropped as well the moment the
+       log moves (renderLogFresh), so a card redrawn after a tick
+       (drawCard) rebuilds them instead of trusting that the tick could not
+       have reached them. Rebuilding is cheap because the history they are
+       made of is not dropped with them: it lives in the history cache,
+       which keeps every answer the tick could not see (logChanged).
+   The card's bands (lastTime, lastTimeOtherDay, priorBlockSets) and its
+   record bar (bestForExercise) used to be held here too. They read
+   sessionsOf now, whose own cache answers them across draws, so a second
+   copy per draw would only be one more thing a tick has to empty
+   (plans/038 PR 6). */
 let renderCache = null;
 
 function resetRenderCache() {
-  renderCache = { lastTime: Object.create(null), liftSlots: Object.create(null), slug: Object.create(null),
-                  priorBlock: Object.create(null), target: Object.create(null), brake: null, logSeq: logSeq };
+  renderCache = { liftSlots: Object.create(null), slug: Object.create(null),
+                  target: Object.create(null), brake: null, logSeq: logSeq };
 }
 
 /* Whether renderCache may be read for a fact about the log: false when
@@ -3328,24 +3358,11 @@ function resetRenderCache() {
 function renderLogFresh() {
   if (!renderCache) return false;
   if (renderCache.logSeq !== logSeq) {
-    renderCache.lastTime = Object.create(null);
-    renderCache.priorBlock = Object.create(null);
     renderCache.target = Object.create(null);
     renderCache.brake = null;
     renderCache.logSeq = logSeq;
   }
   return true;
-}
-
-/* Same five arguments, same answer — and the card loop asks for the
-   previous-week band once per card while every set row asks again. */
-function lastTimeCached(profile, blockId, dayId, exId, beforeWeek) {
-  if (!renderLogFresh()) return lastTime(profile, blockId, dayId, exId, beforeWeek);
-  const k = blockId + '|' + dayId + '|' + exId + '|' + beforeWeek;
-  if (!(k in renderCache.lastTime)) {
-    renderCache.lastTime[k] = lastTime(profile, blockId, dayId, exId, beforeWeek);
-  }
-  return renderCache.lastTime[k];
 }
 
 /* The brake is a single value rather than a map because it is a fact about
@@ -3468,12 +3485,7 @@ function drawApp() {
   const sessionEx = orderedEx(profile, block, profile.week, day);
   drawOrderNote(profile, block, day, sessionEx);
 
-  /* One walk of the profile for every card's all-time best, since every card
-     is being built anyway. drawCard takes the other side of that trade. */
-  const ctx = {
-    profile: profile, block: block, day: day, days: days, sessionEx: sessionEx,
-    best: bestByExercise(profile, block.id, slot(profile.week, day.id)),
-  };
+  const ctx = { profile: profile, block: block, day: day, days: days, sessionEx: sessionEx };
   sessionEx.forEach((ex, i) => list.appendChild(buildExCard(ctx, ex, i)));
   takeFocusMark(list);
 
@@ -3490,11 +3502,14 @@ function drawApp() {
 
 /* One exercise's card, built detached and handed back for the caller to put
    in place: drawApp appends all of them, drawCard swaps one out. `ctx` is
-   everything that is the same for every card in the day, so the two callers
-   differ in exactly one thing — how they arrived at `best`. */
+   everything that is the same for every card in the day, and the two
+   callers build it the same way. They used to differ in how they arrived
+   at the record bar — one walk of the whole profile for the day's cards, one
+   exercise for a tick — until each card asked for its own through the
+   history cache (bestForExercise). */
 function buildExCard(ctx, ex, i) {
   const profile = ctx.profile, block = ctx.block, day = ctx.day;
-  const sessionEx = ctx.sessionEx, best = ctx.best;
+  const sessionEx = ctx.sessionEx;
   const n = setsFor(ex, profile.week, block);
   const rows = entry(profile, block.id, profile.week, day.id, ex.id, n);
   /* What every box on this card writes, and all it writes: this lift's rows
@@ -3511,8 +3526,8 @@ function buildExCard(ctx, ex, i) {
      for the previous block's sets (plans/018), and two consts of one name
      in one scope is the parse failure that leaves every returning phone on
      "Cargando…" (AGENTS.md). "The bar a set has to clear" is the phrase the
-     comment above bestByExercise already uses. */
-  const bar = best[ex.id];
+     comment above bestOf already uses. */
+  const bar = bestForExercise(profile, ex.id, block.id, slot(profile.week, day.id))[ex.id];
   const isPr = r => r.done && !isNaN(num(r.w)) && (!bar || num(r.w) > bar.w);
   /* A new best estimated 1RM at a weight already lifted: the rep progress
      double progression is made of, which the weight badge cannot see. Only
@@ -3540,7 +3555,7 @@ function buildExCard(ctx, ex, i) {
   stat.el = card;
   card.className = 'ex' + (allDone ? ' complete' : '') + (ex.share && !soloMode() ? ' shared' : '');
 
-  const prev = lastTimeCached(profile, block.id, day.id, ex.id, profile.week);
+  const prev = lastTime(profile, block.id, day.id, ex.id, profile.week);
   /* The same lift on another day of the block, shown UNDER this session's
      own history rather than instead of it: the first band is what the
      estimate further down was built from, and quietly swapping in another
@@ -3551,7 +3566,7 @@ function buildExCard(ctx, ex, i) {
      neither this session's earlier weeks nor another day's. The block
      before is older than either, and would only muddy a card that
      already has a history. */
-  const prior = (!prev && !other) ? priorBlockSetsCached(profile, block, ex) : null;
+  const prior = (!prev && !other) ? priorBlockSets(profile, block, ex) : null;
   const priorTag = prior
     ? (prior.block.name.length > 14 ? prior.block.name.slice(0, 13).replace(/[\s+/-]+$/, '') + '…' : prior.block.name) + ' · Sem. ' + prior.week
     : '';
@@ -3753,11 +3768,12 @@ function buildExCard(ctx, ex, i) {
     const own = priorWeight(profile, block.id, profile.week, day.id, ex.id, si);
     /* No earlier week in this block: the previous block's last logged
        session, same set index, last set when the plan has since grown —
-       the same fallback priorWeight applies within a block. */
+       the same fallback priorWeight applies within a block. As typed
+       (wLogged), like the within-block hint, not converted. */
     const prv = (!tgt && !own && prior) ? (prior.sets[si] || prior.sets[prior.sets.length - 1]) : null;
     return {
       tgt,
-      hint: tgt ? loadText(tgt.w) : (own || (prv ? String(prv.w) : '')),
+      hint: tgt ? loadText(tgt.w) : (own || (prv ? prv.wLogged : '')),
       /* The whole parenthetical rather than a noun the line then glues "lo
          de" in front of: "lo de el objetivo" is not Spanish. */
       from: tgt ? 'lo que pide el objetivo de esta semana'
@@ -4088,10 +4104,11 @@ function drawCard(exId) {
   try {
     /* The draw's cache is kept, not thrown away — but nothing here has to
        argue that a tick cannot reach it any more (plans/045). What the draw
-       holds about the log (the objetivo, the brake, the bands) is dropped
-       by the tick's own save() before this runs (renderLogFresh), and
-       rebuilt from the history cache, which the same save() emptied of
-       exactly the answers that could see the ticked slot and nothing else
+       holds about the log (the objetivo, the brake) is dropped by the
+       tick's own save() before this runs (renderLogFresh), and rebuilt —
+       with the bands and the record bar, which the draw no longer holds —
+       from the history cache, which the same save() emptied of exactly the
+       answers that could see the ticked slot and nothing else
        (logChanged). What is kept is what a tick cannot touch by
        construction: liftSlots and slug, facts about the plan.
 
@@ -4110,10 +4127,7 @@ function drawCard(exId) {
     const sessionEx = orderedEx(profile, block, profile.week, day);
     /* A different exercise at this index means the plan moved; same answer. */
     if (!sessionEx[i] || sessionEx[i].id !== exId) { render(); return; }
-    const ctx = {
-      profile: profile, block: block, day: day, days: days, sessionEx: sessionEx,
-      best: bestForExercise(profile, exId, block.id, slot(profile.week, day.id)),
-    };
+    const ctx = { profile: profile, block: block, day: day, days: days, sessionEx: sessionEx };
     const at = focusPathIn(old);
     const fresh = buildExCard(ctx, sessionEx[i], i);
     old.replaceWith(fresh);

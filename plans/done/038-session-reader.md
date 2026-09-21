@@ -136,7 +136,7 @@ byte (PR 5).
 | 3 | **Objetivo**: `exHistory`/`exSession` become `sessionsOf` + `ruleSession` | none | DONE (#123) |
 | 4 | **Diagnóstico**: `diagPoints`, `strengthByExercise`; the deload becomes `deloadAt` | a deload written into the phase text is skipped — guide, Diagnóstico section; a week's two sessions of a split lift in plan day order | DONE (#125) |
 | 5 | **Charts**: `collectHistory`, `collectHistoryDays`, `collectHistoryAll` | a week's two points of a split lift in plan day order (as PR 4) | DONE (#126) |
-| 6 | **Card bands**: `lastTime`, `lastTimeOtherDay`, `priorBlockSets`, `bestByExercise`, `bestForExercise` | none | TODO — unblocked by plan 045's history cache |
+| 6 | **Card bands**: `lastTime`, `lastTimeOtherDay`, `priorBlockSets`, `bestByExercise`, `bestForExercise` | the RECORD badge no longer counts logs left behind by blocks deleted before plans/002 | DONE (#135) |
 | 7 | **Review tally and CSV**; the CSV on `'logged'`, removed exercises included | the CSV exports stranded weeks and sets of removed exercises — guide, export section and the "hidden everywhere" line at :1097 | DONE (#127) |
 
 Every PR bumps `CACHE_VERSION` (`tools/bump-cache-version.sh`) and runs
@@ -287,3 +287,110 @@ profile: a warm draw with the PR 6 bands takes 0.6 ms, against 102 ms on
 main, and a tick takes 0.26 ms. A cold draw is ~11–12 % slower than main,
 which is inside STOP condition 3. PR 6 re-measures on top of it, and moves
 `lastTime`/`priorBlock` out of the per-draw cache where they still live.
+
+**PR 6 (the card bands and the record bar)**. Built on plan 045's branch
+(`1d0fdac`). The three bands and the record bar read `sessionsOf`. Each
+band keeps the ticked sets that have a weight, and the card prints them
+from `wLogged`/`rLogged` (`setSummary` now takes a session set).
+**Interface addition:** a drop carries `rLogged` next to `wLogged`, for
+the same reason PR 5 added it to a set. A band prints a drop's reps back
+as typed, so '5,5' or '06' must not become 5.5 or 6.
+
+The queries:
+- `lastTime`: `'logged'`, by id, `day`, `[block]`, cut before the week.
+  It takes the last session. `'logged'` is exact for any week. The week on
+  screen is clamped to the block, so no stranded week comes before it.
+- `lastTimeOtherDay`: one id-and-day question per other planned slot
+  (`liftSlots`), cut after the week. It does not ask one `like` question,
+  because a `like` answer over the active block would be re-read after
+  every tick (plan 045's note).
+- `priorBlockSets`: `'plan'`, `like`, `skipDeload`, asked one earlier
+  block at a time, newest first. The band nearly always stops at the block
+  before, and asking every earlier block at once reads the lift's whole
+  history to use one block of it.
+- `bestForExercise`: `'logged'`, by id, over `blockOrder`. It is split at
+  the drawn week: a `before` slice that a tick cannot reach, whose bar is
+  kept with `historyDerived`, plus this block and later ones, re-read.
+  `bestByExercise` is **deleted**. `drawApp` was its only caller, and each
+  card now asks for its own bar. One question for every lift would read
+  the whole log on a cold draw. `lastTime` and `priorBlock` left
+  `renderCache`, as did `lastTimeCached` and `priorBlockSetsCached`.
+
+Equivalence against `origin/main` (`9cc03ca`, the same js as `1d0fdac`),
+in two vm contexts. Random profiles had 1–4 blocks, split days, lifts
+matched by name under fresh ids, lb rows and an lb profile, comma
+decimals, drops, extra sets, stranded weeks, both deload kinds, a legacy
+RIR map, unticked rows and empty weights. Every block × day × lift × week
+up to two past the end was compared:
+- three seeds (300 + 300 + 100 profiles, the last with `'use strict'` on
+  the new tree): 535,172 comparisons, 0 differences;
+- 60 profiles × 8 random scoped or broad writes: 490,752 comparisons,
+  0 differences.
+Seven mutations were each caught: the other-day tie-break, prior
+`'plan'`→`'logged'`, the drawn session kept in the bar, a drop's parsed
+reps, a bar outliving writes, `lastTime` on `'plan'`, and prior taking the
+last day of its week. The unit suite also passes with `'use strict'` on
+every shell script.
+
+**Two differences, outside the generator, need a decision.** Both involve
+shapes that no import or app path writes today:
+1. A log filed under a block id that has no plan any more. A block deleted
+   before plans/002 left one behind on real devices (plans/002 kept them,
+   calling them "invisible"). The old record bar walked
+   `Object.keys(profile.log)` and counted those sets. `sessionsOf` reads
+   only planned blocks, so they no longer count. With an orphan at 100 and
+   the real history at 60, the bar was 100 and is now 60.
+2. A ticked row with no `w` key at all, from hand-edited storage. The old
+   bands' `x.w !== ''` let it through as a set with an empty weight, and
+   `wLogged` reads it as `''`, so it is now left out.
+No slot key other than `slot(w, dayId)` was generated. Such a key cannot
+come in through `normalizeImportedLog`.
+
+Cost, with `measure-pr6.js` (derived from `measure-sessions.js`). The
+profile was 6 × 12 × 6 × 8 × 4, with the active block logged up to the
+week drawn. The figure is the log work of one day's eight cards: the
+objetivo, the three bands as `buildExCard` asks for them, and the record
+bar. Runs were alternated three times each, `origin/claude/039-history-cache`
+against this branch:
+
+| | base | PR 6 |
+|---|---|---|
+| week 7, cold | 106.3 ms | 96.8 ms (−9 %) |
+| week 7, warm | 23.1 ms | 0.83 ms |
+| week 7, tick + its card | 0.78 ms | 0.42 ms |
+| week 1 (prior band drawn), cold | 96.2 ms | 88.8 ms (−8 %) |
+| week 1, warm | 21.1 ms | 0.81 ms |
+| week 1, tick + its card | 0.77 ms | 0.31 ms |
+
+The base's warm draw is 23 ms, not plan 045's 0.85, because this
+measurement counts `bestByExercise`. It walked every row on every draw,
+uncached, and plan 045's figure left it out.
+
+Tests: the render-cache pair on `lastTimeCached` now pins that `lastTime`
+reads the same cached sets across draws and reads afresh after a write.
+The block-before case calls `logChanged()` after writing the log by hand.
+"bestForExercise matches bestByExercise" is deleted, since it compared two
+private walks and one is gone. Two new cases cover the split bar. Smoke
+run: "main session", "weight drops", "objetivo de peso", "el mismo
+ejercicio en dos sesiones", "nota, energía", "primera semana": 329
+passed, 0 failed.
+
+**PR 6 (the card bands)**. `lastTime`, `lastTimeOtherDay`,
+`priorBlockSets` and `bestForExercise` read `sessionsOf`. `bestByExercise`
+is gone: each card asks for its own lift's bar, split at the drawn week so
+that a tick re-reads only the current block onward. Answers are asked
+narrowly (one day per question, one earlier block at a time) so that a
+card's own `save(here)` leaves them cached. `lastTime`/`priorBlock` left
+the per-draw render cache. A drop now carries `rLogged` too. `priorWeight`
+is not moved: it reads the unticked placeholder rows a session does not
+carry. Equivalence: 1,025,924 comparisons against main, 0 differences,
+with seven deliberate breaks each caught. Cost: a cold draw is 8–9 %
+*faster* than main (the old record bar walked every row, uncached, on
+every draw), a warm draw takes 0.83 ms against 23 ms, and a tick 0.42 ms.
+**Two old-data differences, accepted by the orchestrator:** the RECORD
+badge no longer counts logs left behind by blocks deleted before
+plans/002, since nothing in the app can show those sets and the badge now
+agrees with the all-blocks chart. A ticked row with no `w` key at all
+(hand-edited storage only) is no longer shown in the bands.
+
+**Plan 038 is done** (all seven PRs, 2026-09-22).

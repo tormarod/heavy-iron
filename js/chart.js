@@ -114,7 +114,7 @@ function collectHistoryDays(profile, block, ex, weeks, metric) {
 function collectHistoryAll(profile, exId, metric) {
   const out = [];
   /* Every week actually logged, not just the ones inside a block's current
-     length: bestByExercise (the RECORD badge) already counts a shortened
+     length: bestForExercise (the RECORD badge) already counts a shortened
      block's stranded weeks, and this chart disagreeing with it hid the very
      sets that would explain a badge with no history to show for it — see
      plans/008 item 20. sessionsOf's own `weeks: 'logged'` is that same
