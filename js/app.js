@@ -1702,12 +1702,13 @@ function repRangeBottom(reps) {
    value per set for the rule to read.
 
    The old map is legacy: folded onto the rows on load and on import
-   (foldRirMap), and read as a fallback by getRir and by readSession. Nothing
-   writes a VALUE into it again; dropLegacyRir deletes the entry for the
-   exercise-session a box is recording, and that deletion is the one
-   exception — without it, emptying a box on anything logged before
-   plans/035 does nothing, because getRir falls back to the map and
-   foldRirMap puts the value straight back. See dropLegacyRir.
+   (foldRirMap), and read as a fallback by getRir, and by the rule's reader
+   (readSession) through legacyRir. Nothing writes a VALUE into it again;
+   dropLegacyRir deletes the entry for the exercise-session a box is
+   recording, and that deletion is the one exception — without it, emptying
+   a box on anything logged before plans/035 does nothing, because getRir
+   falls back to the map and foldRirMap puts the value straight back. See
+   dropLegacyRir.
 
    The inheritance rule (sessionRirs) is what makes a log with no per-set
    values read exactly as it always did: a set with nothing typed takes the
@@ -1768,7 +1769,9 @@ function sessionRirs(rows, legacy) {
    value to sit on, so it sits on a padding row (the box's own row, or
    rirRowFor's for a legacy chip being folded), and a reader that only
    looked at the sets done could not see it. The first pass is why that
-   padding row cannot then shadow a set ticked afterwards. */
+   padding row cannot shadow a set ticked afterwards on the screens that
+   read this; the rule never takes the second pass at all — see
+   legacyRir. */
 function rirRowRead(rows) {
   if (!Array.isArray(rows)) return null;
   for (let i = rows.length - 1; i >= 0; i--) {
@@ -1785,12 +1788,24 @@ function rirRowRead(rows) {
    fallback: the row above, else the legacy map, else ''. It returns a
    string either way ('3' or '2+'), because the legacy map's own values are
    strings; take a number through rirNumber. */
+/* The legacy map's own value for one exercise-session, or ''. Its own
+   function because the rule's reader — readSession since plans/038 — wants
+   THIS and nothing else as its fallback: getRir's second pass, below,
+   returns any row carrying a value, ticked or not, which is right for a
+   screen printing "the session's RIR" on a day nobody has ticked yet, and
+   wrong as evidence about the sets that were done — a 0 typed on a set
+   that was then un-ticked used to price every working set of the session
+   at failure (plans/039). */
+function legacyRir(profile, blockId, w, dayId, exId) {
+  const slotRir = profile.rir && profile.rir[blockId] && profile.rir[blockId][slot(w, dayId)];
+  return (slotRir && slotRir[exId]) || '';
+}
+
 function getRir(profile, blockId, w, dayId, exId) {
   const bucket = profile.log && profile.log[blockId] && profile.log[blockId][slot(w, dayId)];
   const row = rirRowRead(bucket && bucket[exId]);
   if (row) return String(rowRir(row));
-  const slotRir = profile.rir && profile.rir[blockId] && profile.rir[blockId][slot(w, dayId)];
-  return (slotRir && slotRir[exId]) || '';
+  return legacyRir(profile, blockId, w, dayId, exId);
 }
 
 /* Any recorded value as a number the arithmetic can use: a typed digit, or
@@ -1829,10 +1844,10 @@ function rirRowFor(rows) {
    costs nothing, it is what getRir and readSession fall back to when a slot
    has no rows to fold onto, and a receiver on an older shell still needs it.
 
-   Idempotent by construction — a row that already carries a value is never
-   overwritten — so running it on every load is cheap and a skipped run is
-   not data loss. A malformed entry is skipped rather than thrown on, like
-   every other repair in migrate. */
+   Idempotent by construction — a session any row of which already carries
+   a value is never touched — so running it on every load is cheap and a
+   skipped run is not data loss. A malformed entry is skipped rather than
+   thrown on, like every other repair in migrate. */
 function foldRirMap(profile, blockId) {
   if (!profile || !profile.rir || !profile.log) return;
   forEachSlot(profile.rir, blockId, (key, w, dayId, slotRir) => {
@@ -1842,8 +1857,20 @@ function foldRirMap(profile, blockId) {
     Object.keys(slotRir).forEach(exId => {
       const n = rirNumber(slotRir[exId]);
       if (n == null) return;
-      const row = rirRowFor(slotLog[exId]);
-      if (!row || typeof row !== 'object' || rowRir(row) != null) return;
+      const rows = slotLog[exId];
+      /* Once per session, never again: a session any set of which already
+         carries a value has either been folded already or been typed on
+         since, and in both cases the rows are the record and the map is
+         not. Guarding the target row alone was the bug twice over — the
+         row rirRowFor picks MOVES when a later set is ticked, so a chip
+         folded onto set 3 was folded again onto set 4 on the next load;
+         and a block shared from a phone whose rows carried values arrived
+         with the map blockShareRir still emits for older receivers, and
+         that map was written onto the one working set that had no value
+         of its own (plans/039). */
+      if (!Array.isArray(rows) || rows.some(r => rowRir(r) != null)) return;
+      const row = rirRowFor(rows);
+      if (!row || typeof row !== 'object') return;
       row.rir = String(n);
     });
   });
@@ -2505,7 +2532,7 @@ function sessionsOf(profile, q) {
 
 /* One slot's rows for one lift, as a session. The RIR a working set
    carries is exactly the reading the rule has always had — sessionRirs
-   over the working sets, with the old one-chip value (getRir) as the
+   over the working sets, with the old one-chip value (legacyRir) as the
    fallback when none of them carries its own — so moving the rule onto
    this changes no number it prices. A ticked set that is not a working
    set has no reserve to inherit: it keeps whatever was typed on it. */
@@ -2514,7 +2541,7 @@ function readSession(profile, block, week, dayId, exId, rows, day) {
   rows.forEach((r, i) => { if (r && r.done) ticked.push({ r: r, i: i }); });
   if (!ticked.length) return null;
   const worked = ticked.filter(t => rowWorked(t.r));
-  const legacy = rirNumber(getRir(profile, block.id, week, dayId, exId) || null);
+  const legacy = rirNumber(legacyRir(profile, block.id, week, dayId, exId));
   const rirs = sessionRirs(worked.map(t => t.r), legacy);
   const rirAt = new Map();
   worked.forEach((t, k) => rirAt.set(t, rirs[k]));
