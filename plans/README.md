@@ -65,6 +65,7 @@ below so it is not lost or re-audited.
 | 041 | [Four small correctness fixes — a one-set exercise on the deload week, the rep-decay line's "first set", prototype names in the session order, the four `hidden` elements driven by inline display](041-small-fixes-deload-sets-decay-first-set-order-ids-hidden.md) | P2 | S | LOW | — (land after 039 and 040; all three edit `js/app.js`) | TODO |
 | 042 | [The shell's untested paths get a smoke section; the contrast table reads translucent tokens; `drawnSlot` and the docs loop](042-tests-shell-paths-and-unit-suite-holes.md) | P2 | M | LOW | — (no bump) | TODO |
 | 043 | [The docs and the three "what is the shell" regexes match the code after plans 032–037](043-docs-and-dx-sync-after-the-shell.md) | P2 | S | LOW | — (no bump) | TODO |
+| 044 | [The Diagnóstico's effort signals read every set's RIR — the session's typical reserve, not its last set](044-diagnostico-reads-every-set-rir.md) | P2 | S–M | MED | 039 (hard: `legacyRir`); adapts to 038 PR 4 if it lands first | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
@@ -127,7 +128,10 @@ REJECTED (with one-line rationale)
   `CACHE_VERSION` from `v88`: land them one at a time, rebase on `main`
   first, take the highest version on conflict. 042 and 043 touch no shell
   file, need no bump, and can land at any time; 043's `.sh` edits do not
-  trigger the gate.
+  trigger the gate. **044 depends on 039** (it calls `legacyRir`) and
+  edits `js/diagnostics.js`, which 038's PR 4 also rewrites: land 044
+  before PR 4, or after it in the adapted form the plan's first STOP
+  condition spells out. It bumps `CACHE_VERSION` too.
 
 ## A rule that applies to every plan touching `index.html`, `css/` or `js/`
 
@@ -774,11 +778,11 @@ Grounded in what 032–037 changed; none duplicates plans/030 or plans/031.
   `js/review.js:118-142` tallies sets since 035. A session paced 3→2→1→0
   and one run flat at 0 are identical to one screen and different to the
   other, and the Diagnóstico's own verdict ("Apunta el RIR de la última
-  serie") asks for the narrow signal the data model outgrew. S–M spike:
-  decide per signal which resolution it wants (`failure` probably stays
-  last-set; `easy` probably becomes the session's median) and pin each
-  against the v3 fixtures before touching the prose. `sessionRirs`
-  already returns the per-set array.
+  serie") asks for the narrow signal the data model outgrew. **Picked
+  (2026-09-21) and planned as 044**: both signals read the median of the
+  session's per-set array (`sessionRirs`, the same array 038's interface
+  hands over), which keeps every log typed the old way reading as before
+  and separates a paced session from one ground out at 0.
 - **The week strip got a "logged" dot in 034; the day row, always on
   screen, did not.** `weekHasLog`/`refreshWeekDot` (`js/app.js:2682-2706`)
   mark weeks behind a fold; the day tabs (`:2769-2782`) say `Día N` and
