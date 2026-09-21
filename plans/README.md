@@ -59,7 +59,12 @@ below so it is not lost or re-audited.
 | 035 | [RIR per set — the row carries it, the objetivo prices every set on its own RIR, the signals and exports follow, and the input's contract](done/035-rir-per-set.md) | P1 | M–L | MED | — (land alone in `js/app.js`) | DONE (`sessionRirs` keeps a legacy-map argument Step C.1 omits, without which all fifteen v3 cases move — the plan’s own first STOP condition; Step I(a)’s numbers are inverted, the single chip *understates* between-set fatigue, corrected in the plan’s Maintenance notes so 036 does not quote them; the same-weight floor is provably unreachable and kept as protection; two regressions found in review and fixed — the chip was a dead control on an untouched day and its row was then pruned, and a pre-035 chip could not be cleared at all — see PR #111) |
 | 036 | [The card — one header row, `kg · rep · RIR` rows, no set number, the "⋯" menu, the plan text behind the name](done/036-the-card.md) | P1 | M | MED | 033, 034, 035 | DONE (three plan-text errors corrected in flight: Step C.3’s RIR placeholder guard is unreachable because `weekRir` coerces a missing phase to `0`, so a deload week would have greyed in “0 RIR”; `setRir` had to be deleted outright, not just de-swept, or 035’s clear-a-folded-value bug returns by a new route; and the first STOP’s grep is a false positive since `rowRir` is a `const` arrow. The fourth STOP did fire — `.ex-chart-btn` lives in a section Step F never listed. Badges moved to their own line, since the new two-line clamp counts them — see PR #112) |
 | 037 | [The app shell — a four-destination bar, "Más", the session's two actions above the list, the timer in the bar's place, bottom sheets](done/037-app-shell.md) | P1 | M–L | MED | 034, 036 | DONE (the plan’s `.bar` class collides with the session’s own progress line, so the nav is `.navbar`; `#app`’s bottom reserve is 190 px, not the plan’s 120, because the thing that docks there during a rest is the 137 px timer, not the 64 px bar — at 120 the version line sat entirely under it; the wide timer has no single height, so the comment recording 157 px was corrected to the measured range — see PR #113) |
-| 038 | [One session reader — every read of a logged set goes through `sessionsOf`; one codec owns the row's fields](038-session-reader.md) | P2 | L | MED | lb stamp fix (#119, merged) | IN PROGRESS — PR 2 (`sessionsOf` + interface tests) up; PR 1 (codec) and 3–7 TODO; PR 6 waits on a decision recorded in the plan's Maintenance notes |
+| 038 | [One session reader — every read of a logged set goes through `sessionsOf`; one codec owns the row's fields](038-session-reader.md) | P2 | L | MED | lb stamp fix (#119, merged) | IN PROGRESS — PR 2 (`sessionsOf` + interface tests) up; PR 1 (codec) and 3–7 TODO; PR 6 waits for the history cache (candidate 3), decided 2026-09-21 |
+| 039 | [The legacy RIR map folds onto a session once and never onto a set that had none; the rule's fallback reserve comes from the map, never from an un-ticked set](039-rir-fold-once-and-fallback-from-working-sets.md) | P1 | S | LOW–MED | — (coordinates with 038: land before its PR 3, or after it in the `readSession`-only form the plan describes) | TODO |
+| 040 | [A profile file or a backup cannot name a prototype property as its profile key, and the plate list from a backup is bounded](040-restore-paths-own-key-checks-and-plates-cap.md) | P1 | S | LOW | — | TODO |
+| 041 | [Four small correctness fixes — a one-set exercise on the deload week, the rep-decay line's "first set", prototype names in the session order, the four `hidden` elements driven by inline display](041-small-fixes-deload-sets-decay-first-set-order-ids-hidden.md) | P2 | S | LOW | — (land after 039 and 040; all three edit `js/app.js`) | TODO |
+| 042 | [The shell's untested paths get a smoke section; the contrast table reads translucent tokens; `drawnSlot` and the docs loop](042-tests-shell-paths-and-unit-suite-holes.md) | P2 | M | LOW | — (no bump) | TODO |
+| 043 | [The docs and the three "what is the shell" regexes match the code after plans 032–037](043-docs-and-dx-sync-after-the-shell.md) | P2 | S | LOW | — (no bump) | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
@@ -110,6 +115,19 @@ REJECTED (with one-line rationale)
   last. Every one bumps `CACHE_VERSION`: land them one at a time and take
   the highest version on conflict. 035 and 036 both edit `buildExCard`'s
   neighbourhood; 036's drift check compares against 035's result.
+
+- **039–043 (eighth audit) and plan 038 run side by side.** 038 is being
+  executed in seven PRs in `js/app.js`, `js/profile-transfer.js`,
+  `test/unit.js` and `sw.js`. **039 must coordinate with it**: it edits the
+  fallback line in both `exSession` and 038's `readSession`, and 038's own
+  equivalence test compares the two, so land 039 *before* 038's PR 3 (which
+  retires `exSession`) or apply only its `readSession` half afterwards —
+  the plan spells out both. 040 edits `loadProfileFromText`, which 038's
+  PR 1 (the codec) does not touch. 039, 040 and 041 each bump
+  `CACHE_VERSION` from `v88`: land them one at a time, rebase on `main`
+  first, take the highest version on conflict. 042 and 043 touch no shell
+  file, need no bump, and can land at any time; 043's `.sh` edits do not
+  trigger the gate.
 
 ## A rule that applies to every plan touching `index.html`, `css/` or `js/`
 
@@ -691,6 +709,198 @@ pinned by tests, [033](done/033-forja-language.md) the language,
 per-set RIR model (a data change, independent of the others, before the
 card), [036](done/036-the-card.md) the card, [037](done/037-app-shell.md) the shell.
 See "Dependency notes".
+
+## Eighth audit (2026-09-21) — full pass after the shell rework
+
+An eighth pass, `standard` depth, all nine categories, four parallel
+read-only subagents (correctness; security + dependencies; performance +
+tests + tech debt; DX + docs + direction), scoped to the delta since the
+fifth audit's commit `4f7e037` — plans 021–037, of which 032–037 (Forja,
+the folded header, RIR per set, the card, the app shell) were the least
+read. **Every finding below was re-verified by opening the cited code**
+before it made the table; the contrast ratios were recomputed; the two
+prototype-key findings close a gap the fifth audit listed under "not
+audited". Baseline: `node test/unit.js` 731/731 at `336bf65` when the
+audit started.
+
+**HEAD moved during the audit.** PR #119 merged and plan 038's first two
+commits landed (`cb5410d`, `3913b8f`: `sessionsOf`, `CONTEXT.md`, 755
+unit assertions, `sw.js` v88) while the subagents were reading. Every
+anchor below is at **`3913b8f`**; the plans are stamped there too. Plan
+038 is in progress in `js/app.js`, and 039 coordinates with it — see
+"Dependency notes".
+
+No user was available to pick interactively, so the default applied: the
+five highest-leverage findings (grouped where they share a fix) became
+plans 039–043; everything else is recorded here.
+
+### Landed outside any plan since the fifth audit
+
+- **PR #119 / `2454150`** — the `u` (unit) stamp restored on rows the
+  codec had dropped; the trigger for plan 038.
+- **Plan 038** (`cb5410d`, `3913b8f`) — `sessionsOf` and `readSession`
+  in `js/app.js:2420-2521`, a glossary in `CONTEXT.md`, nineteen
+  interface tests. Read here only where 039 touches it (`readSession`
+  inherits the orphan-RIR fallback verbatim, by design — "changes no
+  number it prices"); its cost measurement and PR-6 decision point are
+  in its own Maintenance notes.
+
+### Vetted findings, by leverage
+
+| # | Finding | Category | Impact | Effort | Risk | Conf. | Evidence (`3913b8f`) | Plan |
+|---|---|---|---|---|---|---|---|---|
+| 1 | The block share round-trip **stamps a RIR the sender never recorded**, and the legacy fold **re-stamps a set ticked later**: `blockShareRir` derives the map from `getRir` (last working set *carrying a value*), the receiver's `foldRirMap` writes onto `rirRowFor`'s row (last working set, value or not), and its idempotence guard is per row, not per session — so the row it picks moves when a later set is ticked | correctness (v3) | HIGH — two phones prescribe different weights for one block, permanently after one hop | S | LOW–MED | HIGH | `js/app.js:1812-1826, 1795-1800, 1749-1758, 5450-5453, 157-167` | 039 |
+| 2 | **A RIR left on an un-ticked set is read as the reserve of every working set**: `rirRowRead`'s second pass returns any row with a value, and `exSession` / `readSession` hand it to `sessionRirs` as the fallback. Tick set 4, type `0`, un-tick: sets 1–3 are priced at failure and un-censored; the review reads the rows directly and disagrees | correctness (v3) | HIGH | S | LOW | HIGH | `js/app.js:1754-1756, 4326-4327, 2486-2487, 4348` | 039 |
+| 3 | A **backup's `activeProfile`** that is a prototype name passes `migrate()`'s repair (`state.profiles[x]` is truthy for `constructor`/`__proto__`), `getBlock()` throws into recovery, and **both recovery buttons persist the unopenable state** — the one route from a crafted file to a lost log | security / data loss | HIGH (narrow trigger) | S | LOW | HIGH | `js/app.js:488, 1396-1402, 1479-1480`; `js/profile-transfer.js:348-350` | 040 |
+| 4 | A **profile file's `key`** (also the QR "perfil" payload) is never own-checked: `constructor` makes the dialog say "¿Sustituir el perfil de undefined?" and lands a phantom third profile; `__proto__` re-points `state.profiles`'s prototype, persists nothing, and the status line reports the incoming label as loaded | security | MED–HIGH | S | LOW | HIGH | `js/profile-transfer.js:394-395, 419, 429`; `js/qr-transfer.js:536-538` | 040 |
+| 5 | `state.prefs.plates` is the one imported collection with **no length cap**, and a backup restore reaches `prefs` without any `normalizeImported*`; the list is persisted on every save, joined into Ajustes and the AI prompt, and spread into `Math.min` | security / DoS | LOW–MED | S | LOW | HIGH | `js/app.js:510-516, 1248-1250`; `js/calculator.js:132` | 040 |
+| 6 | `setsFor` on the deload week: `Math.max(2, Math.ceil(n/2))` gives a **one-set exercise two sets** — the only week that asks for more | correctness | LOW–MED | S | LOW | HIGH | `js/app.js:1553` | 041 |
+| 7 | **Three definitions of "the first set"** for the rep-decay line: `repDecay` measures from the first row with reps, `decayLine` reads row 0's RIR, the Diagnóstico reads the first done row — they disagree the moment set 1 is ticked without reps, which the tick contract allows | correctness | LOW–MED | S | LOW | MED | `js/app.js:1611-1615, 1632-1639`; `js/diagnostics.js:132, 714` | 041 |
+| 8 | `orderedEx` looks ids up in a plain `{}` and `migrate()`'s order repair skips `safeKey`: a `toString` in `profile.order` pushes `Object.prototype.toString` into the session as an exercise. Hand-edited storage only — every import re-keys the order | correctness / hardening | LOW | S | LOW | MED / LOW (reach) | `js/app.js:397, 1966-1975` | 041 |
+| 9 | `#beyond`, `#ordNote`, `#deloadCheck`, `#brakeNote` ship `hidden` and are driven by inline `style.display`, against the rule at `js/app.js:920`; each is permanently `[hidden]` while on screen | tech debt | LOW | S | LOW | HIGH | `index.html:86-89, 97`; `js/app.js:3207, 3888, 3995-4006, 4017-4020` | 041 |
+| 10 | Nothing in either suite pins `data-keep-open`, `#exMenuSetup`'s focus hand-off, `#exMenuCalc`, `#navSession`, or the set boxes' `inputmode`; plans 034/036/037 added one smoke section and no unit section between them | tests | MED | M | LOW | HIGH | `test/smoke.js:94-98, 694-706`; `js/app.js:3627, 3638, 5743` | 042 |
+| 11 | The contrast table's `tokenMap` parses **hex only**: plan 037's timer palette (`--timer-*`, two of them `rgba()`) and `--danger` are uncovered; a covered token converted to `rgba()` drops out silently. Recomputed: every pair passes today (light `--signal` on `--timer-bg` 3.27:1, a 52 px numeral) | tests | MED | S | LOW | HIGH | `test/unit.js:141-145, 159-183`; `css/style.css:49-52, 84-87, 39, 74` | 042 |
+| 12 | `drawnSlot` is left set by the `pruneLog` probe; the docs cross-link loop has no floor and would pass empty | tests | LOW | S | LOW | HIGH | `test/unit.js:3065-3066, 3132-3135` | 042 |
+| 13 | Docs: the guide's Features list names a "◐ button in the header" 034 deleted; README's `index.html` row predates the bar and its limits table omits `ex.minRir` and `priority`; AGENTS.md's one anchor is off by one; `js/diagnostics.js:8` names "the RIR chip" | docs | LOW–MED (agents read these first) | S | LOW | HIGH | `docs/guide.md:136-137`; `README.md:161, 317-328`; `AGENTS.md:191`; `js/diagnostics.js:8` | 043 (the comment → 041) |
+| 14 | DX: `tools/bump-cache-version.sh` carries the pre-029 shell regex and its advisory misstates CI; the gate's `TESTED_PATHS` `js/` prefix runs Chromium for a vendor-notes PR; the documented Playwright install lacks the `--ignore-scripts` the gate insists on; the `.sh` tools' bash requirement is unstated on Windows | dx | LOW–MED | S | LOW | HIGH | `tools/bump-cache-version.sh:98-100`; `tools/smoke-gate.sh:137`; `README.md:124, 139`; `AGENTS.md:176` | 043 |
+
+### Direction (eighth audit) — options for the maintainer, not defects
+
+Grounded in what 032–037 changed; none duplicates plans/030 or plans/031.
+
+- **The Diagnóstico still reads one RIR per session while the review
+  reads per set.** `js/diagnostics.js:131` calls `getRir` (the last
+  working set's value) and its `easy`/`failure` signals reason over that;
+  `js/review.js:118-142` tallies sets since 035. A session paced 3→2→1→0
+  and one run flat at 0 are identical to one screen and different to the
+  other, and the Diagnóstico's own verdict ("Apunta el RIR de la última
+  serie") asks for the narrow signal the data model outgrew. S–M spike:
+  decide per signal which resolution it wants (`failure` probably stays
+  last-set; `easy` probably becomes the session's median) and pin each
+  against the v3 fixtures before touching the prose. `sessionRirs`
+  already returns the per-set array.
+- **The week strip got a "logged" dot in 034; the day row, always on
+  screen, did not.** `weekHasLog`/`refreshWeekDot` (`js/app.js:2682-2706`)
+  mark weeks behind a fold; the day tabs (`:2769-2782`) say `Día N` and
+  nothing else, so "which of this week's days have I done" is answered by
+  tapping each one mid-session. S: a `dayHasLog` beside `weekHasLog`, a
+  `.dot` in the day button, a `refreshDayDot` from the same call site.
+  Overlaps 030's N2 in motivation, not mechanism — the dot is what makes
+  the row readable after navigating away from wherever N2 lands.
+- **The name fold shows three plan fields and lets you edit one.**
+  `ex.setup` is a live input in the fold (`js/app.js:3415-3426`); `ex.alt`
+  and `ex.cue` are read-only divs, and since 037 correcting a cue
+  mid-session is Plan → Editar plan → find the day → find the exercise.
+  Two shapes: two more inputs in the fold (S, taller card — against 031's
+  direction), or one "Editar en el plan" row in the `⋯` menu that
+  deep-links the editor to this exercise (S–M; also answers sets, reps,
+  rest and `inc`, which the fold never will). Product call; the second
+  shape is the honest recommendation.
+- **Carried forward, still open**: the `obj` readout ("asked vs done" —
+  written every session by `recordTarget`, `js/app.js:4486-4495`, and read
+  by nothing; recorded as a design spike by the fifth audit and by 035's
+  Maintenance notes); a `rem` type scale (033 deferred; `css/style.css`
+  is still entirely `px`); the decay term weighted by how far a set's
+  typed RIR sits from the week's target (035 deferred; `rirWeek` never
+  enters the decay path); 031 L15 (fold a finished card) and 030 N2 (open
+  on the next session), both deferred by 036/037; the order arrows back
+  in the row if "machine taken" proves frequent (036); 032's by-hand
+  iPhone inset check, still unperformed.
+
+### Eighth audit — considered and rejected
+
+- **`drawApp` rebuilds three containers that are `display:none`** —
+  `#profiles` (inside `#profileSheet`), `#blockbar` (inside `#blockSheet`)
+  and `#weeks` (inside the folded `#weekPanel`), the last calling
+  `weekHasLog` per week (~670 row reads on the seed plan). Real, on every
+  navigation draw, and sub-millisecond; splitting each into "visible chip"
+  and "sheet body" is M with MED risk because `renderBlockBar` derives the
+  visible chip label from the hidden `<select>` and `refreshWeekDot` reads
+  `#weeks` after every tick. Not worth it at this size.
+- **The install event waits on the 318 KB vendor precache** as well as the
+  shell. The in-file reasoning (`sw.js:58-62`) is the answer: the QR sheet
+  has to work in a basement, and an install that activates before the
+  vendor files are cached opens a window where it does not. Sequencing
+  would buy seconds on first visit only. Leave it.
+- **`reviewName` is a top-level `const` in `js/app.js` read by three split
+  files, with no null guard possible** — a precache hole pairing an old
+  `app.js` with a current `review.js` throws when the review opens. That
+  is the accepted class every `esc`/`$`/`num` read already belongs to
+  (AGENTS.md, rule 2): a dead sheet, not a dead app. Not a finding.
+- **`$('navSession')`'s hub-closing loop is unreachable** — the comment at
+  `js/app.js:5857` says so itself. Documented; leave it.
+- **`.seg-btn` group wiring is written out fifteen times across seven
+  files** — the largest single duplication in the repo, and every copy
+  predates `4f7e037`. Out of this audit's scope; recorded for the next
+  tech-debt pass.
+- **Fixed sleeps 206 → 208** in `test/smoke.js`, against nine new
+  `waitForFunction`/locator waits and zero removals. The trend is right;
+  the general complaint is already recorded.
+- **The rep box's `r-in` class** is written twice (`js/app.js:3512, 3640`)
+  and read by nothing; `.w-in` and `.rir-in` are both live. Two-line
+  cleanup — fold it into the next change to `buildExCard`.
+- **`--timer-line` at 2.72:1 / 2.27:1 on `--timer-bg`** is a border; 034
+  recorded the same standing for `--edge` on `--card`. Not asserted in
+  042; noted there for the day the timer's buttons are judged under
+  SC 1.4.11.
+- **`CONTEXT.md` and plan 038's `sessionsOf`** — the in-flight
+  architecture work is the maintainer's own decision record from the same
+  day; its PR-6 cost measurement is not a finding to re-raise.
+- Verified clean, stated so nobody re-audits: all 72 `innerHTML` sinks
+  outside `js/vendor/` (six more than at `4f7e037`) interpolate only
+  numbers, booleans or constants, with every untrusted string through
+  `esc` or `textContent` — including `ex.setup`, the `«…»`-delimited
+  review strings, `est.dir`/`est.conf` (traced to literals in `targetFor`),
+  and the timer's second line; zero `setAttribute('style'|'href'|'src')`
+  anywhere; `row.rir` is bounded to one digit at every boundary
+  (`rowRir`, `rirNumber`, `normalizeImportedLog`, the box's `oninput`,
+  `normalizeImportedObj`); every loop bounded by an imported number has a
+  constant behind it (`MAX_WEEKS`, sets 12, rest 900, `MAX_DROPS`,
+  `ORDER_LIMIT`, `VARIANT_LIMIT`, `LOG_ROW_HARD_CAP`, `LOG_LIMITS.slots`,
+  `PROFILE_LIMITS.blocks`, `qrInflate` 8 MB, `QR_MAX_FRAMES`,
+  `FIT_PLATES_DP_CAP`, the 60-entry `blocks/index.json`) except
+  `prefs.plates` (finding 5); `sw.js`'s message handler is same-origin by
+  construction and `cacheFirst` refuses opaque responses; CI actions
+  SHA-pinned with `permissions: contents: read`, vendor digests verified,
+  Playwright pinned identically in all four places; no secrets, no
+  prompt-injection content; all 180 distinct `$('id')` lookups resolve to
+  ids in `index.html` and every `<script src>` is in `SHELL`; zero dead
+  CSS selectors, zero dead ids (the seventeen unreferenced ones are all
+  `aria-labelledby` targets), `#blockbar` and `renderSoundBtn` live,
+  `setRir` gone; the six `rest-timer`/`chart` stubs are still the complete
+  set of cross-file reads; plan 027's render cache survived 036/037 (a
+  tick, a drop, a RIR keystroke and an inline setup edit never reach
+  `resetRenderCache`); `diagPoints` groups keys once; `foldRirMap` runs
+  once per block per `migrate()`; CSS has no `backdrop-filter`, no
+  `will-change`, `prefers-reduced-motion` honoured, the sticky header
+  carries one 1 px border; the `cache-version` job is fork-safe; the docs
+  cross-link check covers `plans/README.md`; `js/vendor/README.md`'s
+  recipe regenerates `SHA256SUMS`; AGENTS.md's `<script>` list, `wire*()`
+  block, plans/037 id sentence and "Where things live" all match
+  `3913b8f`; the guide's § "Using it" matches the shell label for label,
+  including the five `⋯` rows and the chevron's position.
+
+### Eighth audit — not audited
+
+`js/vendor/*.js` internals and `node_modules/`; `test/smoke.js` was never
+run (finding 10's section is written but its execution is a done
+criterion of 042); the objetivo rule's body beyond the RIR path
+(`js/app.js:4400-4900`), the setup/backup/CSV/QR-payload sections and the
+QR encode/decode loop beyond their size caps; `css/style.css` beyond the
+shell, timer, safe-area and utility regions; `docs/guide.md` chapters
+beyond "Using it" and Features; plan 038's `sessionsOf` beyond what 039
+touches; the training methodology in the seed plans and the v3 constants;
+visual design; `.claude/worktrees/` (six stale checkouts of merged
+branches); performance magnitudes are derivations from the code's own
+limits, not device measurements.
+
+### Landing order and the bump cascade
+
+039 and 040 first (both P1, both bump from `v88`; 039 before 038's PR 3
+or in its `readSession`-only form after). 041 next (bumps). 042 and 043
+touch no shell file and can land at any time. Rebase every `js/` plan on
+`main` before opening its PR — plan 038 is landing there concurrently —
+and take the highest `CACHE_VERSION` on conflict.
 
 ## Worth doing, not yet planned
 

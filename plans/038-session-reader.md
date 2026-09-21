@@ -133,7 +133,7 @@ extra sets.
 | 3 | **Objetivo**: `exHistory`/`exSession` become `sessionsOf` + `ruleSession` | none | TODO |
 | 4 | **Diagnóstico**: `diagPoints`, `strengthByExercise`; the deload becomes `deloadAt` | a deload written into the phase text is skipped — guide, Diagnóstico section | TODO |
 | 5 | **Charts**: `collectHistory`, `collectHistoryDays`, `collectHistoryAll` | none | TODO |
-| 6 | **Card bands**: `lastTime`, `lastTimeOtherDay`, `priorBlockSets`, `bestByExercise`, `bestForExercise` | none | TODO |
+| 6 | **Card bands**: `lastTime`, `lastTimeOtherDay`, `priorBlockSets`, `bestByExercise`, `bestForExercise` | none | BLOCKED — waits for the history cache (see Maintenance notes) |
 | 7 | **Review tally and CSV**; the CSV on `'logged'`, removed exercises included | the CSV exports stranded weeks and sets of removed exercises — guide, export section and the "hidden everywhere" line at :1097 | TODO |
 
 Every PR bumps `CACHE_VERSION` (`tools/bump-cache-version.sh`) and runs
@@ -182,8 +182,13 @@ The gap is structural: the old bands stop at the first hit, while
 matching by likeness costs 0.8 ms and the legacy RIR lookup 2.2 ms. The
 rest is reading every session. At a phone's ~4× that is ~60 ms more per
 draw on a profile this size, which is well over STOP condition 3's 20 %.
-**PR 6 does not move the bands until the maintainer picks between** an
-early exit inside the module (which would reopen decision 10's "no
-newest-first variant") and landing candidate 3's history cache first. PRs
-3–5 are unaffected: the rule already pays the full walk, and the
+PRs 3–5 are unaffected: the rule already pays the full walk, and the
 Diagnóstico and the charts run on a tap, not on every draw.
+
+**Decided 2026-09-21: cache first.** PR 6 waits for candidate 3's history
+cache, where one full read per draw serves every card and the cache is
+invalidated by the log itself, not by whoever remembers to reset it.
+Decision 10 stands: there is no early exit and no newest-first variant.
+The cache is its own plan, written after PR 3, when the rule's history
+already comes from `sessionsOf`. PR 6 re-runs this measurement on top of
+it and must come in under STOP condition 3.
