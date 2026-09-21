@@ -3995,6 +3995,15 @@ console.log('\n== sessionsOf: the one reading of the log (plans/038) ==');
   ok('a working set\'s rir is exactly what exSession read — per set, inherited, the legacy chip as fallback — and a non-working set keeps its own',
      rirSame, rirWhy);
 
+  /* The review counts what was written down, so it needs the record
+     beside the reading: nothing inherited, no legacy chip. */
+  const own = q(`[
+    { block: 'A', week: 1, day: 'd1', lift: 'bp', sets: [[60, 8], [60, 8, { rir: '2' }], [60, 8]], rir: '0' },
+  ]`, `{ weeks: 'plan', lift: { id: 'bp' } }`);
+  ok('rirOwn is only what was typed on the set, where rir is the inherited reading',
+     own[0].sets.map(s => s.rirOwn).join(',') === ',2,' && own[0].sets.map(s => s.rir).join(',') === '2,2,',
+     JSON.stringify(own[0].sets.map(s => [s.rir, s.rirOwn])));
+
   const extra = q(`[
     { block: 'A', week: 1, day: 'd1', lift: 'bp', sets: [[55, 8], [55, 8], [55, 8], [55, 8]] },
     { block: 'A', week: 1, day: 'd1', lift: 'gone', sets: [[20, 12], [20, 12], [20, 12], [20, 12]] },
@@ -4150,6 +4159,74 @@ console.log('\n== the Diagnóstico on sessionsOf: the deload is deloadAt (plans/
   })()`));
   ok('a point still carries the latest tick as its ts and the legacy chip as the string it was stored as',
      kept.ts === 900000 && kept.rir === '2+' && kept.rows === 3, JSON.stringify(kept));
+}
+
+console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038) ==');
+{
+  /* One small profile: two days, a retired exercise with a set on it, a
+     reordered week, a note, an energy chip, an unticked set and a drop.
+     `more` adds what the app hides — the file must carry it. */
+  call(`
+    function csvFixture(more) {
+      state = defaultState(); migrate();
+      state.prefs.units = 'kg';
+      Object.keys(state.profiles).forEach(k => { if (k !== 'hombre') delete state.profiles[k]; });
+      state.activeProfile = 'hombre';
+      const p = state.profiles.hombre;
+      p.label = 'H';
+      p.blocks = { A: { id: 'A', name: 'Fuerza', weeks: 2, deload: 0, phase: {}, priority: [], days: [
+        { id: 'd1', name: 'Empuje', ex: [{ id: 'bp', n: 'Press banca', sets: 2, reps: '6-8' },
+                                         { id: 'ohp', n: 'Press militar', sets: 2, reps: '8-10' },
+                                         { id: 'dip', n: 'Fondos', sets: 2, reps: '8-12', off: true }] },
+        { id: 'd2', name: 'Pierna', ex: [{ id: 'sq', n: 'Sentadilla', sets: 2, reps: '5-6' }] } ] } };
+      p.blockOrder = ['A'];
+      p.log = { A: {} }; p.rir = { A: {} }; p.notes = { A: {} }; p.energy = { A: {} }; p.order = { A: {} };
+      p.log.A[slot(1, 'd1')] = {
+        bp: [{ w: '60', r: '8', done: true, ts: 1700000000000, rir: '2' }, { w: '60', r: '7', done: true, ts: 1700000100000 }],
+        ohp: [{ w: '40', r: '10', done: true }, { w: '', r: '', done: false }],
+        dip: [{ w: '10', r: '12', done: true, u: 'lb' }] };
+      p.log.A[slot(2, 'd1')] = {
+        bp: [{ w: '62,5', r: '8', done: true, d: [{ w: '45', r: '5' }], dk: 'forced' }, { w: '62,5', r: '6', done: false }] };
+      p.log.A[slot(1, 'd2')] = { sq: [{ w: '100', r: '5', done: true }] };
+      p.order.A[slot(2, 'd1')] = ['ohp', 'bp'];
+      p.notes.A[slot(1, 'd1')] = 'dormí mal';
+      p.energy.A[slot(2, 'd1')] = 'alta';
+      if (more) more(p);
+      return buildCsv();
+    }
+  `);
+  const HEAD = '﻿perfil,bloque,semana,dia,ejercicio,orden,serie,peso,unidad,reps,hecha,fecha,rir,bajadas,tipo_bajada,nota,energia';
+  const PLAN_ROWS = [
+    'H,Fuerza,1,Empuje,Press banca,1,1,60,kg,8,si,2023-11-14,2,,,dormí mal,',
+    'H,Fuerza,1,Empuje,Press banca,1,2,60,kg,7,si,2023-11-14,,,,dormí mal,',
+    'H,Fuerza,2,Empuje,Press banca,2,1,"62,5",kg,8,si,,,45x5,Forzado,,alta',
+    'H,Fuerza,2,Empuje,Press banca,2,2,"62,5",kg,6,no,,,,,,alta',
+    'H,Fuerza,1,Empuje,Press militar,2,1,40,kg,10,si,,,,,dormí mal,',
+    'H,Fuerza,1,Empuje,Fondos,,1,10,lb,12,si,,,,,dormí mal,',
+    'H,Fuerza,1,Pierna,Sentadilla,1,1,100,kg,5,si,,,,,,',
+  ];
+  /* Written by the walk over the plan this replaced, byte for byte: with
+     nothing stranded or removed, the file is the one it always was. */
+  const same = call('csvFixture()');
+  ok('with nothing hidden, the CSV is byte for byte the one the plan walk wrote',
+     same === [HEAD].concat(PLAN_ROWS).join('\r\n'), JSON.stringify(same));
+
+  const more = call(`csvFixture(p => {
+    p.log.A[slot(3, 'd1')] = { bp: [{ w: '65', r: '5', done: true }] };
+    p.log.A[slot(1, 'd1')].gone = [{ w: '20', r: '15', done: true }];
+    p.log.A[slot(2, 'd1')].sq = [{ w: '90', r: '6', done: false }];
+    p.log.A[slot(1, 'd9')] = { zz: [{ w: '5', r: '20', done: true }] };
+  })`).split('\r\n');
+  ok('a stranded week\'s set is exported, after the block\'s own weeks of that exercise, with its day\'s order',
+     more[5] === 'H,Fuerza,3,Empuje,Press banca,1,1,65,kg,5,si,,,,,,', more.slice(1, 7).join(' | '));
+  ok('a set of an exercise removed from the plan is exported with an empty orden, after the day\'s planned ones, under its raw id',
+     more[8] === 'H,Fuerza,1,Empuje,gone,,1,20,kg,15,si,,,,,dormí mal,', more.slice(6, 10).join(' | '));
+  ok('...under the name the plan still has for that id on another day, if it has one',
+     more[9] === 'H,Fuerza,2,Empuje,Sentadilla,,1,90,kg,6,no,,,,,,alta', more.slice(8, 11).join(' | '));
+  ok('...and a day taken out of the plan goes by its id, after the plan\'s days',
+     more[11] === 'H,Fuerza,1,d9,zz,,1,5,kg,20,si,,,,,,' && more.length === 12, more.slice(9).join(' | '));
+  ok('...while every row the plan walk wrote is still there, in the same order',
+     JSON.stringify(more.filter(l => PLAN_ROWS.indexOf(l) >= 0)) === JSON.stringify(PLAN_ROWS), more.join(' | '));
 }
 
 (async () => {

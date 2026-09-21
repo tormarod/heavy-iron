@@ -120,23 +120,26 @@ function buildBlockReview(profile, block) {
        means written down: the inheritance rule that fills the gaps is the
        objetivo's business, not the reader's. `n` is every working set of
        the exercise in the block, so the tally says how much of it the
-       numbers cover instead of leaving "2+ en 6" to be read as all of it. */
+       numbers cover instead of leaving "2+ en 6" to be read as all of it.
+       So each set's `rirOwn`, never the session's `rir`, and the legacy
+       map stays unread, as it always has here.
+
+       The block's own weeks ('plan'), deload included — the tally says
+       what was written down in the block, not a trend — and only the days
+       where the plan still has this exercise live: the rows the review
+       lists are the plan's, and the count sits beside them. */
     const rir = { n: 0 };
     RIR_OPTIONS.forEach(k => { rir[k] = 0; });
-    dayList(block).forEach(d => {
-      if (!exList(d).some(e => e.id === x.id)) return;
-      for (let w = 1; w <= weeks; w++) {
-        const bucket = profile.log[block.id] && profile.log[block.id][slot(w, d.id)];
-        const rows = bucket && bucket[x.id];
-        if (!Array.isArray(rows)) continue;
-        rows.forEach(r => {
-          if (!rowWorked(r)) return;
-          rir.n++;
-          const v = rowRir(r);
-          if (v == null) return;
-          rir[v >= 2 ? '2+' : String(v)]++;
-        });
-      }
+    const onDays = dayList(block).filter(d => exList(d).some(e => e.id === x.id)).map(d => d.id);
+    sessionsOf(profile, { weeks: 'plan', blocks: [block.id], lift: { id: x.id } }).forEach(s => {
+      if (onDays.indexOf(s.day) < 0) return;
+      s.sets.forEach(set => {
+        if (!set.worked) return;
+        rir.n++;
+        const v = set.rirOwn;
+        if (v == null) return;
+        rir[v >= 2 ? '2+' : String(v)]++;
+      });
     });
     return { name: x.name, day: x.day, trend: x.trend, trendLabel: DIAG_TRENDS[x.trend].label,
              pct: x.pct, sessions: x.sessions, lectura: x.lectura, cambio: x.cambio, rir: rir };
