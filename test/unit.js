@@ -362,6 +362,15 @@ const platesCap = call('state = ' + JSON.stringify({
 ok('migrate() de-duplicates and caps the plate list a backup carries (plans/040)',
    platesCap === '24/24', platesCap);
 
+call('state = defaultState(); migrate();');
+const slotFor = k => call('profileSlotFor(' + JSON.stringify(k) + ')');
+ok('profileSlotFor lands a file on the key it names when that profile exists', slotFor('mujer') === 'mujer', slotFor('mujer'));
+ok('...and on the active profile for a key nobody has', slotFor('ghost') === call('state.activeProfile'), slotFor('ghost'));
+['__proto__', 'constructor', 'toString', 'hasOwnProperty'].forEach(k => {
+  ok('...and on the active profile for "' + k + '", never through the prototype (plans/040)',
+     slotFor(k) === call('state.activeProfile'), slotFor(k));
+});
+
 const bareProfile = {
   profiles: { hombre: { blocks: {}, blockOrder: [], log: {} } },
   activeProfile: 'hombre',
