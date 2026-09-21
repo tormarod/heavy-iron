@@ -112,7 +112,7 @@ sessionsOf(profile, {
   skipDeload: true,                  // optional; deloadAt
 })
 // → [{ block, week, day, lift, ts,
-//      sets: [{ w, wLogged, unit, r, rir, drops: [{ w, wLogged, r }],
+//      sets: [{ w, wLogged, unit, r, rLogged, rir, drops: [{ w, wLogged, r }],
 //               dropKind, ts, worked, extra }] }]
 ```
 
@@ -122,7 +122,10 @@ what `exSession` reads today (`sessionRirs` over the working sets, the
 legacy chip as the fallback); any other ticked set carries its own
 `rowRir` or `null`. `extra` compares the set's index with `setsFor` for
 that lift's planned row on that day; a lift no longer in the plan has no
-extra sets.
+extra sets. `rLogged` carries reps the way `wLogged` already carries
+weight — the exact string the row had — because a reader that prints reps
+back (the chart) needs the typed text, not the parsed number, byte for
+byte (PR 5).
 
 ## The seven pull requests
 
@@ -131,8 +134,8 @@ extra sets.
 | 1 | **Row codec** — one field list; `blockShareLog`, `normalizeImportedLog` and `buildCsv`'s row columns built from it; the round-trip test | none | DONE (#121) |
 | 2 | **`sessionsOf`**, the fixture builder, interface tests; the cost measurement recorded below | none | DONE (#120) |
 | 3 | **Objetivo**: `exHistory`/`exSession` become `sessionsOf` + `ruleSession` | none | DONE (#123) |
-| 4 | **Diagnóstico**: `diagPoints`, `strengthByExercise`; the deload becomes `deloadAt` | a deload written into the phase text is skipped — guide, Diagnóstico section; a week's two sessions of a split lift in plan day order | IN PROGRESS |
-| 5 | **Charts**: `collectHistory`, `collectHistoryDays`, `collectHistoryAll` | none | TODO |
+| 4 | **Diagnóstico**: `diagPoints`, `strengthByExercise`; the deload becomes `deloadAt` | a deload written into the phase text is skipped — guide, Diagnóstico section; a week's two sessions of a split lift in plan day order | DONE (#125) |
+| 5 | **Charts**: `collectHistory`, `collectHistoryDays`, `collectHistoryAll` | a week's two points of a split lift in plan day order (as PR 4) | IN PROGRESS |
 | 6 | **Card bands**: `lastTime`, `lastTimeOtherDay`, `priorBlockSets`, `bestByExercise`, `bestForExercise` | none | BLOCKED — waits for the history cache (see Maintenance notes) |
 | 7 | **Review tally and CSV**; the CSV on `'logged'`, removed exercises included | the CSV exports stranded weeks and sets of removed exercises — guide, export section and the "hidden everywhere" line at :1097 | TODO |
 
@@ -242,3 +245,16 @@ opened out of plan order. Floating-point sums in `strengthRows` move by
 ≤5e-16 relative. Everything else was identical across 16,688 outputs, and
 a hand-written deload equals the same deload set as the block's deload
 week (13,029 identical).
+
+**PR 5 (the charts)**. The three collectors read `sessionsOf` and no
+longer touch `profile.log`. `collectHistory` and `collectHistoryDays` ask
+for `'logged'` weeks and apply their callers' own week cap, which is not
+always the block's length, so `'plan'` would have hidden a stranded week
+inside a larger cap. `collectHistoryAll` asks for `'logged'` weeks, as
+plans/008 item 20 decided. Deloads stay on the chart. **Interface
+addition:** a set carries `rLogged` (reps as typed) next to `r`, the same
+pair weight has in `w`/`wLogged`. Rebuilding the text from the number
+turned an imported '8,5' into '8.5' and '08' into '8'. Equivalence: 36 of
+37 cases identical. The one accepted difference is PR 4's: two points of a
+split lift in the same week, logged out of plan-day order, now come in
+plan order.

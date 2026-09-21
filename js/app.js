@@ -2428,7 +2428,14 @@ function lastTimeOtherDay(profile, block, day, ex, week) {
    first. Which of those sets a screen counts is the screen's business —
    `worked` is here because it is the one definition two screens share,
    not a filter every reader has to accept. Nothing is returned for a slot
-   with no ticked set. See CONTEXT.md for the words. */
+   with no ticked set. See CONTEXT.md for the words.
+
+   Reps carry the same two-field shape decision 6 gave weight: `r` is the
+   parsed number (`num(row.r)`, NaN when empty) and `rLogged` is the exact
+   string the row had — the chart's table prints `rLogged`, not `r`, so a
+   comma, a leading zero or a stray character an import left in the field
+   (normalizeImportedLog only trims it) still reads back the way it was
+   typed. */
 function sessionsOf(profile, q) {
   q = q || {};
   /* No default on purpose: "hide the weeks a shortened block no longer
@@ -2512,6 +2519,7 @@ function readSession(profile, block, week, dayId, exId, rows, day) {
       wLogged: r.w == null ? '' : String(r.w),
       unit: unit,
       r: num(r.r),
+      rLogged: r.r == null ? '' : String(r.r),
       rir: rirAt.has(t) ? rirAt.get(t) : rowRir(r),
       drops: dropsOf(r).filter(dropUsed).map(d => ({
         w: convertWeight(num(d.w), unit, units()),

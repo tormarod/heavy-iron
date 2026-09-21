@@ -22,61 +22,88 @@
    the 1RM series — a heavier single at fewer reps can out-rank a lighter
    set done for many reps, which is the point of showing this at all.
 
-   Every weight is read through rowWeight(), not num(r.w): this chart fits
-   one line through many sessions, so a block trained partly in kg and
-   partly in lb — a mid-block unit switch, or a profile restored from a
-   partner who lifts in the other unit — would otherwise draw a 2.2× step
-   that never happened, under an axis that already says units(). The session
-   card is exempt on purpose; see the comment by rowWeight in app.js. */
+   `done` is a session's `sets` (js/app.js, "sessions: the one reading of
+   the log") rather than raw rows since plans/038 PR 5: a set's `w` is
+   already what rowWeight(row) used to compute — readSession builds it with
+   rowWeight itself — so the comparisons below are unchanged, and a set's
+   `r` is a plain number that hasReps/est1RM read exactly as they always
+   read a row's `.r`. Nothing here converts units again; that is still done
+   once, inside readSession, for the same reason the old comment gave: a
+   block trained partly in kg and partly in lb — a mid-block unit switch, or
+   a profile restored from a partner who lifts in the other unit — would
+   otherwise draw a 2.2× step that never happened, under an axis that
+   already says units(). The session card is exempt on purpose; see the
+   comment by rowWeight in app.js. */
 function bestSet(done, metric) {
   if (metric === 'e1rm') {
     const withReps = done.filter(hasReps);
     if (!withReps.length) return null;
     let best = withReps[0];
-    withReps.forEach(r => { if (est1RM(rowWeight(r), num(r.r)) > est1RM(rowWeight(best), num(best.r))) best = r; });
+    withReps.forEach(s => { if (est1RM(s.w, s.r) > est1RM(best.w, best.r)) best = s; });
     return best;
   }
   let best = done[0];
-  done.forEach(r => { if (rowWeight(r) > rowWeight(best)) best = r; });
+  done.forEach(s => { if (s.w > best.w) best = s; });
   return best;
 }
 
+/* The filter every raw-row reader used to write by hand — done && w !== ''
+   && w != null && !isNaN(rowWeight(r)) — translated onto a session set: a
+   session already carries only ticked sets, `wLogged` is the same raw
+   string the row's own `w` was (readSession stringifies it, '' for a
+   missing one), and `w` is that same rowWeight() reading, so this keeps
+   exactly the sets the old filter kept. */
+const chartableSets = sets => sets.filter(s => s.wLogged !== '' && !isNaN(s.w));
+
+/* One block, one day, one exercise id — sessionsOf's narrowest query. Every
+   production caller (drawChart) passes `weeks` as blockWeeks(block), but
+   this function's own callers in test/ pass an arbitrary bound instead, so
+   'plan' (which stops at the block's *current* length) is not always the
+   same question: a week logged past that length is still inside `weeks`
+   when a caller asks for more of them. Reading 'logged' (stranded weeks
+   included) and then applying the same upper bound the old `for (w = 1; w
+   <= (weeks || MAX_WEEKS); w++)` loop enforced reproduces every caller
+   exactly, whichever bound it passed — MAX_WEEKS (js/app.js) is the same
+   ceiling the old loop fell back to when no bound was given at all. */
 function collectHistory(profile, blockId, dayId, exId, weeks, metric) {
+  const cap = weeks || MAX_WEEKS;
+  const sessions = sessionsOf(profile, { weeks: 'logged', lift: { id: exId }, day: dayId, blocks: [blockId] });
   const points = [];
-  for (let w = 1; w <= (weeks || MAX_WEEKS); w++) {
-    const s = profile.log[blockId] && profile.log[blockId][slot(w, dayId)];
-    const rows = s && s[exId];
-    if (!rows) continue;
-    const done = rows.filter(r => r && r.done && r.w !== '' && r.w != null && !isNaN(rowWeight(r)));
-    if (!done.length) continue;
+  sessions.forEach(sess => {
+    if (sess.week > cap) return;
+    const done = chartableSets(sess.sets);
+    if (!done.length) return;
     const best = bestSet(done, metric);
-    if (!best) continue;
-    points.push({ week: w, weight: rowWeight(best), reps: best.r });
-  }
+    if (!best) return;
+    points.push({ week: sess.week, weight: best.w, reps: best.rLogged });
+  });
   return points;
 }
 
 /* The same lift wherever the block plans it, in the order it was trained:
    week by week, and inside a week in day order. The same points
    collectHistory returns plus the day each came from — which the chart
-   needs for its labels now that one week can hold more than one. */
+   needs for its labels now that one week can hold more than one.
+
+   `lift: { like: ex }` asks sessionsOf to match the way liftSlots always
+   has — id, then name, within this block (js/app.js) — the exact function
+   this file called directly before plans/038 PR 5, so the set of (week,
+   day) sessions and their order (week, then the day's position in the
+   block — sessionsOf sorts on the same block.days index liftSlots walks)
+   is unchanged. The week bound is the same MAX_WEEKS-fallback reasoning as
+   collectHistory above. */
 function collectHistoryDays(profile, block, ex, weeks, metric) {
+  const cap = weeks || MAX_WEEKS;
+  const sessions = sessionsOf(profile, { weeks: 'logged', lift: { like: ex }, blocks: [block.id] });
   const points = [];
-  const blk = profile.log[block.id];
-  if (!blk) return points;
-  const slots = liftSlots(block, ex);
-  for (let w = 1; w <= (weeks || MAX_WEEKS); w++) {
-    slots.forEach(s => {
-      const bucket = blk[slot(w, s.dayId)];
-      const rows = bucket && bucket[s.exId];
-      if (!Array.isArray(rows)) return;
-      const done = rows.filter(r => r && r.done && r.w !== '' && r.w != null && !isNaN(rowWeight(r)));
-      if (!done.length) return;
-      const best = bestSet(done, metric);
-      if (!best) return;
-      points.push({ week: w, dayId: s.dayId, weight: rowWeight(best), reps: best.r });
-    });
-  }
+  sessions.forEach(sess => {
+    if (sess.week > cap) return;
+    const done = chartableSets(sess.sets);
+    if (!done.length) return;
+    const best = bestSet(done, metric);
+    if (!best) return;
+    points.push({ week: sess.week, dayId: sess.day, weight: best.w, reps: best.rLogged });
+  });
   return points;
 }
 
@@ -86,34 +113,29 @@ function collectHistoryDays(profile, block, ex, weeks, metric) {
    on a different day in a later block and it is still the same lift. */
 function collectHistoryAll(profile, exId, metric) {
   const out = [];
+  /* Every week actually logged, not just the ones inside a block's current
+     length: bestByExercise (the RECORD badge) already counts a shortened
+     block's stranded weeks, and this chart disagreeing with it hid the very
+     sets that would explain a badge with no history to show for it — see
+     plans/008 item 20. sessionsOf's own `weeks: 'logged'` is that same
+     question.
+
+     The order is sessionsOf's own now (plans/038 PR 5) — block order, then
+     week, then the day's position in the block's plan — the same order the
+     objetivo and the Diagnóstico already read sessions in (plan decision
+     10), rather than the log object's own key order this file used to
+     re-derive by hand. The one case that can print differently from before
+     is a lift split across two days of one week whose slots were logged
+     out of the plan's day order: it now lists in plan order. */
   profile.blockOrder.forEach(bId => {
     const block = profile.blocks[bId];
-    const blk = profile.log[bId];
-    if (!block || !blk) return;
-    /* Every week actually logged, not just the ones inside the block's
-       current length: bestByExercise (the RECORD badge) already counts a
-       shortened block's stranded weeks, and this chart disagreeing with it
-       hid the very sets that would explain a badge with no history to show
-       for it — see plans/008 item 20. One pass groups the keys by week so
-       the full key set isn't walked again per distinct week just to get the
-       output ordered. */
-    const byWeek = new Map();
-    Object.keys(blk).forEach(k => {
-      const s = parseSlot(k);
-      if (!s) return;
-      if (!byWeek.has(s.week)) byWeek.set(s.week, []);
-      byWeek.get(s.week).push(k);
-    });
-    Array.from(byWeek.keys()).sort((a, b) => a - b).forEach(w => {
-      byWeek.get(w).forEach(k => {
-        const rows = blk[k][exId];
-        if (!Array.isArray(rows)) return;
-        const done = rows.filter(r => r && r.done && r.w !== '' && r.w != null && !isNaN(rowWeight(r)));
-        if (!done.length) return;
-        const best = bestSet(done, metric);
-        if (!best) return;
-        out.push({ label: block.name + ' · S' + w, weight: rowWeight(best), reps: best.r });
-      });
+    if (!block) return;
+    sessionsOf(profile, { weeks: 'logged', lift: { id: exId }, blocks: [bId] }).forEach(sess => {
+      const done = chartableSets(sess.sets);
+      if (!done.length) return;
+      const best = bestSet(done, metric);
+      if (!best) return;
+      out.push({ label: block.name + ' · S' + sess.week, weight: best.w, reps: best.rLogged });
     });
   });
   return out;
