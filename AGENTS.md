@@ -202,7 +202,12 @@ untrusted. It goes through a `normalizeImported*` function
 implementation) and is escaped with `esc` (top of `js/app.js`) on the way
 out. Limits are enforced in `IMPORT_LIMITS` (grep for it in `js/app.js`)
 — not just clamped, some values (like `ex.add`) reject the import outright
-rather than silently coercing it.
+rather than silently coercing it. A key that will be used to *index*
+`state.profiles` — a backup's `activeProfile`, a profile file's `key` — is
+checked as an own property first (`migrate()`, `profileSlotFor` in
+`js/profile-transfer.js`), because a plain object answers
+`obj['constructor']` truthily and `obj['__proto__'] = x` re-points its
+prototype (plans/040).
 
 ## The CSP
 

@@ -72,6 +72,21 @@ function ownGet(o, k) {
   return o && Object.prototype.hasOwnProperty.call(o, k) ? o[k] : undefined;
 }
 
+/* Which profile a loaded file replaces: the key it names, when that is a
+   profile this device actually has, else the one on screen. Both halves of
+   the test matter — safeKey refuses the prototype's names outright, and the
+   own-property check refuses a name the map merely inherits — because
+   `state.profiles[key]` alone was truthy for 'constructor' (the dialog then
+   asked to replace "undefined" and the file landed as a phantom third
+   profile) and for '__proto__' (the assignment re-pointed the map's
+   prototype, nothing was saved, and the status line said it was). Same
+   reasoning as ownGet above; this is the one place a key from a file is
+   used to WRITE (plans/040). */
+function profileSlotFor(key) {
+  const k = typeof key === 'string' ? safeKey(key) : '';
+  return k && Object.prototype.hasOwnProperty.call(state.profiles, k) ? k : state.activeProfile;
+}
+
 function normalizeImportedProfile(p) {
   const rawIds = Object.keys(p.blocks);
   if (rawIds.length > PROFILE_LIMITS.blocks) {
@@ -388,10 +403,9 @@ async function loadProfileFromText(text) {
     return;
   }
 
-  /* Land it on the slot it came from. The keys are internal and never
-     renamed, so this matches whoever exported it; a file from somewhere
-     stranger falls back to the profile you are looking at. */
-  const target = (parsed.key && state.profiles[parsed.key]) ? parsed.key : state.activeProfile;
+  /* Land it on the slot it came from; a file from somewhere stranger falls
+     back to the profile you are looking at — see profileSlotFor. */
+  const target = profileSlotFor(parsed.key);
   const local = state.profiles[target];
   const theirs = countProfileSets(incoming);
   const mine = countProfileSets(local);

@@ -344,6 +344,33 @@ ok('the deleted-profile guard does not resurrect a deleted profile', (() => {
   return !migrated.profiles.ghost;
 })());
 
+/* A plain object answers obj['constructor'] with a function and
+   obj['__proto__'] with Object.prototype — both truthy — so a backup that
+   names one as its activeProfile used to pass the repair, getBlock() threw,
+   and the recovery screen's own buttons then persisted the unopenable
+   state (plans/040). */
+['__proto__', 'constructor', 'toString', 'valueOf', 'hasOwnProperty'].forEach(k => {
+  const fixed = call('state = ' + JSON.stringify({ profiles: { hombre: {} }, activeProfile: k }) +
+    '; migrate(); state.activeProfile');
+  ok('migrate() repairs an activeProfile of "' + k + '" onto a profile that exists (plans/040)',
+     fixed === 'hombre', fixed);
+});
+
+const platesCap = call('state = ' + JSON.stringify({
+  profiles: {}, prefs: { units: 'kg', plates: Array.from({ length: 400 }, (_, i) => 1 + (i % 40) * 0.5) },
+}) + '; migrate(); state.prefs.plates.length + "/" + new Set(state.prefs.plates).size');
+ok('migrate() de-duplicates and caps the plate list a backup carries (plans/040)',
+   platesCap === '24/24', platesCap);
+
+call('state = defaultState(); migrate();');
+const slotFor = k => call('profileSlotFor(' + JSON.stringify(k) + ')');
+ok('profileSlotFor lands a file on the key it names when that profile exists', slotFor('mujer') === 'mujer', slotFor('mujer'));
+ok('...and on the active profile for a key nobody has', slotFor('ghost') === call('state.activeProfile'), slotFor('ghost'));
+['__proto__', 'constructor', 'toString', 'hasOwnProperty'].forEach(k => {
+  ok('...and on the active profile for "' + k + '", never through the prototype (plans/040)',
+     slotFor(k) === call('state.activeProfile'), slotFor(k));
+});
+
 const bareProfile = {
   profiles: { hombre: { blocks: {}, blockOrder: [], log: {} } },
   activeProfile: 'hombre',
