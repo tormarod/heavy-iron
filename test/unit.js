@@ -3936,6 +3936,13 @@ console.log('\n== sessionsOf: the one reading of the log (plans/038) ==');
   ok('...and a Spanish decimal comma is read as a decimal, not as the end of the number',
      s1.w === 22.5 && s1.wLogged === '22,5' && s1.unit === 'kg' && s1.r === 8, JSON.stringify(s1));
 
+  const repsComma = q(`[
+    { block: 'A', week: 1, day: 'd1', lift: 'bp', sets: [[80, '8,5']] },
+  ]`, `{ weeks: 'plan', lift: { id: 'bp' } }`);
+  const rc0 = repsComma[0].sets[0];
+  ok('reps carry the same two-field shape as weight: a comma-decimal is a number in r and exactly as typed in rLogged',
+     rc0.r === 8.5 && rc0.rLogged === '8,5', JSON.stringify(rc0));
+
   const worked = q(`[
     { block: 'A', week: 1, day: 'd1', lift: 'bp', sets: [[55, 8], [55, ''], ['', 8]] },
   ]`, `{ weeks: 'plan', lift: { id: 'bp' } }`);

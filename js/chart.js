@@ -55,18 +55,6 @@ function bestSet(done, metric) {
    exactly the sets the old filter kept. */
 const chartableSets = sets => sets.filter(s => s.wLogged !== '' && !isNaN(s.w));
 
-/* readSession parses a row's reps to a number (`num(r.r)`) rather than
-   keeping the string it was typed as, so a session set has no raw text left
-   to hand back for the table's "Reps" column. Every value the row editor
-   itself can produce — digits only, see the `r.r = ….replace(/[^0-9]/g, '')`
-   handler in js/app.js — round-trips through String() byte-for-byte. Only a
-   value that never came through that box — a comma, a leading zero, or
-   non-digit text sitting in an imported or hand-edited backup;
-   normalizeImportedLog only trims the field (`txt`), it does not restrict
-   it to digits — could read back differently here than the string that was
-   actually stored. See the PR 5 report for how that was checked. */
-const repText = n => (n === '' || n == null || isNaN(n)) ? '' : String(n);
-
 /* One block, one day, one exercise id — sessionsOf's narrowest query. Every
    production caller (drawChart) passes `weeks` as blockWeeks(block), but
    this function's own callers in test/ pass an arbitrary bound instead, so
@@ -87,7 +75,7 @@ function collectHistory(profile, blockId, dayId, exId, weeks, metric) {
     if (!done.length) return;
     const best = bestSet(done, metric);
     if (!best) return;
-    points.push({ week: sess.week, weight: best.w, reps: repText(best.r) });
+    points.push({ week: sess.week, weight: best.w, reps: best.rLogged });
   });
   return points;
 }
@@ -114,7 +102,7 @@ function collectHistoryDays(profile, block, ex, weeks, metric) {
     if (!done.length) return;
     const best = bestSet(done, metric);
     if (!best) return;
-    points.push({ week: sess.week, dayId: sess.day, weight: best.w, reps: repText(best.r) });
+    points.push({ week: sess.week, dayId: sess.day, weight: best.w, reps: best.rLogged });
   });
   return points;
 }
@@ -125,48 +113,29 @@ function collectHistoryDays(profile, block, ex, weeks, metric) {
    on a different day in a later block and it is still the same lift. */
 function collectHistoryAll(profile, exId, metric) {
   const out = [];
+  /* Every week actually logged, not just the ones inside a block's current
+     length: bestByExercise (the RECORD badge) already counts a shortened
+     block's stranded weeks, and this chart disagreeing with it hid the very
+     sets that would explain a badge with no history to show for it — see
+     plans/008 item 20. sessionsOf's own `weeks: 'logged'` is that same
+     question.
+
+     The order is sessionsOf's own now (plans/038 PR 5) — block order, then
+     week, then the day's position in the block's plan — the same order the
+     objetivo and the Diagnóstico already read sessions in (plan decision
+     10), rather than the log object's own key order this file used to
+     re-derive by hand. The one case that can print differently from before
+     is a lift split across two days of one week whose slots were logged
+     out of the plan's day order: it now lists in plan order. */
   profile.blockOrder.forEach(bId => {
     const block = profile.blocks[bId];
-    const blk = profile.log[bId];
-    if (!block || !blk) return;
-    /* Every week actually logged, not just the ones inside the block's
-       current length: bestByExercise (the RECORD badge) already counts a
-       shortened block's stranded weeks, and this chart disagreeing with it
-       hid the very sets that would explain a badge with no history to show
-       for it — see plans/008 item 20. sessionsOf's own `weeks: 'logged'`
-       is that same question, asked once per block instead of once per
-       (week, day) pair.
-
-       The lookup below still walks the raw log's own keys, though, rather
-       than trusting sessionsOf's order outright: sessionsOf sorts a
-       block's sessions by the day's position in `block.days`, but this
-       walk has always followed Object.keys(blk) — the order slots were
-       first written in, which for the same lift split across two days of
-       one week is a different axis and need not agree. Re-deriving the
-       first from the second would risk reordering a chart that has drawn
-       one way for years; asking sessionsOf only for *which* (week, day)
-       sessions exist and what they contain, and keeping this file's own
-       walk for the order they print in, cannot regress it either way. */
-    const sessions = sessionsOf(profile, { weeks: 'logged', lift: { id: exId }, blocks: [bId] });
-    const byKey = new Map();
-    sessions.forEach(sess => { byKey.set(slot(sess.week, sess.day), sess); });
-    const byWeek = new Map();
-    Object.keys(blk).forEach(k => {
-      const s = parseSlot(k);
-      if (!s) return;
-      if (!byWeek.has(s.week)) byWeek.set(s.week, []);
-      byWeek.get(s.week).push(k);
-    });
-    Array.from(byWeek.keys()).sort((a, b) => a - b).forEach(w => {
-      byWeek.get(w).forEach(k => {
-        const sess = byKey.get(k);
-        if (!sess) return;
-        const done = chartableSets(sess.sets);
-        if (!done.length) return;
-        const best = bestSet(done, metric);
-        if (!best) return;
-        out.push({ label: block.name + ' · S' + w, weight: best.w, reps: repText(best.r) });
-      });
+    if (!block) return;
+    sessionsOf(profile, { weeks: 'logged', lift: { id: exId }, blocks: [bId] }).forEach(sess => {
+      const done = chartableSets(sess.sets);
+      if (!done.length) return;
+      const best = bestSet(done, metric);
+      if (!best) return;
+      out.push({ label: block.name + ' · S' + sess.week, weight: best.w, reps: best.rLogged });
     });
   });
   return out;

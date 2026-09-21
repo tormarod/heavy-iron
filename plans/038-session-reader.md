@@ -112,7 +112,7 @@ sessionsOf(profile, {
   skipDeload: true,                  // optional; deloadAt
 })
 // → [{ block, week, day, lift, ts,
-//      sets: [{ w, wLogged, unit, r, rir, drops: [{ w, wLogged, r }],
+//      sets: [{ w, wLogged, unit, r, rLogged, rir, drops: [{ w, wLogged, r }],
 //               dropKind, ts, worked, extra }] }]
 ```
 
@@ -122,7 +122,10 @@ what `exSession` reads today (`sessionRirs` over the working sets, the
 legacy chip as the fallback); any other ticked set carries its own
 `rowRir` or `null`. `extra` compares the set's index with `setsFor` for
 that lift's planned row on that day; a lift no longer in the plan has no
-extra sets.
+extra sets. `rLogged` carries reps the way `wLogged` already carries
+weight — the exact string the row had — because a reader that prints reps
+back (the chart) needs the typed text, not the parsed number, byte for
+byte (PR 5).
 
 ## The seven pull requests
 
