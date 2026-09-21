@@ -4090,6 +4090,61 @@ console.log('\n== the row codec: every field a set carries, sent, accepted and e
      header);
 }
 
+console.log('\n== the Diagnóstico on sessionsOf: the deload is deloadAt (plans/038 PR 4) ==');
+{
+  /* The one visible change of the move: the Diagnóstico used to skip only
+     `w === deloadWeek(block)`, so a week written as "Descarga" in the
+     phase text by hand, with the block's deload field never set, was
+     fitted into the trend and could be the baseline or the end of the
+     strength index. Four weeks, rising, with week 3 the hand-written
+     deload and no deload field at all. */
+  const handDeload = JSON.parse(call(`(function () {
+    const p = sessionFixture({ blocks: [{ id: 'A', weeks: 4, deload: 0,
+                                          phase: { 3: { r: 'Descarga', t: '' } },
+                                          days: [{ id: 'd1', ex: [{ id: 'bp' }] }] }],
+      sessions: [1, 2, 3, 4].map(w => ({ block: 'A', week: w, day: 'd1', lift: 'bp',
+                                         sets: [[w === 3 ? 30 : 50 + w, 8], [w === 3 ? 30 : 50 + w, 8]] })) });
+    const block = p.blocks.A;
+    const points = diagPoints(p, 'bp', 'A').map(x => x.label);
+    /* Week 4 dropped for the index: with nothing after it, the deload is
+       the last week logged, which is exactly where it must not be read. */
+    delete p.log.A[slot(4, 'd1')];
+    return JSON.stringify({
+      points: points,
+      series: strengthByExercise(p, block).bp.map(v => v != null),
+      rows: strengthRows(p, block).map(r => ({ base: r.base, last: r.lastWeek })),
+    });
+  })()`));
+  ok('diagPoints leaves out a week the phase text calls "Descarga", not only the block\'s deload week',
+     handDeload.points.join('|') === 'A · S1|A · S2|A · S4', JSON.stringify(handDeload.points));
+  ok('...and the strength index will not end its comparison on it, while the chart keeps its sets',
+     handDeload.rows.length === 1 && handDeload.rows[0].base === 0 && handDeload.rows[0].last === 1 &&
+       handDeload.series.join(',') === 'true,true,true,false', JSON.stringify(handDeload));
+  const lastOnDeload = JSON.parse(call(`(function () {
+    const p = sessionFixture({ blocks: [{ id: 'A', weeks: 3, deload: 0,
+                                          phase: { 1: { r: 'descarga', t: '' }, 3: { r: 'Semana de descarga', t: '' } },
+                                          days: [{ id: 'd1', ex: [{ id: 'bp' }] }] }],
+      sessions: [1, 2, 3].map(w => ({ block: 'A', week: w, day: 'd1', lift: 'bp', sets: [[50, 8]] })) });
+    return JSON.stringify(strengthRows(p, p.blocks.A).map(r => ({ base: r.base, last: r.lastWeek })));
+  })()`));
+  ok('...nor start it there: a hand-written deload in the first week is not the baseline',
+     lastOnDeload.length === 1 && lastOnDeload[0].base === 1 && lastOnDeload[0].last === 1, JSON.stringify(lastOnDeload));
+
+  /* What the move had to keep, pinned because the session carries a
+     different reading of both: a point's ts is the LATEST tick (the
+     session date is the median), and its rir is getRir's string, the
+     legacy chip as it was stored — not the last working set's number. */
+  const kept = JSON.parse(call(`(function () {
+    const p = sessionFixture({ blocks: [{ id: 'A', weeks: 4, days: [{ id: 'd1', ex: [{ id: 'bp' }] }] }],
+      sessions: [{ block: 'A', week: 1, day: 'd1', lift: 'bp', rir: '2+',
+                   sets: [[50, 8, { ts: 1000 }], [50, 8, { ts: 2000 }], [50, 8, { ts: 900000 }]] }] });
+    const pt = diagPoints(p, 'bp', 'A')[0];
+    return JSON.stringify({ ts: pt.ts, rir: pt.rir, rows: pt.rows.length });
+  })()`));
+  ok('a point still carries the latest tick as its ts and the legacy chip as the string it was stored as',
+     kept.ts === 900000 && kept.rir === '2+' && kept.rows === 3, JSON.stringify(kept));
+}
+
 (async () => {
   console.log('\n== requestWakeLock: one rest, one lock — skipped mid-request, doubled up, or re-acquired (plans/008 item 15, plans/013) ==');
   /* A real WakeLockSentinel carries its own .released flag, and the guard
