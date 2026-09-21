@@ -1760,6 +1760,11 @@ ok('setsFor halves the added set too on a deload week',
 ok('and a hand-written "Descarga" phase halves its week as well',
    call(`setsFor({ sets: 4 }, 3, { deload: 0, weeks: 8, phase: { 3: { r: 'Descarga' } } })`) === 2 &&
    call(`deloadAt({ deload: 0, weeks: 8, phase: { 3: { r: 'Descarga' } } }, 3)`) === true);
+ok('a one-set exercise stays at one set on the deload week — the floor of two never exceeds the week\'s own count (plans/041)',
+   call(`setsFor({ sets: 1 }, 8, { deload: 8, weeks: 8, phase: {} })`) === 1 &&
+   call(`setsFor({ sets: 2 }, 8, { deload: 8, weeks: 8, phase: {} })`) === 2 &&
+   call(`setsFor({ sets: 3 }, 8, { deload: 8, weeks: 8, phase: {} })`) === 2,
+   [1, 2, 3].map(n => call(`setsFor({ sets: ${n} }, 8, { deload: 8, weeks: 8, phase: {} })`)).join(','));
 
 /* The objetivo that was shown is written once and never rewritten: the
    record is what was ASKED for, so a weight that came down mid-session has

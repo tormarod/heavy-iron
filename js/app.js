@@ -1577,7 +1577,10 @@ const VOLUME_DIMENSIONS = {
 function setsFor(ex, w, block) {
   let n = ex.sets;
   if (ex.add && w >= ex.add) n += 1;
-  if (block && deloadAt(block, w)) n = Math.max(2, Math.ceil(n / 2));
+  /* Half the sets, floored at two so a deload still has a pair to compare
+     — but never MORE than the week's own count: a one-set finisher used to
+     draw two rows on the one week that asks for less (plans/041). */
+  if (block && deloadAt(block, w)) n = Math.min(n, Math.max(2, Math.ceil(n / 2)));
   return n;
 }
 
