@@ -297,11 +297,11 @@ one reading of the log") instead of filtering raw log rows: it owns which
 sets are ticked and worked, the deload week, stranded weeks, lift
 matching, unit conversion and the legacy RIR fallback, and the query says
 which of those a screen wants. Its `weeks` option has no default on
-purpose. The existing readers are moving onto it one PR at a time
-(`plans/038-session-reader.md`); a new reader starts there. The words
+purpose. Every reader of logged sets was moved onto it by
+`plans/done/038-session-reader.md`; a new reader starts there. The words
 (session, working set, extra set, stranded week, …) are in `CONTEXT.md`.
 
-Its answers are cached between draws (`plans/045-history-cache.md`) and
+Its answers are cached between draws (`plans/done/045-history-cache.md`) and
 come back **frozen**: copy one before changing it. The cache is emptied by
 `save()`, so a write to `log`, `rir` or a block's plan that does not call
 `save()` (or `commit()`) before the next draw leaves a stale objetivo on

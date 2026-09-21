@@ -136,7 +136,7 @@ byte (PR 5).
 | 3 | **Objetivo**: `exHistory`/`exSession` become `sessionsOf` + `ruleSession` | none | DONE (#123) |
 | 4 | **Diagnóstico**: `diagPoints`, `strengthByExercise`; the deload becomes `deloadAt` | a deload written into the phase text is skipped — guide, Diagnóstico section; a week's two sessions of a split lift in plan day order | DONE (#125) |
 | 5 | **Charts**: `collectHistory`, `collectHistoryDays`, `collectHistoryAll` | a week's two points of a split lift in plan day order (as PR 4) | DONE (#126) |
-| 6 | **Card bands**: `lastTime`, `lastTimeOtherDay`, `priorBlockSets`, `bestByExercise`, `bestForExercise` | none | TODO — unblocked by plan 045's history cache |
+| 6 | **Card bands**: `lastTime`, `lastTimeOtherDay`, `priorBlockSets`, `bestByExercise`, `bestForExercise` | the RECORD badge no longer counts logs left behind by blocks deleted before plans/002 | DONE (#PR6) |
 | 7 | **Review tally and CSV**; the CSV on `'logged'`, removed exercises included | the CSV exports stranded weeks and sets of removed exercises — guide, export section and the "hidden everywhere" line at :1097 | DONE (#127) |
 
 Every PR bumps `CACHE_VERSION` (`tools/bump-cache-version.sh`) and runs
@@ -374,3 +374,23 @@ private walks and one is gone. Two new cases cover the split bar. Smoke
 run: "main session", "weight drops", "objetivo de peso", "el mismo
 ejercicio en dos sesiones", "nota, energía", "primera semana": 329
 passed, 0 failed.
+
+**PR 6 (the card bands)**. `lastTime`, `lastTimeOtherDay`,
+`priorBlockSets` and `bestForExercise` read `sessionsOf`. `bestByExercise`
+is gone: each card asks for its own lift's bar, split at the drawn week so
+that a tick re-reads only the current block onward. Answers are asked
+narrowly (one day per question, one earlier block at a time) so that a
+card's own `save(here)` leaves them cached. `lastTime`/`priorBlock` left
+the per-draw render cache. A drop now carries `rLogged` too. `priorWeight`
+is not moved: it reads the unticked placeholder rows a session does not
+carry. Equivalence: 1,025,924 comparisons against main, 0 differences,
+with seven deliberate breaks each caught. Cost: a cold draw is 8–9 %
+*faster* than main (the old record bar walked every row, uncached, on
+every draw), a warm draw takes 0.83 ms against 23 ms, and a tick 0.42 ms.
+**Two old-data differences, accepted by the orchestrator:** the RECORD
+badge no longer counts logs left behind by blocks deleted before
+plans/002, since nothing in the app can show those sets and the badge now
+agrees with the all-blocks chart. A ticked row with no `w` key at all
+(hand-edited storage only) is no longer shown in the bands.
+
+**Plan 038 is done** (all seven PRs, 2026-09-22).
