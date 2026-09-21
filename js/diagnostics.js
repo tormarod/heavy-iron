@@ -67,74 +67,69 @@ let diagView = 'trend';   /* 'trend' per exercise | 'freq' | 'index' per muscle 
    session's own reading, see getRir — and the timestamp, so a gap between
    sessions can be told from a gap in progress.
 
+   Read through sessionsOf (plans/038), asking what this screen is about:
+   the block's own weeks, a shortened block's stranded weeks hidden as
+   everywhere else on it, and the deload week left out — by deloadAt, the
+   same reading the objetivo has, so a week the phase text calls "Descarga"
+   is left out too and not only the one the block's deload field names.
+   The deload is prescribed at roughly 60 % of the weight, so leaving it in
+   drags the fitted line down and reports a block that did exactly what it
+   was told as "bajando". Skipped at the read rather than at the verdict,
+   so it cannot reach the slope at all.
+
    Sets above EST_MAX_REPS reps are dropped rather than plotted: Epley
    drifts badly up there, and one 20-rep back-off set would otherwise fake a
-   trend that never happened. */
+   trend that never happened. That ceiling is this screen's, not the
+   session's — it is about Epley, not about which sets count. */
 function diagPoints(profile, exId, onlyBlockId) {
-  const out = [];
-  profile.blockOrder.forEach(bId => {
-    if (onlyBlockId && bId !== onlyBlockId) return;
-    const block = profile.blocks[bId];
-    const blk = profile.log[bId];
-    if (!block || !blk) return;
-    /* One pass over the keys, grouped by week, the way the chart's
-       collectHistoryAll does it (js/chart.js) — the loop below used to
-       re-filter every key of the block once per week, so a long block paid
-       W × S key parses for every exercise on the sheet. The weeks are still
-       walked in order, which is what keeps the output week-ascending; the
-       two screens differ on purpose in what they skip, and this one's skips
-       stay where they are. */
-    const byWeek = new Map();
-    Object.keys(blk).forEach(k => {
-      const s = parseSlot(k);
-      if (!s) return;
-      s.k = k;
-      if (!byWeek.has(s.week)) byWeek.set(s.week, []);
-      byWeek.get(s.week).push(s);
-    });
-    for (let w = 1; w <= blockWeeks(block); w++) {
-      /* The deload is prescribed at roughly 60 % of the weight, so leaving
-         it in drags the fitted line down and reports a block that did
-         exactly what it was told as "bajando". Skipped here rather than
-         at the verdict, so it cannot reach the slope at all. */
-      if (w === deloadWeek(block)) continue;
-      (byWeek.get(w) || []).forEach(s => {
-        const k = s.k;
-        const rows = blk[k][exId];
-        if (!Array.isArray(rows)) return;
-        /* rowWeight() rather than num(r.w): converts a row logged in the
-           other unit instead of blending it into this line raw — see the
-           comment by rowWeight() in app.js. The session view stays exempt
-           on purpose; this is a screen that fits one line through many of
-           them, which the session view is not. */
-        const done = rows.filter(r => r && r.done && hasReps(r) && rowWeight(r) > 0 && num(r.r) <= EST_MAX_REPS);
-        if (!done.length) return;
-        let best = done[0];
-        done.forEach(r => { if (est1RM(rowWeight(r), num(r.r)) > est1RM(rowWeight(best), num(best.r))) best = r; });
-        /* The work side of the same session, and it counts every ticked
-           set — EST_MAX_REPS and all. That ceiling is a statement about
-           Epley, not about kilos: a 20-rep set moved weight whether or not
-           an estimate can honestly be read off it. convertedSetVolume()
-           mirrors setVolume() (both in app.js) — "one definition of kilos
-           moved" still holds for the session view; this is the
-           unit-converted read of the same rule, for a screen that spans
-           sessions. */
-        const worked = rows.filter(r => r && r.done && hasReps(r) && rowWeight(r) > 0);
-        out.push({
-          label: block.name + ' · S' + w,
-          e1rm: est1RM(rowWeight(best), num(best.r)),
-          weight: rowWeight(best),
-          reps: num(best.r),
-          vol: worked.reduce((t, r) => t + convertedSetVolume(r), 0),
-          sets: worked.length,
-          ts: rows.reduce((t, r) => (r && r.done && r.ts > t ? r.ts : t), 0),
-          rir: getRir(profile, bId, w, s.dayId, exId),
-          rows: rows.filter(r => r && r.done),
-        });
-      });
-    }
-  });
-  return out;
+  /* A filter of blockOrder, not [onlyBlockId]: a block the profile no
+     longer lists has never been read here, and asking for it by id would
+     start to. */
+  const blocks = (profile.blockOrder || []).filter(bId => !onlyBlockId || bId === onlyBlockId);
+  return sessionsOf(profile, { weeks: 'plan', lift: { id: exId }, blocks: blocks, skipDeload: true }).map(sess => {
+    /* Working sets, the session's own flag: ticked, with a weight and a
+       rep count. Each set's weight is already converted to the unit on
+       screen (rowWeight() on the way in), so a row logged in the other
+       unit is not blended into this line raw — the session view stays
+       exempt on purpose; this is a screen that fits one line through many
+       of them, which the session view is not. */
+    const worked = sess.sets.filter(x => x.worked);
+    const done = worked.filter(x => x.r <= EST_MAX_REPS);
+    if (!done.length) return null;
+    let best = done[0];
+    done.forEach(x => { if (est1RM(x.w, x.r) > est1RM(best.w, best.r)) best = x; });
+    const block = profile.blocks[sess.block];
+    /* Stored rows for the two readers that still want them: forcedDrop and
+       repDecay read the row, and rowRir(rows[0]) the first set's OWN
+       reserve, which a set's inherited rir cannot stand in for. getRir
+       likewise stays the session's reading ('2+' and all) rather than the
+       last working set's rir — it falls back to an earlier set's value and
+       to a padding row's, which the per-set reading does not. Both depart
+       from plans/038 decision 7 on purpose: moving the reader was not to
+       move a single signal, and these two would have. */
+    const rows = profile.log[sess.block][slot(sess.week, sess.day)][exId];
+    return {
+      label: block.name + ' · S' + sess.week,
+      e1rm: est1RM(best.w, best.r),
+      weight: best.w,
+      reps: best.r,
+      /* The work side of the same session, and it counts every working
+         set — EST_MAX_REPS and all. That ceiling is a statement about
+         Epley, not about kilos: a 20-rep set moved weight whether or not
+         an estimate can honestly be read off it. The sum is
+         convertedSetVolume() (app.js) term for term — the set, then each
+         drop with something in it, an empty box adding nothing — read off
+         the session's already-converted numbers. */
+      vol: worked.reduce((t, x) => t + (x.w * x.r + x.drops.reduce((u, d) =>
+        u + ((isNaN(d.w) || isNaN(d.r)) ? 0 : d.w * d.r), 0)), 0),
+      sets: worked.length,
+      /* The LATEST tick, not the session date: the gap between sessions
+         has always been measured from the last set of each. */
+      ts: sess.sets.reduce((t, x) => (x.ts > t ? x.ts : t), 0),
+      rir: getRir(profile, sess.block, sess.week, sess.day, exId),
+      rows: rows.filter(r => r && r.done),
+    };
+  }).filter(Boolean);
 }
 
 /* ---------- frequency, from the timestamps already on every row ----------
@@ -174,23 +169,26 @@ function muscleOfBlock(block) {
    set ticked in it, which is when you were in the gym. */
 function muscleSessions(profile, block, upToWeek) {
   const muscleOf = muscleOfBlock(block);
-  const blk = profile.log[block.id] || {};
   const out = {};
-  Object.keys(blk).forEach(k => {
-    const s = parseSlot(k);
-    if (!s) return;
-    const w = s.week;
-    if (w < 1 || w > upToWeek) return;
-    const slotRows = blk[k] || {};
+  /* One slot at a time: a muscle trained by three lifts on the same day is
+     one visit to the gym, not three. The block's own weeks — stranded ones
+     stay hidden, as everywhere else on this screen — and the deload kept:
+     turning up for it is attendance. */
+  const bySlot = new Map();
+  sessionsOf(profile, { weeks: 'plan', blocks: [block.id] }).forEach(sess => {
+    if (sess.week < 1 || sess.week > upToWeek) return;
+    const k = slot(sess.week, sess.day);
+    if (!bySlot.has(k)) bySlot.set(k, []);
+    bySlot.get(k).push(sess);
+  });
+  bySlot.forEach(list => {
     const firstTs = {};
-    Object.keys(slotRows).forEach(exId => {
-      const tag = muscleOf[exId];
+    list.forEach(sess => {
+      const tag = muscleOf[sess.lift];
       if (!tag) return;
-      const rows = slotRows[exId];
-      if (!Array.isArray(rows)) return;
-      rows.forEach(r => {
-        if (!r || !r.done || !(r.ts > 0)) return;
-        if (!firstTs[tag] || r.ts < firstTs[tag]) firstTs[tag] = r.ts;
+      sess.sets.forEach(x => {
+        if (!(x.ts > 0)) return;
+        if (!firstTs[tag] || x.ts < firstTs[tag]) firstTs[tag] = x.ts;
       });
     });
     Object.keys(firstTs).forEach(tag => {
@@ -363,29 +361,25 @@ function buildHeatmapSVG(days) {
 function strengthByExercise(profile, block) {
   const muscleOf = muscleOfBlock(block);
   const weeks = blockWeeks(block);
-  const blk = profile.log[block.id] || {};
   const out = {};
-  Object.keys(blk).forEach(k => {
-    const s = parseSlot(k);
-    if (!s) return;
-    const w = s.week;
-    if (w < 1 || w > weeks) return;
-    const slotRows = blk[k] || {};
-    Object.keys(slotRows).forEach(exId => {
-      if (!muscleOf[exId]) return;
-      const rows = slotRows[exId];
-      if (!Array.isArray(rows)) return;
-      /* Same rep ceiling as the trend: past it Epley is inventing a number
-         rather than reading one, and one 20-rep back-off set would move a
-         muscle's whole index. rowWeight() converts a row logged in the
-         other unit instead of blending it in raw — see app.js. */
-      const done = rows.filter(r => r && r.done && hasReps(r) && rowWeight(r) > 0 && num(r.r) <= EST_MAX_REPS);
-      if (!done.length) return;
-      let best = 0;
-      done.forEach(r => { const v = est1RM(rowWeight(r), num(r.r)); if (v > best) best = v; });
-      if (!out[exId]) out[exId] = new Array(weeks).fill(null);
-      if (out[exId][w - 1] == null || best > out[exId][w - 1]) out[exId][w - 1] = best;
-    });
+  /* The block's own weeks, and the deload week KEPT: this is the series
+     the chart draws, and those sets happened. It is strengthRows, below,
+     that refuses to measure to or from it — and deloadCheck in app.js
+     reads the weeks either side of it straight out of this. */
+  sessionsOf(profile, { weeks: 'plan', blocks: [block.id] }).forEach(sess => {
+    const exId = sess.lift, w = sess.week;
+    if (!muscleOf[exId]) return;
+    /* Same rep ceiling as the trend: past it Epley is inventing a number
+       rather than reading one, and one 20-rep back-off set would move a
+       muscle's whole index. Each set's weight is already converted to the
+       unit on screen, so a row logged in the other unit is not blended in
+       raw — see rowWeight() in app.js. */
+    const done = sess.sets.filter(x => x.worked && x.r <= EST_MAX_REPS);
+    if (!done.length) return;
+    let best = 0;
+    done.forEach(x => { const v = est1RM(x.w, x.r); if (v > best) best = v; });
+    if (!out[exId]) out[exId] = new Array(weeks).fill(null);
+    if (out[exId][w - 1] == null || best > out[exId][w - 1]) out[exId][w - 1] = best;
   });
   return out;
 }
@@ -407,9 +401,11 @@ function strengthRows(profile, block) {
   /* A deload week is lighter on purpose. Its sets are real and stay on the
      chart, but it can be neither end of the comparison: measuring to it
      would report a planned ~40 % back-off as a strength loss, which is the
-     same artefact the volume view already refuses to draw. */
-  const dl = deloadWeek(block);
-  const usable = w => w + 1 !== dl;
+     same artefact the volume view already refuses to draw. deloadAt, the
+     objetivo's reading, so a week the phase text calls "Descarga" is out
+     of the comparison too, not only the one the deload field names
+     (plans/038). */
+  const usable = w => !deloadAt(block, w + 1);
 
   return Object.keys(byMuscle).map(tag => {
     const series = byMuscle[tag];

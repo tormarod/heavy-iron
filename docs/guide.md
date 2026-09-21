@@ -1356,6 +1356,12 @@ what it was told reads as a loss. Two places had to learn this:
 - The **fitted trend** on the Diagnóstico tab drops it before fitting, so a
   planned back-off cannot pull an exercise into `bajando`.
 
+Both read the deload the way [the weekly objetivo](#the-weekly-objetivo)
+does: the week you picked as the block's deload, and also any week whose
+goal in the plan says *Descarga*, even if you wrote it there by hand and
+never set the deload week at all. Before, only the picked week was left
+out, so a hand-written deload was fitted into the trend like any other.
+
 The volume view already worked this way, for the same reason: halving the
 sets is the point of the week, not a lapse in it.
 
