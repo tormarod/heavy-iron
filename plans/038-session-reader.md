@@ -130,8 +130,8 @@ extra sets.
 |---|---|---|---|
 | 1 | **Row codec** — one field list; `blockShareLog`, `normalizeImportedLog` and `buildCsv`'s row columns built from it; the round-trip test | none | DONE (#121) |
 | 2 | **`sessionsOf`**, the fixture builder, interface tests; the cost measurement recorded below | none | DONE (#120) |
-| 3 | **Objetivo**: `exHistory`/`exSession` become `sessionsOf` + `ruleSession` | none | IN PROGRESS |
-| 4 | **Diagnóstico**: `diagPoints`, `strengthByExercise`; the deload becomes `deloadAt` | a deload written into the phase text is skipped — guide, Diagnóstico section | TODO |
+| 3 | **Objetivo**: `exHistory`/`exSession` become `sessionsOf` + `ruleSession` | none | DONE (#123) |
+| 4 | **Diagnóstico**: `diagPoints`, `strengthByExercise`; the deload becomes `deloadAt` | a deload written into the phase text is skipped — guide, Diagnóstico section; a week's two sessions of a split lift in plan day order | IN PROGRESS |
 | 5 | **Charts**: `collectHistory`, `collectHistoryDays`, `collectHistoryAll` | none | TODO |
 | 6 | **Card bands**: `lastTime`, `lastTimeOtherDay`, `priorBlockSets`, `bestByExercise`, `bestForExercise` | none | BLOCKED — waits for the history cache (see Maintenance notes) |
 | 7 | **Review tally and CSV**; the CSV on `'logged'`, removed exercises included | the CSV exports stranded weeks and sets of removed exercises — guide, export section and the "hidden everywhere" line at :1097 | TODO |
@@ -222,3 +222,23 @@ profiles, 41,859 `exHistory` calls and every `targetFor` compared against
 `exSession` now call `ruleSession(sessionsOf(…))`. The sessionsOf RIR
 equivalence test now compares against the old reading written out from
 raw rows, so it does not compare the new code with itself.
+
+**PR 4 (the Diagnóstico)**. `diagPoints` (with `skipDeload`),
+`strengthByExercise` and `muscleSessions` (deload kept, since they measure
+attendance and `deloadCheck` reads the weeks either side of it) read
+through `sessionsOf` on `'plan'` weeks. `strengthRows` uses `deloadAt` for
+the ends of its index. `trainedDays` stays a row counter. Deviations: each
+point's `rir` still comes from `getRir` (it can be a legacy '2+' string,
+read through `rirNumber`), and `rows` are still the raw ticked rows that
+`forcedDrop`, `repDecay` and `rowRir(rows[0])` read. Moving those waits for
+the review's `rirOwn` (PR 7) and a raw-row question of its own.
+**Accepted difference beyond the deload (orchestrator's call, under
+decision 10):** within a week, two sessions of a lift planned on two days
+now come in the plan's day order, the order the objetivo already reads
+them in, instead of whichever day's log key was created first. In the
+equivalence check this moved `diagRows`' verdict in ~14 of 200 random
+profiles, and only when a lift is planned on two days and those days were
+opened out of plan order. Floating-point sums in `strengthRows` move by
+≤5e-16 relative. Everything else was identical across 16,688 outputs, and
+a hand-written deload equals the same deload set as the block's deload
+week (13,029 identical).
