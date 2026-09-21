@@ -2480,6 +2480,28 @@ ok('decay no longer blames a first set the lifter typed at 2 in reserve',
    diagProbe(three(decaySess('2', '1')), false) ===
      'flat | Estancado de verdad — ni la serie tope ni los kilos por serie se mueven',
    diagProbe(three(decaySess('2', '1')), false));
+/* Per set, reduced by the median — the session's typical reserve
+   (plans/044). A log typed the old way, one value on the last set, still
+   reads through the inheritance rule as it always did (the two cases
+   above pin that); these pin what the per-set record can say that one
+   number could not. */
+/* Reps held at the top of the range on purpose: a set at the bottom of the
+   range at 0 RIR can make the objetivo come down a rung, and the "Peso mal
+   elegido" row is checked before either signal — these cases are about
+   the signals, not the rule. */
+const pacedSess = () => [[12, '3'], [12, '1'], [12, '0']];
+ok('a session paced 3 → 1 → 0 is not fatigue: its typical set had a rep in reserve',
+   diagProbe(three(pacedSess()), false) ===
+     'flat | Estancado de verdad — ni la serie tope ni los kilos por serie se mueven',
+   diagProbe(three(pacedSess()), false));
+const groundSess = () => [[12, '0'], [11, '0'], [11, '0']];
+ok('...a session ground out at 0 on every set still is',
+   diagProbe(three(groundSess()), false) === 'flat | Fatiga, no falta de esfuerzo',
+   diagProbe(three(groundSess()), false));
+const heldSess = () => [[12, '3'], [12, '3'], [11, '0']];
+ok('...and a session held back on most sets reads as lacking intensity whatever the last set did',
+   diagProbe(three(heldSess()), false) === 'flat | Falta intensidad — RIR 2+ repetido',
+   diagProbe(three(heldSess()), false));
 ok('...and still fires when the first set was typed at 0',
    diagProbe(three(decaySess('0', '1')), false) === 'flat | Primera serie al fallo — las de después se vacían',
    diagProbe(three(decaySess('0', '1')), false));
