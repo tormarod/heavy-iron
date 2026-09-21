@@ -805,6 +805,31 @@ ok('a restored session order keeps all three of its exercises',
 ok('...re-keyed to ids the restored day actually has',
    orderRekey.allResolve, orderRekey.ids + ' vs ' + orderRekey.live);
 
+/* Only a hand-edited localStorage can put a prototype name into
+   profile.order — every import re-keys it — but migrate()'s whole brief is
+   to survive exactly that, and orderedEx used to push
+   Object.prototype.toString into the session as if it were an exercise
+   (plans/041). */
+const orderProto = call(`
+  (function () {
+    state = defaultState(); migrate();
+    const profile = state.profiles.hombre;
+    const block = profile.blocks[profile.blockOrder[0]];
+    const day = block.days[0];
+    const plan = exList(day).map(function (e) { return e.id; });
+    profile.order[block.id] = {};
+    profile.order[block.id][slot(1, day.id)] = ['toString', plan[1], plan[0]];
+    const drawn = orderedEx(profile, block, 1, day).map(function (e) { return e && typeof e === 'object' ? e.id : typeof e; });
+    migrate();
+    const kept = profile.order[block.id][slot(1, day.id)].join(',');
+    return { drawn: drawn.join(','), kept: kept, want: plan[1] + ',' + plan[0], n: plan.length };
+  })()
+`);
+ok('orderedEx never draws a prototype member as an exercise', !orderProto.drawn.split(',').includes('function') &&
+   orderProto.drawn.split(',').length === orderProto.n, orderProto.drawn);
+ok('...and migrate() drops the name from the recorded order, as it does from every exercise id',
+   orderProto.kept === orderProto.want, orderProto.kept + ' vs ' + orderProto.want);
+
 /* 5. The same misfiling, on the strict path that keeps renaming: two days
       sharing a raw id normalize to two different ids, so the id map has to
       be read per day. This is the QR "blocklog" wire format, which is why

@@ -407,7 +407,7 @@ function migrate() {
         const ids = blk[k];
         if (!Array.isArray(ids)) { delete blk[k]; return; }
         const seen = new Set();
-        blk[k] = ids.filter(id => typeof id === 'string' && id && !seen.has(id) && seen.add(id)).slice(0, ORDER_LIMIT);
+        blk[k] = ids.filter(id => typeof id === 'string' && safeKey(id) && !seen.has(id) && seen.add(id)).slice(0, ORDER_LIMIT);
         if (!blk[k].length) delete blk[k];
       });
     });
@@ -2032,7 +2032,7 @@ function orderedEx(profile, block, w, day) {
   const plan = exList(day);
   const ids = getOrder(profile, block.id, w, day.id);
   if (!ids) return plan;
-  const byId = {};
+  const byId = Object.create(null);   /* no prototype, so a recorded id can only ever match the plan (plans/041) */
   plan.forEach(ex => { byId[ex.id] = ex; });
   const out = [];
   ids.forEach(id => { const ex = byId[id]; if (ex && out.indexOf(ex) < 0) out.push(ex); });
