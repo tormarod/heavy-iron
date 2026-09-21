@@ -2030,6 +2030,54 @@ ok('...and leaves every row where it is: the chip\'s sweep went with the chip',
 ok('...and takes the slot with the last exercise out of it',
    dropLegacyProbe.empty === '{}', JSON.stringify(dropLegacyProbe));
 
+/* Three edges of the fold and its fallback, one root (plans/039): two
+   selectors for "the row the session's RIR sits on", and a fallback that
+   trusted a row that was not a working set. */
+const foldSkipsTyped = call(`
+  (function () {
+    const rows = [{ w: '60', r: '10', done: true, rir: '3' },
+                  { w: '60', r: '9', done: true },
+                  { w: '60', r: '8', done: true }];
+    const p = { log: { B: { 'w1-D': { E: rows } } },
+                rir: { B: { 'w1-D': { E: '2+' } } } };
+    foldRirMap(p, 'B');
+    return rows.map(function (r) { return r.rir == null ? 'x' : r.rir; }).join(',');
+  })()
+`);
+ok('foldRirMap leaves a session alone when any of its sets already carries a value — the share round-trip stamps nothing (plans/039)',
+   foldSkipsTyped === '3,x,x', foldSkipsTyped);
+
+const foldOnce = call(`
+  (function () {
+    const rows = [{ w: '60', r: '10', done: true },
+                  { w: '60', r: '9', done: true },
+                  { w: '60', r: '8', done: true }];
+    const p = { log: { B: { 'w1-D': { E: rows } } },
+                rir: { B: { 'w1-D': { E: '1' } } } };
+    foldRirMap(p, 'B');
+    const first = rows.map(function (r) { return r.rir == null ? 'x' : r.rir; }).join(',');
+    rows.push({ w: '60', r: '7', done: true });
+    foldRirMap(p, 'B');
+    const second = rows.map(function (r) { return r.rir == null ? 'x' : r.rir; }).join(',');
+    return first + ' | ' + second;
+  })()
+`);
+ok('...and folds a legacy chip exactly once per session: a set ticked later does not inherit it from the map',
+   foldOnce === 'x,x,1 | x,x,1,x', foldOnce);
+
+const orphanRows = "[{ w: '60', r: '10', done: true }, { w: '60', r: '9', done: true }, " +
+                   "{ w: '60', r: '8', done: true }, { w: '60', r: '8', done: false, rir: '0' }]";
+const orphanReader = call(`
+  (function () {
+    const rows = ${orphanRows};
+    const p = { log: { B: { 'w1-D': { E: rows } } }, rir: {} };
+    const s = readSession(p, { id: 'B' }, 1, 'D', 'E', rows, undefined);
+    return s.sets.map(function (x) { return x.rir == null ? 'x' : x.rir; }).join(',');
+  })()
+`);
+ok('readSession never reads a reserve off a set that is not a working set: a RIR typed then un-ticked prices nothing (plans/039)',
+   orphanReader === 'x,x,x', orphanReader);
+
 const getRirProbe = call(`
   (function () {
     const rows = [{ w: '60', r: '10', done: true, rir: '3' }, { w: '60', r: '9', done: true, rir: '1' }];
