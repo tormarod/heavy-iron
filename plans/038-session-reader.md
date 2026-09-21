@@ -128,7 +128,7 @@ extra sets.
 
 | # | PR | Visible change | Status |
 |---|---|---|---|
-| 1 | **Row codec** — one field list; `blockShareLog`, `normalizeImportedLog` and `buildCsv`'s row columns built from it; the round-trip test | none | TODO |
+| 1 | **Row codec** — one field list; `blockShareLog`, `normalizeImportedLog` and `buildCsv`'s row columns built from it; the round-trip test | none | IN PROGRESS |
 | 2 | **`sessionsOf`**, the fixture builder, interface tests; the cost measurement recorded below | none | IN PROGRESS |
 | 3 | **Objetivo**: `exHistory`/`exSession` become `sessionsOf` + `ruleSession` | none | TODO |
 | 4 | **Diagnóstico**: `diagPoints`, `strengthByExercise`; the deload becomes `deloadAt` | a deload written into the phase text is skipped — guide, Diagnóstico section | TODO |
@@ -192,3 +192,19 @@ Decision 10 stands: there is no early exit and no newest-first variant.
 The cache is its own plan, written after PR 3, when the rule's history
 already comes from `sessionsOf`. PR 6 re-runs this measurement on top of
 it and must come in under STOP condition 3.
+
+**PR 1 (the row codec)**. `ROW_FIELDS` sits next to `LOG_LIMITS` in
+`js/app.js`, with `rowToShare`, `rowFromImport`, `rowCsvCells` and
+`ROW_CSV_COLUMNS` as its interface. `blockShareLog`, `normalizeImportedLog`
+and `buildCsv`'s set columns are built from it, and their per-field
+comments moved onto the fields. One deviation from decision 12's wording:
+"a field added without an entry fails" is enforced by scanning the source
+for `r.<field> =` and `delete r.<field>` (comments stripped) against the
+codec's keys. A fixture could not know about a field nobody told it about.
+The shared row's keys now come in CSV order (`w, u, r, done, …` instead of
+`w, r, done, ts, rir, u, …`): same bytes, same meaning, and no reader
+depends on key order. Mutation-checked: dropping `u` from the list,
+accepting a '2+' chip as a row RIR, and writing an unknown `r.zz` each
+fail. Found on the way, and out of scope: `txt()` throws on a JSON value
+like `{"toString": null}`, which predates the codec (spun off as its own
+task).

@@ -3946,11 +3946,76 @@ console.log('\n== sessionsOf: the one reading of the log (plans/038) ==');
      d0.drops.length === 1 && Math.round(d0.drops[0].w * 100) / 100 === 36.29 && d0.drops[0].wLogged === '80' &&
        d0.drops[0].r === 6 && d0.dropKind === 'forced', JSON.stringify(d0));
 
-  ok('a block missing from the profile, or with nothing logged, is passed over rather than thrown on',
+  ok('a block missing from the profile, or with nothing logged, is passed over rather than thrown on (sessionsOf)',
      call(`(function () {
        const p = sessionFixture({ blocks: ${PLAN} });
        return sessionsOf(p, { weeks: 'logged', blocks: ['A', 'nope'] }).length;
      })()`) === 0);
+}
+
+console.log('\n== the row codec: every field a set carries, sent, accepted and exported from one list (plans/038) ==');
+{
+  const fields = JSON.parse(call(`JSON.stringify(ROW_FIELDS.map(f => ({ key: f.key, col: f.col,
+    fns: ['send', 'accept', 'cell'].every(n => typeof f[n] === 'function') })))`));
+  const keys = fields.map(f => f.key);
+  ok('every field says how it is sent, accepted and exported, and names its CSV column',
+     fields.every(f => f.fns && typeof f.col === 'string' && f.col), JSON.stringify(fields));
+
+  /* The guard the old "mirrored" comment could not be: every field the
+     code writes onto a logged set — `r.x = …` or `delete r.x` — has to be
+     one the codec knows, or it would be lost on the first share, restore
+     or export. `r` is the name every writer in the repo gives a row (the
+     DOM's rows are `row`). Comments stripped first: they discuss fields. */
+  const written = new Set();
+  fs.readdirSync(path.join(ROOT, 'js')).filter(f => f.endsWith('.js')).forEach(f => {
+    const code = fs.readFileSync(path.join(ROOT, 'js', f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    for (const m of code.matchAll(/\br\.([A-Za-z_$][\w$]*)\s*=(?!=)/g)) written.add(m[1]);
+    for (const m of code.matchAll(/\bdelete\s+r\.([A-Za-z_$][\w$]*)/g)) written.add(m[1]);
+  });
+  const unknown = [...written].filter(k => !keys.includes(k));
+  ok('every row field the code writes is in the codec, so none can be dropped on share, restore or export',
+     written.size >= 6 && unknown.length === 0, 'written: ' + [...written].join(',') + ' unknown: ' + unknown.join(','));
+
+  /* One row with every field set, through the camera and back. Checked
+     field by field against the codec's own list, so a field added to the
+     list without a sample here fails too rather than passing untested. */
+  const trip = JSON.parse(call(`(function () {
+    state = defaultState(); migrate(); state.prefs.units = 'lb';
+    const full = { w: '100', u: 'lb', r: '8', done: true, ts: 1726000000000, rir: '2',
+                   d: [{ w: '80', r: '6' }, { w: '', r: '' }], dk: 'forced' };
+    const sent = rowToShare(full);
+    const back = rowFromImport(JSON.parse(JSON.stringify(sent)));
+    return JSON.stringify({ sent: sent, back: back, again: rowToShare(back) });
+  })()`));
+  const missing = keys.filter(k => !(k in trip.back));
+  ok('a set with every field set comes back from a share with every field',
+     missing.length === 0, 'missing: ' + missing.join(',') + ' ' + JSON.stringify(trip));
+  ok('...unchanged, and sending it again sends the same thing',
+     JSON.stringify(trip.back) === JSON.stringify(trip.sent) && JSON.stringify(trip.again) === JSON.stringify(trip.sent),
+     JSON.stringify(trip));
+  ok('...with the half-typed drop left behind', trip.sent.d.length === 1, JSON.stringify(trip.sent.d));
+
+  const hostile = JSON.parse(call(`JSON.stringify([
+    rowFromImport({ w: '60', r: '8', done: 1, u: 'LB', rir: '2+', dk: 'forced', ts: -5 }),
+    rowFromImport({ w: '60', r: '8', done: true, d: [{ w: '40', r: '8' }], dk: 'nonsense' }),
+    rowFromImport(['60', '8']),
+    rowFromImport({ w: { kg: 60 }, r: 12345678901234567890 }),
+  ])`));
+  ok('accepted on its own terms: no unit but the exact lb, no chip as a row RIR, no dk without drops, no bad date',
+     JSON.stringify(hostile[0]) === '{"w":"60","r":"8","done":true}', JSON.stringify(hostile[0]));
+  ok('...an unknown drop kind is a plain drop', hostile[1].dk === 'drop' && hostile[1].d.length === 1, JSON.stringify(hostile[1]));
+  ok('...and a row that is not an object is an empty one', JSON.stringify(hostile[2]) === '{"w":"","r":"","done":false}',
+     JSON.stringify(hostile[2]));
+  ok('...and a value that is not text becomes bounded text',
+     typeof hostile[3].w === 'string' && typeof hostile[3].r === 'string' && hostile[3].r.length <= call('LOG_LIMITS.val'),
+     JSON.stringify(hostile[3]));
+
+  /* The CSV header is a promise to whoever opens the file in a
+     spreadsheet: building it from the codec must not move a column. */
+  const header = call(`buildCsv().split('\\r\\n')[0].replace(/^\\uFEFF/, '')`);
+  ok('the CSV header is the one it always was, with the set\'s columns from the codec',
+     header === 'perfil,bloque,semana,dia,ejercicio,orden,serie,peso,unidad,reps,hecha,fecha,rir,bajadas,tipo_bajada,nota,energia',
+     header);
 }
 
 (async () => {
