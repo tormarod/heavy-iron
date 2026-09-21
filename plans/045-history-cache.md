@@ -8,7 +8,7 @@
 > "Maintenance notes".
 >
 > **Drift check (run first)**:
-> `git diff --stat f37f3ae..HEAD -- js/app.js js/diagnostics.js js/block-editor.js js/profile-transfer.js js/qr-transfer.js test/unit.js`
+> `git diff --stat 05e5ded..HEAD -- js/app.js js/diagnostics.js js/block-editor.js js/profile-transfer.js js/qr-transfer.js test/unit.js`
 > On any in-scope change, re-run the mutation audit below (Step 1) against
 > the live code before proceeding: a new path that writes `log`, `rir`, a
 > block's plan or `blockOrder`, or a new reader that writes onto what
@@ -30,7 +30,7 @@
   and the maintainer's decision of 2026-09-21: *cache first*.
 - **Numbering**: written as "039" in the request; 039–043 were already
   taken by the eighth audit and 044 by the Diagnóstico RIR plan, so this is 045.
-- **Planned at**: commit `f37f3ae`, 2026-09-21
+- **Planned at**: commit `f37f3ae`, 2026-09-21; audit re-run and rebased onto `05e5ded` (038 PRs 4, 5, 7 and plan 040 merged meanwhile — no new writer, three new readers, none writes onto an answer)
 - **Glossary**: `CONTEXT.md` — session, working set, lift, deload week,
   stranded week.
 
@@ -248,7 +248,7 @@ it when opening the PR.
 
 ```
 node --check js/app.js && node --check js/diagnostics.js && node --check js/block-editor.js
-node test/unit.js                  # 788 passed (778 before, 9 new, and the index link check for this file)
+node test/unit.js                  # 815 passed at 05e5ded (805 before, 9 new, and the index link check for this file)
 node test/smoke.js --only "main session" --only "weight drops" --only "objetivo de peso" \
   --only "dos sesiones" --only "nota, energía" --only "primera semana"
 ```
@@ -270,11 +270,11 @@ node test/smoke.js --only "main session" --only "weight drops" --only "objetivo 
   prefixed to every shell script: any `TypeError` is one).
 - A cold draw measures more than ~20 % slower than `origin/main` on a
   profile whose active block is logged only up to the current week
-  (measured: +9 % today's cards, +13 % with the PR 6 bands).
+  (measured: +12 % today's cards, +11 % with the PR 6 bands).
 
 ## Maintenance notes
 
-**Landed 2026-09-21**, branch `claude/039-history-cache`, no deviation in
+**Landed 2026-09-21**, branch `claude/039-history-cache`, rebased onto `05e5ded`, no deviation in
 design from the request except the numbering (045) and two additions the
 measurements forced: cut-offs as slices, and the rule's projection filed
 beside the answer.
@@ -285,19 +285,21 @@ day's eight cards at week 7 of the last block, 30 runs each.
 `scratchpad/measure-cache.js` (derived from the orchestrator's
 `measure-sessions.js`, root taken from argv). "Cold" empties the cache
 before each run (as after a broad write); "warm" repeats the call with
-nothing logged in between. This machine measured `exHistory` at 14.7 ms
+nothing logged in between. Measured on this branch rebased onto
+`05e5ded` (plans/038 PRs 4, 5 and 7 and plan 040 merged), `origin/main` =
+`05e5ded`. This machine measured `exHistory` at 15.2 ms
 today where plans/038 recorded 8.4, so compare within a column, not with
 038's table.
 
 | Reading | `origin/main` | this plan, cold | this plan, warm |
 |---|---|---|---|
-| `sessionsOf` bands (id + like), 8 cards | 16.3 | 17.5 | 0.02 |
-| `exHistory`, 8 cards | 14.7 | 17.8 | 0.03 |
-| a full draw's log work today (objetivo + brake + two early-exit bands) | 88–91 | 104 | 0.9 |
-| the same with the PR 6 bands on `sessionsOf` | 106–114 | 122 | 0.6 |
-| a draw after a change of week (PR 6 bands) | 103 | — | 12.3 |
+| `sessionsOf` bands (id + like), 8 cards | 15.9 | 17.5 | 0.03 |
+| `exHistory`, 8 cards | 15.2 | 18.3 | 0.04 |
+| a full draw's log work today (objetivo + brake + two early-exit bands) | 88 | 107 | 0.85 |
+| the same with the PR 6 bands on `sessionsOf` | 102 | 120 | 0.6 |
+| a draw after a change of week (PR 6 bands) | 100 | — | 12.5 |
 | a tick + its card redrawn, bands as today | 0.00 | — | 0.29 |
-| a tick + its card redrawn, PR 6 bands | 1.8 | — | 0.30 |
+| a tick + its card redrawn, PR 6 bands | 1.9 | — | 0.26 |
 
 Read: a draw with nothing logged since the last one costs under 1 ms of
 log work, down from ~90; a change of week ~12 ms (the rule's projection
@@ -312,10 +314,10 @@ logged only up to the week being trained (12 864 rows,
 
 | Cold draw, log work | `origin/main` | no freeze | this plan |
 |---|---|---|---|
-| today's cards | 93 | 95.5 | 101.5 (+9 %) |
-| with the PR 6 bands | 106.7 | 111.6 | 120.5 (+13 %) |
+| today's cards | 87.1 | 90.4 | 97.4 (+12 %) |
+| with the PR 6 bands | 101.7 | 104.8 | 112.5 (+11 %) |
 
-The freeze is most of it (~6–9 ms; a recursive freeze was ~40 %, and
+The freeze is most of it (~7 ms; a recursive freeze was ~40 %, and
 sharing one frozen empty `drops` list saved ~3 ms more); the cache's own
 bookkeeping (keys, slices) is the other ~2–5 ms. Inside STOP condition 3
 of plans/038 and this plan's own, and paid only on a cold draw. Dropping
@@ -323,7 +325,7 @@ the freeze is the lever if it ever matters; the poison test would then
 have to become a strict-mode run of the suite.
 
 **Correctness checks beyond the unit suite** (scratchpad, not committed):
-- `'use strict'` on every shell script: 787/787 (before the index row) — nothing writes onto an
+- `'use strict'` on every shell script: 815/815, the Diagnóstico, chart and review readers of plans/038 PRs 4, 5 and 7 included — nothing writes onto an
   answer.
 - A fuzzer: 300 random profiles × 60 random card writes (90 % scoped,
   10 % broad) × random questions (both `weeks`, id / like / none, day,
@@ -337,11 +339,16 @@ have to become a strict-mode run of the suite.
   not invalidating (5), no freeze (1), unit not in the cache (1), render
   cache keeping log facts (1), block list not in the key (1), variant cut
   not in the projection key (2), a slice keeping the cut week (1).
-- Smoke, targeted (static server on :8791): "main session", "weight
-  drops", "objetivo de peso y diagnóstico", "el mismo ejercicio en dos
-  sesiones", "nota, energía y control de descarga", "primera semana de un
-  bloque nuevo" — 329 passed; "orden real", "revisión del bloque", "block
-  delete purges", "Guardar cambios", "dos pestañas" — 61 passed.
+- Smoke. Before the rebase, targeted: 329 + 61 passed. After it, one
+  section threw: "objetivo de peso y diagnóstico" wrote `p.log` straight
+  into the live profile and called `diagPoints` with no `save()`, right
+  after the Diagnóstico sheet had filled the cache from the previous log —
+  exactly the stale read this plan says a write without `save()` gets
+  (`diagPoints` then indexed a slot that no longer existed). The test now
+  calls `save()` after its write, as the app would. Because that edits
+  `test/smoke.js`, the full suite was run once (AGENTS.md's first case):
+  575 passed, 0 failed, on `05e5ded` + this branch. **Deviation**: this
+  plan touches `test/smoke.js`, which it had not planned to.
 
 **`resetRenderCache()` in tests.** Of the ~20 calls in `test/unit.js`,
 none is needed any more for history freshness — a test that writes the

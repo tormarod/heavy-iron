@@ -2126,6 +2126,10 @@ const ok = (name, cond, extra) => {
            { w: '45', r: '8', done: true, ts: Date.now(), dk: 'forced', d: [{ w: '30', r: '5' }] },
            { w: '45', r: '6', done: true, ts: Date.now() },
          ] } };
+         /* The write the app itself would follow with save(): sessionsOf
+            answers from a cache that save() empties (plans/045), and the
+            sheet opened above has just filled it from the previous log. */
+         save();
          const pt = diagPoints(p, 'chestpress', 'block-1')[0];
          return pt.sets === 2 && pt.vol === (45 * 8 + 30 * 5) + 45 * 6;
        }));
