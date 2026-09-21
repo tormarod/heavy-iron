@@ -188,7 +188,7 @@ one shared Node context — the same global scope the `<script>` tags create,
 in the same order — and is the fastest full check. A new file under `js/`
 goes into that list too, in the position its `<script>` tag has.
 
-**Testing policy** (`test/smoke.js:9-10`): *"Add a case here whenever a bug
+**Testing policy** (`test/smoke.js:10-11`): *"Add a case here whenever a bug
 turns out to have been invisible from the outside."* Arithmetic and data
 repair go in `test/unit.js` instead — and prefer that side of the line when
 a case fits either: a unit assertion costs nothing on every later run, a
