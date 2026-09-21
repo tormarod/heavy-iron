@@ -66,6 +66,7 @@ below so it is not lost or re-audited.
 | 042 | [The shell's untested paths get a smoke section; the contrast table reads translucent tokens; `drawnSlot` and the docs loop](042-tests-shell-paths-and-unit-suite-holes.md) | P2 | M | LOW | — (no bump) | TODO |
 | 043 | [The docs and the three "what is the shell" regexes match the code after plans 032–037](done/043-docs-and-dx-sync-after-the-shell.md) | P2 | S | LOW | — (no bump) | DONE (no plan deviations; one re-wrapped comment paragraph in `tools/smoke-gate.sh` was tidied in review — see PR #130) |
 | 044 | [The Diagnóstico's effort signals read every set's RIR — the session's typical reserve, not its last set](044-diagnostico-reads-every-set-rir.md) | P2 | S–M | MED | 039 (hard: `legacyRir`); adapts to 038 PR 4 if it lands first | TODO |
+| 045 | [The history cache — `sessionsOf` answers once per question, and the write that changes the log is what empties it](045-history-cache.md) | P2 | M | MED | 038 PR 3 (merged); unblocks 038 PR 6 | IN PROGRESS — the cache in front of `sessionsOf`, emptied by `save()` (a card's `save(here)` only drops what can see its slot; `'view'` drops nothing), frozen answers, cut-offs as slices; `exHistoryCached` and `diagRows`' reset retired. Numbered 045: 039–044 were taken by the time it was written |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
