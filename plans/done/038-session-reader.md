@@ -136,7 +136,7 @@ byte (PR 5).
 | 3 | **Objetivo**: `exHistory`/`exSession` become `sessionsOf` + `ruleSession` | none | DONE (#123) |
 | 4 | **Diagnóstico**: `diagPoints`, `strengthByExercise`; the deload becomes `deloadAt` | a deload written into the phase text is skipped — guide, Diagnóstico section; a week's two sessions of a split lift in plan day order | DONE (#125) |
 | 5 | **Charts**: `collectHistory`, `collectHistoryDays`, `collectHistoryAll` | a week's two points of a split lift in plan day order (as PR 4) | DONE (#126) |
-| 6 | **Card bands**: `lastTime`, `lastTimeOtherDay`, `priorBlockSets`, `bestByExercise`, `bestForExercise` | the RECORD badge no longer counts logs left behind by blocks deleted before plans/002 | DONE (#PR6) |
+| 6 | **Card bands**: `lastTime`, `lastTimeOtherDay`, `priorBlockSets`, `bestByExercise`, `bestForExercise` | the RECORD badge no longer counts logs left behind by blocks deleted before plans/002 | DONE (#135) |
 | 7 | **Review tally and CSV**; the CSV on `'logged'`, removed exercises included | the CSV exports stranded weeks and sets of removed exercises — guide, export section and the "hidden everywhere" line at :1097 | DONE (#127) |
 
 Every PR bumps `CACHE_VERSION` (`tools/bump-cache-version.sh`) and runs
