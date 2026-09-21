@@ -3732,6 +3732,227 @@ console.log('\n== "borrar registro" reaches a week past the cap (plans/009 item 
      order === '{"w1-d1":["e2"],"w1-d2":["e9","e1"],"w17-d2":["e9","e1"]}', order);
 }
 
+console.log('\n== sessionsOf: the one reading of the log (plans/038) ==');
+{
+  /* The fixture builder: sessions in, a profile out, so these cases say
+     what was lifted instead of spelling the storage shape. A block is
+     { id, weeks, deload, phase, days: [{ id, ex: [{ id, n, sets }] }] };
+     a session is { block, week, day, lift, sets, rir } where each set is
+     [w, r] (ticked), [w, r, { …row fields }] or a raw row object, and
+     `rir` is the legacy one-chip value, filed in the old map. Defined in
+     the app's own scope so every case below can call it. */
+  call(`
+    function sessionFixture(spec) {
+      state = defaultState(); migrate();
+      state.prefs.units = spec.units || 'kg';
+      const p = { blocks: {}, blockOrder: [], log: {}, rir: {}, obj: {}, variants: {} };
+      (spec.blocks || []).forEach(b => {
+        p.blocks[b.id] = { id: b.id, name: b.name || b.id, weeks: b.weeks || 8, deload: b.deload || 0,
+                           phase: b.phase || {}, priority: [],
+                           days: (b.days || []).map(d => ({ id: d.id, name: d.id,
+                             ex: (d.ex || []).map(e => ({ id: e.id, n: e.n || e.id, sets: e.sets || 3, reps: e.reps || '8-12' })) })) };
+        p.blockOrder.push(b.id);
+      });
+      (spec.sessions || []).forEach(s => {
+        const k = slot(s.week, s.day);
+        const blk = p.log[s.block] = p.log[s.block] || {};
+        const bucket = blk[k] = blk[k] || {};
+        bucket[s.lift] = s.sets.map(x => Array.isArray(x)
+          ? Object.assign({ w: String(x[0]), r: String(x[1]), done: true }, x[2] || {})
+          : x);
+        if (s.rir != null) {
+          const rb = p.rir[s.block] = p.rir[s.block] || {};
+          (rb[k] = rb[k] || {})[s.lift] = s.rir;
+        }
+      });
+      return p;
+    }
+  `);
+  /* The plan every case below shares unless it says otherwise: two blocks,
+     two days each, a press on both days of A (so day position matters)
+     and the same press under a different id, by name, in B. */
+  const PLAN = `[
+    { id: 'A', weeks: 4, days: [
+      { id: 'd1', ex: [{ id: 'sq', n: 'Sentadilla' }, { id: 'bp', n: 'Press banca' }] },
+      { id: 'd2', ex: [{ id: 'bp', n: 'Press banca' }] } ] },
+    { id: 'B', weeks: 4, days: [
+      { id: 'x1', ex: [{ id: 'bp2', n: 'Press banca' }] } ] },
+  ]`;
+  const q = (sessions, query, extra) => JSON.parse(call(`(function () {
+    const p = sessionFixture(Object.assign({ blocks: ${PLAN}, sessions: ${sessions} }, ${extra || '{}'}));
+    return JSON.stringify(sessionsOf(p, ${query}));
+  })()`));
+  const where = list => list.map(s => s.block + s.week + s.day + ':' + s.lift).join(' ');
+
+  ok('a query that does not say which weeks it means is refused, not defaulted',
+     throws(`sessionsOf(sessionFixture({ blocks: ${PLAN} }), { lift: { id: 'bp' } })`));
+
+  const byId = q(`[
+    { block: 'B', week: 1, day: 'x1', lift: 'bp2', sets: [[60, 8]] },
+    { block: 'A', week: 2, day: 'd2', lift: 'bp', sets: [[57.5, 8]] },
+    { block: 'A', week: 2, day: 'd1', lift: 'bp', sets: [[57.5, 10]] },
+    { block: 'A', week: 1, day: 'd2', lift: 'bp', sets: [[55, 8]] },
+  ]`, `{ weeks: 'plan', lift: { id: 'bp' } }`);
+  ok('by id: every session of that id, oldest first — week, then the day\'s place in the block — and nothing under another id',
+     where(byId) === 'A1d2:bp A2d1:bp A2d2:bp', where(byId));
+
+  const like = q(`[
+    { block: 'B', week: 1, day: 'x1', lift: 'bp2', sets: [[60, 8]] },
+    { block: 'A', week: 1, day: 'd1', lift: 'sq', sets: [[100, 5]] },
+    { block: 'A', week: 1, day: 'd1', lift: 'bp', sets: [[55, 8]] },
+  ]`, `{ weeks: 'plan', lift: { like: { id: 'bp', n: 'Press banca' } } }`);
+  ok('by likeness: the same lift under another id in a later block, in block order, and not the squat beside it',
+     where(like) === 'A1d1:bp B1x1:bp2', where(like));
+
+  const oneDay = q(`[
+    { block: 'A', week: 1, day: 'd1', lift: 'bp', sets: [[55, 8]] },
+    { block: 'A', week: 1, day: 'd2', lift: 'bp', sets: [[55, 8]] },
+  ]`, `{ weeks: 'plan', lift: { id: 'bp' }, day: 'd2' }`);
+  ok('a day narrows it to that day', where(oneDay) === 'A1d2:bp', where(oneDay));
+
+  const every = q(`[
+    { block: 'A', week: 1, day: 'd1', lift: 'bp', sets: [[55, 8]] },
+    { block: 'A', week: 1, day: 'd1', lift: 'gone', sets: [[20, 12]] },
+    { block: 'A', week: 1, day: 'd1', lift: 'sq', sets: [[100, 5]] },
+  ]`, `{ weeks: 'plan' }`);
+  ok('no lift: every lift, in the day\'s plan order, a lift the plan no longer has last',
+     where(every) === 'A1d1:sq A1d1:bp A1d1:gone', where(every));
+
+  const untouched = q(`[
+    { block: 'A', week: 1, day: 'd1', lift: 'bp', sets: [{ w: '55', r: '8', done: false }] },
+    { block: 'A', week: 2, day: 'd1', lift: 'bp', sets: [{ w: '55', r: '8', done: false }, [57.5, 8]] },
+  ]`, `{ weeks: 'plan', lift: { id: 'bp' } }`);
+  ok('only ticked sets: a slot with none is no session, and an unticked set is left out of one that has',
+     where(untouched) === 'A2d1:bp' && untouched[0].sets.length === 1 && untouched[0].sets[0].wLogged === '57.5',
+     JSON.stringify(untouched));
+
+  const stranded = `[
+    { block: 'A', week: 4, day: 'd1', lift: 'bp', sets: [[55, 8]] },
+    { block: 'A', week: 6, day: 'd1', lift: 'bp', sets: [[60, 8]] },
+  ]`;
+  const plan = q(stranded, `{ weeks: 'plan', lift: { id: 'bp' } }`);
+  const logged = q(stranded, `{ weeks: 'logged', lift: { id: 'bp' } }`);
+  ok("weeks: 'plan' hides a stranded week, 'logged' counts it",
+     where(plan) === 'A4d1:bp' && where(logged) === 'A4d1:bp A6d1:bp', where(plan) + ' / ' + where(logged));
+
+  const deloads = JSON.parse(call(`(function () {
+    const p = sessionFixture({ blocks: [{ id: 'A', weeks: 4, deload: 4,
+                                          phase: { 3: { r: 'Descarga', t: '' } },
+                                          days: [{ id: 'd1', ex: [{ id: 'bp' }] }] }],
+      sessions: [1, 2, 3, 4].map(w => ({ block: 'A', week: w, day: 'd1', lift: 'bp', sets: [[50, 8]] })) });
+    return JSON.stringify([sessionsOf(p, { weeks: 'plan', lift: { id: 'bp' }, skipDeload: true }),
+                           sessionsOf(p, { weeks: 'plan', lift: { id: 'bp' } })]);
+  })()`));
+  ok('skipDeload leaves out the deload week and a week the phase text calls "Descarga"; without it both stay',
+     deloads[0].map(s => s.week).join(',') === '1,2' && deloads[1].length === 4,
+     JSON.stringify(deloads.map(l => l.map(s => s.week))));
+
+  const before = q(`[
+    { block: 'A', week: 1, day: 'd1', lift: 'bp', sets: [[55, 8]] },
+    { block: 'A', week: 2, day: 'd1', lift: 'bp', sets: [[57.5, 8]] },
+    { block: 'A', week: 3, day: 'd1', lift: 'bp', sets: [[60, 8]] },
+    { block: 'B', week: 1, day: 'x1', lift: 'bp2', sets: [[60, 8]] },
+  ]`, `{ weeks: 'logged', lift: { like: { id: 'bp', n: 'Press banca' } }, before: { block: 'A', week: 3 } }`);
+  ok('before: nothing at or after that week, and no later block',
+     where(before) === 'A1d1:bp A2d1:bp', where(before));
+
+  const chosen = q(`[
+    { block: 'A', week: 1, day: 'd1', lift: 'bp', sets: [[55, 8]] },
+    { block: 'B', week: 1, day: 'x1', lift: 'bp2', sets: [[60, 8]] },
+  ]`, `{ weeks: 'plan', blocks: ['B'] }`);
+  ok('blocks: only the blocks named', where(chosen) === 'B1x1:bp2', where(chosen));
+
+  const units = q(`[
+    { block: 'A', week: 1, day: 'd1', lift: 'bp', sets: [[100, 8, { u: 'lb' }], ['22,5', 8]] },
+  ]`, `{ weeks: 'plan', lift: { id: 'bp' } }`);
+  const s0 = units[0].sets[0], s1 = units[0].sets[1];
+  ok('a set logged in lb comes back converted in w, and exactly as typed in wLogged and unit',
+     Math.round(s0.w * 100) / 100 === 45.36 && s0.wLogged === '100' && s0.unit === 'lb', JSON.stringify(s0));
+  ok('...and a Spanish decimal comma is read as a decimal, not as the end of the number',
+     s1.w === 22.5 && s1.wLogged === '22,5' && s1.unit === 'kg' && s1.r === 8, JSON.stringify(s1));
+
+  const worked = q(`[
+    { block: 'A', week: 1, day: 'd1', lift: 'bp', sets: [[55, 8], [55, ''], ['', 8]] },
+  ]`, `{ weeks: 'plan', lift: { id: 'bp' } }`);
+  ok('worked: ticked with a weight and a rep count, and nothing else is',
+     worked[0].sets.map(s => s.worked).join(',') === 'true,false,false', JSON.stringify(worked[0].sets));
+  /* Asked inside the app's scope: JSON carries NaN out of the VM as null,
+     and null is exactly what an empty box must not read as — it is 0 to
+     any arithmetic that forgets to check. */
+  ok('...and an empty box reads as NaN, not as zero',
+     call(`(function () {
+       const p = sessionFixture({ blocks: ${PLAN}, sessions: [
+         { block: 'A', week: 1, day: 'd1', lift: 'bp', sets: [[55, ''], ['', 8]] }] });
+       const s = sessionsOf(p, { weeks: 'plan', lift: { id: 'bp' } })[0].sets;
+       return Number.isNaN(s[0].r) && Number.isNaN(s[1].w);
+     })()`) === true);
+
+  /* The reserve on a working set is the rule's reading, byte for byte:
+     compare against exSession over the cases that exercise inheritance,
+     the legacy chip, and a padding row carrying a value typed before
+     anything was ticked. */
+  const rirCases = [
+    `[[60, 8, { rir: '3' }], [60, 8, { rir: '2' }], [60, 8, { rir: '1' }], [60, 8, { rir: '0' }]]`,
+    `[[60, 8], [60, 8, { rir: '2' }], [60, 8]]`,
+    `[[60, 8], [60, 8], [60, 8]]`,
+    `[[60, 8], [60, 8], { w: '', r: '', done: false, rir: '1' }]`,
+    `[[60, 8], ['', 8, { rir: '4' }], [60, 8]]`,
+  ];
+  const legacies = [null, "'2+'", "'0'"];
+  let rirSame = true, rirWhy = '';
+  rirCases.forEach(sets => legacies.forEach(legacy => {
+    const got = JSON.parse(call(`(function () {
+      const p = sessionFixture({ blocks: ${PLAN}, sessions: [
+        { block: 'A', week: 1, day: 'd1', lift: 'bp', sets: ${sets}, rir: ${legacy} }] });
+      const s = sessionsOf(p, { weeks: 'plan', lift: { id: 'bp' } })[0];
+      const e = exSession(p, 'A', 1, 'd1', 'bp', 8, 12);
+      return JSON.stringify({ mine: s.sets.filter(x => x.worked).map(x => x.rir),
+                              rule: e ? e.sets.map(x => x.rir) : [],
+                              other: s.sets.filter(x => !x.worked).map(x => x.rir) });
+    })()`));
+    if (JSON.stringify(got.mine) !== JSON.stringify(got.rule)) { rirSame = false; rirWhy += sets + ' ' + legacy + ' → ' + JSON.stringify(got) + '; '; }
+    if (sets.indexOf("['', 8, { rir: '4' }]") >= 0 && got.other[0] !== 4) { rirSame = false; rirWhy += 'non-working set lost its own rir; '; }
+  }));
+  ok('a working set\'s rir is exactly what exSession reads — per set, inherited, the legacy chip as fallback — and a non-working set keeps its own',
+     rirSame, rirWhy);
+
+  const extra = q(`[
+    { block: 'A', week: 1, day: 'd1', lift: 'bp', sets: [[55, 8], [55, 8], [55, 8], [55, 8]] },
+    { block: 'A', week: 1, day: 'd1', lift: 'gone', sets: [[20, 12], [20, 12], [20, 12], [20, 12]] },
+  ]`, `{ weeks: 'plan' }`);
+  ok('extra: a set past the plan\'s count is flagged, and a lift the plan no longer has has none',
+     extra[0].sets.map(s => s.extra).join(',') === 'false,false,false,true' &&
+       extra[1].sets.every(s => !s.extra), JSON.stringify(extra.map(s => s.sets.map(x => x.extra))));
+
+  const extraDeload = JSON.parse(call(`(function () {
+    const p = sessionFixture({ blocks: [{ id: 'A', weeks: 4, deload: 4, days: [{ id: 'd1', ex: [{ id: 'bp', sets: 4 }] }] }],
+      sessions: [{ block: 'A', week: 4, day: 'd1', lift: 'bp', sets: [[40, 8], [40, 8], [40, 8]] }] });
+    return JSON.stringify(sessionsOf(p, { weeks: 'plan', lift: { id: 'bp' } })[0].sets.map(s => s.extra));
+  })()`));
+  ok('...counted against the week\'s own set count, which a deload halves',
+     extraDeload.join(',') === 'false,false,true', JSON.stringify(extraDeload));
+
+  const dated = q(`[
+    { block: 'A', week: 1, day: 'd1', lift: 'bp', sets: [[55, 8, { ts: 1000 }], [55, 8, { ts: 2000 }], [55, 8, { ts: 900000 }], [55, 8]] },
+  ]`, `{ weeks: 'plan', lift: { id: 'bp' } }`);
+  ok('the session date is the median of the ticked sets\' times — a set ticked days later does not move it — and each set keeps its own',
+     dated[0].ts === 2000 && dated[0].sets.map(s => s.ts).join(',') === '1000,2000,900000,0', JSON.stringify(dated[0]));
+
+  const drops = q(`[
+    { block: 'A', week: 1, day: 'd1', lift: 'bp', sets: [[100, 8, { u: 'lb', dk: 'forced', d: [{ w: '80', r: '6' }, { w: '', r: '' }] }]] },
+  ]`, `{ weeks: 'plan', lift: { id: 'bp' } }`);
+  const d0 = drops[0].sets[0];
+  ok('drops: the ones with something in them, converted like their set, with the kind',
+     d0.drops.length === 1 && Math.round(d0.drops[0].w * 100) / 100 === 36.29 && d0.drops[0].wLogged === '80' &&
+       d0.drops[0].r === 6 && d0.dropKind === 'forced', JSON.stringify(d0));
+
+  ok('a block missing from the profile, or with nothing logged, is passed over rather than thrown on',
+     call(`(function () {
+       const p = sessionFixture({ blocks: ${PLAN} });
+       return sessionsOf(p, { weeks: 'logged', blocks: ['A', 'nope'] }).length;
+     })()`) === 0);
+}
+
 (async () => {
   console.log('\n== requestWakeLock: one rest, one lock — skipped mid-request, doubled up, or re-acquired (plans/008 item 15, plans/013) ==');
   /* A real WakeLockSentinel carries its own .released flag, and the guard

@@ -2395,6 +2395,130 @@ function lastTimeOtherDay(profile, block, day, ex, week) {
   return null;
 }
 
+/* ---------- sessions: the one reading of the log ----------
+   Every screen that looks back at what was lifted used to turn a slot's
+   raw rows into "the sets that count" by hand, and about thirteen of them
+   did, each with its own filter, its own idea of which week is the deload,
+   which weeks exist and which rows are the same lift. Plan 035 had to find
+   every one of them to move a single field (plans/038). This is the one
+   reader they move onto: what a session is lives here, and the question a
+   screen is asking lives in the query it passes.
+
+   sessionsOf(profile, {
+     weeks: 'plan' | 'logged',        required — a block's own weeks, or
+                                      every week logged, stranded ones too
+     lift: { id } | { like: ex },     by id, or the way liftSlots matches
+                                      (id, then name); omitted = every lift
+     day, blocks, before: { block, week }, skipDeload,
+   })
+
+   A session is every TICKED set of one lift in one slot, parsed, oldest
+   first. Which of those sets a screen counts is the screen's business —
+   `worked` is here because it is the one definition two screens share,
+   not a filter every reader has to accept. Nothing is returned for a slot
+   with no ticked set. See CONTEXT.md for the words. */
+function sessionsOf(profile, q) {
+  q = q || {};
+  /* No default on purpose: "hide the weeks a shortened block no longer
+     has" and "count everything ever lifted" are both right, for different
+     screens, and a default is how a screen ends up asking the wrong one
+     without anybody deciding it. */
+  if (q.weeks !== 'plan' && q.weeks !== 'logged') throw new Error("sessionsOf: weeks must be 'plan' or 'logged'");
+  const out = [];
+  const ids = q.blocks || (profile && profile.blockOrder) || [];
+  const liftId = q.lift && q.lift.id;
+  const like = q.lift && q.lift.like;
+  for (let bi = 0; bi < ids.length; bi++) {
+    const bId = ids[bi];
+    const block = profile.blocks && profile.blocks[bId];
+    const blk = profile.log && profile.log[bId];
+    if (!block || !blk) continue;
+    const cutoff = q.before && q.before.block === bId ? q.before.week : Infinity;
+    const days = block.days || [];
+    const dayIdx = {};
+    days.forEach((d, i) => { dayIdx[d.id] = i; });
+    /* { dayId: { exId: true } } for a `like` query: only the rows this
+       block's plan says are the same lift. Retired rows are in the plan,
+       so what was logged under them still counts. */
+    let match = null;
+    if (like) {
+      match = {};
+      liftSlots(block, like).forEach(s => { (match[s.dayId] = match[s.dayId] || {})[s.exId] = true; });
+    }
+    forEachSlot(profile.log, bId, (k, w, dayId, s) => {
+      if (!s || w >= cutoff) return;
+      if (q.weeks === 'plan' && w > blockWeeks(block)) return;
+      if (q.skipDeload && deloadAt(block, w)) return;
+      const day = days[dayIdx[dayId]];
+      const exIds = liftId != null ? [liftId]
+        : match ? Object.keys(match[dayId] || {})
+        : Object.keys(s);
+      exIds.forEach(exId => {
+        const rows = Object.prototype.hasOwnProperty.call(s, exId) ? s[exId] : null;
+        if (!Array.isArray(rows)) return;
+        const sess = readSession(profile, block, w, dayId, exId, rows, day);
+        if (!sess) return;
+        const exAt = day ? (day.ex || []).findIndex(e => e && e.id === exId) : -1;
+        sess.ord = [bi, w, day ? dayIdx[dayId] : 99, exAt >= 0 ? exAt : 999];
+        out.push(sess);
+      });
+    }, q.day != null ? { dayId: q.day } : null);
+    /* Nothing after the cut-off point: a later block in the list is later
+       in time than the week the question stops at. */
+    if (cutoff !== Infinity) break;
+  }
+  out.sort((x, y) => x.ord[0] - y.ord[0] || x.ord[1] - y.ord[1] || x.ord[2] - y.ord[2] || x.ord[3] - y.ord[3]);
+  out.forEach(s => { delete s.ord; });
+  return out;
+}
+
+/* One slot's rows for one lift, as a session. The RIR a working set
+   carries is exactly the reading exSession has always had — sessionRirs
+   over the working sets, with the old one-chip value (getRir) as the
+   fallback when none of them carries its own — so moving the rule onto
+   this changes no number it prices. A ticked set that is not a working
+   set has no reserve to inherit: it keeps whatever was typed on it. */
+function readSession(profile, block, week, dayId, exId, rows, day) {
+  const ticked = [];
+  rows.forEach((r, i) => { if (r && r.done) ticked.push({ r: r, i: i }); });
+  if (!ticked.length) return null;
+  const worked = ticked.filter(t => rowWorked(t.r));
+  const legacy = rirNumber(getRir(profile, block.id, week, dayId, exId) || null);
+  const rirs = sessionRirs(worked.map(t => t.r), legacy);
+  const rirAt = new Map();
+  worked.forEach((t, k) => rirAt.set(t, rirs[k]));
+  const ex = day && (day.ex || []).find(e => e && e.id === exId);
+  const planned = ex ? setsFor(ex, week, block) : Infinity;
+  const stamps = [];
+  const sets = ticked.map(t => {
+    const r = t.r;
+    const unit = rowUnit(r);
+    const ts = Number.isFinite(+r.ts) && +r.ts > 0 ? +r.ts : 0;
+    if (ts) stamps.push(ts);
+    return {
+      w: rowWeight(r),
+      wLogged: r.w == null ? '' : String(r.w),
+      unit: unit,
+      r: num(r.r),
+      rir: rirAt.has(t) ? rirAt.get(t) : rowRir(r),
+      drops: dropsOf(r).filter(dropUsed).map(d => ({
+        w: convertWeight(num(d.w), unit, units()),
+        wLogged: d.w == null ? '' : String(d.w),
+        r: num(d.r),
+      })),
+      dropKind: dropKind(r),
+      ts: ts,
+      worked: rirAt.has(t),
+      extra: t.i >= planned,
+    };
+  });
+  return {
+    block: block.id, week: week, day: dayId, lift: exId,
+    ts: stamps.length ? median(stamps) : 0,
+    sets: sets,
+  };
+}
+
 /* ---------- the rest timer lives in js/rest-timer.js ----------
    These five are everything the rest of the app asks of it: startRest and
    stopRest from the tick handler and from every profile/week/day button,

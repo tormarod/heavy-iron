@@ -279,6 +279,15 @@ To walk one block of `log`/`rir`/`notes`/`energy`/`order`/`obj`, use
 that exist, which is the only way a purge reaches a week filed above
 `MAX_WEEKS`.
 
+To *read* what was lifted, use `sessionsOf` (`js/app.js`, "sessions: the
+one reading of the log") instead of filtering raw log rows: it owns which
+sets are ticked and worked, the deload week, stranded weeks, lift
+matching, unit conversion and the legacy RIR fallback, and the query says
+which of those a screen wants. Its `weeks` option has no default on
+purpose. The existing readers are moving onto it one PR at a time
+(`plans/038-session-reader.md`); a new reader starts there. The words
+(session, working set, extra set, stranded week, …) are in `CONTEXT.md`.
+
 `variants` is the one per-profile map keyed by exercise id rather than by
 block and slot (`exId → [{ n, since }]`, read only by `variantSince`), so it
 is never walked by slot and is not in any purge or move helper's list; and
