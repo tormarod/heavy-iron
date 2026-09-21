@@ -670,7 +670,11 @@ function writeState(force) {
   }
 }
 
-function save() {
+function save(scope) {
+  /* Before the timer, not inside it: the next draw can be this same tick
+     (a set ticked and its card redrawn), and it must not read the history
+     from before the write. See logChanged for what `scope` may claim. */
+  logChanged(scope);
   clearTimeout(saveT);
   saveT = setTimeout(() => { saveT = null; writeState(); }, 400);
 }
@@ -2474,7 +2478,11 @@ function lastTimeOtherDay(profile, block, day, ex, week) {
    string the row had — the chart's table prints `rLogged`, not `r`, so a
    comma, a leading zero or a stray character an import left in the field
    (normalizeImportedLog only trims it) still reads back the way it was
-   typed. */
+   typed.
+
+   Answered from the history cache below whenever the log has not moved
+   since the same question was last asked, so what comes back is SHARED:
+   frozen, and not yours to change. Copy before editing. */
 function sessionsOf(profile, q) {
   q = q || {};
   /* No default on purpose: "hide the weeks a shortened block no longer
@@ -2482,8 +2490,15 @@ function sessionsOf(profile, q) {
      screens, and a default is how a screen ends up asking the wrong one
      without anybody deciding it. */
   if (q.weeks !== 'plan' && q.weeks !== 'logged') throw new Error("sessionsOf: weeks must be 'plan' or 'logged'");
+  /* A copy: blockOrder grows in place (newBlock pushes onto it), and the
+     list a cached answer was read over is part of what it answered. */
+  const ids = (q.blocks || (profile && profile.blockOrder) || []).slice();
+  return historyRead(profile, q, ids);
+}
+
+/* The walk itself, uncached. Only historyRead calls it. */
+function readSessions(profile, q, ids) {
   const out = [];
-  const ids = q.blocks || (profile && profile.blockOrder) || [];
   const liftId = q.lift && q.lift.id;
   const like = q.lift && q.lift.like;
   for (let bi = 0; bi < ids.length; bi++) {
@@ -2582,6 +2597,188 @@ function readSession(profile, block, week, dayId, exId, rows, day) {
   };
 }
 
+/* ---------- the history cache ----------
+   Reading a lift's whole history is ~20 µs a session, and a draw asks for
+   it once per card, once per exercise of the block for the brake, and —
+   once the card bands move onto sessionsOf (plans/038 PR 6) — twice more
+   per card. It is the same answer every time until something is logged,
+   so it is kept between draws and dropped by the WRITE, not by the draw:
+   a cache the draw has to remember to reset is a stale objetivo the day
+   somebody forgets, which is how plans/027 needed a reset at the top of
+   diagRows and a page of prose in drawCard to explain why a tick could
+   keep the rest (plans/045).
+
+   Three things make an answer stale, and each is caught where it happens:
+     - the log, the legacy RIR map or the plan changed: every write that
+       persists goes through save(), and save() says so here. That is the
+       one path a change cannot skip — one that does is lost on reload,
+       which is a bug of its own (see commit()). With no argument the
+       change is assumed to reach everything; see logChanged for the two
+       narrower claims a caller can make instead.
+     - the whole state was swapped (a restore, an import, undo, another
+       tab): answers are filed under the profile OBJECT, and a swapped
+       state has new ones, so nothing is found for them.
+     - the unit: `w` is converted to it, so the answers are filed under it
+       too, and a switch starts over.
+   The key also carries the block list the query was answered over, so a
+   block added to blockOrder is a different question rather than a stale
+   answer.
+
+   What comes back is frozen, all the way down, because every caller gets
+   the same objects: a reader that wrote onto a session (exHistory used to
+   leave an `ord` on each) would change the next reader's answer. Writes to
+   a frozen object are silently dropped in these sloppy-mode scripts, so
+   the freeze protects the cache; it does not report the caller. */
+let logGen = 0;
+/* Moves on every change the log has had, however narrow — the render cache
+   checks it (see renderLogFresh). */
+let logSeq = 0;
+const historyCache = new WeakMap();
+/* Every array historyRead has filed, so historyDerived can tell a cached
+   answer from one somebody built by hand. */
+const historyAnswers = new WeakSet();
+/* Past this many answers for one profile the lot is dropped: a long
+   session paging through weeks asks a new question per week and lift, and
+   nothing needs them to outlive a few draws. A draw files about a
+   hundred (an uncut answer and its slice per exercise of the block). */
+const HISTORY_CACHE_MAX = 2000;
+
+/* What changed, as the caller that wrote it knows it:
+     logChanged()       — anything may have: every answer goes. The default,
+                          and the only safe one when in doubt.
+     logChanged('view') — nothing a session reads: which week, day, block
+                          or profile is on screen, a note, the energy
+                          chips, the session order, the objetivo record,
+                          ex.setup, a preference other than the unit.
+     logChanged({ profile, block, week, day, lift })
+                        — one lift's rows in one slot, and the legacy RIR
+                          entry beside them: what a card's own boxes write.
+                          Only the answers whose query can see that slot go
+                          (historySees), so the brake and every other card —
+                          which stop before the week being trained — keep
+                          theirs through a tick.
+   A narrower claim than the write is a stale objetivo; a wider one only
+   costs a cold read. */
+function logChanged(scope) {
+  if (scope === 'view') return;
+  logSeq++;
+  if (!scope || typeof scope !== 'object' || !scope.profile) { logGen++; return; }
+  const c = historyCache.get(scope.profile);
+  if (!c) return;
+  c.map.forEach((e, k) => { if (historySees(e, scope)) c.map.delete(k); });
+}
+
+/* Whether a cached answer read the slot a card just wrote — the same walk
+   readSessions makes, asked backwards. Anything this cannot rule out
+   counts as seen: a `like` query matches by name through the plan, so it
+   is never ruled out by the lift. */
+function historySees(e, s) {
+  const at = e.ids.indexOf(s.block);
+  if (at < 0) return false;
+  if (e.day != null && e.day !== s.day) return false;
+  if (e.liftId != null && s.lift != null && e.liftId !== s.lift) return false;
+  if (e.before) {
+    const stop = e.ids.indexOf(e.before.block);
+    if (stop >= 0 && (at > stop || (at === stop && s.week >= e.before.week))) return false;
+  }
+  return true;
+}
+
+function historyKey(q, ids, before) {
+  const lift = !q.lift ? null
+    : q.lift.id != null ? ['id', q.lift.id]
+    /* The two things sameLift matches on. */
+    : q.lift.like ? ['like', q.lift.like.id || '', slugify(q.lift.like.n)]
+    : null;
+  return JSON.stringify([q.weeks, lift, q.day == null ? null : q.day, ids,
+    before ? [before.block, before.week] : null, !!q.skipDeload]);
+}
+
+/* A question with a cut-off (`before`) is answered as a slice of the same
+   question without one: readSessions returns oldest first, block by block
+   and week by week, so "everything before week W of block B" is a prefix
+   of "everything up to the end of B". That is what keeps a change of week
+   warm — every card's objetivo and the whole brake ask again with the new
+   week as their cut-off, and a week is a slice of an answer already held,
+   not a walk. Both are filed: the slice keeps its own cut-off, so a tick in
+   the week being trained drops the uncut answer (it can see that week) and
+   leaves every slice that stops before it. */
+function historyRead(profile, q, ids) {
+  if (!profile || typeof profile !== 'object') return freezeHistory(readSessions(profile, q, ids));
+  const u = state && state.prefs ? state.prefs.units : null;
+  let c = historyCache.get(profile);
+  if (!c || c.gen !== logGen || c.units !== u || c.map.size >= HISTORY_CACHE_MAX) {
+    c = { gen: logGen, units: u, map: new Map() };
+    historyCache.set(profile, c);
+  }
+  /* A cut-off in a block the list does not name cuts nothing (readSessions
+     never reaches it), so it is not part of the question either. */
+  const stop = q.before ? ids.indexOf(q.before.block) : -1;
+  const whole = { weeks: q.weeks, lift: q.lift, day: q.day, skipDeload: q.skipDeload };
+  if (stop < 0) return historyEntry(c, whole, ids, null, () => freezeHistory(readSessions(profile, whole, ids)));
+  const before = { block: q.before.block, week: q.before.week };
+  return historyEntry(c, whole, ids, before, () => {
+    const upTo = ids.slice(0, stop + 1);
+    const all = historyEntry(c, whole, upTo, null, () => freezeHistory(readSessions(profile, whole, upTo)));
+    return Object.freeze(all.filter(x => x.block !== before.block || x.week < before.week));
+  });
+}
+
+function historyEntry(c, q, ids, before, build) {
+  const key = historyKey(q, ids, before);
+  let e = c.map.get(key);
+  if (!e) {
+    e = {
+      ids: ids,
+      day: q.day == null ? null : q.day,
+      liftId: q.lift && q.lift.id != null ? q.lift.id : null,
+      before: before,
+      value: build(),
+    };
+    c.map.set(key, e);
+    historyAnswers.add(e.value);
+  }
+  return e.value;
+}
+
+/* Room for what a reader builds out of one cached answer and nothing else
+   but the key it files it under — exHistory's projection for the rule. It
+   lives exactly as long as the answer: a write that drops the answer
+   drops this with it, because a fresh read is a different array. Null for
+   an array historyRead did not hand out. */
+const historyDerivedMaps = new WeakMap();
+function historyDerived(sessions) {
+  if (!sessions || !historyAnswers.has(sessions)) return null;
+  let m = historyDerivedMaps.get(sessions);
+  if (!m) { m = new Map(); historyDerivedMaps.set(sessions, m); }
+  return m;
+}
+
+/* Sessions are plain objects and arrays built fresh by readSession — no
+   log row is reachable from one — so this never freezes the log itself.
+   Walks the two shapes it is handed (a session's, and ruleSession's, which
+   is the same nesting with no drops) rather than recursing into every
+   field: a generic recursive freeze added ~40 % to a cold draw, this
+   ~8 % (plans/045, Maintenance notes) — the price of every reader
+   sharing one answer. */
+const NO_DROPS = Object.freeze([]);
+function freezeHistory(list) {
+  for (let i = 0; i < list.length; i++) {
+    const s = list[i], sets = s.sets;
+    for (let j = 0; j < sets.length; j++) {
+      const x = sets[j];
+      /* Most sets have no drops: one shared frozen empty list for all of
+         them is one freeze fewer per set. */
+      if (x.drops && !x.drops.length) x.drops = NO_DROPS;
+      else if (x.drops) { for (let k = 0; k < x.drops.length; k++) Object.freeze(x.drops[k]); Object.freeze(x.drops); }
+      Object.freeze(x);
+    }
+    Object.freeze(sets);
+    Object.freeze(s);
+  }
+  return Object.freeze(list);
+}
+
 /* ---------- the rest timer lives in js/rest-timer.js ----------
    These five are everything the rest of the app asks of it: startRest and
    stopRest from the tick handler and from every profile/week/day button,
@@ -2626,7 +2823,7 @@ function renderProfiles() {
     b.setAttribute('aria-pressed', key === state.activeProfile ? 'true' : 'false');
     /* Picking somebody puts the sheet away: the answer to "who is training"
        is one tap, not a tap and a dismissal. */
-    b.onclick = () => { closeSheet('profileSheet'); state.activeProfile = key; stopRest(); commit(); };
+    b.onclick = () => { closeSheet('profileSheet'); state.activeProfile = key; stopRest(); commit('view'); };
     host.appendChild(b);
   });
   /* The header carries the answer, not the question: a dot in the profile's
@@ -2810,8 +3007,8 @@ function renderNav() {
   const prev = $('weekPrev'), next = $('weekNext');
   prev.disabled = profile.week <= 1;
   next.disabled = profile.week >= weeks;
-  prev.onclick = () => { if (profile.week > 1) { profile.week--; stopRest(); commit(); } };
-  next.onclick = () => { if (profile.week < weeks) { profile.week++; stopRest(); commit(); } };
+  prev.onclick = () => { if (profile.week > 1) { profile.week--; stopRest(); commit('view'); } };
+  next.onclick = () => { if (profile.week < weeks) { profile.week++; stopRest(); commit('view'); } };
 
   for (let w = 1; w <= weeks; w++) {
     const b = document.createElement('button');
@@ -2822,7 +3019,7 @@ function renderNav() {
     b.setAttribute('aria-selected', w === profile.week ? 'true' : 'false');
     b.setAttribute('aria-label', 'Semana ' + w + (w === dl ? ', descarga' : ''));
     if (weekHasLog(profile, block, w)) { const dot = document.createElement('span'); dot.className = 'dot'; b.appendChild(dot); }
-    b.onclick = () => { profile.week = w; stopRest(); commit(); };
+    b.onclick = () => { profile.week = w; stopRest(); commit('view'); };
     $('weeks').appendChild(b);
   }
 
@@ -2841,7 +3038,7 @@ function renderNav() {
     /* Roving tabindex, the other half of what role="tab" promises: one stop
        for the whole strip in the Tab order, the arrows move within it. */
     b.tabIndex = i === profile.day ? 0 : -1;
-    b.onclick = () => { profile.day = i; stopRest(); commit(); };
+    b.onclick = () => { profile.day = i; stopRest(); commit('view'); };
     $('days').appendChild(b);
   });
   /* The cards are this tab's panel, and which day they belong to is the tab
@@ -2868,7 +3065,7 @@ $('days').addEventListener('keydown', e => {
   e.preventDefault();
   getProfile().day = to;
   stopRest();
-  commit();
+  commit('view');
   const fresh = $('days').querySelectorAll('.day')[to];
   if (fresh) fresh.focus();
 });
@@ -2949,7 +3146,7 @@ $('list').addEventListener('focusout', e => {
    forget half: without save() the change is on screen and not on disk (plan
    006 fix 1 was that bug, three times over), without render() it is the
    other way round. A navigation-only change still calls render() alone. */
-function commit() { save(); render(); }
+function commit(scope) { save(scope); render(); }
 
 function render() {
   if (!ready) return;
@@ -3088,32 +3285,52 @@ function priorBlockSets(profile, block, ex) {
    renderCache like lastTime is. */
 function priorBlockSetsCached(profile, block, ex) {
   const key = block.id + '|' + ex.id;
-  const c = renderCache && renderCache.priorBlock;
+  const c = renderLogFresh() && renderCache.priorBlock;
   if (c && key in c) return c[key];
   const v = priorBlockSets(profile, block, ex);
   if (c) c[key] = v;
   return v;
 }
 
-/* Everything below is a pure function of (profile, block, week, day) and is
-   asked for the same answer several times inside one render — lastTime twice
-   per card, liftSlots once per card over every card. Held for the duration of
-   one draw and dropped at the start of the next full draw, so nothing can go
-   stale: every path that changes the log already ends in render(). A single
-   card swapped in between (drawCard) reads what is already here instead of
-   rebuilding it — the note above that call says why a tick cannot stale any
-   of these maps. */
+/* Everything below is asked for the same answer several times inside one
+   draw — lastTime twice per card, liftSlots once per card over every card,
+   the objetivo once per card and again in every weight box — and held for
+   that draw. Two kinds, dropped at two different moments:
+     - facts about the PLAN (liftSlots, slug): dropped at the start of the
+       next full draw, which every plan change goes through (commit()).
+     - facts about the LOG (lastTime, priorBlock, target, brake): dropped
+       as well the moment the log moves (renderLogFresh), so a card
+       redrawn after a tick (drawCard) rebuilds them instead of trusting
+       that the tick could not have reached them. Rebuilding is cheap
+       because the history they are made of is not dropped with them: it
+       lives in the history cache, which keeps every answer the tick could
+       not see (logChanged). */
 let renderCache = null;
 
 function resetRenderCache() {
   renderCache = { lastTime: Object.create(null), liftSlots: Object.create(null), slug: Object.create(null),
-                  priorBlock: Object.create(null), history: Object.create(null), target: Object.create(null), brake: null };
+                  priorBlock: Object.create(null), target: Object.create(null), brake: null, logSeq: logSeq };
+}
+
+/* Whether renderCache may be read for a fact about the log: false when
+   there is no draw in progress, and the log-derived maps are emptied first
+   when anything has been logged since they were filled. */
+function renderLogFresh() {
+  if (!renderCache) return false;
+  if (renderCache.logSeq !== logSeq) {
+    renderCache.lastTime = Object.create(null);
+    renderCache.priorBlock = Object.create(null);
+    renderCache.target = Object.create(null);
+    renderCache.brake = null;
+    renderCache.logSeq = logSeq;
+  }
+  return true;
 }
 
 /* Same five arguments, same answer — and the card loop asks for the
    previous-week band once per card while every set row asks again. */
 function lastTimeCached(profile, blockId, dayId, exId, beforeWeek) {
-  if (!renderCache) return lastTime(profile, blockId, dayId, exId, beforeWeek);
+  if (!renderLogFresh()) return lastTime(profile, blockId, dayId, exId, beforeWeek);
   const k = blockId + '|' + dayId + '|' + exId + '|' + beforeWeek;
   if (!(k in renderCache.lastTime)) {
     renderCache.lastTime[k] = lastTime(profile, blockId, dayId, exId, beforeWeek);
@@ -3121,24 +3338,13 @@ function lastTimeCached(profile, blockId, dayId, exId, beforeWeek) {
   return renderCache.lastTime[k];
 }
 
-/* The target rule walks every block of the profile for one exercise, and
-   three callers inside one draw want the same answer: the card's own line,
-   the placeholder in every weight box of that card, and — once per day —
-   the global brake, which asks the same question of every exercise. Held
-   here for exactly as long as lastTime is, and dropped by the same reset.
-
-   The brake is a single value rather than a map because it is a fact about
+/* The brake is a single value rather than a map because it is a fact about
    the whole day; targetFor still takes it as an argument, so the rule
-   itself neither reads the clock nor the other exercises. */
-function exHistoryCached(profile, block, ex, dayId, week, onlyBlockId) {
-  if (!renderCache) return exHistory(profile, block, ex, dayId, week, onlyBlockId);
-  const k = block.id + '|' + ex.id + '|' + (dayId || '') + '|' + week + '|' + (onlyBlockId || '');
-  if (!(k in renderCache.history)) renderCache.history[k] = exHistory(profile, block, ex, dayId, week, onlyBlockId);
-  return renderCache.history[k];
-}
-
+   itself neither reads the clock nor the other exercises. It asks every
+   exercise of the block for its history, which the history cache answers
+   without a walk once the day has been drawn. */
 function brakeCached(profile, block, week, now) {
-  if (!renderCache) return brakeOn(profile, block, week, now);
+  if (!renderLogFresh()) return brakeOn(profile, block, week, now);
   if (renderCache.brake == null) renderCache.brake = brakeOn(profile, block, week, now);
   return renderCache.brake;
 }
@@ -3148,7 +3354,7 @@ function brakeCached(profile, block, week, now) {
 function targetNow(profile, block, day, ex, week) {
   const now = Date.now();
   const dayId = day && day.id;
-  if (!renderCache) return targetFor(profile, block, day, ex, week, now, brakeOn(profile, block, week, now));
+  if (!renderLogFresh()) return targetFor(profile, block, day, ex, week, now, brakeOn(profile, block, week, now));
   const k = block.id + '|' + ex.id + '|' + (dayId || '') + '|' + week;
   if (!(k in renderCache.target)) {
     renderCache.target[k] = targetFor(profile, block, day, ex, week, now, brakeCached(profile, block, week, now));
@@ -3281,6 +3487,13 @@ function buildExCard(ctx, ex, i) {
   const sessionEx = ctx.sessionEx, best = ctx.best;
   const n = setsFor(ex, profile.week, block);
   const rows = entry(profile, block.id, profile.week, day.id, ex.id, n);
+  /* What every box on this card writes, and all it writes: this lift's rows
+     in this one slot (and dropLegacyRir, the legacy entry beside them).
+     Handed to save() so the history cache keeps every answer that stops
+     before this week — the brake's and every other card's (logChanged).
+     Taken now, at build, because it describes these rows; the week on
+     screen can only change through a full draw, which builds a new card. */
+  const here = { profile: profile, block: block.id, week: profile.week, day: day.id, lift: ex.id };
   const parked = parkedRows(profile, block.id, profile.week, day.id, ex.id, n);
   const allDone = rows.every(r => r.done);
 
@@ -3485,7 +3698,8 @@ function buildExCard(ctx, ex, i) {
     const v = e.target.value;
     if (v) ex.setup = v; else delete ex.setup;
     metaEl.textContent = metaText();
-    save();
+    /* A plan field, but not one a session reads. */
+    save('view');
   };
   /* Marked, not focused, and only when the "⋯" menu's own row is what
      opened it. Focusing on every draw was a workaround for render()
@@ -3603,12 +3817,12 @@ function buildExCard(ctx, ex, i) {
        write is back by another route. */
     wIn.oninput = e => {
       const wasSession = rows.some(rowUsed);
-      r.w = e.target.value.replace(/[^0-9.,]/g, ''); if (r.w !== e.target.value) e.target.value = r.w; stampRowUnit(r); save();
+      r.w = e.target.value.replace(/[^0-9.,]/g, ''); if (r.w !== e.target.value) e.target.value = r.w; stampRowUnit(r); save(here);
       recordTargetOnStart(profile, block, day, ex, rows, wasSession, est);
     };
     rIn.oninput = e => {
       const wasSession = rows.some(rowUsed);
-      r.r = e.target.value.replace(/[^0-9]/g, ''); if (r.r !== e.target.value) e.target.value = r.r; save();
+      r.r = e.target.value.replace(/[^0-9]/g, ''); if (r.r !== e.target.value) e.target.value = r.r; save(here);
       recordTargetOnStart(profile, block, day, ex, rows, wasSession, est);
     };
     /* One digit, 0-5, and the box refuses anything else rather than
@@ -3630,7 +3844,7 @@ function buildExCard(ctx, ex, i) {
       if (v !== e.target.value) e.target.value = v;
       if (v) r.rir = v; else delete r.rir;
       dropLegacyRir(profile, block.id, profile.week, day.id, ex.id);
-      save();
+      save(here);
       recordTargetOnStart(profile, block, day, ex, rows, wasSession, est);
     };
 
@@ -3667,7 +3881,7 @@ function buildExCard(ctx, ex, i) {
         state.prefs.sessionsSinceBackup++;
         maybeNagBackup();
       }
-      save(); drawCard(ex.id);
+      save(here); drawCard(ex.id);
       if (adopted) mark('Serie ' + (si + 1) + ' anotada con ' + adopted + ' ' + units() + ' (' + hintFrom + ') — cámbialo si no fue eso');
     };
 
@@ -3684,7 +3898,7 @@ function buildExCard(ctx, ex, i) {
       if (!Array.isArray(r.d)) r.d = [];
       r.d.push({ w: '', r: '' });
       focusDrop = ex.id + '#' + si + '#' + (r.d.length - 1);
-      save(); drawCard(ex.id);
+      save(here); drawCard(ex.id);
     };
     box.appendChild(row);
 
@@ -3718,12 +3932,12 @@ function buildExCard(ctx, ex, i) {
          `wasSession` is read before the assignment for the same reason. */
       dwIn.oninput = e => {
         const wasSession = rows.some(rowUsed);
-        d.w = e.target.value.replace(/[^0-9.,]/g, ''); if (d.w !== e.target.value) e.target.value = d.w; stampRowUnit(r); save();
+        d.w = e.target.value.replace(/[^0-9.,]/g, ''); if (d.w !== e.target.value) e.target.value = d.w; stampRowUnit(r); save(here);
         recordTargetOnStart(profile, block, day, ex, rows, wasSession, est);
       };
       drIn.oninput = e => {
         const wasSession = rows.some(rowUsed);
-        d.r = e.target.value.replace(/[^0-9]/g, ''); if (d.r !== e.target.value) e.target.value = d.r; save();
+        d.r = e.target.value.replace(/[^0-9]/g, ''); if (d.r !== e.target.value) e.target.value = d.r; save(here);
         recordTargetOnStart(profile, block, day, ex, rows, wasSession, est);
       };
 
@@ -3734,7 +3948,7 @@ function buildExCard(ctx, ex, i) {
         /* No segments left means no kind to remember either — the row goes
            back to being exactly the {w,r,done,ts} it started as. */
         if (!r.d.length) { delete r.d; delete r.dk; }
-        save(); drawCard(ex.id);
+        save(here); drawCard(ex.id);
       };
 
       box.appendChild(dRow);
@@ -3759,7 +3973,7 @@ function buildExCard(ctx, ex, i) {
         b.setAttribute('aria-pressed', current === k ? 'true' : 'false');
         b.setAttribute('aria-label', DROP_HINT[k] + ' — serie ' + (si + 1) + ' de ' + ex.n);
         b.title = DROP_HINT[k];
-        b.onclick = () => { r.dk = k; save(); drawCard(ex.id); };
+        b.onclick = () => { r.dk = k; save(here); drawCard(ex.id); };
         kindRow.appendChild(b);
       });
       box.appendChild(kindRow);
@@ -3799,7 +4013,8 @@ function openExMenu(ctx, ex, i) {
   const move = dir => {
     closeSheet('exMenuSheet');
     if (!moveSessionEx(profile, block, profile.week, day, ex.id, dir)) return;
-    commit();
+    /* The session order only: sessions keep the plan's order. */
+    commit('view');
     /* render() has just rebuilt every card, so the "⋯" the menu was opened
        from no longer exists and closeSheet handed focus to a detached
        node. Put it on the same button of the card where it landed — the
@@ -3861,23 +4076,22 @@ function drawCard(exId) {
      this is not the path being made cheap. */
   if (!old || !old.parentNode) { render(); return; }
   try {
-    /* The draw's cache is kept, not thrown away. A tick — or a keystroke in a
-       weight box — writes exactly one slot: profile.log[activeBlock][slot(
-       profile.week, day.id)], and profile.rir/profile.obj under the same key.
-       Every map held here is built to exclude that slot: exHistory drops the
-       block being trained at `w >= beforeWeek`, lastTime starts its walk at
-       `beforeWeek - 1`, priorBlockSets reads strictly earlier blocks, and
-       liftSlots and slug are facts about the plan, which a tick does not
-       touch. The one thing a tick changes that this card shows is the RÉCORD
-       bar, and `best` below is recomputed on every call.
+    /* The draw's cache is kept, not thrown away — but nothing here has to
+       argue that a tick cannot reach it any more (plans/045). What the draw
+       holds about the log (the objetivo, the brake, the bands) is dropped
+       by the tick's own save() before this runs (renderLogFresh), and
+       rebuilt from the history cache, which the same save() emptied of
+       exactly the answers that could see the ticked slot and nothing else
+       (logChanged). What is kept is what a tick cannot touch by
+       construction: liftSlots and slug, facts about the plan.
 
-       Resetting here undid what plans/008 item 14 bought: the rebuilt card
-       asks targetNow, targetNow asks for the day's brake, and brakeOn asks
-       every exercise of every live day for its history — the whole-block,
-       whole-log walk, once per tick, growing with the log rather than with
-       the plan. Anything that changes which cards exist, which week is shown
-       or an earlier week's rows goes through render() → drawApp(), which
-       does reset. */
+       Resetting here undid what plans/008 item 14 bought, and would again:
+       the rebuilt card asks targetNow, targetNow asks for the day's brake,
+       and brakeOn asks every exercise of every live day for its history —
+       answered from the history cache, which a reset of this one does not
+       empty, but the plan facts would be rebuilt for no reason. Anything
+       that changes which cards exist or which week is shown goes through
+       render() → drawApp(), which does reset. */
     if (!renderCache) resetRenderCache();
     const profile = getProfile();
     const block = getBlock();
@@ -3958,7 +4172,7 @@ function drawOrderNote(profile, block, day, sessionEx) {
   btn.textContent = 'Volver al orden del plan';
   btn.onclick = () => {
     setOrder(profile, block.id, profile.week, day.id, null);
-    commit();
+    commit('view');
     mark('Orden del plan restablecido');
   };
   host.appendChild(txtEl);
@@ -3982,7 +4196,7 @@ function drawEnergy(profile, block, day) {
     b.setAttribute('aria-label', ENERGY_LABEL[opt]);
     b.onclick = () => {
       setEnergy(profile, block.id, profile.week, day.id, current === opt ? '' : opt);
-      save();
+      save('view');
       /* Just the strip: nothing else on screen reads how you arrived, and a
          full render would take the whole session list down with it for the
          sake of three chips — including the chip under your finger, which is
@@ -4003,7 +4217,7 @@ function drawSessionNote(profile, block, day) {
   el.setAttribute('maxlength', NOTE_LIMIT);
   el.oninput = e => {
     setNoteText(profile, block.id, profile.week, day.id, e.target.value);
-    save();
+    save('view');
   };
   /* Guarded the same way the storage-actions block is: shown and hidden
      with the attribute index.html ships it with, never with an inline
@@ -4525,7 +4739,9 @@ function recordVariant(profile, exId, oldName, newName, ts) {
 function recordTargetOnStart(profile, block, day, ex, rows, wasSession, est) {
   if (wasSession || !est || !rows.some(rowUsed)) return false;
   if (!recordTarget(profile, block.id, profile.week, day.id, ex.id, est)) return false;
-  save();
+  /* `obj` is not read by any session: the rows this start is made of were
+     already claimed by the handler's own save. */
+  save('view');
   return true;
 }
 
@@ -4595,17 +4811,28 @@ function exHistory(profile, block, ex, dayId, beforeWeek, onlyBlockId) {
   /* 'logged', not 'plan': the objetivo is about the lifter over time, so a
      week stranded above a block that was shortened later is still something
      this lift was done at, in an earlier block or in this one. */
-  const out = [];
-  sessionsOf(profile, {
+  const sessions = sessionsOf(profile, {
     weeks: 'logged', lift: { id: ex.id }, blocks: ids,
     before: { block: block.id, week: beforeWeek }, skipDeload: true,
-  }).forEach(s => {
+  });
+  const since = variantSince(profile, ex.id);
+  /* The projection below is most of what this costs once the read is
+     cached — the brake asks it of every exercise of the block on every
+     draw — so it is kept beside the read it was made from (historyDerived)
+     and goes when that does. The key is everything else it reads. */
+  const memo = historyDerived(sessions);
+  const key = lo + '|' + hi + '|' + (ownDay || '') + '|' + since + '|' + units();
+  const hit = memo && memo.get(key);
+  if (hit) return hit;
+  const out = [];
+  sessions.forEach(s => {
     if (ownDay && s.block === block.id && s.day !== ownDay) return;
     const sess = ruleSession(s, lo, hi);
     if (sess) out.push(sess);
   });
-  const since = variantSince(profile, ex.id);
-  return since ? out.filter(s => !s.ts || s.ts >= since) : out;
+  const res = freezeHistory(since ? out.filter(s => !s.ts || s.ts >= since) : out);
+  if (memo) memo.set(key, res);
+  return res;
 }
 
 /* ---- the rungs this machine actually has ----
@@ -4687,7 +4914,7 @@ function levelOf(seq) {
 function targetFor(profile, block, day, ex, week, now, brake) {
   const lo = repRangeBottom(ex.reps), hi = repRangeTop(ex.reps);
   if (!(lo > 0) || !(hi > 0) || hi < lo) return null;
-  const sessions = exHistoryCached(profile, block, ex, day && day.id, week);
+  const sessions = exHistory(profile, block, ex, day && day.id, week);
   if (!sessions.length) return null;
 
   const last = sessions[sessions.length - 1];
@@ -4933,7 +5160,7 @@ function brakeOn(profile, block, week, now) {
     exList(day).forEach(ex => {
       if (seen[ex.id]) return;
       seen[ex.id] = 1;
-      const sessions = exHistoryCached(profile, block, ex, day.id, week);
+      const sessions = exHistory(profile, block, ex, day.id, week);
       if (sessions.length < 2) return;
       const lastTs = sessions[sessions.length - 1].ts;
       if (!lastTs || !now || now - lastTs > BRAKE_DAYS * DAY_MS) return;

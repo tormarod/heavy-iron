@@ -516,15 +516,13 @@ function fitSlope(values) {
    raise — and handed straight to the rule's own verdict when it has
    already confirmed a drop. One log, one definition, one answer.
 
-   Through exHistoryCached, so it shares the history entries of the sheet's
-   own build: the cache keys on block, exercise, day, beforeWeek and the
-   scope, so these MAX_WEEKS + 1 entries are the same ones every other
-   caller in this build asks for and never collide with the card's, which
-   stop at profile.week. Uncached, the sheet re-walked the whole log once
-   per exercise on top of what targetNow (two lines below, in diagRows) had
-   already cached. */
+   Through the history cache (sessionsOf), like every other reader, so the
+   sheet's MAX_WEEKS + 1 questions are answered without a walk when the
+   sheet is reopened and nothing has been logged since — and are dropped
+   by the tick itself when something has, since they include the week
+   being trained. */
 function diagLevelTrend(profile, block, day, ex, scopeBlockId) {
-  const sessions = exHistoryCached(profile, block, ex, day && day.id, MAX_WEEKS + 1, scopeBlockId);
+  const sessions = exHistory(profile, block, ex, day && day.id, MAX_WEEKS + 1, scopeBlockId);
   if (!sessions.length) return null;
   const seq = capSeq(sessions).slice(-DIAG_WINDOW);
   const lv = levelOf(seq);
@@ -665,15 +663,13 @@ function diagVerdict(trend, sig) {
    window; the signals are read off the most recent sessions, since what you
    change on Monday answers to how last Monday went. */
 function diagRows(profile, block, scope) {
-  /* A draw of its own, the way drawApp is. Since drawCard stopped resetting
-     the render cache, the cache left behind by the last full draw survives
-     every tick — which is safe for the card, whose entries stop at
-     profile.week, and wrong here: diagLevelTrend asks for MAX_WEEKS + 1, so
-     the sheet's entries INCLUDE the week being trained, which a tick does
-     change. Open the Diagnóstico, close it, tick a set, reopen: without this
-     the level trend would be read from before the tick. Starting empty costs
-     one cold drawCard afterwards, not one per tick. */
-  resetRenderCache();
+  /* No reset of the render cache here any more (plans/045). It used to be
+     the only thing between this sheet and a trend read from before the last
+     tick, because its history entries include the week being trained and
+     a tick kept the cache. The history cache is dropped by the tick's own
+     save() now, and the render cache's log facts with it, so reopening the
+     sheet after a tick reads the tick, and reopening it after nothing
+     reads what the last draw already read. */
   /* The sheet's own toggle by default; the block review passes 'block'
      explicitly, because what it exports must not depend on whatever the
      Diagnóstico sheet happened to be showing last. */
