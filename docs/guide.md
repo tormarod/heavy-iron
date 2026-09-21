@@ -202,7 +202,9 @@ volume dashboard — which convert set by set rather than adding kg and lb
 together. So a block you switched units halfway through still reads as one
 honest line, and the session view still shows exactly what you typed. The
 CSV export takes the same approach from the other end: `peso` is the number
-as typed, and `unidad` next to it says which unit that row is in.
+as typed, and `unidad` next to it says which unit that row is in. The stamp
+travels with the set, too: a backup you restore, a profile you load and a
+block sent by QR all bring an lb set back in lb.
 
 **About solo mode.** The second profile is hidden, not deleted. Its plan
 and history stay in storage and in your backups, so turning two-person

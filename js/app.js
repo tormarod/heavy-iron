@@ -5281,6 +5281,9 @@ function blockShareLog(profile, block) {
              other side: a field added to one and not the other is a field
              that crosses the camera and is thrown away on arrival. */
           if (rowRir(r) != null) row.rir = String(rowRir(r));
+          /* The unit stamp: without it a set logged in lb lands on the other
+             phone as the same number in kg. */
+          if (rowUnit(r) === 'lb') row.u = 'lb';
           /* Half-typed segments are dropped rather than sent: they are worth
              nothing on the other phone and every byte here costs QR frames.
              `dk` only travels when there is something for it to describe. */
@@ -5478,6 +5481,12 @@ function normalizeImportedLog(rawLog, rawBlock, normalized) {
            coercing it here would invent a measurement out of a chip that
            belonged to the whole session. */
         if (/^[0-5]$/.test(String(r.rir))) row.rir = String(r.rir);
+        /* The exact 'lb' or nothing, the same convention stampRowUnit
+           writes: kg is the absence of the stamp, so a 'kg', an 'LB' or
+           anything else is dropped rather than stored as a value no reader
+           expects. Leaving `u` out of this list altogether is what used to
+           restore every lb set in a backup as the same number in kg. */
+        if (r.u === 'lb') row.u = 'lb';
         const drops = (Array.isArray(r.d) ? r.d : []).slice(0, MAX_DROPS)
           .filter(d => d && typeof d === 'object' && !Array.isArray(d))
           .map(d => ({ w: txt(d.w, LOG_LIMITS.val), r: txt(d.r, LOG_LIMITS.val) }))
