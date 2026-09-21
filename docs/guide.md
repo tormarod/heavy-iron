@@ -1154,18 +1154,26 @@ exactly why guessing at a stall goes wrong.
 | e1RM | Señal en el registro | Lectura | Qué cambias |
 |---|---|---|---|
 | plano | objetivo por debajo del peso actual (no un reinicio) | Peso mal elegido | Baja al objetivo y sube el rango de reps como es debido |
-| plano | RIR 0, o una bajada forzada | Fatiga, no falta de esfuerzo | Mismo peso, vuelve a 1–2 RIR. Apretar más es la palanca equivocada |
+| plano | RIR 0 en la serie típica de la sesión, o una bajada forzada | Fatiga, no falta de esfuerzo | Mismo peso, vuelve a 1–2 RIR. Apretar más es la palanca equivocada |
 | plano | caída de reps ≥3, y la primera serie no apuntada a 2+ | Primera serie al fallo | Empieza más ligero para que las series 2 y 3 sumen volumen |
-| plano | RIR 2+ repetido | Falta intensidad | Sube carga o reps: te dejas el estímulo sin usar |
+| plano | RIR 2+ en la serie típica, en dos de las últimas tres sesiones | Falta intensidad | Sube carga o reps: te dejas el estímulo sin usar |
 | plano | los kilos por serie suben | Las series de después se ponen al día | Déjalo correr — cuando dejen de sumar, entonces sí es un estancamiento |
 | plano | los kilos por serie bajan | Se vacían las series de después | Empieza más ligero, o quita una serie y haz enteras las que queden |
 | plano | los kilos por serie tampoco se mueven | Estancado de verdad | Haz lo que mande el objetivo de la semana; si lleva medio bloque igual, cambia el ejercicio |
-| plano | ninguna | Estancado sin señal clara | Apunta el RIR de la última serie unas semanas — sin eso no se distingue fatiga de falta de intensidad |
+| plano | ninguna | Estancado sin señal clara | Apunta el RIR de cada serie unas semanas — sin eso no se distingue fatiga de falta de intensidad |
 | bajando | huecos >7 días de mediana | Asistencia, no programa | Nada que tocar en el plan |
 | bajando | sin huecos | Pierde fuerza de verdad | Si varios ejercicios bajan a la vez, mira el descanso y lo que comes — eso la app no lo ve |
 | subiendo | la ficha no sube el peso esta semana | Sube, pero hoy no toca | Mismo peso a la RIR prevista — si las reps vuelven, sube; si vuelve a caer, el nivel se ajusta solo |
 | subiendo | el músculo va bajo la franja | Margen sin usar | Va bien con pocas series — si añades, añádeselas ahí primero |
 | subiendo | — | Funciona | No toques nada |
+
+"La serie típica" is the median of the RIR you wrote on the session's
+working sets. A session paced 3 → 2 → 1 → 0 has a typical set with a rep
+in reserve and is not read as fatigue; one ground out at 0 on every set
+is. A session where you only wrote the last set's RIR reads exactly as it
+did before this: the objetivo's inheritance rule (see [The weekly
+objetivo](#the-weekly-objetivo)) gives every earlier set that value, so
+its median is that value.
 
 The volume row reads **Registrado**, not **Plan**: "you have room to add
 sets" is a claim about the sets you actually did.
