@@ -41,11 +41,15 @@
 # plans/, the README, a workflow — is not worth four minutes of Chromium, so
 # the gate first diffs the branch against the base and returns at once when
 # none of the files below changed. The list is what the two suites actually
-# load or read: the shell, the worker, the published blocks and the tests.
-# It is deliberately wider than CI's cache-version rule (index.html, css/,
-# js/), because the smoke suite also exercises sw.js and imports from
-# blocks/. This script is not on the list: a change to how the gate decides
-# is not something running the suite can check, and a syntax error in it
+# load or read: the shell, the worker, the manifest (the `installable`
+# section fetches it), the published blocks and the tests.
+# It is deliberately wider than CI's cache-version rule (index.html,
+# css/*.css, js/*.js), because the smoke suite also exercises sw.js and
+# imports from blocks/. `js/` is anchored on `.js` so the vendor libraries
+# still count and the three notes beside them (README, SHA256SUMS, the
+# licence) do not (plans/043). This script is not on the list: a change to
+# how the gate decides is not something running the suite can check, and a
+# syntax error in it
 # fails the hook on its own. Use SMOKE_GATE_FORCE=1 to run it in full anyway.
 #
 # Environment:
@@ -134,7 +138,7 @@ cd "$ROOT" || exit 2
 
 PLAYWRIGHT_VERSION="${PLAYWRIGHT_VERSION:-1.56.1}"
 SMOKE_GATE_BASE="${SMOKE_GATE_BASE:-origin/main}"
-TESTED_PATHS='^(index\.html|css/|js/|sw\.js|manifest\.webmanifest|blocks/|test/)'
+TESTED_PATHS='^(index\.html|css/|js/.*\.js$|sw\.js|manifest\.webmanifest|blocks/|test/)'
 SERVER_PID=""
 
 LOG="${SMOKE_GATE_LOG:-$ROOT/.smoke-gate.log}"
