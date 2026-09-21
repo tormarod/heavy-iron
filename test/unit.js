@@ -3235,6 +3235,7 @@ const pruneLiveProbe = `
     profile.log[blockId][slot(2, day.id)] = { [ex]: [{ w: '', r: '', done: false }] };
     drawnSlot = { profile: state.activeProfile, block: blockId, key: slot(1, day.id) };
     pruneLog();
+    drawnSlot = null;   /* left set, this makes every later pruneLog probe quieter than it should be (plans/042) */
     return {
       liveKept: profile.log[blockId][slot(1, day.id)][ex].length,
       otherPruned: slot(2, day.id) in profile.log[blockId],
