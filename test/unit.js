@@ -2487,6 +2487,34 @@ ok('...or when nothing was typed at all, which is every session logged before th
    diagProbe(three(decaySess(null, null)), false) === 'flat | Primera serie al fallo — las de después se vacían',
    diagProbe(three(decaySess(null, null)), false));
 
+/* Per set, reduced by the median — the session's typical reserve
+   (plans/044). A log typed the old way, one value on the last set, still
+   reads through the inheritance rule as it always did (the two legacy-chip
+   cases above pin that); these pin what the per-set record can say that
+   one number could not. */
+/* Reps held at the top of the range on purpose: a set at the bottom of the
+   range at 0 RIR can make the objetivo come down a rung, and the "Peso mal
+   elegido" row is checked before either signal — these cases are about
+   the signals, not the rule. */
+const pacedSess = () => [[12, '3'], [12, '1'], [12, '0']];
+ok('a session paced 3 → 1 → 0 is not fatigue: its typical set had a rep in reserve',
+   diagProbe(three(pacedSess()), false) ===
+     'flat | Estancado de verdad — ni la serie tope ni los kilos por serie se mueven',
+   diagProbe(three(pacedSess()), false));
+const groundSess = () => [[12, '0'], [11, '0'], [11, '0']];
+ok('...a session ground out at 0 on every set still is',
+   diagProbe(three(groundSess()), false) === 'flat | Fatiga, no falta de esfuerzo',
+   diagProbe(three(groundSess()), false));
+const heldSess = () => [[12, '3'], [12, '3'], [11, '0']];
+ok('...and a session held back on most sets reads as lacking intensity whatever the last set did',
+   diagProbe(three(heldSess()), false) === 'flat | Falta intensidad — RIR 2+ repetido',
+   diagProbe(three(heldSess()), false));
+const dsr = a => call('diagSessionRir(' + JSON.stringify(a) + ')');
+ok('diagSessionRir is the median of the typed sets, null when none is typed',
+   dsr([3, 2, 1, 0]) === 1.5 && dsr([3, 3, 3, 0]) === 3 && dsr([0, 0, 1]) === 0 &&
+   dsr([null, null]) === null && dsr([]) === null,
+   [dsr([3, 2, 1, 0]), dsr([3, 3, 3, 0]), dsr([0, 0, 1]), dsr([null, null]), dsr([])].join(','));
+
 const logRir = call(`
   (function () {
     const rawBlock = { name: 'B', weeks: 8, deload: 0, days: [{ id: 'd0', name: 'D', ex: [{ id: 'e1', n: 'Ex', sets: 3, reps: '10-15' }] }] };
@@ -4547,18 +4575,19 @@ console.log('\n== the Diagnóstico on sessionsOf: the deload is deloadAt (plans/
      lastOnDeload.length === 1 && lastOnDeload[0].base === 1 && lastOnDeload[0].last === 1, JSON.stringify(lastOnDeload));
 
   /* What the move had to keep, pinned because the session carries a
-     different reading of both: a point's ts is the LATEST tick (the
-     session date is the median), and its rir is getRir's string, the
-     legacy chip as it was stored — not the last working set's number. */
+     different reading of it: a point's ts is the LATEST tick, not the
+     session date (which is the median). Its RIR is per set since
+     plans/044 — the legacy chip spread over every working set by the
+     inheritance rule, which is what the one chip always meant. */
   const kept = JSON.parse(call(`(function () {
     const p = sessionFixture({ blocks: [{ id: 'A', weeks: 4, days: [{ id: 'd1', ex: [{ id: 'bp' }] }] }],
       sessions: [{ block: 'A', week: 1, day: 'd1', lift: 'bp', rir: '2+',
                    sets: [[50, 8, { ts: 1000 }], [50, 8, { ts: 2000 }], [50, 8, { ts: 900000 }]] }] });
     const pt = diagPoints(p, 'bp', 'A')[0];
-    return JSON.stringify({ ts: pt.ts, rir: pt.rir, rows: pt.rows.length });
+    return JSON.stringify({ ts: pt.ts, rirs: pt.rirs, rows: pt.rows.length });
   })()`));
-  ok('a point still carries the latest tick as its ts and the legacy chip as the string it was stored as',
-     kept.ts === 900000 && kept.rir === '2+' && kept.rows === 3, JSON.stringify(kept));
+  ok('a point still carries the latest tick as its ts, and the legacy chip spread over every set',
+     kept.ts === 900000 && kept.rirs.join(',') === '2,2,2' && kept.rows === 3, JSON.stringify(kept));
 }
 
 console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038) ==');
