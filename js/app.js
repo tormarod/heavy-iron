@@ -1829,10 +1829,10 @@ function rirRowFor(rows) {
    costs nothing, it is what getRir and readSession fall back to when a slot
    has no rows to fold onto, and a receiver on an older shell still needs it.
 
-   Idempotent by construction — a row that already carries a value is never
-   overwritten — so running it on every load is cheap and a skipped run is
-   not data loss. A malformed entry is skipped rather than thrown on, like
-   every other repair in migrate. */
+   Idempotent by construction — a session any row of which already carries
+   a value is never touched — so running it on every load is cheap and a
+   skipped run is not data loss. A malformed entry is skipped rather than
+   thrown on, like every other repair in migrate. */
 function foldRirMap(profile, blockId) {
   if (!profile || !profile.rir || !profile.log) return;
   forEachSlot(profile.rir, blockId, (key, w, dayId, slotRir) => {
@@ -1842,8 +1842,20 @@ function foldRirMap(profile, blockId) {
     Object.keys(slotRir).forEach(exId => {
       const n = rirNumber(slotRir[exId]);
       if (n == null) return;
-      const row = rirRowFor(slotLog[exId]);
-      if (!row || typeof row !== 'object' || rowRir(row) != null) return;
+      const rows = slotLog[exId];
+      /* Once per session, never again: a session any set of which already
+         carries a value has either been folded already or been typed on
+         since, and in both cases the rows are the record and the map is
+         not. Guarding the target row alone was the bug twice over — the
+         row rirRowFor picks MOVES when a later set is ticked, so a chip
+         folded onto set 3 was folded again onto set 4 on the next load;
+         and a block shared from a phone whose rows carried values arrived
+         with the map blockShareRir still emits for older receivers, and
+         that map was written onto the one working set that had no value
+         of its own (plans/039). */
+      if (!Array.isArray(rows) || rows.some(r => rowRir(r) != null)) return;
+      const row = rirRowFor(rows);
+      if (!row || typeof row !== 'object') return;
       row.rir = String(n);
     });
   });
