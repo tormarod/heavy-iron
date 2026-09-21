@@ -1001,21 +1001,25 @@ const renderCacheProbe = `
     profile.log[blockId][slot(1, day.id)] = {};
     profile.log[blockId][slot(1, day.id)][exId] = [{ done: true, w: '50', r: '5' }];
 
+    /* The band left the render cache in plans/038 PR 6: it reads sessionsOf,
+       so what it shows is the history cache's own set objects, the same ones
+       across draws until something is logged. */
     resetRenderCache();
-    const a = lastTimeCached(profile, blockId, day.id, exId, 2);
-    const b = lastTimeCached(profile, blockId, day.id, exId, 2);
-    const sameRef = a === b;
+    const a = lastTime(profile, blockId, day.id, exId, 2);
+    resetRenderCache();
+    const b = lastTime(profile, blockId, day.id, exId, 2);
+    const sameRef = a.sets[0] === b.sets[0];
 
-    resetRenderCache();
-    const c = lastTimeCached(profile, blockId, day.id, exId, 2);
-    return { sameRef, differentAfterReset: a !== c };
+    logChanged();
+    const c = lastTime(profile, blockId, day.id, exId, 2);
+    return { sameRef, differentAfterWrite: a.sets[0] !== c.sets[0] && c.sets[0].wLogged === '50' };
   })()
 `;
 const renderCacheResult = call(renderCacheProbe);
-ok('lastTimeCached returns the same object reference on a second identical call',
+ok('lastTime reads the same cached sets on a second draw (resetRenderCache() in between)',
    renderCacheResult.sameRef);
-ok('lastTimeCached returns a different reference after resetRenderCache() in between',
-   renderCacheResult.differentAfterReset);
+ok('lastTime reads afresh once a write has emptied the history cache',
+   renderCacheResult.differentAfterWrite);
 ok('slugifyCached("constructor") returns the slug of the string, not an inherited property',
    call('slugifyCached("constructor")') === 'constructor');
 ok('slugifyCached agrees with slugify for accented Spanish text',
@@ -4843,6 +4847,9 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
       const first = priorBlockSets(pr, b1, ex);
       /* Only the deload logged: nothing usable. */
       delete pr.log[b1.id][slot(6, day.id)]; delete pr.log[b1.id][slot(7, day.id)];
+      /* What the app's save() would say after such a write: the band reads
+         the history cache, which only a write that says so empties. */
+      logChanged();
       const onlyDeload = priorBlockSets(pr, b2, b2.days[0].ex[0]);
       return {
         copy: fromCopy && { block: fromCopy.block.id, week: fromCopy.week, w: fromCopy.sets.map(s => s.w).join('/') },
