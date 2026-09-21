@@ -121,12 +121,16 @@ the bar's four destinations and the rest timer's controls fit on a 375px
 phone.
 
 ```
-npm install --no-save playwright@1.56.1   # once
+npm install --no-save --ignore-scripts playwright@1.56.1   # once
 npx playwright install chromium           # once
 python3 -m http.server 8765 &                                 # Git Bash
 Start-Process python3 -ArgumentList '-m','http.server','8765' # PowerShell
 node test/smoke.js
 ```
+
+`--ignore-scripts` on purpose: it is the one place this repo would run
+third-party code at install time, and `tools/smoke-gate.sh` installs the
+same way (its comment says why).
 
 The suite is a list of sections, one browser context each, so while working
 on one thing you can run just the sections that can see it instead of the
@@ -143,6 +147,9 @@ server. It is the same script the Claude Code hook in
 the PR when anything fails. It skips itself when the branch touches nothing
 the suites load, so a docs-only PR opens without waiting for Chromium.
 
+Both scripts under `tools/` are bash: on Windows, run them from Git Bash
+or as `bash tools/<name>.sh` from PowerShell.
+
 Only the headless half runs on GitHub (`.github/workflows/test.yml`); the
 browser suite needs a Chromium download on every run, so it runs on the
 machine the pull request comes from instead. When a bug turns out to have
@@ -158,7 +165,7 @@ rule, and which of this project's absences are deliberate.
 
 | File | What it is |
 |---|---|
-| `index.html` | the whole markup: header, session list, and the dialogs |
+| `index.html` | the whole markup: the header, the session list, the bottom bar and the docked rest timer, and the sheets |
 | `js/theme-init.js` | resolves "auto" into an explicit `data-theme` before `css/style.css` is applied, so the first paint never flashes the wrong palette |
 | `css/style.css` | one stylesheet; all colours are tokens declared at the top, once per theme (light and `[data-theme="dark"]`) |
 | `js/data.js` | the default plans, used only on a device's first run |
@@ -324,6 +331,8 @@ or smuggle markup onto the screen:
 | `ex.sets` | clamped to 1–12 · `ex.rest` to 0–900s |
 | `ex.add` | a whole number 1–weeks, or the import is rejected — not clamped |
 | `ex.inc` | clamped to 0.25–50, rounded to the nearest 0.25 |
+| `ex.minRir` | a whole number 0–5, or the field is dropped |
+| `priority` | names trimmed and de-duplicated, blanks dropped, at most 12 |
 | `phase[w].r` / `.t` | 40 / 400 characters |
 | `weeks` | clamped to 1–16 · `deload` must fall inside it, or it's dropped |
 

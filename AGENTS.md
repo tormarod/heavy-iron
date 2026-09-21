@@ -173,11 +173,19 @@ value surviving a reload, `sw.js`, the layout — and it is targeted:
 needs a static server on `:8765` (or `BASE=`) plus Playwright:
 
 ```
-npm install --no-save playwright@1.56.1  # once
+npm install --no-save --ignore-scripts playwright@1.56.1  # once
 npx playwright install chromium          # once
 python3 -m http.server 8765 &                                 # Git Bash
 Start-Process python3 -ArgumentList '-m','http.server','8765' # PowerShell
 ```
+
+`--ignore-scripts` on purpose: it is the one place this repo would run
+third-party code at install time, and `tools/smoke-gate.sh` installs the
+same way (its comment says why).
+
+`tools/*.sh` are bash scripts. On Windows run them from Git Bash, or as
+`bash tools/smoke-gate.sh` from PowerShell; the hook in
+`.claude/settings.json` resolves the shebang itself.
 
 The whole suite by hand is warranted in three cases only: you edited
 `test/smoke.js` itself, you changed the script load order or `sw.js`, or
@@ -188,7 +196,7 @@ one shared Node context — the same global scope the `<script>` tags create,
 in the same order — and is the fastest full check. A new file under `js/`
 goes into that list too, in the position its `<script>` tag has.
 
-**Testing policy** (`test/smoke.js:9-10`): *"Add a case here whenever a bug
+**Testing policy** (`test/smoke.js:10-11`): *"Add a case here whenever a bug
 turns out to have been invisible from the outside."* Arithmetic and data
 repair go in `test/unit.js` instead — and prefer that side of the line when
 a case fits either: a unit assertion costs nothing on every later run, a

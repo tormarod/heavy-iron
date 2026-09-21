@@ -95,8 +95,12 @@ changed="$(printf '%s\n%s\n%s\n' \
   "$(git diff HEAD --name-only 2>/dev/null)" \
   "$(git ls-files --others --exclude-standard 2>/dev/null)" | sort -u)"
 
-if ! printf '%s\n' "$changed" | grep -qE '^(index\.html|css/|js/)'; then
+# The same regex as the cache-version job in .github/workflows/test.yml,
+# extension-anchored: the prefix form also matched js/vendor/README.md and
+# SHA256SUMS, and this advisory then stayed silent on a vendor-notes branch
+# CI would never have asked to bump (plans/043). Keep the two identical.
+if ! printf '%s\n' "$changed" | grep -qE '^(index\.html|css/.*\.css|js/.*\.js)$'; then
   echo "bump-cache-version: nothing in the shell changed — a bump is not needed" >&2
-  echo "bump-cache-version: (CI only asks for one when index.html, css/ or js/ move)" >&2
+  echo "bump-cache-version: (CI only asks for one when index.html or a css/*.css or js/*.js file moves — not the vendor notes)" >&2
 fi
 exit 0

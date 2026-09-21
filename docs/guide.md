@@ -133,8 +133,8 @@ objetivo, built on the block before it.
   strip off to finish the reps, without inventing a set that wasn't there.
   Marking a drop as *forzado* stops the automatic weight increase next
   week — see [Weight drops](#weight-drops).
-- **Light and dark**, following the phone unless you override it with the
-  ◐ button in the header.
+- **Light and dark**, following the phone unless you override it under
+  **Más → Tema** — a tap cycles automático, claro and oscuro.
 - **Backup / restore**: download a `.json` file with both profiles'
   data, or copy/paste it as text. Restoring replaces everything. There is
   also a one-way **CSV export** for looking at the numbers in a
