@@ -4038,10 +4038,13 @@ console.log('\n== sessionsOf: the one reading of the log (plans/038) ==');
      compare against the reading exSession had before the rule moved onto
      this reader (plans/038 PR 3) — sessionRirs over the working rows, the
      legacy chip as the fallback — spelled out here from the raw rows, so
-     the comparison does not go through sessionsOf on both sides. Over the
-     cases that exercise inheritance, the legacy chip, and a padding row
-     carrying a value typed before anything was ticked; ruleSession has to
-     hand the rule the same numbers. */
+     the comparison does not go through sessionsOf on both sides. Since
+     plans/039 the fallback is the legacy map and only the map (legacyRir):
+     a padding row's typed value is no longer read by the rule, so the
+     reference side spells that out too. Over the cases that exercise
+     inheritance, the legacy chip, and a padding row carrying a value typed
+     before anything was ticked; ruleSession has to hand the rule the same
+     numbers. */
   const rirCases = [
     `[[60, 8, { rir: '3' }], [60, 8, { rir: '2' }], [60, 8, { rir: '1' }], [60, 8, { rir: '0' }]]`,
     `[[60, 8], [60, 8, { rir: '2' }], [60, 8]]`,
@@ -4057,7 +4060,7 @@ console.log('\n== sessionsOf: the one reading of the log (plans/038) ==');
         { block: 'A', week: 1, day: 'd1', lift: 'bp', sets: ${sets}, rir: ${legacy} }] });
       const s = sessionsOf(p, { weeks: 'plan', lift: { id: 'bp' } })[0];
       const work = p.log.A[slot(1, 'd1')].bp.filter(r => r && r.done && rowWeight(r) > 0 && num(r.r) > 0);
-      const rule = sessionRirs(work, rirNumber(getRir(p, 'A', 1, 'd1', 'bp') || null));
+      const rule = sessionRirs(work, rirNumber(legacyRir(p, 'A', 1, 'd1', 'bp')));
       const e = ruleSession(s, 8, 12);
       return JSON.stringify({ mine: s.sets.filter(x => x.worked).map(x => x.rir),
                               rule: rule, projected: e ? e.sets.map(x => x.rir) : [],
