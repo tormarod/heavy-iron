@@ -2502,6 +2502,11 @@ const heldSess = () => [[12, '3'], [12, '3'], [11, '0']];
 ok('...and a session held back on most sets reads as lacking intensity whatever the last set did',
    diagProbe(three(heldSess()), false) === 'flat | Falta intensidad — RIR 2+ repetido',
    diagProbe(three(heldSess()), false));
+const dsr = a => call('diagSessionRir(' + JSON.stringify(a) + ')');
+ok('diagSessionRir is the median of the typed sets, null when none is typed',
+   dsr([3, 2, 1, 0]) === 1.5 && dsr([3, 3, 3, 0]) === 3 && dsr([0, 0, 1]) === 0 &&
+   dsr([null, null]) === null && dsr([]) === null,
+   [dsr([3, 2, 1, 0]), dsr([3, 3, 3, 0]), dsr([0, 0, 1]), dsr([null, null]), dsr([])].join(','));
 ok('...and still fires when the first set was typed at 0',
    diagProbe(three(decaySess('0', '1')), false) === 'flat | Primera serie al fallo — las de después se vacían',
    diagProbe(three(decaySess('0', '1')), false));
