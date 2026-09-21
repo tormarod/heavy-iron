@@ -5,9 +5,10 @@
 
    This screen fits a line through the estimated 1RM of every exercise in
    the current plan at once and sorts them worst first, then crosses each
-   trend with the signals the log already carries — the RIR chip, the
-   rep-decay flag, forced drops, the timestamps on every ticked row, the
-   kilos each session moved, and the target weight from targetFor().
+   trend with the signals the log already carries — the RIR written on
+   each set, the rep-decay flag, forced drops, the timestamps on every
+   ticked row, the kilos each session moved, and the target weight from
+   targetFor().
    A stall on its own says nothing. A stall next to "RIR 2+ every week" and
    a stall next to "0 RIR and a forced drop" point at opposite fixes, which
    is exactly why guessing at it goes wrong.
