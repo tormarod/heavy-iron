@@ -129,7 +129,7 @@ extra sets.
 | # | PR | Visible change | Status |
 |---|---|---|---|
 | 1 | **Row codec** — one field list; `blockShareLog`, `normalizeImportedLog` and `buildCsv`'s row columns built from it; the round-trip test | none | IN PROGRESS |
-| 2 | **`sessionsOf`**, the fixture builder, interface tests; the cost measurement recorded below | none | IN PROGRESS |
+| 2 | **`sessionsOf`**, the fixture builder, interface tests; the cost measurement recorded below | none | DONE (#120) |
 | 3 | **Objetivo**: `exHistory`/`exSession` become `sessionsOf` + `ruleSession` | none | TODO |
 | 4 | **Diagnóstico**: `diagPoints`, `strengthByExercise`; the deload becomes `deloadAt` | a deload written into the phase text is skipped — guide, Diagnóstico section | TODO |
 | 5 | **Charts**: `collectHistory`, `collectHistoryDays`, `collectHistoryAll` | none | TODO |
