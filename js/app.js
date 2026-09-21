@@ -5364,6 +5364,108 @@ const LOG_LIMITS = { rows: 24, val: 12, slots: MAX_WEEKS * IMPORT_LIMITS.days };
    restore silently instead of saying so. */
 const LOG_ROW_HARD_CAP = LOG_LIMITS.rows * 100;
 
+/* ---- the row codec ----
+   Every field a logged set can carry, once: how it is sent, how it is
+   accepted back, and which CSV column it fills. The share builder and the
+   import validator used to hold two field lists "mirrored" by a comment,
+   and when `u` was added to rows it was missing from both, so every lb set
+   restored as kg (fixed by PR #119). Now a field that is not in this list
+   is not sent, not accepted and not exported, and test/unit.js fails when
+   the code writes a row field this list does not name (plans/038).
+
+   `send(r)` and `accept(raw, row)` return undefined to leave the field
+   out: kg is the absence of `u`, and `dk` only exists beside drops.
+   `accept` is handed the row built so far, in this order, which is how
+   `dk` knows whether `d` survived. The order is also the CSV's. */
+const ROW_FIELDS = [
+  { key: 'w', col: 'peso',
+    send: r => (r.w != null ? String(r.w) : ''),
+    accept: raw => txt(raw.w, LOG_LIMITS.val),
+    /* As typed, so a row matches the card it was logged on; `unidad` says
+       which unit it is in. */
+    cell: r => r.w },
+  { key: 'u', col: 'unidad',
+    send: r => (rowUnit(r) === 'lb' ? 'lb' : undefined),
+    /* The exact 'lb' or nothing, the convention stampRowUnit writes: a
+       'kg', an 'LB' or anything else is dropped rather than stored as a
+       value no reader expects. */
+    accept: raw => (raw.u === 'lb' ? 'lb' : undefined),
+    cell: r => rowUnit(r) },
+  { key: 'r', col: 'reps',
+    send: r => (r.r != null ? String(r.r) : ''),
+    accept: raw => txt(raw.r, LOG_LIMITS.val),
+    cell: r => r.r },
+  { key: 'done', col: 'hecha',
+    send: r => !!r.done,
+    accept: raw => !!raw.done,
+    cell: r => (r.done ? 'si' : 'no') },
+  { key: 'ts', col: 'fecha',
+    send: r => (Number.isFinite(+r.ts) && +r.ts > 0 ? +r.ts : undefined),
+    accept: raw => {
+      const ts = isObj(raw.ts) ? NaN : +raw.ts;
+      return Number.isFinite(ts) && ts > 0 ? ts : undefined;
+    },
+    cell: r => (r.ts ? new Date(r.ts).toISOString().slice(0, 10) : '') },
+  { key: 'rir', col: 'rir',
+    send: r => (rowRir(r) != null ? String(rowRir(r)) : undefined),
+    /* One digit or nothing. A '2+' on a row is not a row value — the
+       legacy map carries those, and normalizeImportedRir validates them
+       there — so coercing it here would invent a measurement out of a
+       chip that belonged to the whole session. */
+    accept: raw => (!isObj(raw.rir) && /^[0-5]$/.test(String(raw.rir)) ? String(raw.rir) : undefined),
+    /* The set's OWN value, blank where nothing was typed: the file is the
+       record as written, not as the rule reads it, so the inheritance
+       rule stays out of it. */
+    cell: r => (rowRir(r) == null ? '' : String(rowRir(r))) },
+  { key: 'd', col: 'bajadas',
+    /* Half-typed segments are dropped rather than sent: they are worth
+       nothing on the other phone and every byte costs QR frames. */
+    send: r => {
+      const drops = dropsOf(r).filter(dropUsed)
+        .map(d => ({ w: d.w != null ? String(d.w) : '', r: d.r != null ? String(d.r) : '' }));
+      return drops.length ? drops : undefined;
+    },
+    accept: raw => {
+      const drops = (Array.isArray(raw.d) ? raw.d : []).slice(0, MAX_DROPS)
+        .filter(d => d && typeof d === 'object' && !Array.isArray(d))
+        .map(d => ({ w: txt(d.w, LOG_LIMITS.val), r: txt(d.r, LOG_LIMITS.val) }))
+        .filter(dropUsed);
+      return drops.length ? drops : undefined;
+    },
+    /* On their set's own line, as "45x5 30x4", rather than lines of their
+       own: "serie" has to keep meaning the set number the plan asked for.
+       They share the set's unit stamp; drops have none of their own. */
+    cell: r => dropsOf(r).filter(dropUsed)
+      .map(d => (d.w == null ? '' : d.w) + 'x' + (d.r == null ? '' : d.r)).join(' ') },
+  { key: 'dk', col: 'tipo_bajada',
+    /* Only where there is something for it to describe. */
+    send: r => (dropsOf(r).some(dropUsed) ? dropKind(r) : undefined),
+    accept: (raw, row) => (row.d ? (DROP_KINDS.indexOf(raw.dk) >= 0 ? raw.dk : 'drop') : undefined),
+    cell: r => (dropsOf(r).some(dropUsed) ? DROP_LABEL[dropKind(r)] : '') },
+];
+const ROW_CSV_COLUMNS = ROW_FIELDS.map(f => f.col);
+
+function rowToShare(r) {
+  const row = {};
+  ROW_FIELDS.forEach(f => {
+    const v = f.send(r || {});
+    if (v !== undefined) row[f.key] = v;
+  });
+  return row;
+}
+
+function rowFromImport(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { w: '', r: '', done: false };
+  const row = {};
+  ROW_FIELDS.forEach(f => {
+    const v = f.accept(raw, row);
+    if (v !== undefined) row[f.key] = v;
+  });
+  return row;
+}
+
+const rowCsvCells = r => ROW_FIELDS.map(f => f.cell(r));
+
 /* ---- what gets sent ----
    Retired days and exercises (`off`) are left out on purpose: you are
    sharing the plan as you see it, and the import path has no concept of a
@@ -5410,24 +5512,8 @@ function blockShareLog(profile, block) {
         let last = -1;
         rows.forEach((r, i) => { if (rowUsed(r)) last = i; });
         if (last < 0) return;
-        kept[exId] = rows.slice(0, last + 1).map(r => {
-          const row = { w: r && r.w != null ? String(r.w) : '', r: r && r.r != null ? String(r.r) : '', done: !!(r && r.done) };
-          if (r && Number.isFinite(+r.ts) && +r.ts > 0) row.ts = +r.ts;
-          /* The field list here is mirrored by normalizeImportedLog on the
-             other side: a field added to one and not the other is a field
-             that crosses the camera and is thrown away on arrival. */
-          if (rowRir(r) != null) row.rir = String(rowRir(r));
-          /* The unit stamp: without it a set logged in lb lands on the other
-             phone as the same number in kg. */
-          if (rowUnit(r) === 'lb') row.u = 'lb';
-          /* Half-typed segments are dropped rather than sent: they are worth
-             nothing on the other phone and every byte here costs QR frames.
-             `dk` only travels when there is something for it to describe. */
-          const drops = dropsOf(r).filter(dropUsed)
-            .map(d => ({ w: d.w != null ? String(d.w) : '', r: d.r != null ? String(d.r) : '' }));
-          if (drops.length) { row.d = drops; row.dk = dropKind(r); }
-          return row;
-        });
+        /* Which fields travel, and how, is the row codec's (ROW_FIELDS). */
+        kept[exId] = rows.slice(0, last + 1).map(rowToShare);
       });
       if (Object.keys(kept).length) out[key] = kept;
     }
@@ -5607,33 +5693,9 @@ function normalizeImportedLog(rawLog, rawBlock, normalized) {
       if (slotLog[rawExId].length > LOG_ROW_HARD_CAP) {
         throw new Error('trae ' + slotLog[rawExId].length + ' series para un solo ejercicio en una sesión — demasiadas para ser un registro real.');
       }
-      const rows = slotLog[rawExId].slice(0, LOG_LIMITS.rows).map(r => {
-        if (!r || typeof r !== 'object' || Array.isArray(r)) return { w: '', r: '', done: false };
-        const row = { w: txt(r.w, LOG_LIMITS.val), r: txt(r.r, LOG_LIMITS.val), done: !!r.done };
-        const ts = isObj(r.ts) ? NaN : +r.ts;
-        if (Number.isFinite(ts) && ts > 0) row.ts = ts;
-        /* One digit or nothing: anything else is dropped rather than
-           coerced. A '2+' on a row is not a row value — the legacy map
-           carries those, and normalizeImportedRir validates them there — so
-           coercing it here would invent a measurement out of a chip that
-           belonged to the whole session. */
-        if (!isObj(r.rir) && /^[0-5]$/.test(String(r.rir))) row.rir = String(r.rir);
-        /* The exact 'lb' or nothing, the same convention stampRowUnit
-           writes: kg is the absence of the stamp, so a 'kg', an 'LB' or
-           anything else is dropped rather than stored as a value no reader
-           expects. Leaving `u` out of this list altogether is what used to
-           restore every lb set in a backup as the same number in kg. */
-        if (r.u === 'lb') row.u = 'lb';
-        const drops = (Array.isArray(r.d) ? r.d : []).slice(0, MAX_DROPS)
-          .filter(d => d && typeof d === 'object' && !Array.isArray(d))
-          .map(d => ({ w: txt(d.w, LOG_LIMITS.val), r: txt(d.r, LOG_LIMITS.val) }))
-          .filter(dropUsed);
-        if (drops.length) {
-          row.d = drops;
-          row.dk = DROP_KINDS.indexOf(r.dk) >= 0 ? r.dk : 'drop';
-        }
-        return row;
-      });
+      /* Which fields are accepted, and on what terms, is the row codec's
+         (ROW_FIELDS): the same list the sender builds from. */
+      const rows = slotLog[rawExId].slice(0, LOG_LIMITS.rows).map(rowFromImport);
       if (rows.length) kept[exId] = rows;
     });
     if (Object.keys(kept).length) out[slot(w, dayId)] = kept;
@@ -5778,7 +5840,7 @@ function buildCsv() {
      mid-block unit switch, a profile from a partner on the other unit —
      readable at all; a header that just said "kg" was making a claim about
      rows it could not make. */
-  const rows = [['perfil', 'bloque', 'semana', 'dia', 'ejercicio', 'orden', 'serie', 'peso', 'unidad', 'reps', 'hecha', 'fecha', 'rir', 'bajadas', 'tipo_bajada', 'nota', 'energia']];
+  const rows = [['perfil', 'bloque', 'semana', 'dia', 'ejercicio', 'orden', 'serie'].concat(ROW_CSV_COLUMNS, ['nota', 'energia'])];
   Object.keys(state.profiles).forEach(pk => {
     const profile = state.profiles[pk];
     profile.blockOrder.forEach(bId => {
@@ -5809,26 +5871,12 @@ function buildCsv() {
             const energy = getEnergy(profile, bId, w, day.id);
             arr.forEach((r, i) => {
               if (!rowUsed(r)) return;
-              /* Drops stay on their set's own row, as "45x5 30x4", rather
-                 than becoming rows of their own — "serie" has to keep
-                 meaning the set number the plan asked for, or every count
-                 taken off this file stops matching the app's. */
-              const used = dropsOf(r).filter(dropUsed);
-              const drops = used.map(d => (d.w == null ? '' : d.w) + 'x' + (d.r == null ? '' : d.r)).join(' ');
-              /* The weight stays as typed, so a row here matches the card
-                 it was logged on rather than being converted to whichever
-                 unit happened to be selected at export time; `unidad` is
-                 what says which one it is. The drops share that stamp —
-                 they have none of their own. */
-              /* The set's OWN value, blank where nothing was typed — the
-                 file is the record as written, not as the rule reads it,
-                 so the inheritance rule stays out of it. A session logged
-                 before plans/035 carries its one chip on the row the fold
-                 put it on, which is the last set of that session. */
-              rows.push([profile.label, block.name, w, day.name, ex.n, ordAt[w][ex.id] || '', i + 1, r.w, rowUnit(r), r.r,
-                         r.done ? 'si' : 'no', r.ts ? new Date(r.ts).toISOString().slice(0, 10) : '',
-                         rowRir(r) == null ? '' : String(rowRir(r)),
-                         drops, used.length ? DROP_LABEL[dropKind(r)] : '', note, energy]);
+              /* The set's own columns are the row codec's (ROW_FIELDS),
+                 which says why each is written the way it is. A session
+                 logged before plans/035 carries its one chip on the row
+                 the fold put it on, the last set of that session. */
+              rows.push([profile.label, block.name, w, day.name, ex.n, ordAt[w][ex.id] || '', i + 1]
+                .concat(rowCsvCells(r), [note, energy]));
             });
           }
         });
