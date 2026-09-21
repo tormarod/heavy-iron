@@ -3185,11 +3185,11 @@ ok('and lastNote walks back to the most recent earlier note on the same day',
      })()
    `)) === JSON.stringify([{ week: 4, text: 'semana cuatro' }, { week: 2, text: 'semana dos' }, null]));
 
-console.log('\n== bestForExercise: one id, same answer as the whole-profile scan (plans/008 item 14) ==');
-/* drawCard asks for one exercise's all-time best instead of every exercise's,
-   which is only safe while the two agree exactly — including on which session
-   they leave out, or a set would beat itself and every card would claim a
-   record. */
+console.log('\n== bestForExercise: the record bar, one exercise at a time (plans/008 item 14, plans/038 PR 6) ==');
+/* Every card asks for its own exercise's all-time best (the whole-profile
+   scan it used to be checked against went in plans/038 PR 6), and it has to
+   leave out exactly the session being drawn, or a set would beat itself and
+   every card would claim a record. */
 const bestProbe = `
   (function() {
     const profile = defaultState().profiles.hombre;
@@ -3205,24 +3205,21 @@ const bestProbe = `
                                                     { done: false, w: '200', r: '8' },
                                                     { done: true, w: 'x', r: '8' }] };
     const here = slot(2, day.id);
-    const all = bestByExercise(profile, blockId, here);
     const one = bestForExercise(profile, a, blockId, here);
     const noSkip = bestForExercise(profile, a, blockId, 'w9-dz');
+    const highRep = bestForExercise(profile, c, blockId, here);
     return {
-      agreesWithSkip: one[a].w === all[a].w && one[a].e === all[a].e,
       skipped: one[a].w,
       skippedE: one[a].e,
       unskipped: noSkip[a].w,
       unskippedE: noSkip[a].e,
-      highRepOnly: all[c] && { w: all[c].w, e: all[c].e },
+      highRepOnly: highRep[c] && { w: highRep[c].w, e: highRep[c].e },
       onlyOneKey: Object.keys(one).length,
       missingIsAbsent: (a + '|' + (a in bestForExercise(profile, 'nosuchexercise', blockId, here))),
     };
   })()
 `;
 const bestResult = call(bestProbe);
-ok('bestForExercise matches bestByExercise for the id it was asked about',
-   bestResult.agreesWithSkip, 'one=' + bestResult.skipped);
 ok('it excludes the session being drawn, exactly as the full scan does',
    bestResult.skipped === 60, 'got ' + bestResult.skipped);
 ok('and includes that session when it is not the one being skipped',
@@ -3239,6 +3236,40 @@ ok('an exercise logged only past EST_MAX_REPS has a best weight and no estimate'
    JSON.stringify(bestResult.highRepOnly));
 ok('and the estimate follows the drawn session in when it is not skipped',
    Math.abs(bestResult.unskippedE - 80 * (1 + 8 / 30)) < 1e-9, 'got ' + bestResult.unskippedE);
+
+/* The bar is two questions split at the week being drawn (plans/038 PR 6):
+   the history before it survives a tick in the history cache, bar and all,
+   and the rest of the block is read again — so a tick in the drawn session
+   still cannot beat itself, and a later session of the block still counts. */
+const bestSplit = call(`
+  (function() {
+    const profile = defaultState().profiles.hombre;
+    const block = profile.blocks[profile.blockOrder[0]];
+    const blockId = block.id, day = block.days[0], a = day.ex[0].id;
+    profile.log[blockId] = {};
+    profile.log[blockId][slot(1, day.id)] = { [a]: [{ done: true, w: '60', r: '8' }] };
+    const here = slot(2, day.id);
+    const at = w => ({ profile: profile, block: blockId, week: w, day: day.id, lift: a });
+    const headBar = () => historyDerived(sessionsOf(profile, { weeks: 'logged', lift: { id: a }, before: { block: blockId, week: 2 } })).get('best');
+    const bar0 = bestForExercise(profile, a, blockId, here)[a].w;
+    const kept = headBar();
+    profile.log[blockId][here] = { [a]: [{ done: true, w: '90', r: '8' }] };
+    logChanged(at(2));
+    const bar1 = bestForExercise(profile, a, blockId, here)[a].w;
+    const keptAfterTick = headBar() === kept;
+    profile.log[blockId][slot(3, day.id)] = { [a]: [{ done: true, w: '70', r: '8' }] };
+    logChanged(at(3));
+    const bar2 = bestForExercise(profile, a, blockId, here)[a].w;
+    profile.log[blockId][slot(blockWeeks(block) + 2, day.id)] = { [a]: [{ done: true, w: '75', r: '8' }] };
+    logChanged();
+    const bar3 = bestForExercise(profile, a, blockId, here)[a].w;
+    return { bar0, bar1, keptAfterTick, bar2, bar3 };
+  })()
+`);
+ok('a tick in the drawn session neither beats the bar nor drops the history before that week',
+   bestSplit.bar0 === 60 && bestSplit.bar1 === 60 && bestSplit.keptAfterTick, JSON.stringify(bestSplit));
+ok('a later session of the same block raises the bar, and so does a stranded week',
+   bestSplit.bar2 === 70 && bestSplit.bar3 === 75, JSON.stringify(bestSplit));
 
 console.log('\n== pruneLog: browsing a week does not leave placeholder rows in storage (plans/008 item 14) ==');
 /* entry() pads the drawn session's rows in place, so paging through a block

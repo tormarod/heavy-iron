@@ -3192,69 +3192,75 @@ function render() {
   }
 }
 
-/* One rule for both scans below: the heaviest completed weight, and the
-   best estimated 1RM among the sets that can honestly carry one — reps
-   present and at or under EST_MAX_REPS, where Epley stops drifting. `e` is
-   null until a set with reps has been logged. Raw num(r.w), not
-   rowWeight(): the badge is judged against the number the row shows, the
-   decision the weight badge already made (plans/README.md, third audit
-   item 17). */
-function noteBest(best, exId, r) {
-  if (!r || !r.done) return;
-  const w = num(r.w);
-  if (isNaN(w)) return;
-  if (!(exId in best)) best[exId] = { w: w, e: null };
-  else if (w > best[exId].w) best[exId].w = w;
-  if (hasReps(r) && num(r.r) <= EST_MAX_REPS) {
-    const e = est1RM(w, num(r.r));
-    if (best[exId].e == null || e > best[exId].e) best[exId].e = e;
-  }
+/* The bar a set has to clear to count as a personal record: the heaviest
+   completed weight, and the best estimated 1RM among the sets that can
+   honestly carry one — reps present and at or under EST_MAX_REPS, where
+   Epley stops drifting. `e` is null until a set with reps has been logged.
+   The weight as typed (wLogged), not the converted `w`: the badge is judged
+   against the number the row shows, the decision the weight badge already
+   made (plans/README.md, third audit item 17). Null for no weighed set. */
+function bestOf(sessions) {
+  let b = null;
+  sessions.forEach(s => s.sets.forEach(x => {
+    const w = num(x.wLogged);
+    if (isNaN(w)) return;
+    if (!b) b = { w: w, e: null };
+    else if (w > b.w) b.w = w;
+    /* hasReps, on a parsed set: `r` is NaN when the box was empty. */
+    if (x.r > 0 && x.r <= EST_MAX_REPS) {
+      const e = est1RM(w, x.r);
+      if (b.e == null || e > b.e) b.e = e;
+    }
+  }));
+  return b;
 }
 
-/* The best weight ever completed on each exercise, and the best estimated
-   1RM alongside it, across every block of the profile — the bar a set has
-   to clear to count as a personal record. The session being drawn is
-   excluded, or its own sets would beat themselves. */
-function bestByExercise(profile, skipBlockId, skipSlot) {
-  /* Prototype-less for the same reason rowsFor's slot objects are: exercise
-     ids arrive from storage and from imports, and `best['__proto__'] = 90`
-     on a plain {} is silently dropped, so that one exercise could never show
-     a RECORD badge however heavy the set. */
-  const best = Object.create(null);
-  Object.keys(profile.log).forEach(bId => {
-    const blk = profile.log[bId];
-    if (!blk) return;
-    Object.keys(blk).forEach(k => {
-      if (bId === skipBlockId && k === skipSlot) return;
-      const s = blk[k];
-      if (!s) return;
-      Object.keys(s).forEach(exId => {
-        const rows = s[exId];
-        if (!Array.isArray(rows)) return;
-        rows.forEach(r => noteBest(best, exId, r));
-      });
-    });
-  });
-  return best;
+/* Two bars as one: each half is a max, so the order does not matter. */
+function bestJoin(a, b) {
+  if (!a || !b) return a || b;
+  return { w: Math.max(a.w, b.w), e: a.e == null ? b.e : b.e == null ? a.e : Math.max(a.e, b.e) };
 }
 
-/* The same answer for one exercise. Rebuilding a single card (drawCard)
-   needs one id's bar, and walking the other six exercises' history only to
-   throw it away is most of what made a set tick cost a whole render. The
-   full draw still asks for all of them, in the one pass above. */
+/* The best weight ever completed on one exercise, and the best estimated
+   1RM alongside it, across every block of the profile — including a
+   shortened block's stranded weeks ('logged', plans/008 item 20): a record
+   is about the lifter over time. The session being drawn is excluded, or
+   its own sets would beat themselves. Returns { [exId]: { w, e } }, or an
+   empty map for an exercise with no weighed set; prototype-less, because
+   exercise ids arrive from storage and from imports, and `best['__proto__']`
+   on a plain {} is not an own property.
+
+   Asked as two questions rather than one, split at the week being drawn,
+   because every tick on this card asks again (drawCard): everything before
+   that week is a slice the tick cannot reach, so the history cache keeps
+   it and the bar made from it (historyDerived); only this block from that
+   week on is read again. One question over every block would re-read the
+   lift's whole history on every tick. */
 function bestForExercise(profile, exId, skipBlockId, skipSlot) {
-  const best = Object.create(null);
-  Object.keys(profile.log).forEach(bId => {
-    const blk = profile.log[bId];
-    if (!blk) return;
-    Object.keys(blk).forEach(k => {
-      if (bId === skipBlockId && k === skipSlot) return;
-      const rows = blk[k] && blk[k][exId];
-      if (!Array.isArray(rows)) return;
-      rows.forEach(r => noteBest(best, exId, r));
-    });
-  });
-  return best;
+  const out = Object.create(null);
+  const order = profile.blockOrder || [];
+  const at = order.indexOf(skipBlockId);
+  const skip = parseSlot(skipSlot);
+  const lift = { id: exId };
+  const drawn = s => s.block === skipBlockId && slot(s.week, s.day) === skipSlot;
+  let bar;
+  if (at >= 0 && skip) {
+    const head = sessionsOf(profile, { weeks: 'logged', lift: lift, before: { block: skipBlockId, week: skip.week } });
+    const memo = historyDerived(head);
+    let headBar = memo && memo.has('best') ? memo.get('best') : undefined;
+    if (headBar === undefined) {
+      headBar = bestOf(head);
+      if (headBar) Object.freeze(headBar);
+      if (memo) memo.set('best', headBar);
+    }
+    const tail = sessionsOf(profile, { weeks: 'logged', lift: lift, blocks: order.slice(at) })
+      .filter(s => (s.block !== skipBlockId || s.week >= skip.week) && !drawn(s));
+    bar = bestJoin(headBar, bestOf(tail));
+  } else {
+    bar = bestOf(sessionsOf(profile, { weeks: 'logged', lift: lift }).filter(s => !drawn(s)));
+  }
+  if (bar) out[exId] = { w: bar.w, e: bar.e };
+  return out;
 }
 
 /* What you put on the bar for this set last time round, used as the greyed
@@ -3479,12 +3485,7 @@ function drawApp() {
   const sessionEx = orderedEx(profile, block, profile.week, day);
   drawOrderNote(profile, block, day, sessionEx);
 
-  /* One walk of the profile for every card's all-time best, since every card
-     is being built anyway. drawCard takes the other side of that trade. */
-  const ctx = {
-    profile: profile, block: block, day: day, days: days, sessionEx: sessionEx,
-    best: bestByExercise(profile, block.id, slot(profile.week, day.id)),
-  };
+  const ctx = { profile: profile, block: block, day: day, days: days, sessionEx: sessionEx };
   sessionEx.forEach((ex, i) => list.appendChild(buildExCard(ctx, ex, i)));
   takeFocusMark(list);
 
@@ -3501,11 +3502,14 @@ function drawApp() {
 
 /* One exercise's card, built detached and handed back for the caller to put
    in place: drawApp appends all of them, drawCard swaps one out. `ctx` is
-   everything that is the same for every card in the day, so the two callers
-   differ in exactly one thing — how they arrived at `best`. */
+   everything that is the same for every card in the day, and the two
+   callers build it the same way. They used to differ in how they arrived
+   at the record bar — one walk of the whole profile for the day's cards, one
+   exercise for a tick — until each card asked for its own through the
+   history cache (bestForExercise). */
 function buildExCard(ctx, ex, i) {
   const profile = ctx.profile, block = ctx.block, day = ctx.day;
-  const sessionEx = ctx.sessionEx, best = ctx.best;
+  const sessionEx = ctx.sessionEx;
   const n = setsFor(ex, profile.week, block);
   const rows = entry(profile, block.id, profile.week, day.id, ex.id, n);
   /* What every box on this card writes, and all it writes: this lift's rows
@@ -3522,8 +3526,8 @@ function buildExCard(ctx, ex, i) {
      for the previous block's sets (plans/018), and two consts of one name
      in one scope is the parse failure that leaves every returning phone on
      "Cargando…" (AGENTS.md). "The bar a set has to clear" is the phrase the
-     comment above bestByExercise already uses. */
-  const bar = best[ex.id];
+     comment above bestOf already uses. */
+  const bar = bestForExercise(profile, ex.id, block.id, slot(profile.week, day.id))[ex.id];
   const isPr = r => r.done && !isNaN(num(r.w)) && (!bar || num(r.w) > bar.w);
   /* A new best estimated 1RM at a weight already lifted: the rep progress
      double progression is made of, which the weight badge cannot see. Only
@@ -4123,10 +4127,7 @@ function drawCard(exId) {
     const sessionEx = orderedEx(profile, block, profile.week, day);
     /* A different exercise at this index means the plan moved; same answer. */
     if (!sessionEx[i] || sessionEx[i].id !== exId) { render(); return; }
-    const ctx = {
-      profile: profile, block: block, day: day, days: days, sessionEx: sessionEx,
-      best: bestForExercise(profile, exId, block.id, slot(profile.week, day.id)),
-    };
+    const ctx = { profile: profile, block: block, day: day, days: days, sessionEx: sessionEx };
     const at = focusPathIn(old);
     const fresh = buildExCard(ctx, sessionEx[i], i);
     old.replaceWith(fresh);
