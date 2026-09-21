@@ -96,6 +96,12 @@ const INC_MIN = 0.25, INC_MAX = 50, INC_STEP = 0.25;
    fitPlates() below loop on the order of target/p times, growing an array,
    on every Calculadora open — a same-device hang from a single bad number. */
 const PLATE_MIN = { kg: 0.25, lb: 0.5 }, PLATE_MAX = { kg: 50, lb: 100 };
+/* How many plate sizes a set can hold. Real racks have a dozen at most; the
+   list is the one imported collection that had no ceiling, and a backup
+   restore reaches prefs without passing any normalizeImported* — so a
+   file could carry a list that bloats every save, the Ajustes field and
+   the AI prompt, and overflows the spread in the calculator (plans/040). */
+const PLATES_MAX = 24;
 
 /* The step to fall back on when an exercise declares no `inc` of its own —
    and most don't, since it is an optional field. Something has to round the
@@ -492,7 +498,12 @@ function migrate() {
 
   /* Whatever happened above, the app cannot draw with no profile at all. */
   if (!Object.keys(state.profiles).length) state.profiles = fallback.profiles;
-  if (!state.profiles[state.activeProfile]) state.activeProfile = profileKeys()[0];
+  /* An own key, not a truthy read: `state.profiles['constructor']` is a
+     function and `state.profiles['__proto__']` is Object.prototype, and a
+     backup can name either. Either one used to pass here, getBlock() then
+     threw on the way to the first draw, and the recovery screen's buttons
+     wrote that state back to disk (plans/040). */
+  if (!Object.prototype.hasOwnProperty.call(state.profiles, state.activeProfile)) state.activeProfile = profileKeys()[0];
   if (!state.prefs || typeof state.prefs !== 'object') state.prefs = {};
   if (['auto', 'light', 'dark'].indexOf(state.prefs.theme) < 0) state.prefs.theme = 'auto';
   state.prefs.sound = !!state.prefs.sound;
@@ -517,8 +528,8 @@ function migrate() {
   if (!Array.isArray(state.prefs.plates) || !state.prefs.plates.length) {
     state.prefs.plates = DEFAULT_PLATES[state.prefs.units].slice();
   } else {
-    state.prefs.plates = state.prefs.plates.map(num)
-      .filter(p => p >= PLATE_MIN[state.prefs.units] && p <= PLATE_MAX[state.prefs.units]);
+    state.prefs.plates = Array.from(new Set(state.prefs.plates.map(num)
+      .filter(p => p >= PLATE_MIN[state.prefs.units] && p <= PLATE_MAX[state.prefs.units]))).slice(0, PLATES_MAX);
     if (!state.prefs.plates.length) state.prefs.plates = DEFAULT_PLATES[state.prefs.units].slice();
   }
   if (['pair', 'solo'].indexOf(state.mode) < 0) state.mode = 'pair';
@@ -1256,8 +1267,8 @@ $('setupSave').onclick = () => {
   } else {
     const bw = num(setupDraft.barWeight);
     if (bw > 0) state.prefs.barWeight = bw;
-    const plates = String(setupDraft.platesText || '').split(',').map(num)
-      .filter(p => p >= PLATE_MIN[state.prefs.units] && p <= PLATE_MAX[state.prefs.units]);
+    const plates = Array.from(new Set(String(setupDraft.platesText || '').split(',').map(num)
+      .filter(p => p >= PLATE_MIN[state.prefs.units] && p <= PLATE_MAX[state.prefs.units]))).slice(0, PLATES_MAX);
     if (plates.length) state.prefs.plates = plates;
     const inc = clampNum(setupDraft.inc, INC_MIN, INC_MAX, 0, INC_STEP);
     if (inc > 0) state.prefs.inc = inc;
@@ -1406,7 +1417,8 @@ function showRecovery(err, raw, mode) {
      copy instead of two; only the mutation differs per button. */
   const recoverAndReload = mutateProfile => {
     try {
-      const profile = state.profiles && state.profiles[state.activeProfile];
+      const profile = state.profiles && Object.prototype.hasOwnProperty.call(state.profiles, state.activeProfile)
+        ? state.profiles[state.activeProfile] : null;
       if (profile) mutateProfile(profile);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch (e) { /* reload surfaces whatever is still wrong */ }
