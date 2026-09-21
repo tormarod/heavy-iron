@@ -121,12 +121,16 @@ the bar's four destinations and the rest timer's controls fit on a 375px
 phone.
 
 ```
-npm install --no-save playwright@1.56.1   # once
+npm install --no-save --ignore-scripts playwright@1.56.1   # once
 npx playwright install chromium           # once
 python3 -m http.server 8765 &                                 # Git Bash
 Start-Process python3 -ArgumentList '-m','http.server','8765' # PowerShell
 node test/smoke.js
 ```
+
+`--ignore-scripts` on purpose: it is the one place this repo would run
+third-party code at install time, and `tools/smoke-gate.sh` installs the
+same way (its comment says why).
 
 The suite is a list of sections, one browser context each, so while working
 on one thing you can run just the sections that can see it instead of the
