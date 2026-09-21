@@ -5,9 +5,10 @@
 
    This screen fits a line through the estimated 1RM of every exercise in
    the current plan at once and sorts them worst first, then crosses each
-   trend with the signals the log already carries — the RIR chip, the
-   rep-decay flag, forced drops, the timestamps on every ticked row, the
-   kilos each session moved, and the target weight from targetFor().
+   trend with the signals the log already carries — the RIR written on
+   each set, the rep-decay flag, forced drops, the timestamps on every
+   ticked row, the kilos each session moved, and the target weight from
+   targetFor().
    A stall on its own says nothing. A stall next to "RIR 2+ every week" and
    a stall next to "0 RIR and a forced drop" point at opposite fixes, which
    is exactly why guessing at it goes wrong.
@@ -100,7 +101,7 @@ function diagPoints(profile, exId, onlyBlockId) {
     done.forEach(x => { if (est1RM(x.w, x.r) > est1RM(best.w, best.r)) best = x; });
     const block = profile.blocks[sess.block];
     /* Stored rows for the two readers that still want them: forcedDrop and
-       repDecay read the row, and rowRir(rows[0]) the first set's OWN
+       repDecay read the row, and rowRir(decayRows(rows)[0]) the first set's OWN
        reserve, which a set's inherited rir cannot stand in for. getRir
        likewise stays the session's reading ('2+' and all) rather than the
        last working set's rir — it falls back to an earlier set's value and
@@ -703,7 +704,7 @@ function diagRows(profile, block, scope) {
            work-axis rows below, which is where a session that drains
            without a hard first set belongs. Its own value only — an
            inherited reserve says nothing about the first set. */
-        decay: !!last && repDecay(last.rows) >= 3 && !(rowRir(last.rows[0]) >= 2),
+        decay: !!last && repDecay(last.rows) >= 3 && !(rowRir(decayRows(last.rows)[0]) >= 2),
         /* A stall reset is also `down`, but it is not "the weight was
            picked wrong" — it is the target rule's own answer to the
            stall this screen is about to name, so it reads as the stall,

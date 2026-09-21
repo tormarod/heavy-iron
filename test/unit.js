@@ -805,6 +805,31 @@ ok('a restored session order keeps all three of its exercises',
 ok('...re-keyed to ids the restored day actually has',
    orderRekey.allResolve, orderRekey.ids + ' vs ' + orderRekey.live);
 
+/* Only a hand-edited localStorage can put a prototype name into
+   profile.order — every import re-keys it — but migrate()'s whole brief is
+   to survive exactly that, and orderedEx used to push
+   Object.prototype.toString into the session as if it were an exercise
+   (plans/041). */
+const orderProto = call(`
+  (function () {
+    state = defaultState(); migrate();
+    const profile = state.profiles.hombre;
+    const block = profile.blocks[profile.blockOrder[0]];
+    const day = block.days[0];
+    const plan = exList(day).map(function (e) { return e.id; });
+    profile.order[block.id] = {};
+    profile.order[block.id][slot(1, day.id)] = ['toString', plan[1], plan[0]];
+    const drawn = orderedEx(profile, block, 1, day).map(function (e) { return e && typeof e === 'object' ? e.id : typeof e; });
+    migrate();
+    const kept = profile.order[block.id][slot(1, day.id)].join(',');
+    return { drawn: drawn.join(','), kept: kept, want: plan[1] + ',' + plan[0], n: plan.length };
+  })()
+`);
+ok('orderedEx never draws a prototype member as an exercise', !orderProto.drawn.split(',').includes('function') &&
+   orderProto.drawn.split(',').length === orderProto.n, orderProto.drawn);
+ok('...and migrate() drops the name from the recorded order, as it does from every exercise id',
+   orderProto.kept === orderProto.want, orderProto.kept + ' vs ' + orderProto.want);
+
 /* 5. The same misfiling, on the strict path that keeps renaming: two days
       sharing a raw id normalize to two different ids, so the id map has to
       be read per day. This is the QR "blocklog" wire format, which is why
@@ -1760,6 +1785,11 @@ ok('setsFor halves the added set too on a deload week',
 ok('and a hand-written "Descarga" phase halves its week as well',
    call(`setsFor({ sets: 4 }, 3, { deload: 0, weeks: 8, phase: { 3: { r: 'Descarga' } } })`) === 2 &&
    call(`deloadAt({ deload: 0, weeks: 8, phase: { 3: { r: 'Descarga' } } }, 3)`) === true);
+ok('a one-set exercise stays at one set on the deload week — the floor of two never exceeds the week\'s own count (plans/041)',
+   call(`setsFor({ sets: 1 }, 8, { deload: 8, weeks: 8, phase: {} })`) === 1 &&
+   call(`setsFor({ sets: 2 }, 8, { deload: 8, weeks: 8, phase: {} })`) === 2 &&
+   call(`setsFor({ sets: 3 }, 8, { deload: 8, weeks: 8, phase: {} })`) === 2,
+   [1, 2, 3].map(n => call(`setsFor({ sets: ${n} }, 8, { deload: 8, weeks: 8, phase: {} })`)).join(','));
 
 /* The objetivo that was shown is written once and never rewritten: the
    record is what was ASKED for, so a weight that came down mid-session has
@@ -2397,6 +2427,11 @@ ok('...and still asks the question when nothing was typed',
    line([{ r: '12' }, { r: '8' }]));
 ok('...and says nothing at all without a drop worth naming',
    line([{ r: '12' }, { r: '11' }]) === '', line([{ r: '12' }, { r: '11' }]));
+
+const decayFirst = call(`decayLine([{ w: '60', r: '', done: true }, { w: '60', r: '12', done: true, rir: '3' },
+                                    { w: '60', r: '9', done: true }, { w: '60', r: '8', done: true }])`);
+ok('the decay line quotes the RIR of the set the drop was measured FROM — the first set with reps, not row 0 (plans/041)',
+   decayFirst.includes('RIR 3') && call(`repDecay([{ r: '' }, { r: '12' }, { r: '9' }, { r: '8' }])`) === 4, decayFirst);
 
 /* The Diagnóstico's three effort signals, read end to end through diagRows:
    three flat sessions of one exercise, and the verdict the signals pick. */

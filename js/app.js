@@ -407,7 +407,7 @@ function migrate() {
         const ids = blk[k];
         if (!Array.isArray(ids)) { delete blk[k]; return; }
         const seen = new Set();
-        blk[k] = ids.filter(id => typeof id === 'string' && id && !seen.has(id) && seen.add(id)).slice(0, ORDER_LIMIT);
+        blk[k] = ids.filter(id => typeof id === 'string' && safeKey(id) && !seen.has(id) && seen.add(id)).slice(0, ORDER_LIMIT);
         if (!blk[k].length) delete blk[k];
       });
     });
@@ -1577,7 +1577,10 @@ const VOLUME_DIMENSIONS = {
 function setsFor(ex, w, block) {
   let n = ex.sets;
   if (ex.add && w >= ex.add) n += 1;
-  if (block && deloadAt(block, w)) n = Math.max(2, Math.ceil(n / 2));
+  /* Half the sets, floored at two so a deload still has a pair to compare
+     — but never MORE than the week's own count: a one-set finisher used to
+     draw two rows on the one week that asks for less (plans/041). */
+  if (block && deloadAt(block, w)) n = Math.min(n, Math.max(2, Math.ceil(n / 2)));
   return n;
 }
 
@@ -1635,8 +1638,15 @@ const rowUsed = r => !!(r && (r.done || (r.w !== '' && r.w != null) || (r.r !== 
    first, and it was wrong on exactly the exercises that taper most. */
 const DECAY_MIN_REPS = 2, DECAY_MIN_SHARE = 0.25;
 
+/* The rows the decay is measured over: the ones with a rep count. One
+   list, read by repDecay for the numbers and by decayLine and the
+   Diagnóstico for which set is "the first" — three readers that each
+   picked their own first set disagreed on a session whose first row was
+   ticked without reps, which the tick contract allows (plans/041). */
+const decayRows = rows => (rows || []).filter(r => r && r.r !== '' && r.r != null && !isNaN(num(r.r)));
+
 function repDecay(rows) {
-  const withReps = (rows || []).filter(r => r && r.r !== '' && r.r != null && !isNaN(num(r.r)));
+  const withReps = decayRows(rows);
   if (withReps.length < 2) return 0;
   const first = num(withReps[0].r);
   const drop = first - num(withReps[withReps.length - 1].r);
@@ -1660,7 +1670,7 @@ function decayLine(rows) {
   const drop = repDecay(rows);
   if (!drop) return '';
   const head = '⚠ caída de ' + drop + ' reps';
-  const first = rowRir((rows || [])[0]);
+  const first = rowRir(decayRows(rows)[0]);
   if (first == null) return head + ': ¿primera serie al fallo?';
   if (first >= 2) return head + ' con la primera serie holgada (RIR ' + first + '): ¿descansos cortos?';
   return head + ': primera serie a ' + first + ' RIR — las de después se vacían';
@@ -2022,7 +2032,7 @@ function orderedEx(profile, block, w, day) {
   const plan = exList(day);
   const ids = getOrder(profile, block.id, w, day.id);
   if (!ids) return plan;
-  const byId = {};
+  const byId = Object.create(null);   /* no prototype, so a recorded id can only ever match the plan (plans/041) */
   plan.forEach(ex => { byId[ex.id] = ex; });
   const out = [];
   ids.forEach(id => { const ex = byId[id]; if (ex && out.indexOf(ex) < 0) out.push(ex); });
