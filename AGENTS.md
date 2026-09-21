@@ -301,6 +301,16 @@ purpose. The existing readers are moving onto it one PR at a time
 (`plans/038-session-reader.md`); a new reader starts there. The words
 (session, working set, extra set, stranded week, …) are in `CONTEXT.md`.
 
+Its answers are cached between draws (`plans/045-history-cache.md`) and
+come back **frozen**: copy one before changing it. The cache is emptied by
+`save()`, so a write to `log`, `rir` or a block's plan that does not call
+`save()` (or `commit()`) before the next draw leaves a stale objetivo on
+screen. `save('view')` and a card's
+`save(here)` are narrower claims ("nothing a session reads changed", "only
+this lift's rows in this slot"); `test/unit.js` pins the list of them, so
+a new one is added there on purpose. A replaced `state` or profile, and a
+unit switch, need nothing.
+
 `variants` is the one per-profile map keyed by exercise id rather than by
 block and slot (`exId → [{ n, since }]`, read only by `variantSince`), so it
 is never walked by slot and is not in any purge or move helper's list; and

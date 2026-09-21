@@ -1056,15 +1056,15 @@ ok('diagPoints returns the weeks in ascending order with the deload left out',
    JSON.stringify([1, 2, 4].map(w => diagPointLabels.name + ' · S' + w)),
    JSON.stringify(diagPointLabels.labels));
 
-/* The sheet is a draw of its own (plans/027). Since drawCard stopped emptying
-   the render cache, the cache the last full draw left behind outlives every
-   tick — harmless for the card, whose history entries stop at profile.week,
-   but not here: diagLevelTrend asks for MAX_WEEKS + 1, so the sheet's entries
-   include the week being trained. Open the Diagnóstico, close it, tick, reopen
-   — without the resetRenderCache() at the top of diagRows the trend would be
-   read from before the tick. The `change` half of the assertion is the one
-   that pins that: `sessions` comes from diagPoints, which reads the log
-   directly and would move either way. */
+/* The sheet's history entries include the week being trained
+   (diagLevelTrend asks for MAX_WEEKS + 1), and a tick does not redraw the
+   day, so whatever cache the last draw left must not answer for them after
+   one. Open the Diagnóstico, close it, tick, reopen. plans/027 pinned this
+   through a resetRenderCache() at the top of diagRows; since plans/045 it is
+   the tick's own save(), with the card's scope, that drops those entries,
+   so the tick below goes through the same save() the card calls. The
+   `change` half of the assertion is the one that pins it: `sessions` comes
+   from diagPoints, which reads the log directly and would move either way. */
 const sheetSeesTick = call(`
   (function () {
     state = defaultState(); migrate(); state.setupDone = true;
@@ -1089,6 +1089,7 @@ const sheetSeesTick = call(`
     const before = diagRows(pr, block, 'block').find(r => r.id === exId);
     /* A tick on the week being trained, written the way the card writes it. */
     pr.log[blockId][slot(5, day.id)] = { [exId]: session('100', Date.now()) };
+    save({ profile: pr, block: blockId, week: 5, day: day.id, lift: exId });
     const after = diagRows(pr, block, 'block').find(r => r.id === exId);
     return { beforeSessions: before.sessions, afterSessions: after.sessions,
              beforeChange: before.change, afterChange: after.change,
@@ -4117,6 +4118,252 @@ console.log('\n== sessionsOf: the one reading of the log (plans/038) ==');
        const p = sessionFixture({ blocks: ${PLAN} });
        return sessionsOf(p, { weeks: 'logged', blocks: ['A', 'nope'] }).length;
      })()`) === 0);
+}
+
+console.log('\n== the history cache: one read per question, dropped by the write (plans/045) ==');
+{
+  /* Every case builds its own profile and files it as the active one, so
+     snapshotForUndo, undoLast and getProfile see it. render() is stubbed
+     for the section: commit() is half of what is being pinned, and the
+     inert DOM cannot draw (see the writeState case above). Each read
+     before the change is what fills the cache the change must empty. */
+  call(`
+    function cacheFixture() {
+      const t0 = Date.now() - 30 * 86400000;
+      const sets = (kg, wk) => [[kg, 10, { ts: t0 + wk * 7 * 86400000 }], [kg, 10, { ts: t0 + wk * 7 * 86400000 }]];
+      const sessions = [];
+      [1, 2, 3].forEach(w => {
+        sessions.push({ block: 'A', week: w, day: 'd1', lift: 'sq', sets: sets(100, w) });
+        sessions.push({ block: 'A', week: w, day: 'd1', lift: 'bp', sets: sets(60, w) });
+      });
+      const p = sessionFixture({ blocks: [
+        { id: 'A', weeks: 8, days: [
+          { id: 'd1', ex: [{ id: 'sq', n: 'Sentadilla' }, { id: 'bp', n: 'Press banca', sets: 2 }] },
+          { id: 'd2', ex: [{ id: 'row', n: 'Remo' }] } ] },
+      ], sessions: sessions });
+      Object.assign(p, { label: 'Él', theme: 'azul', notes: {}, energy: {}, order: {},
+                         activeBlock: 'A', week: 4, day: 0 });
+      state.profiles.hombre = p;
+      state.activeProfile = 'hombre';
+      return p;
+    }
+    /* What the card's own boxes hand to save(): this lift, this slot. */
+    function cardScope(p, week, day, lift) { return { profile: p, block: 'A', week: week, day: day, lift: lift }; }
+    var __realRender = render;
+    render = function () {};
+  `);
+  const Q = `{ weeks: 'logged', lift: { id: 'bp' } }`;
+  try {
+    const warm = JSON.parse(call(`(function () {
+      const p = cacheFixture(), b = p.blocks.A, ex = b.days[0].ex[1];
+      return JSON.stringify({
+        sessions: sessionsOf(p, ${Q}) === sessionsOf(p, ${Q}),
+        rule: exHistory(p, b, ex, 'd1', 4) === exHistory(p, b, ex, 'd1', 4),
+        /* The same question with a new cut-off is a slice of a read already
+           held, not a second walk: the sessions in it are the same objects. */
+        slice: sessionsOf(p, { weeks: 'logged', lift: { id: 'bp' }, before: { block: 'A', week: 3 } })[0] ===
+               sessionsOf(p, { weeks: 'logged', lift: { id: 'bp' }, before: { block: 'A', week: 4 } })[0],
+      });
+    })()`));
+    ok('the same question twice, nothing logged in between, is answered with the same arrays (sessionsOf, exHistory, a new cut-off)',
+       warm.sessions && warm.rule && warm.slice, JSON.stringify(warm));
+
+    /* exHistory used to leave an `ord` on each session; a reader that wrote
+       onto what it was handed now would be writing onto every later
+       reader's answer. Sloppy-mode scripts drop those writes silently, so
+       each one is tried and the next reader's answer compared with a
+       fresh walk of the same log. */
+    const poison = JSON.parse(call(`(function () {
+      const p = cacheFixture(), b = p.blocks.A, ex = b.days[0].ex[1];
+      const a = sessionsOf(p, ${Q});
+      const h = exHistory(p, b, ex, 'd1', 4);
+      const tries = [
+        () => { a[0].sets[0].w = 999; }, () => { a[0].week = 99; }, () => { a.push({ sets: [] }); },
+        () => { a[0].sets.push({}); }, () => { a[0].sets[0].drops.push({ w: 1 }); }, () => { a.length = 0; },
+        () => { h[0].sets[0].w = 999; }, () => { h.pop(); }, () => { h[0].ord = [0]; },
+      ];
+      tries.forEach(f => { try { f(); } catch (e) { /* strict callers throw: fine */ } });
+      const again = JSON.stringify(sessionsOf(p, ${Q})), againRule = JSON.stringify(exHistory(p, b, ex, 'd1', 4));
+      logChanged();
+      return JSON.stringify({
+        same: again === JSON.stringify(sessionsOf(p, ${Q})),
+        sameRule: againRule === JSON.stringify(exHistory(p, b, ex, 'd1', 4)),
+        w: (JSON.parse(again)[0] || { sets: [{}] }).sets[0].w, n: JSON.parse(again).length,
+        frozen: Object.isFrozen(a) && Object.isFrozen(a[0]) && Object.isFrozen(a[0].sets[0]) && Object.isFrozen(a[0].sets[0].drops) &&
+                Object.isFrozen(h) && Object.isFrozen(h[0].sets[0]),
+      });
+    })()`));
+    ok('a caller writing onto a cached answer cannot change the next caller\'s (sessions and exHistory are frozen all the way down)',
+       poison.same && poison.sameRule && poison.w === 60 && poison.n === 3 && poison.frozen, JSON.stringify(poison));
+
+    /* The card's tick: a row of the week being trained ticked, and the same
+       save() the tick handler calls, with the card's scope. Everything
+       reading that week sees it at once — including the objetivo held in
+       the draw's render cache, which drawCard keeps — and what stops before
+       it (every other card, the brake) is kept, not re-read. */
+    const tick = JSON.parse(call(`(function () {
+      const p = cacheFixture(), b = p.blocks.A, d1 = b.days[0], bp = d1.ex[1], sq = d1.ex[0];
+      const n0 = sessionsOf(p, ${Q}).length;
+      const sqHist = exHistory(p, b, sq, 'd1', 4);
+      const bpBefore = exHistory(p, b, bp, 'd1', 4);
+      resetRenderCache();
+      const t0 = targetNow(p, b, d1, bp, 5);
+      const rows = entry(p, 'A', 4, 'd1', 'bp', 2);
+      rows[0].w = '62,5'; rows[0].r = '10'; rows[0].ts = Date.now(); rows[0].done = true;
+      save(cardScope(p, 4, 'd1', 'bp'));
+      const after = sessionsOf(p, ${Q});
+      const t1 = targetNow(p, b, d1, bp, 5);
+      return JSON.stringify({
+        n0: n0, n1: after.length, last: after[after.length - 1].week,
+        rule: exHistory(p, b, bp, 'd1', 5).length,
+        target: [t0.sessions, t1.sessions],
+        keptOther: exHistory(p, b, sq, 'd1', 4) === sqHist,
+        keptBefore: exHistory(p, b, bp, 'd1', 4) === bpBefore,
+      });
+    })()`));
+    ok('a ticked set is read by the very next sessionsOf, exHistory and targetNow (the draw\'s objetivo too)',
+       tick.n1 === tick.n0 + 1 && tick.last === 4 && tick.rule === 4 && tick.target[0] === 3 && tick.target[1] === 4,
+       JSON.stringify(tick));
+    ok('...and the tick keeps what cannot see it: another lift\'s history and this lift\'s history before the week',
+       tick.keptOther && tick.keptBefore, JSON.stringify(tick));
+
+    /* Typing into a ticked set, and a reserve typed on an earlier week —
+       the card of week 2, reached by the week selector — which a question
+       cut off at week 4 can see, so it goes. */
+    const typed = JSON.parse(call(`(function () {
+      const p = cacheFixture(), b = p.blocks.A, bp = b.days[0].ex[1];
+      p.rir.A = { [slot(2, 'd1')]: { bp: '3' } };
+      logChanged();
+      const w0 = sessionsOf(p, ${Q})[2].sets[0].w;
+      const rir0 = exHistory(p, b, bp, 'd1', 4)[1].sets.map(s => s.rir);
+      const rows3 = entry(p, 'A', 3, 'd1', 'bp', 2);
+      rows3[0].w = '65';
+      save(cardScope(p, 3, 'd1', 'bp'));
+      const w1 = sessionsOf(p, ${Q})[2].sets[0].w;
+      const rows2 = entry(p, 'A', 2, 'd1', 'bp', 2);
+      rows2[1].rir = '0';
+      dropLegacyRir(p, 'A', 2, 'd1', 'bp');
+      save(cardScope(p, 2, 'd1', 'bp'));
+      return JSON.stringify({ w: [w0, w1], rir: [rir0, exHistory(p, b, bp, 'd1', 4)[1].sets.map(s => s.rir)] });
+    })()`));
+    ok('a typed weight and a typed RIR (legacy map dropped beside it) are read at once, on any week the question reaches',
+       typed.w[0] === 60 && typed.w[1] === 65 &&
+       JSON.stringify(typed.rir) === JSON.stringify([[3, 3], [0, 0]]), JSON.stringify(typed));
+
+    /* Every other write goes through commit() or a bare save(), which claim
+       nothing and so drop everything. One case per kind of write the audit
+       in plans/045 lists, each through the app's own helper. */
+    const broad = JSON.parse(call(`(function () {
+      const out = {};
+      const read = (p, q) => JSON.stringify(sessionsOf(p, q || ${Q}).map(s => [s.week, s.day, s.sets.map(x => [x.w, x.extra])]));
+      let p = cacheFixture(); let before = read(p);
+      p.log.A[slot(4, 'd1')] = { bp: [{ w: '70', r: '8', done: true, ts: Date.now() }] };  /* copyPrev + a tick, as one broad write */
+      commit(); out.write = before !== read(p) && sessionsOf(p, ${Q}).length === 4;
+      p = cacheFixture(); before = read(p);
+      delete p.log.A[slot(3, 'd1')]; purgeSessionMeta(p, 'A', 'd1', 3);  /* clearDay */
+      commit(); out.clearDay = sessionsOf(p, ${Q}).length === 2;
+      p = cacheFixture(); read(p);
+      purgeExLog(p, 'A', 'd1', 'bp'); commit(); out.purge = sessionsOf(p, ${Q}).length === 0;
+      p = cacheFixture(); read(p);
+      moveExLog(p, 'A', 'd1', 'd2', 'bp'); commit(); out.move = sessionsOf(p, ${Q}).every(s => s.day === 'd2');
+      p = cacheFixture(); read(p);
+      /* The plan editor lands a clone of the block: one set fewer makes the
+         second logged set an extra one. */
+      const clone = JSON.parse(JSON.stringify(p.blocks.A)); clone.days[0].ex[1].sets = 1;
+      p.blocks.A = clone; commit(); out.sets = sessionsOf(p, ${Q})[0].sets.map(x => x.extra).join() === 'false,true';
+      p = cacheFixture(); read(p, { weeks: 'logged', lift: { id: 'bp' }, skipDeload: true });
+      p.blocks.A.deload = 2; commit();
+      out.deload = sessionsOf(p, { weeks: 'logged', lift: { id: 'bp' }, skipDeload: true }).map(s => s.week).join() === '1,3';
+      p = cacheFixture(); read(p);
+      p.blocks.B = { id: 'B', name: 'B', weeks: 4, deload: 0, phase: {}, days: [{ id: 'x', name: 'x', ex: [{ id: 'bp', n: 'Press banca', sets: 2 }] }] };
+      p.blockOrder.push('B'); p.log.B = { [slot(1, 'x')]: { bp: [{ w: '50', r: '10', done: true }] } };
+      /* No save yet: a block added to blockOrder is a new question, not a stale answer. */
+      out.newBlock = sessionsOf(p, ${Q}).length === 4;
+      deleteBlocks(p, ['B']); out.deleteBlock = sessionsOf(p, ${Q}).length === 3;
+      p = cacheFixture(); read(p);
+      p.log = {}; p.rir = {}; commit(); out.wipe = sessionsOf(p, ${Q}).length === 0;
+      return JSON.stringify(out);
+    })()`));
+    ok('every broad write is read at once: a written slot, clearDay, purge, move, the plan\'s set count, the deload week, a new and a deleted block, wipe',
+       Object.keys(broad).length === 9 && Object.values(broad).every(Boolean), JSON.stringify(broad));
+
+    const swapped = JSON.parse(call(`(function () {
+      const out = {};
+      let p = cacheFixture();
+      const kg = sessionsOf(p, ${Q})[0].sets[0].w;
+      /* A unit switch converts every w, and is read without any save. */
+      state.prefs.units = 'lb';
+      out.units = Math.abs(sessionsOf(p, ${Q})[0].sets[0].w - kg * LB_PER_KG) < 1e-9;
+      state.prefs.units = 'kg';
+      out.back = sessionsOf(p, ${Q})[0].sets[0].w === kg;
+      /* A restore or a profile import files new objects: a new profile is
+         a new cache, whatever the old one held. */
+      const incoming = JSON.parse(JSON.stringify(p));
+      incoming.log.A[slot(1, 'd1')].bp[0].w = '61';
+      state.profiles.hombre = incoming;
+      out.restore = sessionsOf(getProfile(), ${Q})[0].sets[0].w === 61;
+      /* Undo puts back a snapshot of the whole state. */
+      p = cacheFixture(); sessionsOf(p, ${Q});
+      snapshotForUndo('x');
+      purgeExLog(p, 'A', 'd1', 'bp'); commit();
+      out.purged = sessionsOf(getProfile(), ${Q}).length === 0;
+      undoLast();
+      out.undo = sessionsOf(getProfile(), ${Q}).length === 3;
+      /* A rename cuts the objetivo's history with no save of its own; the
+         projection is keyed on the cut. */
+      p = cacheFixture(); const b = p.blocks.A, bp = b.days[0].ex[1];
+      const h0 = exHistory(p, b, bp, 'd1', 4).length;
+      recordVariant(p, 'bp', 'Press banca', 'Press inclinado', Date.now());
+      out.variant = h0 === 3 && exHistory(p, b, bp, 'd1', 4).length === 0;
+      return JSON.stringify(out);
+    })()`));
+    ok('a unit switch, a restored or imported profile, undo and a rename are read at once, with no save in between for the first two',
+       Object.keys(swapped).length === 6 && Object.values(swapped).every(Boolean), JSON.stringify(swapped));
+
+    const views = JSON.parse(call(`(function () {
+      const p = cacheFixture();
+      const a = sessionsOf(p, ${Q});
+      p.week = 5; save('view');
+      const kept = sessionsOf(p, ${Q}) === a;
+      p.day = 1; commit('view');
+      return JSON.stringify({ kept: kept, keptCommit: sessionsOf(p, ${Q}) === a });
+    })()`));
+    ok('a change of week or day (save/commit with "view") keeps every answer', views.kept && views.keptCommit, JSON.stringify(views));
+  } finally {
+    call('render = __realRender;');
+  }
+
+  /* A 'view' claim is the one way to say a write reached nothing a session
+     reads, and a wrong one is a stale objetivo that nothing else would
+     catch. So the list of them is pinned: a new one fails here until it
+     is added below, in the same diff that adds it, where a reviewer sees
+     it. The card's own scoped saves are pinned the same way — only
+     buildExCard may hand save() a slot. */
+  const claims = [];
+  SHELL_SCRIPTS.forEach(f => {
+    const src = fs.readFileSync(path.join(ROOT, f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    let fn = '';
+    src.split('\n').forEach(line => {
+      const m = /^(?:async )?function (\w+)/.exec(line) || /^\$\('(\w+)'\)\.addEventListener/.exec(line);
+      if (m) fn = m[1];
+      const n = (line.match(/\b(?:save|commit)\('view'\)/g) || []).length;
+      for (let i = 0; i < n; i++) claims.push(f + ':' + fn);
+      if (/\bsave\(here\)/.test(line)) claims.push(f + ':' + fn + ':scoped');
+    });
+  });
+  const expected = [
+    'js/block-editor.js:renderBlockBar',
+    'js/app.js:renderProfiles',
+    'js/app.js:renderNav', 'js/app.js:renderNav', 'js/app.js:renderNav', 'js/app.js:renderNav',
+    'js/app.js:days',
+    'js/app.js:buildExCard',
+    ...Array(9).fill('js/app.js:buildExCard:scoped'),
+    'js/app.js:openExMenu',
+    'js/app.js:drawOrderNote', 'js/app.js:drawEnergy', 'js/app.js:drawSessionNote',
+    'js/app.js:recordTargetOnStart',
+  ];
+  ok('the writes that claim to reach no session, or one slot, are exactly the ones plans/045 audited',
+     JSON.stringify(claims) === JSON.stringify(expected), JSON.stringify(claims));
 }
 
 console.log('\n== the row codec: every field a set carries, sent, accepted and exported from one list (plans/038) ==');
