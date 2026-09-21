@@ -51,16 +51,23 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
    symbol another split file reads stays in app.js (AGENTS.md). */
 const reviewName = s => '«' + String(s == null ? '' : s).replace(/[«»]/g, '') + '»';
 
+/* JSON.parse can hand back `{"toString": null}`, and String() or Number()
+   on that throws a TypeError: toString is not callable, valueOf returns the
+   object itself, and there is nothing left to try. Every coercion of a
+   value that came from a backup, a paste or a QR checks this first — an
+   object is not text anybody typed, so it reads as absent. */
+const isObj = v => v !== null && (typeof v === 'object' || typeof v === 'function');
+
 /* Weights are typed on a Spanish phone keyboard, where the decimal key is a
    comma. parseFloat('22,5') is 22 — five kilos of drift on a leg press — so
    every read of a logged weight goes through here instead. */
 const num = v => {
-  const n = parseFloat(String(v == null ? '' : v).replace(',', '.'));
+  const n = parseFloat(String(v == null || isObj(v) ? '' : v).replace(',', '.'));
   return isFinite(n) ? n : NaN;
 };
 
 const clampInt = (v, lo, hi, dflt) => {
-  const n = Math.round(Number(v));
+  const n = Math.round(isObj(v) ? NaN : Number(v));
   return isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt;
 };
 
@@ -345,7 +352,7 @@ function migrate() {
     const seed = fallback.profiles[pk] || fallback.profiles[Object.keys(fallback.profiles)[i]] || fallback.profiles.hombre;
 
     if (!profile.label) profile.label = seed.label;
-    if (ACCENTS.indexOf(profile.theme) < 0 && !LEGACY_ACCENT[profile.theme]) profile.theme = seed.theme;
+    if (ACCENTS.indexOf(profile.theme) < 0 && !legacyAccent(profile.theme)) profile.theme = seed.theme;
     if (!profile.log || typeof profile.log !== 'object') profile.log = {};
     if (!profile.rir || typeof profile.rir !== 'object') profile.rir = {};
     /* The record is `row.rir` since plans/035; this map is what every
@@ -382,7 +389,7 @@ function migrate() {
     Object.keys(profile.variants).forEach(exId => {
       const list = profile.variants[exId];
       if (!Array.isArray(list)) { delete profile.variants[exId]; return; }
-      const clean = list.filter(v => v && typeof v === 'object' && VARIANT_SINCE_RE.test(String(v.since)))
+      const clean = list.filter(v => v && typeof v === 'object' && !isObj(v.since) && VARIANT_SINCE_RE.test(String(v.since)))
         .map(v => ({ n: txt(v.n, IMPORT_LIMITS.exName) || '', since: String(v.since) }))
         .slice(-VARIANT_LIMIT);
       if (clean.length) profile.variants[exId] = clean; else delete profile.variants[exId];
@@ -1086,12 +1093,16 @@ const ACCENT_LABEL = { azul: 'Brasa', verde: 'Cian' };
 /* What the two shipped profiles' accents were called before accents had
    names of their own. */
 const LEGACY_ACCENT = { hombre: 'azul', mujer: 'verde' };
+/* Own keys only, and strings only: a theme read from a file can be
+   'constructor' (inherited, truthy) or an object whose key conversion
+   throws (see isObj). */
+const legacyAccent = t => typeof t === 'string' && Object.prototype.hasOwnProperty.call(LEGACY_ACCENT, t) ? LEGACY_ACCENT[t] : '';
 
 let setupDraft = null;
 let setupFirstRun = false;
 
 function accentOf(profile) {
-  return LEGACY_ACCENT[profile.theme] || (ACCENTS.indexOf(profile.theme) >= 0 ? profile.theme : 'azul');
+  return legacyAccent(profile.theme) || (ACCENTS.indexOf(profile.theme) >= 0 ? profile.theme : 'azul');
 }
 
 function openSetup(firstRun) {
@@ -1715,7 +1726,7 @@ const RIR_MAX = 5;
    wants sessionRirs or getRir. */
 const rowRir = r => {
   const v = r && r.rir;
-  return /^[0-5]$/.test(String(v)) ? +v : null;
+  return !isObj(v) && /^[0-5]$/.test(String(v)) ? +v : null;
 };
 
 /* Working sets are what the rule reads and what the RIR belongs to: a row
@@ -1781,8 +1792,9 @@ function getRir(profile, blockId, w, dayId, exId) {
    buckets. */
 const RIR_VALUE = { '2+': 2, '1': 1, '0': 0 };
 const rirNumber = v => {
+  if (isObj(v)) return null;
   if (Object.prototype.hasOwnProperty.call(RIR_VALUE, v)) return RIR_VALUE[v];
-  return /^[0-5]$/.test(String(v)) ? +v : null;
+  return !isObj(v) && /^[0-5]$/.test(String(v)) ? +v : null;
 };
 
 /* Where a value recorded for the whole session goes on the rows: the last
@@ -2644,7 +2656,7 @@ function slugify(s) {
 const IMPORT_LIMITS = { days: 14, ex: 40, name: 80, exName: 120, alt: 200, cue: 400, reps: 40, pair: 1000, phaseR: 40, phaseT: 400 };
 
 function txt(v, max) {
-  return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, max);
+  return String(v == null || isObj(v) ? '' : v).replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
 /* An id or a tag is an ordinary string everywhere except as a key into a
@@ -5549,7 +5561,7 @@ function importIdMaps(rawBlock, normalized) {
      so any string is just a key (same reasoning as ownGet,
      js/profile-transfer.js). */
   const dayMap = Object.create(null), exMap = Object.create(null);
-  const put = (map, from, to) => { if (from != null && !(String(from) in map)) map[String(from)] = to; };
+  const put = (map, from, to) => { if (from != null && !isObj(from) && !(String(from) in map)) map[String(from)] = to; };
   (rawBlock.days || []).forEach((rd, di) => {
     const nd = normalized.days[di];
     if (!nd || !rd) return;
@@ -5598,13 +5610,14 @@ function normalizeImportedLog(rawLog, rawBlock, normalized) {
       const rows = slotLog[rawExId].slice(0, LOG_LIMITS.rows).map(r => {
         if (!r || typeof r !== 'object' || Array.isArray(r)) return { w: '', r: '', done: false };
         const row = { w: txt(r.w, LOG_LIMITS.val), r: txt(r.r, LOG_LIMITS.val), done: !!r.done };
-        if (Number.isFinite(+r.ts) && +r.ts > 0) row.ts = +r.ts;
+        const ts = isObj(r.ts) ? NaN : +r.ts;
+        if (Number.isFinite(ts) && ts > 0) row.ts = ts;
         /* One digit or nothing: anything else is dropped rather than
            coerced. A '2+' on a row is not a row value — the legacy map
            carries those, and normalizeImportedRir validates them there — so
            coercing it here would invent a measurement out of a chip that
            belonged to the whole session. */
-        if (/^[0-5]$/.test(String(r.rir))) row.rir = String(r.rir);
+        if (!isObj(r.rir) && /^[0-5]$/.test(String(r.rir))) row.rir = String(r.rir);
         /* The exact 'lb' or nothing, the same convention stampRowUnit
            writes: kg is the absence of the stamp, so a 'kg', an 'LB' or
            anything else is dropped rather than stored as a value no reader
@@ -5733,7 +5746,9 @@ function normalizeImportedOrder(rawOrder, rawBlock, normalized) {
     const seen = new Set();
     const kept = [];
     ids.slice(0, ORDER_LIMIT).forEach(rawExId => {
-      const exId = exFor[rawExId];
+      /* Array elements, not Object.keys: an id here can be an object, and
+         a lookup by it converts it to a key (see isObj). */
+      const exId = isObj(rawExId) ? '' : exFor[rawExId];
       if (exId && !seen.has(exId)) { seen.add(exId); kept.push(exId); }
     });
     if (kept.length > 1) out[slot(w, dayId)] = kept;
