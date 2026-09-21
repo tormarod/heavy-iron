@@ -2521,6 +2521,10 @@ function readSession(profile, block, week, dayId, exId, rows, day) {
       r: num(r.r),
       rLogged: r.r == null ? '' : String(r.r),
       rir: rirAt.has(t) ? rirAt.get(t) : rowRir(r),
+      /* What was typed on this set and nothing else — no inheritance, no
+         legacy chip. `rir` is the reading a screen prices with; this is
+         the record, for a screen that counts what was written down. */
+      rirOwn: rowRir(r),
       drops: dropsOf(r).filter(dropUsed).map(d => ({
         w: convertWeight(num(d.w), unit, units()),
         wLogged: d.w == null ? '' : String(d.w),
@@ -5847,42 +5851,87 @@ function buildCsv() {
     const profile = state.profiles[pk];
     profile.blockOrder.forEach(bId => {
       const block = profile.blocks[bId];
-      block.days.forEach(day => {
-        /* The position each exercise was actually done in, per week. It
-           falls back to the plan's own order for every session nobody
-           reordered — which is most of them — so the column is filled in
-           for every live exercise and sorting a spreadsheet by it always
-           works. A retired exercise is not in any session's order and
-           leaves the cell empty rather than borrowing a number off one
-           that was actually done. */
-        const ordAt = {};
-        for (let w = 1; w <= blockWeeks(block); w++) {
-          ordAt[w] = {};
-          orderedEx(profile, block, w, day).forEach((e, i) => { ordAt[w][e.id] = i + 1; });
-        }
-        day.ex.forEach(ex => {
-          for (let w = 1; w <= blockWeeks(block); w++) {
-            const s = profile.log[bId] && profile.log[bId][slot(w, day.id)];
-            const arr = s && s[ex.id];
-            if (!Array.isArray(arr)) continue;
-            /* Per session, repeated on every row of that session so a
-               spreadsheet filter on the column finds the whole session.
-               Unlike `rir`, which is per set from plans/035 on — see the
-               column below. */
-            const note = getNote(profile, bId, w, day.id);
-            const energy = getEnergy(profile, bId, w, day.id);
-            arr.forEach((r, i) => {
-              if (!rowUsed(r)) return;
-              /* The set's own columns are the row codec's (ROW_FIELDS),
-                 which says why each is written the way it is. A session
-                 logged before plans/035 carries its one chip on the row
-                 the fold put it on, the last set of that session. */
-              rows.push([profile.label, block.name, w, day.name, ex.n, ordAt[w][ex.id] || '', i + 1]
-                .concat(rowCsvCells(r), [note, energy]));
-            });
-          }
-        });
+      /* Every set ever logged, not only the ones the app still shows: the
+         file is the record, and the record keeps weeks past a shortened
+         block's end (stranded weeks) and exercises since taken out of the
+         plan, whose rows nothing ever deletes. Walking the plan — its days,
+         its exercises, weeks 1 to its length — was silently leaving both
+         out of the one place they could still be read (plans/038). So the
+         walk is over the slots that exist, grouped by day and week, and the
+         plan only decides the order: its own days, its own exercises and
+         the block's own weeks come out exactly where they always did, and
+         what the plan no longer has comes after them. */
+      const byDay = {};
+      forEachSlot(profile.log, bId, (k, w, dayId, s) => {
+        if (!s || typeof s !== 'object') return;
+        (byDay[dayId] = byDay[dayId] || []).push({ w: w, s: s });
       });
+      Object.keys(byDay).forEach(dayId => { byDay[dayId].sort((a, b) => a.w - b.w); });
+      /* A removed exercise has no row on its day to be named by, but a
+         retired or moved one is still somewhere in the plan, and that is
+         the name it was logged under. The raw id only when nothing is. */
+      const exName = {};
+      block.days.forEach(d => d.ex.forEach(e => { if (!(e.id in exName)) exName[e.id] = e.n; }));
+      const nameOf = id => (Object.prototype.hasOwnProperty.call(exName, id) ? exName[id] : id);
+      const ords = {};
+      const ordAt = (day, w) => {
+        const key = slot(w, day.id);
+        if (!ords[key]) {
+          ords[key] = {};
+          orderedEx(profile, block, w, day).forEach((e, i) => { ords[key][e.id] = i + 1; });
+        }
+        return ords[key];
+      };
+      const emit = (dayId, dayName, day, exId, exN) => {
+        (byDay[dayId] || []).forEach(({ w, s }) => {
+          const arr = Object.prototype.hasOwnProperty.call(s, exId) ? s[exId] : null;
+          if (!Array.isArray(arr)) return;
+          /* The position each exercise was actually done in, per week. It
+             falls back to the plan's own order for every session nobody
+             reordered — which is most of them — so the column is filled in
+             for every live exercise and sorting a spreadsheet by it always
+             works. A retired exercise is not in any session's order and
+             leaves the cell empty rather than borrowing a number off one
+             that was actually done; so does one removed from the plan, or
+             logged on a day the plan no longer has. */
+          const ord = day ? ordAt(day, w)[exId] : '';
+          /* Per session, repeated on every row of that session so a
+             spreadsheet filter on the column finds the whole session.
+             Unlike `rir`, which is per set from plans/035 on — see the
+             column below. */
+          const note = getNote(profile, bId, w, dayId);
+          const energy = getEnergy(profile, bId, w, dayId);
+          arr.forEach((r, i) => {
+            if (!rowUsed(r)) return;
+            /* The set's own columns are the row codec's (ROW_FIELDS),
+               which says why each is written the way it is. A session
+               logged before plans/035 carries its one chip on the row
+               the fold put it on, the last set of that session. */
+            rows.push([profile.label, block.name, w, dayName, exN, ord || '', i + 1]
+              .concat(rowCsvCells(r), [note, energy]));
+          });
+        });
+      };
+      /* Every id logged on a day that its plan does not name, in the order
+         they were first logged: week, then the slot's own order. */
+      const unplanned = (dayId, planned) => {
+        const out = [];
+        (byDay[dayId] || []).forEach(({ s }) => Object.keys(s).forEach(id => {
+          if (planned.indexOf(id) < 0 && out.indexOf(id) < 0 && Array.isArray(s[id])) out.push(id);
+        }));
+        return out;
+      };
+      block.days.forEach(day => {
+        const planned = day.ex.map(e => e.id);
+        day.ex.forEach(ex => emit(day.id, day.name, day, ex.id, ex.n));
+        unplanned(day.id, planned).forEach(id => emit(day.id, day.name, day, id, nameOf(id)));
+      });
+      /* A day taken out of the plan altogether has no name left to show,
+         so it goes by its id, after the plan's days, earliest logged first. */
+      const planDays = block.days.map(d => d.id);
+      Object.keys(byDay).filter(id => planDays.indexOf(id) < 0)
+        .sort((a, b) => byDay[a][0].w - byDay[b][0].w || (a < b ? -1 : a > b ? 1 : 0))
+        .forEach(dayId => unplanned(dayId, []).forEach(id => emit(dayId, dayId, null, id, nameOf(id))));
     });
   });
   /* The BOM is what makes Excel open a UTF-8 CSV without mangling accents. */

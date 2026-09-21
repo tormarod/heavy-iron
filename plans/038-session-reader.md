@@ -112,7 +112,7 @@ sessionsOf(profile, {
   skipDeload: true,                  // optional; deloadAt
 })
 // → [{ block, week, day, lift, ts,
-//      sets: [{ w, wLogged, unit, r, rLogged, rir, drops: [{ w, wLogged, r }],
+//      sets: [{ w, wLogged, unit, r, rLogged, rir, rirOwn, drops: [{ w, wLogged, r }],
 //               dropKind, ts, worked, extra }] }]
 ```
 
@@ -135,14 +135,14 @@ byte (PR 5).
 | 2 | **`sessionsOf`**, the fixture builder, interface tests; the cost measurement recorded below | none | DONE (#120) |
 | 3 | **Objetivo**: `exHistory`/`exSession` become `sessionsOf` + `ruleSession` | none | DONE (#123) |
 | 4 | **Diagnóstico**: `diagPoints`, `strengthByExercise`; the deload becomes `deloadAt` | a deload written into the phase text is skipped — guide, Diagnóstico section; a week's two sessions of a split lift in plan day order | DONE (#125) |
-| 5 | **Charts**: `collectHistory`, `collectHistoryDays`, `collectHistoryAll` | a week's two points of a split lift in plan day order (as PR 4) | IN PROGRESS |
+| 5 | **Charts**: `collectHistory`, `collectHistoryDays`, `collectHistoryAll` | a week's two points of a split lift in plan day order (as PR 4) | DONE (#126) |
 | 6 | **Card bands**: `lastTime`, `lastTimeOtherDay`, `priorBlockSets`, `bestByExercise`, `bestForExercise` | none | BLOCKED — waits for the history cache (see Maintenance notes) |
-| 7 | **Review tally and CSV**; the CSV on `'logged'`, removed exercises included | the CSV exports stranded weeks and sets of removed exercises — guide, export section and the "hidden everywhere" line at :1097 | TODO |
+| 7 | **Review tally and CSV**; the CSV on `'logged'`, removed exercises included | the CSV exports stranded weeks and sets of removed exercises — guide, export section and the "hidden everywhere" line at :1097 | IN PROGRESS |
 
 Every PR bumps `CACHE_VERSION` (`tools/bump-cache-version.sh`) and runs
 `node --check` and `node test/unit.js` after every edit.
 
-### Known open point for PR 7
+### PR 7's open point — settled 2026-09-21 by the orchestrator
 
 The CSV is "one row per logged set" and has a `hecha` column: it exports
 **used** rows, ticked or not, which a session (ticked sets only) does not
@@ -258,3 +258,22 @@ turned an imported '8,5' into '8.5' and '08' into '8'. Equivalence: 36 of
 37 cases identical. The one accepted difference is PR 4's: two points of a
 split lift in the same week, logged out of plan-day order, now come in
 plan order.
+
+**PR 7 (the review tally and the CSV)**. The open point is settled: the
+CSV is a dump of stored rows, ticked or not, like the row counters decision
+1 left out. So it stays a walk of the log, through the codec's cells, and
+does not go through `sessionsOf`. What changed is the walk:
+`forEachSlot` over every logged week, then every exercise id in the slot,
+in this order: the plan's days and exercises, weeks ascending (stranded
+weeks after the block's own), then ids the day's plan no longer lists,
+then days no longer in the plan. A removed exercise is named from the
+block's plan on any day if it can be, otherwise by its id, with an empty
+`orden`. A profile with nothing hidden exports byte for byte what it did
+before (800 random profiles). The review's RIR tally reads `sessionsOf`
+(`'plan'`, by id, the days where the plan still has the lift live, working
+sets). **Interface addition:** a set carries `rirOwn`, the value typed on
+that set. The tally counts what was typed, not the inherited reading, so
+it cannot use `rir`. Equivalence: 0 differences across 10,122 review
+outputs, AI prompt text included. Mutations (reading `rir`, dropping the
+live-day filter) were caught. The review's energy walk stays a row walk,
+since its volume arithmetic is `convertedSetVolume` over stored rows.

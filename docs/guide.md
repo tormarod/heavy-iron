@@ -138,7 +138,10 @@ objetivo, built on the block before it.
 - **Backup / restore**: download a `.json` file with both profiles'
   data, or copy/paste it as text. Restoring replaces everything. There is
   also a one-way **CSV export** for looking at the numbers in a
-  spreadsheet.
+  spreadsheet. It carries every set you have ever logged, including the
+  ones the app hides: weeks past the end of a block you shortened, and
+  exercises you have since taken out of the plan, which come after the
+  plan's own and with no `orden`.
 - **Move one person between phones**: export a single profile and load it
   on the other device — it replaces that person and leaves the other
   alone. See [Two phones](#two-phones-one-profile-each).
@@ -225,7 +228,8 @@ Two things worth knowing when you change the length:
 - **Shortening never deletes.** Sets logged in weeks the block no longer
   has are kept and hidden, and the session says how many; make the block
   long enough again and they come straight back. It's the same rule as
-  dropping a set from an exercise.
+  dropping a set from an exercise. The CSV export is the one place that
+  still lists them.
 - **Week goals follow.** Weeks the block grows into get a goal generated
   for them, and moving the deload moves its text with it. Anything you
   wrote yourself in a week's goal is left alone.
@@ -1098,7 +1102,8 @@ set you have ticked done, drops included. Three things follow from that:
   plan doesn't unlift the sets you already did.
 - Weeks past the end of a shortened block are left out, the same as
   everywhere else they're hidden — the "series en semanas por encima"
-  notice in the session is what speaks for those.
+  notice in the session is what speaks for those, and the CSV export,
+  the one exception, still lists them.
 
 Until a second week has kilos in it the strip shows one figure rather than
 printing the same number twice.
