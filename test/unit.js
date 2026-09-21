@@ -2403,6 +2403,11 @@ ok('...and still asks the question when nothing was typed',
 ok('...and says nothing at all without a drop worth naming',
    line([{ r: '12' }, { r: '11' }]) === '', line([{ r: '12' }, { r: '11' }]));
 
+const decayFirst = call(`decayLine([{ w: '60', r: '', done: true }, { w: '60', r: '12', done: true, rir: '3' },
+                                    { w: '60', r: '9', done: true }, { w: '60', r: '8', done: true }])`);
+ok('the decay line quotes the RIR of the set the drop was measured FROM — the first set with reps, not row 0 (plans/041)',
+   decayFirst.includes('RIR 3') && call(`repDecay([{ r: '' }, { r: '12' }, { r: '9' }, { r: '8' }])`) === 4, decayFirst);
+
 /* The Diagnóstico's three effort signals, read end to end through diagRows:
    three flat sessions of one exercise, and the verdict the signals pick. */
 const diagProbe = call(`

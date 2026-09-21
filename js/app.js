@@ -1638,8 +1638,15 @@ const rowUsed = r => !!(r && (r.done || (r.w !== '' && r.w != null) || (r.r !== 
    first, and it was wrong on exactly the exercises that taper most. */
 const DECAY_MIN_REPS = 2, DECAY_MIN_SHARE = 0.25;
 
+/* The rows the decay is measured over: the ones with a rep count. One
+   list, read by repDecay for the numbers and by decayLine and the
+   Diagnóstico for which set is "the first" — three readers that each
+   picked their own first set disagreed on a session whose first row was
+   ticked without reps, which the tick contract allows (plans/041). */
+const decayRows = rows => (rows || []).filter(r => r && r.r !== '' && r.r != null && !isNaN(num(r.r)));
+
 function repDecay(rows) {
-  const withReps = (rows || []).filter(r => r && r.r !== '' && r.r != null && !isNaN(num(r.r)));
+  const withReps = decayRows(rows);
   if (withReps.length < 2) return 0;
   const first = num(withReps[0].r);
   const drop = first - num(withReps[withReps.length - 1].r);
@@ -1663,7 +1670,7 @@ function decayLine(rows) {
   const drop = repDecay(rows);
   if (!drop) return '';
   const head = '⚠ caída de ' + drop + ' reps';
-  const first = rowRir((rows || [])[0]);
+  const first = rowRir(decayRows(rows)[0]);
   if (first == null) return head + ': ¿primera serie al fallo?';
   if (first >= 2) return head + ' con la primera serie holgada (RIR ' + first + '): ¿descansos cortos?';
   return head + ': primera serie a ' + first + ' RIR — las de después se vacían';
