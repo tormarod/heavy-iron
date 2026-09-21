@@ -2366,6 +2366,49 @@ ok('...and the legacy map it still sends is derived from those rows, for a phone
    shared.chip === '1' && shareProbe(['1', null, '3']).chip === '2+',
    JSON.stringify(shared) + ' / ' + JSON.stringify(shareProbe(['1', null, '3'])));
 
+/* `u` is the row's unit stamp (stampRowUnit), and both field lists that
+   rebuild a row left it out, so a 100 lb set restored from a backup, a
+   loaded profile or a QR share came back as 100 kg. Only the exact 'lb'
+   survives — kg is the absence of the stamp, so anything else is dropped
+   rather than kept as a value rowUnit would read as kg anyway. */
+const unitProbe = call(`
+  (function () {
+    const rawBlock = { name: 'B', weeks: 8, deload: 0, days: [{ id: 'd0', name: 'D', ex: [{ id: 'e1', n: 'Ex', sets: 3, reps: '10-15' }] }] };
+    const normalized = normalizeImportedBlock(rawBlock);
+    const dayId = normalized.days[0].id, exId = normalized.days[0].ex[0].id;
+    const raw = { 'w1-d0': { e1: [{ w: '100', r: '10', done: true, u: 'lb' },
+                                  { w: '100', r: '10', done: true },
+                                  { w: '100', r: '10', done: true, u: 'kg' },
+                                  { w: '100', r: '10', done: true, u: 'LB' },
+                                  { w: '100', r: '10', done: true, u: { lb: 1 } }] } };
+    const imported = normalizeImportedLog(raw, rawBlock, normalized)['w1-' + dayId][exId]
+      .map(function (r) { return 'u' in r ? r.u : 'x'; }).join(',');
+
+    state = defaultState(); migrate();
+    const p = state.profiles.hombre;
+    const block = p.blocks['block-1'];
+    const day = block.days[0];
+    const ex = day.ex[0];
+    p.log['block-1'] = {};
+    const bucket = {}; bucket[ex.id] = [{ w: '100', r: '10', done: true, u: 'lb' }, { w: '60', r: '10', done: true }];
+    p.log['block-1'][slot(1, day.id)] = bucket;
+    const plan = blockSharePlan(block);
+    const sn = normalizeImportedBlock(plan);
+    const shared = normalizeImportedLog(blockShareLog(p, block), plan, sn)[slot(1, sn.days[0].id)][sn.days[0].ex[0].id]
+      .map(function (r) { return rowUnit(r); }).join(',');
+
+    const restored = normalizeImportedProfile(JSON.parse(JSON.stringify(p)))
+      .log['block-1'][slot(1, day.id)][ex.id].map(function (r) { return rowUnit(r); }).join(',');
+    return { imported: imported, shared: shared, restored: restored };
+  })()
+`);
+ok('normalizeImportedLog keeps an lb stamp and drops every other value of u',
+   unitProbe.imported === 'lb,x,x,x,x', JSON.stringify(unitProbe));
+ok('...a QR share carries it through blockShareLog to the other side',
+   unitProbe.shared === 'lb,kg', JSON.stringify(unitProbe));
+ok('...and a restored backup or loaded profile keeps a 100 lb set in lb',
+   unitProbe.restored === 'lb,kg', JSON.stringify(unitProbe));
+
 console.log('\n== __proto__ / constructor / prototype ids are never trusted as keys (plans/008 item 2) ==');
 ok('safeKey blocks __proto__', call("safeKey('__proto__')") === '');
 ok('safeKey blocks constructor', call("safeKey('constructor')") === '');
