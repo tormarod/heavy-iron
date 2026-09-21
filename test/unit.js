@@ -4569,18 +4569,19 @@ console.log('\n== the Diagnóstico on sessionsOf: the deload is deloadAt (plans/
      lastOnDeload.length === 1 && lastOnDeload[0].base === 1 && lastOnDeload[0].last === 1, JSON.stringify(lastOnDeload));
 
   /* What the move had to keep, pinned because the session carries a
-     different reading of both: a point's ts is the LATEST tick (the
-     session date is the median), and its rir is getRir's string, the
-     legacy chip as it was stored — not the last working set's number. */
+     different reading of it: a point's ts is the LATEST tick, not the
+     session date (which is the median). Its RIR is per set since
+     plans/044 — the legacy chip spread over every working set by the
+     inheritance rule, which is what the one chip always meant. */
   const kept = JSON.parse(call(`(function () {
     const p = sessionFixture({ blocks: [{ id: 'A', weeks: 4, days: [{ id: 'd1', ex: [{ id: 'bp' }] }] }],
       sessions: [{ block: 'A', week: 1, day: 'd1', lift: 'bp', rir: '2+',
                    sets: [[50, 8, { ts: 1000 }], [50, 8, { ts: 2000 }], [50, 8, { ts: 900000 }]] }] });
     const pt = diagPoints(p, 'bp', 'A')[0];
-    return JSON.stringify({ ts: pt.ts, rir: pt.rir, rows: pt.rows.length });
+    return JSON.stringify({ ts: pt.ts, rirs: pt.rirs, rows: pt.rows.length });
   })()`));
-  ok('a point still carries the latest tick as its ts and the legacy chip as the string it was stored as',
-     kept.ts === 900000 && kept.rir === '2+' && kept.rows === 3, JSON.stringify(kept));
+  ok('a point still carries the latest tick as its ts, and the legacy chip spread over every set',
+     kept.ts === 900000 && kept.rirs.join(',') === '2,2,2' && kept.rows === 3, JSON.stringify(kept));
 }
 
 console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038) ==');

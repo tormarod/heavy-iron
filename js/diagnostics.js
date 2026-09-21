@@ -64,9 +64,9 @@ let diagView = 'trend';   /* 'trend' per exercise | 'freq' | 'index' per muscle 
 /* Every session this exercise was logged in, oldest first, as one e1RM
    point each. Modelled on collectHistoryAll(), but it keeps what the charts
    have no use for and the diagnosis does: which rows the point came from
-   (for rep decay and forced drops), the RIR of its last working set — the
-   session's own reading, see getRir — and the timestamp, so a gap between
-   sessions can be told from a gap in progress.
+   (for rep decay and forced drops), the RIR of every working set,
+   inherited the way the objetivo reads it (see sessionRirs) — and the
+   timestamp, so a gap between sessions can be told from a gap in progress.
 
    Read through sessionsOf (plans/038), asking what this screen is about:
    the block's own weeks, a shortened block's stranded weeks hidden as
@@ -102,12 +102,9 @@ function diagPoints(profile, exId, onlyBlockId) {
     const block = profile.blocks[sess.block];
     /* Stored rows for the two readers that still want them: forcedDrop and
        repDecay read the row, and rowRir(decayRows(rows)[0]) the first set's OWN
-       reserve, which a set's inherited rir cannot stand in for. getRir
-       likewise stays the session's reading ('2+' and all) rather than the
-       last working set's rir — it falls back to an earlier set's value and
-       to a padding row's, which the per-set reading does not. Both depart
+       reserve, which a set's inherited rir cannot stand in for. They depart
        from plans/038 decision 7 on purpose: moving the reader was not to
-       move a single signal, and these two would have. */
+       move the decay signal. */
     const rows = profile.log[sess.block][slot(sess.week, sess.day)][exId];
     return {
       label: block.name + ' · S' + sess.week,
@@ -127,7 +124,13 @@ function diagPoints(profile, exId, onlyBlockId) {
       /* The LATEST tick, not the session date: the gap between sessions
          has always been measured from the last set of each. */
       ts: sess.sets.reduce((t, x) => (x.ts > t ? x.ts : t), 0),
-      rir: getRir(profile, sess.block, sess.week, sess.day, exId),
+      /* Per set since plans/044, and the array is the reader's own:
+         readSession (plans/038) builds it with sessionRirs over the working
+         sets, the legacy map as the fallback since plans/039 — the same
+         array the objetivo prices from. One number per session hid the
+         difference between a session paced 3 → 2 → 1 → 0 and one ground
+         out at 0 throughout. */
+      rirs: worked.map(x => x.rir),
       rows: rows.filter(r => r && r.done),
     };
   }).filter(Boolean);
@@ -620,7 +623,7 @@ function diagVerdict(trend, sig) {
                cambio: 'No hay progreso escondido en las series de después: haz lo que mande el objetivo de la semana, y si lleva medio bloque igual, cambia el ejercicio.' };
     }
     return { lectura: 'Estancado, sin una señal clara en el registro',
-             cambio: 'Apunta el RIR de la última serie unas semanas: sin eso no se puede distinguir fatiga de falta de intensidad.' };
+             cambio: 'Apunta el RIR de cada serie unas semanas: sin eso no se puede distinguir fatiga de falta de intensidad.' };
   }
   if (trend === 'up') {
     /* The row that stops this screen contradicting the session's own
@@ -660,6 +663,19 @@ function diagVerdict(trend, sig) {
            cambio: 'Hacen falta ' + DIAG_MIN_SESSIONS + ' sesiones con peso y reps anotados.' };
 }
 
+/* The session's typical reserve: the median of its sets' RIR, or null when
+   no set carries one. The median and not the last set, because a session
+   that ends at failure on purpose after three sets with reserve is not a
+   session at failure; and not the mean, because one 0 among 3s should not
+   drag an easy session halfway to "hard". A log typed the old way — one
+   value on the last set — arrives already spread over every set by the
+   inheritance rule, so its median is that value and the screen reads it
+   as it always did (plans/044). */
+function diagSessionRir(rirs) {
+  const typed = (rirs || []).filter(v => v != null);
+  return typed.length ? median(typed) : null;
+}
+
 /* One row per exercise of the live plan. The verdict is computed over the
    window; the signals are read off the most recent sessions, since what you
    change on Monday answers to how last Monday went. */
@@ -692,12 +708,14 @@ function diagRows(profile, block, scope) {
       const last = points[points.length - 1];
       const recent = points.slice(-3);
       const sig = {
-        /* Read through rirNumber since plans/035, so a typed '3' counts the
-           same as the old '2+' chip did and a typed '0' the same as the old
-           '0'. `p.rir` is the session's last working set (getRir), which is
-           what "the session's RIR" has always meant on this screen. */
-        easy: recent.filter(p => rirNumber(p.rir) >= 2).length >= 2,
-        failure: !!last && (rirNumber(last.rir) === 0 || forcedDrop(last.rows)),
+        /* The session's typical set (diagSessionRir — the median of the
+           per-set reserves, since plans/044), not its last set: a lifter
+           who paces 3 → 2 → 1 → 0 has not run the session at failure, and
+           one who holds three sets at 3 has not trained hard because the
+           fourth went to 0. A typed '3' still counts as the old '2+' chip
+           did and a typed '0' as the old '0' (rirNumber, plans/035). */
+        easy: recent.filter(p => diagSessionRir(p.rirs) >= 2).length >= 2,
+        failure: !!last && (diagSessionRir(last.rirs) === 0 || forcedDrop(last.rows)),
         /* A first set the lifter typed as two or more in reserve did not go
            to failure, so the drop after it is not "primera serie al fallo"
            and this signal stands down: the verdict falls through to the
