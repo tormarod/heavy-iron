@@ -3301,9 +3301,11 @@ console.log('\n== docs cross-links resolve (README.md, docs/guide.md, AGENTS.md,
   const headings = file => (fs.readFileSync(path.join(ROOT, file), 'utf8').match(/^#{1,6} .+$/gm) || [])
     .map(h => slug(h.replace(/^#+ /, '')));
   const docs = ['README.md', 'docs/guide.md', 'AGENTS.md', 'plans/README.md'];
+  let linksChecked = 0;
   docs.forEach(file => {
     const src = fs.readFileSync(path.join(ROOT, file), 'utf8');
     const links = [...src.matchAll(/\]\(([^)\s]+)\)/g)].map(x => x[1]).filter(l => !/^(https?:|mailto:)/.test(l));
+    linksChecked += links.length;
     links.forEach(link => {
       const [rel, anchor] = link.split('#');
       const target = rel ? path.normalize(path.join(path.dirname(file), rel)) : file;
@@ -3312,6 +3314,12 @@ console.log('\n== docs cross-links resolve (README.md, docs/guide.md, AGENTS.md,
       if (exists && anchor && /\.md$/.test(target)) ok(file + ' → #' + anchor + ' is a heading', headings(target).includes(anchor), headings(target).join(' | '));
     });
   });
+  /* A floor under the loop above: if the link regex stops matching, it runs
+     zero times and this section is green having checked nothing. One
+     assertion for the four docs rather than one each, because AGENTS.md
+     names files in backticks and carries no markdown link at all, so a
+     per-file floor cannot hold there (plans/042). */
+  ok('the docs cross-link loop had links to check', linksChecked > 0, String(linksChecked));
 }
 
 /* blocks/index.json is what "Importar JSON" offers, and the only thing that
