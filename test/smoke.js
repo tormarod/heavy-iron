@@ -4075,10 +4075,14 @@ const ok = (name, cond, extra) => {
     await page.goto(BASE, { waitUntil: 'networkidle' });
     await dismissSetup(page);
 
-    // 1. data-keep-open: "Tema" leaves the hub up; every other row puts it away
+    // 1. data-keep-open: "Tema" leaves the hub up; every other row puts it away.
+    //    closeSheet() and applyTheme() both run synchronously inside the
+    //    click handler (js/app.js), so there is nothing to wait on here —
+    //    the existing theme cases at :695-696 read data-theme the same way,
+    //    right after the click (plans/008 item 21: a condition or nothing,
+    //    never a fixed sleep).
     await openHub(page, 'more');
     await page.click('#themeBtn');
-    await page.waitForTimeout(150);
     ok('"Tema" leaves the Más hub up (data-keep-open)', await page.locator('#moreSheet.up').count() === 1);
     await page.click('#settings');
     await page.waitForSelector('#setupSheet.up', { timeout: 4000 });
@@ -4087,12 +4091,16 @@ const ok = (name, cond, extra) => {
     await page.click('#setupClose');
     await page.waitForSelector('#setupSheet.up', { state: 'hidden', timeout: 4000 });
 
-    // 2. Sesión: back to the top of the day
+    // 2. Sesión: back to the top of the day. Neither scrollTo nor
+    //    $('main').scrollIntoView() (js/app.js) asks for smooth scrolling —
+    //    css/style.css sets no scroll-behavior — so each is a same-tick
+    //    jump; waiting on the scroll position itself is both correct and
+    //    faster than a guessed sleep.
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    await page.waitForTimeout(100);
+    await page.waitForFunction(() => window.scrollY > 0, null, { timeout: 4000 });
     const before = await page.evaluate(() => window.scrollY);
     await page.click('#navSession');
-    await page.waitForTimeout(300);
+    await page.waitForFunction(prev => window.scrollY < prev, before, { timeout: 4000 });
     const after = await page.evaluate(() => window.scrollY);
     ok('Sesión scrolls the day back up', before > 0 && after < before, before + ' → ' + after);
     ok('...and is the current page in the bar', await page.getAttribute('#navSession', 'aria-current') === 'page');
