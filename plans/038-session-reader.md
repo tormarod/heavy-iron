@@ -128,9 +128,9 @@ extra sets.
 
 | # | PR | Visible change | Status |
 |---|---|---|---|
-| 1 | **Row codec** — one field list; `blockShareLog`, `normalizeImportedLog` and `buildCsv`'s row columns built from it; the round-trip test | none | IN PROGRESS |
+| 1 | **Row codec** — one field list; `blockShareLog`, `normalizeImportedLog` and `buildCsv`'s row columns built from it; the round-trip test | none | DONE (#121) |
 | 2 | **`sessionsOf`**, the fixture builder, interface tests; the cost measurement recorded below | none | DONE (#120) |
-| 3 | **Objetivo**: `exHistory`/`exSession` become `sessionsOf` + `ruleSession` | none | TODO |
+| 3 | **Objetivo**: `exHistory`/`exSession` become `sessionsOf` + `ruleSession` | none | IN PROGRESS |
 | 4 | **Diagnóstico**: `diagPoints`, `strengthByExercise`; the deload becomes `deloadAt` | a deload written into the phase text is skipped — guide, Diagnóstico section | TODO |
 | 5 | **Charts**: `collectHistory`, `collectHistoryDays`, `collectHistoryAll` | none | TODO |
 | 6 | **Card bands**: `lastTime`, `lastTimeOtherDay`, `priorBlockSets`, `bestByExercise`, `bestForExercise` | none | BLOCKED — waits for the history cache (see Maintenance notes) |
@@ -208,3 +208,17 @@ accepting a '2+' chip as a row RIR, and writing an unknown `r.zz` each
 fail. Found on the way, and out of scope: `txt()` throws on a JSON value
 like `{"toString": null}`, which predates the codec (spun off as its own
 task).
+
+**PR 3 (the objetivo)**. `exSession` is gone. `ruleSession(session, lo, hi)`
+projects a session for the rule. It keeps the rule's own date, the median
+over the WORKING sets' times: `session.ts` covers every ticked set, and
+using it moved targets in the equivalence check. `exHistory` is a
+`sessionsOf` query (`'logged'`, by id, `before`, `skipDeload`) plus the
+rule's own split-day filter and variant cutoff. The `ord` field it used to
+leave on sessions is gone, since nothing read it. Equivalence: 400 random
+profiles, 41,859 `exHistory` calls and every `targetFor` compared against
+`origin/main` in two vm contexts, with 0 differences. Swapping in
+`session.ts` as a mutation was caught. The three tests that called
+`exSession` now call `ruleSession(sessionsOf(…))`. The sessionsOf RIR
+equivalence test now compares against the old reading written out from
+raw rows, so it does not compare the new code with itself.
