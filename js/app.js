@@ -1702,12 +1702,13 @@ function repRangeBottom(reps) {
    value per set for the rule to read.
 
    The old map is legacy: folded onto the rows on load and on import
-   (foldRirMap), and read as a fallback by getRir and by readSession. Nothing
-   writes a VALUE into it again; dropLegacyRir deletes the entry for the
-   exercise-session a box is recording, and that deletion is the one
-   exception — without it, emptying a box on anything logged before
-   plans/035 does nothing, because getRir falls back to the map and
-   foldRirMap puts the value straight back. See dropLegacyRir.
+   (foldRirMap), and read as a fallback by getRir, and by the rule's reader
+   (readSession) through legacyRir. Nothing writes a VALUE into it again;
+   dropLegacyRir deletes the entry for the exercise-session a box is
+   recording, and that deletion is the one exception — without it, emptying
+   a box on anything logged before plans/035 does nothing, because getRir
+   falls back to the map and foldRirMap puts the value straight back. See
+   dropLegacyRir.
 
    The inheritance rule (sessionRirs) is what makes a log with no per-set
    values read exactly as it always did: a set with nothing typed takes the
@@ -1768,7 +1769,9 @@ function sessionRirs(rows, legacy) {
    value to sit on, so it sits on a padding row (the box's own row, or
    rirRowFor's for a legacy chip being folded), and a reader that only
    looked at the sets done could not see it. The first pass is why that
-   padding row cannot then shadow a set ticked afterwards. */
+   padding row cannot shadow a set ticked afterwards on the screens that
+   read this; the rule never takes the second pass at all — see
+   legacyRir. */
 function rirRowRead(rows) {
   if (!Array.isArray(rows)) return null;
   for (let i = rows.length - 1; i >= 0; i--) {
