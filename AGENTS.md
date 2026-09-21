@@ -183,6 +183,10 @@ Start-Process python3 -ArgumentList '-m','http.server','8765' # PowerShell
 third-party code at install time, and `tools/smoke-gate.sh` installs the
 same way (its comment says why).
 
+`tools/*.sh` are bash scripts. On Windows run them from Git Bash, or as
+`bash tools/smoke-gate.sh` from PowerShell; the hook in
+`.claude/settings.json` resolves the shebang itself.
+
 The whole suite by hand is warranted in three cases only: you edited
 `test/smoke.js` itself, you changed the script load order or `sw.js`, or
 the hook failed and you are checking the fix — and even then, iterate

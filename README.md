@@ -147,6 +147,9 @@ server. It is the same script the Claude Code hook in
 the PR when anything fails. It skips itself when the branch touches nothing
 the suites load, so a docs-only PR opens without waiting for Chromium.
 
+Both scripts under `tools/` are bash: on Windows, run them from Git Bash
+or as `bash tools/<name>.sh` from PowerShell.
+
 Only the headless half runs on GitHub (`.github/workflows/test.yml`); the
 browser suite needs a Chromium download on every run, so it runs on the
 machine the pull request comes from instead. When a bug turns out to have
