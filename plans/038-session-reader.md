@@ -136,8 +136,8 @@ byte (PR 5).
 | 3 | **Objetivo**: `exHistory`/`exSession` become `sessionsOf` + `ruleSession` | none | DONE (#123) |
 | 4 | **Diagnóstico**: `diagPoints`, `strengthByExercise`; the deload becomes `deloadAt` | a deload written into the phase text is skipped — guide, Diagnóstico section; a week's two sessions of a split lift in plan day order | DONE (#125) |
 | 5 | **Charts**: `collectHistory`, `collectHistoryDays`, `collectHistoryAll` | a week's two points of a split lift in plan day order (as PR 4) | DONE (#126) |
-| 6 | **Card bands**: `lastTime`, `lastTimeOtherDay`, `priorBlockSets`, `bestByExercise`, `bestForExercise` | none | BLOCKED — waits for the history cache (see Maintenance notes) |
-| 7 | **Review tally and CSV**; the CSV on `'logged'`, removed exercises included | the CSV exports stranded weeks and sets of removed exercises — guide, export section and the "hidden everywhere" line at :1097 | IN PROGRESS |
+| 6 | **Card bands**: `lastTime`, `lastTimeOtherDay`, `priorBlockSets`, `bestByExercise`, `bestForExercise` | none | TODO — unblocked by plan 045's history cache |
+| 7 | **Review tally and CSV**; the CSV on `'logged'`, removed exercises included | the CSV exports stranded weeks and sets of removed exercises — guide, export section and the "hidden everywhere" line at :1097 | DONE (#127) |
 
 Every PR bumps `CACHE_VERSION` (`tools/bump-cache-version.sh`) and runs
 `node --check` and `node test/unit.js` after every edit.
@@ -277,3 +277,13 @@ it cannot use `rir`. Equivalence: 0 differences across 10,122 review
 outputs, AI prompt text included. Mutations (reading `rir`, dropping the
 live-day filter) were caught. The review's energy walk stays a row walk,
 since its volume arithmetic is `convertedSetVolume` over stored rows.
+
+**The history cache landed as plan 045**, not 039: 039–044 were taken by
+the time it was written. `sessionsOf` now answers from a cache emptied by
+`save()` (by default everything; `'view'` empties nothing; a card's own
+`save(here)` empties only what could see that slot). Its answers are frozen,
+so a reader must copy before changing one. Measured on the 13,824-row
+profile: a warm draw with the PR 6 bands takes 0.6 ms, against 102 ms on
+main, and a tick takes 0.26 ms. A cold draw is ~11–12 % slower than main,
+which is inside STOP condition 3. PR 6 re-measures on top of it, and moves
+`lastTime`/`priorBlock` out of the per-draw cache where they still live.
