@@ -360,7 +360,7 @@ function migrate() {
        behind a version gate: the fold is idempotent and costs one pass over
        a map most profiles barely have, and a gate that skipped it would be
        one more thing to be wrong about — the fallback read in getRir and
-       exSession means a skipped fold is a slower reader, not data loss. */
+       readSession means a skipped fold is a slower reader, not data loss. */
     Object.keys(profile.rir).forEach(bk => foldRirMap(profile, bk));
     /* Two more parallel maps with the same blockId → slot shape as `rir`,
        and absent by default for the same reason. Unlike RIR they describe
@@ -1690,7 +1690,7 @@ function repRangeBottom(reps) {
    value per set for the rule to read.
 
    The old map is legacy: folded onto the rows on load and on import
-   (foldRirMap), and read as a fallback by getRir and by exSession. Nothing
+   (foldRirMap), and read as a fallback by getRir and by readSession. Nothing
    writes a VALUE into it again; dropLegacyRir deletes the entry for the
    exercise-session a box is recording, and that deletion is the one
    exception — without it, emptying a box on anything logged before
@@ -1731,7 +1731,7 @@ const rowRir = r => {
 
 /* Working sets are what the rule reads and what the RIR belongs to: a row
    nobody ticked, or one with no weight or no reps, is not a set that had
-   anything left in reserve. Same filter exSession applies. */
+   anything left in reserve. It is the `worked` flag readSession sets. */
 const rowWorked = r => !!(r && r.done && rowWeight(r) > 0 && num(r.r) > 0);
 
 /* The per-set reading of one exercise-session, with the inheritance rule
@@ -1769,7 +1769,7 @@ function rirRowRead(rows) {
 }
 
 /* The exercise-level reader the screens that still say "the session's RIR"
-   keep using — the Diagnóstico's signals, the review's buckets, exSession's
+   keep using — the Diagnóstico's signals, the review's buckets, readSession's
    fallback: the row above, else the legacy map, else ''. It returns a
    string either way ('3' or '2+'), because the legacy map's own values are
    strings; take a number through rirNumber. */
@@ -1814,7 +1814,7 @@ function rirRowFor(rows) {
 /* The one-time move of the legacy map onto the rows, run on load (migrate)
    and on every block that arrives with one (installBlockData — an old phone
    still sends the map with its QR). The map entry is left where it is: it
-   costs nothing, it is what getRir and exSession fall back to when a slot
+   costs nothing, it is what getRir and readSession fall back to when a slot
    has no rows to fold onto, and a receiver on an older shell still needs it.
 
    Idempotent by construction — a row that already carries a value is never
@@ -2485,7 +2485,7 @@ function sessionsOf(profile, q) {
 }
 
 /* One slot's rows for one lift, as a session. The RIR a working set
-   carries is exactly the reading exSession has always had — sessionRirs
+   carries is exactly the reading the rule has always had — sessionRirs
    over the working sets, with the old one-chip value (getRir) as the
    fallback when none of them carries its own — so moving the rule onto
    this changes no number it prices. A ticked set that is not a working
@@ -4314,50 +4314,50 @@ function weekRir(block, ex, w, lastRho) {
 }
 
 /* ---- one session, as the rule reads it ----
-   Only working sets: ticked, with a weight and a rep count. rowWeight()
-   rather than num(r.w), because this window spans months and a profile
-   that switched kg↔lb mid-block would otherwise have two scales in one
-   average — the same reason js/diagnostics.js converts and the old
-   single-session estimate did not have to.
+   A session from sessionsOf, projected for the rule: only its working sets,
+   each priced at its own reserve. The session reader knows nothing about
+   capacities or censoring (plans/038, decision 13); this is where the rule's
+   maths meets it. `w` is already converted to the profile's unit, because
+   this window spans months and a profile that switched kg↔lb mid-block
+   would otherwise have two scales in one average — the same reason
+   js/diagnostics.js converts and the old single-session estimate did not
+   have to.
 
-   The date is the MEDIAN of the row timestamps, not the first or the last:
-   a set ticked days later from memory moves a mean and does not move a
-   median. */
-function exSession(profile, blockId, week, dayId, exId, lo, hi) {
-  const bucket = profile.log[blockId] && profile.log[blockId][slot(week, dayId)];
-  const rows = bucket && bucket[exId];
-  if (!Array.isArray(rows)) return null;
-  const work = rows.filter(r => r && r.done && rowWeight(r) > 0 && num(r.r) > 0);
+   The RIR on a working set is already resolved by the reader — one reserve
+   per set since plans/035, inherited backwards from the last set that
+   carries one, with the legacy map as the fallback for a session logged
+   before the rows carried a value — so a session with nothing on its rows
+   is read exactly as the one chip always read it: the chip on the last set,
+   inherited backwards over all of them. */
+function ruleSession(session, lo, hi) {
+  const work = session ? session.sets.filter(x => x.worked) : [];
   if (!work.length) return null;
-  /* One reserve per set since plans/035. `raw` is the exercise-level
-     reading — the last working set that carries a value, or the legacy map
-     for a session logged before the rows carried one — and it is passed in
-     as sessionRirs' fallback so that a session with nothing on its rows is
-     read exactly as the one chip always read it: the chip on the last set,
-     inherited backwards over all of them. */
-  const raw = getRir(profile, blockId, week, dayId, exId) || null;
-  const rirs = sessionRirs(work, rirNumber(raw));
-  const stamps = work.map(r => +r.ts).filter(t => t > 0);
-  const lastRho = rhoOf(rirs.length ? rirs[rirs.length - 1] : null);
+  const rirs = work.map(x => x.rir);
+  /* The date is the MEDIAN of the working sets' timestamps, not the first or
+     the last: a set ticked days later from memory moves a mean and does not
+     move a median. Computed here rather than taken from session.ts, which is
+     the median over every TICKED set — a ticked set with no reps would
+     otherwise move the date the variant cut-off and the gap check read. */
+  const stamps = work.map(x => x.ts).filter(t => t > 0);
+  const lastRho = rhoOf(rirs[rirs.length - 1]);
   return {
-    blockId: blockId, week: week, dayId: dayId,
+    blockId: session.block, week: session.week, dayId: session.day,
     /* The session's own `rir`/`rho` are the LAST working set's — what
        rhoLast, the chip's label and the Diagnóstico all mean by "the
        session's RIR". Every set carries its own below. */
-    rir: rirs.length && rirs[rirs.length - 1] != null ? String(rirs[rirs.length - 1]) : null,
+    rir: rirs[rirs.length - 1] != null ? String(rirs[rirs.length - 1]) : null,
     rho: lastRho,
     ts: stamps.length ? median(stamps) : 0,
-    sets: work.map((r, k) => {
-      const w = rowWeight(r), n = num(r.r);
-      const rk = rirs[k], rho = rhoOf(rk);
+    sets: work.map(x => {
+      const rk = x.rir, rho = rhoOf(rk);
       /* `conv` marks a row that was logged in the other unit, so loadLadder
          can leave it out: the capacity it proves is real, but the number it
          converts to was never a pin on this stack. Nothing else reads it —
-         a reader that wants "the weight as logged" should read
-         rowWeight(r, rowUnit(r)) at the row, not un-convert this one. */
-      return { w: w, r: n, e: capOf(w, n, rho), conv: rowUnit(r) !== units(),
+         a reader that wants "the weight as logged" should read the session
+         set's wLogged, not un-convert this one. */
+      return { w: x.w, r: x.r, e: capOf(x.w, x.r, rho), conv: x.unit !== units(),
                rir: rk, rho: rho,
-               cens: n >= hi || n > CENSOR_REPS || rk == null || rk >= 2 };
+               cens: x.r >= hi || x.r > CENSOR_REPS || rk == null || rk >= 2 };
     }),
   };
 }
@@ -4541,24 +4541,18 @@ function exHistory(profile, block, ex, dayId, beforeWeek, onlyBlockId) {
   let splitDays = 0;
   (block.days || []).forEach(d => { if ((d.ex || []).some(e => e && e.id === ex.id)) splitDays++; });
   const ownDay = splitDays > 1 ? dayId : null;
+  /* 'logged', not 'plan': the objetivo is about the lifter over time, so a
+     week stranded above a block that was shortened later is still something
+     this lift was done at, in an earlier block or in this one. */
   const out = [];
-  ids.forEach((bId, bi) => {
-    const bk = profile.blocks[bId];
-    if (!bk || !profile.log[bId]) return;
-    const dayIdx = {};
-    (bk.days || []).forEach((d, i) => { dayIdx[d.id] = i; });
-    forEachSlot(profile.log, bId, (k, w, dayId2, s) => {
-      if (!s || !Array.isArray(s[ex.id])) return;
-      if (bId === block.id && w >= beforeWeek) return;
-      if (bId === block.id && ownDay && dayId2 !== ownDay) return;
-      if (deloadAt(bk, w)) return;
-      const sess = exSession(profile, bId, w, dayId2, ex.id, lo, hi);
-      if (!sess) return;
-      sess.ord = [bi, w, dayIdx[dayId2] == null ? 99 : dayIdx[dayId2]];
-      out.push(sess);
-    });
+  sessionsOf(profile, {
+    weeks: 'logged', lift: { id: ex.id }, blocks: ids,
+    before: { block: block.id, week: beforeWeek }, skipDeload: true,
+  }).forEach(s => {
+    if (ownDay && s.block === block.id && s.day !== ownDay) return;
+    const sess = ruleSession(s, lo, hi);
+    if (sess) out.push(sess);
   });
-  out.sort((x, y) => x.ord[0] - y.ord[0] || x.ord[1] - y.ord[1] || x.ord[2] - y.ord[2]);
   const since = variantSince(profile, ex.id);
   return since ? out.filter(s => !s.ts || s.ts >= since) : out;
 }

@@ -1600,13 +1600,13 @@ const convSets = call(`
     const p = { log: { B: { 'w1-D': { E: [
                   { w: '100', r: '10', done: true, u: 'lb' },
                   { w: '45', r: '10', done: true },
-                ] } } }, rir: { B: {} } };
-    const s = exSession(p, 'B', 1, 'D', 'E', 10, 15);
+                ] } } }, rir: { B: {} }, blocks: { B: { id: 'B', days: [] } } };
+    const s = ruleSession(sessionsOf(p, { weeks: 'logged', lift: { id: 'E' }, blocks: ['B'] })[0], 10, 15);
     return { conv0: s.sets[0].conv, w0: Math.round(s.sets[0].w * 100) / 100,
              conv1: s.sets[1].conv, w1: s.sets[1].w };
   })()
 `);
-ok('exSession marks a row logged in the other unit as converted, weight and all',
+ok('the rule\'s session marks a row logged in the other unit as converted, weight and all',
    convSets.conv0 === true && convSets.w0 === 45.36, JSON.stringify(convSets));
 ok('...and a row in the profile\'s own unit is not marked',
    convSets.conv1 === false && convSets.w1 === 45, JSON.stringify(convSets));
@@ -2165,16 +2165,16 @@ const exSess = call(`
       if (rirs[i] != null) row.rir = String(rirs[i]);
       return row;
     });
-    const p = { log: { B: { 'w1-D': { E: rows } } }, rir: {} };
+    const p = { log: { B: { 'w1-D': { E: rows } } }, rir: {}, blocks: { B: { id: 'B', days: [] } } };
     if (chip) { p.rir.B = { 'w1-D': { E: chip } }; }
-    const s = exSession(p, 'B', 1, 'D', 'E', 8, 15);
+    const s = ruleSession(sessionsOf(p, { weeks: 'logged', lift: { id: 'E' }, blocks: ['B'] })[0], 8, 15);
     return { rho: s.sets.map(function (x) { return x.rho; }).join(','),
              cens: s.sets.map(function (x) { return x.cens ? 'c' : '.'; }).join(''),
              rir: s.rir, sessionRho: s.rho };
   })
 `);
 const paced4 = exSess(['3', '2', '1', '0']);
-ok('exSession prices every set at its own reserve', paced4.rho === '3,2,1,0', JSON.stringify(paced4));
+ok('the rule\'s session prices every set at its own reserve', paced4.rho === '3,2,1,0', JSON.stringify(paced4));
 ok('...and censors the sets held at two or more in reserve rather than the whole session',
    paced4.cens === 'cc..', JSON.stringify(paced4));
 ok('...while the session itself still reads as its last set',
@@ -2235,8 +2235,9 @@ ok('the expected gain is the first set’s rep-equivalent, not the last set’s'
 const levelProbe = call(`
   (function (rir) {
     const p = { log: { B: { 'w1-D': { E: [{ w: '60', r: '10', done: true, rir: rir },
-                                          { w: '60', r: '10', done: true, rir: '0' }] } } }, rir: {} };
-    const lv = levelOf(capSeq([exSession(p, 'B', 1, 'D', 'E', 8, 15)]));
+                                          { w: '60', r: '10', done: true, rir: '0' }] } } }, rir: {},
+                blocks: { B: { id: 'B', days: [] } } };
+    const lv = levelOf(capSeq([ruleSession(sessionsOf(p, { weeks: 'logged', lift: { id: 'E' }, blocks: ['B'] })[0], 8, 15)]));
     return lv.cens + '|' + lv.level;
   })
 `);
@@ -3952,9 +3953,13 @@ console.log('\n== sessionsOf: the one reading of the log (plans/038) ==');
      })()`) === true);
 
   /* The reserve on a working set is the rule's reading, byte for byte:
-     compare against exSession over the cases that exercise inheritance,
-     the legacy chip, and a padding row carrying a value typed before
-     anything was ticked. */
+     compare against the reading exSession had before the rule moved onto
+     this reader (plans/038 PR 3) — sessionRirs over the working rows, the
+     legacy chip as the fallback — spelled out here from the raw rows, so
+     the comparison does not go through sessionsOf on both sides. Over the
+     cases that exercise inheritance, the legacy chip, and a padding row
+     carrying a value typed before anything was ticked; ruleSession has to
+     hand the rule the same numbers. */
   const rirCases = [
     `[[60, 8, { rir: '3' }], [60, 8, { rir: '2' }], [60, 8, { rir: '1' }], [60, 8, { rir: '0' }]]`,
     `[[60, 8], [60, 8, { rir: '2' }], [60, 8]]`,
@@ -3969,15 +3974,18 @@ console.log('\n== sessionsOf: the one reading of the log (plans/038) ==');
       const p = sessionFixture({ blocks: ${PLAN}, sessions: [
         { block: 'A', week: 1, day: 'd1', lift: 'bp', sets: ${sets}, rir: ${legacy} }] });
       const s = sessionsOf(p, { weeks: 'plan', lift: { id: 'bp' } })[0];
-      const e = exSession(p, 'A', 1, 'd1', 'bp', 8, 12);
+      const work = p.log.A[slot(1, 'd1')].bp.filter(r => r && r.done && rowWeight(r) > 0 && num(r.r) > 0);
+      const rule = sessionRirs(work, rirNumber(getRir(p, 'A', 1, 'd1', 'bp') || null));
+      const e = ruleSession(s, 8, 12);
       return JSON.stringify({ mine: s.sets.filter(x => x.worked).map(x => x.rir),
-                              rule: e ? e.sets.map(x => x.rir) : [],
+                              rule: rule, projected: e ? e.sets.map(x => x.rir) : [],
                               other: s.sets.filter(x => !x.worked).map(x => x.rir) });
     })()`));
-    if (JSON.stringify(got.mine) !== JSON.stringify(got.rule)) { rirSame = false; rirWhy += sets + ' ' + legacy + ' → ' + JSON.stringify(got) + '; '; }
+    if (JSON.stringify(got.mine) !== JSON.stringify(got.rule) ||
+        JSON.stringify(got.projected) !== JSON.stringify(got.rule)) { rirSame = false; rirWhy += sets + ' ' + legacy + ' → ' + JSON.stringify(got) + '; '; }
     if (sets.indexOf("['', 8, { rir: '4' }]") >= 0 && got.other[0] !== 4) { rirSame = false; rirWhy += 'non-working set lost its own rir; '; }
   }));
-  ok('a working set\'s rir is exactly what exSession reads — per set, inherited, the legacy chip as fallback — and a non-working set keeps its own',
+  ok('a working set\'s rir is exactly what exSession read — per set, inherited, the legacy chip as fallback — and a non-working set keeps its own',
      rirSame, rirWhy);
 
   const extra = q(`[
