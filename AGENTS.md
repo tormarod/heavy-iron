@@ -87,6 +87,15 @@ identical to an oversight unless someone writes down which it is:
      `blockShare*` builders and the `normalizeImported*` validators
      stayed behind while their screens left.
 
+  `test/unit.js` holds both rules to the source: it fails on a read that
+  breaks either one, naming the file and line, and it loads the shell
+  without each guarded file in turn and draws every week of a block with a
+  mid-block deload. That draw is where `deloadCheck` used to reach
+  `strengthByExercise` in `js/diagnostics.js`, unstubbed, and fall into
+  recovery; it lives in `app.js` now. One rule-2 breach still stands and
+  is listed there by name — `js/review.js` builds on six of the
+  Diagnóstico's names — and that list only shrinks.
+
   Both rules are about symbols, and **both read the same on ids**: an id
   that is new to `index.html` and looked up by a split file needs a null
   guard (`const b = $('reviewBtn'); if (b) b.onclick = …`), because a
