@@ -230,7 +230,13 @@ key that will be used to *index* `state.profiles` — a backup's
 `activeProfile`, a profile file's `key` — is checked as an own property
 first (`migrate()`, `profileSlotFor` in `js/profile-transfer.js`),
 because a plain object answers `obj['constructor']` truthily and
-`obj['__proto__'] = x` re-points its prototype (plans/040).
+`obj['__proto__'] = x` re-points its prototype (plans/040). Block ids
+read back from storage get the same test in `migrate()`, since
+localStorage never passes through an import: `activeBlock` and every
+`blockOrder` entry must be own keys of `profile.blocks`, a block filed
+under a name `safeKey` refuses moves to a fresh key with its record, and
+a block's `id` is always its key, because that id is what every write to
+the record is filed under.
 
 ## The CSP
 
