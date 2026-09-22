@@ -6444,6 +6444,125 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
        JSON.stringify({ stored: boot.store[key] === raw, name: boot.call('getBlock().days[0].ex[0].n'), undo: boot.call('undoSnapshot === null') }));
   }
 
+  /* "Enviar a…" onto a day that already holds the same id. One lift on two
+     days shares its id on purpose, but a day holds it once: the record is
+     filed by slot and id, so two copies on one day are one record. The save
+     used to fold the sent copy's sets into the other copy's sessions, and
+     the next open's migrate() renamed the second copy, which started over
+     with no history (plans/053's follow-up). Press banca is on Monday and
+     Thursday, logged on both; the profile stands on week 3, so neither
+     logged session is the one the draw pads out. */
+  console.log('\n== "Enviar a…" never puts a second copy of an exercise on one day (plans/053\'s follow-up) ==');
+  {
+    const lift = (id, n) => ({ id: id, n: n, sets: 2, reps: '8-10', rest: 90 });
+    const done = (w, daysAgo) => ({ w: String(w), r: '10', done: true, ts: BOOT_TIME - daysAgo * 864e5 });
+    const twoDays = () => ({
+      setupDone: true, activeProfile: 'hombre',
+      profiles: { hombre: {
+        label: 'Hombre', activeBlock: 'B', blockOrder: ['B'], week: 3, day: 0,
+        blocks: { B: { id: 'B', name: 'Bloque', weeks: 4, deload: 0, days: [
+          { id: 'dA', name: 'Lunes', ex: [lift('press', 'Press banca'), lift('remo', 'Remo')] },
+          { id: 'dB', name: 'Jueves', ex: [lift('press', 'Press banca'), lift('curl', 'Curl')] },
+          { id: 'dC', name: 'Sábado', ex: [lift('sent', 'Sentadilla')] },
+        ] } },
+        log: { B: {
+          'w1-dA': { press: [done(50, 15), done(50, 15)], remo: [done(40, 15)] },
+          'w1-dB': { press: [done(60, 12), done(60, 12)], curl: [done(15, 12)] },
+          'w2-dA': { press: [done(52, 8)] },
+        } },
+      } },
+    });
+    /* The plan as day: ids, and every slot's used rows as "slot id count". */
+    const read = booted => JSON.parse(booted.call(`JSON.stringify((function () {
+      const b = getBlock(), used = [];
+      forEachSlot(getProfile().log, b.id, (k, w, d, s) => Object.keys(s || {}).forEach(id => {
+        const n = (Array.isArray(s[id]) ? s[id] : []).filter(rowUsed).length;
+        if (n) used.push(k + ' ' + id + ' ' + n);
+      }));
+      return { plan: b.days.map(d => d.id + ': ' + d.ex.map(e => e.id + (e.off ? ' (off)' : '')).join(', ')), used: used.sort() };
+    })())`));
+    const offered = sel => sel.children.filter(o => o.value).map(o => o.textContent + (o.disabled ? ' — disabled' : ''));
+
+    {
+      const boot = settled(twoDays());
+      const before = read(boot);
+      let err = '', options = null, draft = '', saving = 'not pressed';
+      try {
+        const ed = planEditor(boot);
+        boot.$('editPlan').onclick();
+        const send = ed.row(0, 'Press banca').querySelector('.pe-move-sel');
+        options = offered(send);
+        /* Chosen anyway, past the disabled option: the handler asks the
+           same question the option did. */
+        send.value = 'dB';
+        send.onchange();
+        draft = boot.call('JSON.stringify(peDraft.block.days.map(d => d.ex.map(e => e.id)))');
+        saving = await pressAnswering(boot, () => boot.$('peSave').onclick(), 'askOk');
+      } catch (e) { err = e.message; }
+      const after = read(boot);
+      ok('"Enviar a…" offers a day that already holds the exercise disabled, and says why',
+         !err && JSON.stringify(options) === JSON.stringify(['Jueves (ya lo tiene) — disabled', 'Sábado']), err || JSON.stringify(options));
+      ok('...and its handler refuses too: the exercise stays on its own day',
+         draft === JSON.stringify([['press', 'remo'], ['press', 'curl'], ['sent']]), draft);
+      ok('...so "Guardar cambios" leaves every set on the day it was logged on, none folded into the other copy\'s sessions',
+         saving === null && JSON.stringify(after) === JSON.stringify(before), JSON.stringify({ saving, after }));
+      boot.clock.advance(1000);
+      const back = read(reopen(boot));
+      ok('...and the next open finds each day\'s copy under the one id, with its own sets: a second copy on Thursday came back renamed, with none',
+         JSON.stringify(back) === JSON.stringify(before), JSON.stringify(back));
+    }
+
+    /* A retired copy is still in its day, and migrate() renames a second
+       copy beside it all the same; "Restaurar" would put both in the
+       session. */
+    {
+      const boot = settled(twoDays());
+      let err = '', retiring = null, options = null;
+      try {
+        const ed = planEditor(boot);
+        boot.$('editPlan').onclick();
+        retiring = await pressAnswering(boot, () => ed.row(1, 'Press banca').querySelector('.e-del').onclick(), 'askOk');
+        options = offered(ed.row(0, 'Press banca').querySelector('.pe-move-sel'));
+      } catch (e) { err = e.message; }
+      ok('a copy retired from that day still counts: the day is offered disabled, marked as holding it retired',
+         !err && !!retiring && JSON.stringify(options) === JSON.stringify(['Jueves (lo tiene retirado) — disabled', 'Sábado']),
+         err || JSON.stringify({ retiring, options }));
+    }
+
+    /* What stays open: erase Thursday's copy in "Retirados" and Monday's
+       can take its place. Plan 053's promise holds on the way: the save
+       erases the sets the dialog counted, Thursday's own, before Monday's
+       arrive under the same id. */
+    {
+      const boot = settled(twoDays());
+      let err = '', erasing = null, options = null, saving = 'not pressed';
+      try {
+        const ed = planEditor(boot);
+        boot.$('editPlan').onclick();
+        await pressAnswering(boot, () => ed.row(1, 'Press banca').querySelector('.e-del').onclick(), 'askOk');
+        erasing = await pressAnswering(boot, () => ed.retired('Press banca').querySelector('.a-del').onclick(), 'askOk');
+        const send = ed.row(0, 'Press banca').querySelector('.pe-move-sel');
+        options = offered(send);
+        send.value = 'dB';
+        send.onchange();
+        saving = await pressAnswering(boot, () => boot.$('peSave').onclick(), 'askOk');
+      } catch (e) { err = e.message; }
+      const after = read(boot);
+      const promised = erasing ? Number((/ y sus (\d+) series? registradas?\./.exec(erasing.body) || [])[1]) : NaN;
+      ok('once Thursday\'s copy is erased in "Retirados", Thursday is offered again and Monday\'s copy goes there',
+         !err && JSON.stringify(options) === JSON.stringify(['Jueves', 'Sábado']) &&
+         JSON.stringify(after.plan) === JSON.stringify(['dA: remo', 'dB: curl, press', 'dC: sent']),
+         err || JSON.stringify({ options, plan: after.plan }));
+      ok('...and the save erases the 2 sets the dialog promised, Thursday\'s own, and files Monday\'s 3 under Thursday (plans/053)',
+         saving === null && promised === 2 &&
+         JSON.stringify(after.used) === JSON.stringify(['w1-dA remo 1', 'w1-dB curl 1', 'w1-dB press 2', 'w2-dB press 1']),
+         JSON.stringify({ saving, promised, used: after.used }));
+      boot.clock.advance(1000);
+      const back = read(reopen(boot));
+      ok('...which the next open reads the same way, the one copy keeping its id', JSON.stringify(back) === JSON.stringify(after), JSON.stringify(back));
+    }
+  }
+
   console.log('\n== requestWakeLock: one rest, one lock — skipped mid-request, doubled up, or re-acquired (plans/008 item 15, plans/013) ==');
   /* A real WakeLockSentinel carries its own .released flag, and the guard
      added in plans/013 reads it — so the fake has to carry one as well. */

@@ -1410,6 +1410,7 @@ What happens to your history in each case:
 | Rename an exercise or a day, change reps/rest/cues/flags | untouched — the log follows the exercise, not its name |
 | Reorder exercises, reorder days | untouched — they move with the item |
 | **Send an exercise to another day** (**Enviar a…**) | untouched — it keeps its id, and its logged sets are moved over to the new day when you save |
+| **Enviar a…** a day that already has that exercise | untouched — that day is greyed out, marked *(ya lo tiene)*, or *(lo tiene retirado)* when its copy is under **Retirados**: a day holds an exercise once, since two copies would share one log. To keep it only on that day, remove the copy you were sending (its sets are kept and still count); to replace that day's copy, erase it under **Retirados** first |
 | **Drop a set** (4 → 3) | the 4th row's numbers stay saved and hidden; the session shows a note saying so, and putting the set back brings them straight back |
 | **Add a set** (3 → 4) | the new row is empty, everything else stays |
 | **Remove an exercise or a day that has logged sets** | it is *retired*: out of the plan and out of the session, log kept, listed under **Retirados** at the bottom of the editor with a **Restaurar** button that puts it back exactly where it was |
