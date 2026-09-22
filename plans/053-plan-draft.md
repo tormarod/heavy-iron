@@ -103,10 +103,25 @@ a…" together with "Borrar registro".
      that came from another day, purged at that exercise's starting day.
 
    This matches what the confirm dialog already counts.
-3. **Order inside the apply: moves first**, then the resolved erasures,
-   then renames and the block replacement, as today. Moves first is what
-   keeps an exercise that *left* a day before that day was erased: its
-   record travels before the day's slots are cleared.
+3. **Order inside the apply** — the maintainer's decision of 2026-09-22,
+   taken after the executor's STOP (Q-053a). It replaces "moves first,
+   then the resolved erasures".
+   1. Purge each erased exercise under the day it started on: every
+      exercise erased on its own, plus every exercise an erased day held
+      that came from another day.
+   2. Apply the "Enviar a…" moves.
+   3. Clear each erased day's own slots.
+   4. Then the variant records and the block replacement, as before.
+
+   Exercises before the moves, because with the same id on two days a
+   move can land the other copy on the very day an erased copy is purged
+   under, and once the move has merged them no purge by day and id can
+   tell whose sets are whose. Moves first erased both. That was the STOP:
+   A's copy sent onto B, B's copy erased; the dialog said 2 sets, the save
+   erased 4, and the old save did the same. Days after the moves, for the
+   reason the first version of this decision gave: an exercise that left
+   a day before that day was erased takes its sets along before the day's
+   slots are cleared.
 4. **A stale draft is refused.** If the profile to save into is not the
    object the draft was cut from, the save changes nothing and shows "Los
    datos cambiaron en otra pestaña: vuelve a abrir el editor". The sheet
@@ -147,7 +162,8 @@ through `tell(...)` and keeps the sheet open when refused. Keep the undo
 snapshot where it is, but take it only when the apply will run (not on a
 refusal).
 
-**E. Equivalence (mandatory, throwaway).** In two vm contexts (the way
+**E. Equivalence (mandatory, throwaway).** Restated by the maintainer on
+2026-09-22, after the STOP (Q-053b). In two vm contexts (the way
 `test/unit.js`'s `loadApp` builds one), run the old `#peSave` path (the
 handler body from `origin/main`, driven through its globals) and the new
 `applyPlanDraft` over random sequences of editor actions:
@@ -155,11 +171,14 @@ handler body from `origin/main`, driven through its globals) and the new
   day adds and removes, and "Borrar registro" on exercises and days;
 - on random profiles with logs, including the same id on two days.
 
-Compare the whole profile afterwards. **Differences are allowed only in
-runs that include move-then-erase or erase-a-day-that-received-a-move**,
-and in those the new result must have erased exactly what the dialog
-counted. Record the counts, and show at least three deliberate breaks are
-caught.
+On every session, assert directly that **the sets erased are exactly the
+sets the dialog counted, and nothing else in the profile's record
+changes**. "Identical to the old save" holds only for sessions with no
+erasures. The first version allowed differences from the old save only
+in the two bug shapes; it could not see the STOP's case, because there the
+old save and the moves-first order lose the same sets. Record the counts,
+and show at least three deliberate breaks are caught, including putting
+the moves back before the per-exercise purges.
 
 **F. Verify.**
 - `node --check` and `node test/unit.js`.
@@ -175,9 +194,97 @@ caught.
 
 - A resolved erasure would touch sets of an exercise the user did not
   confirm. This includes the same-id-on-two-days case.
-- The equivalence check finds a difference outside the two bug shapes.
+- The Step E check fails on any session (as restated in Q-053b).
 - Any existing unit or smoke assertion changes outcome.
 
 ## Maintenance notes
 
-(Filled in when the PR lands.)
+Executed 2026-09-22 on `claude/053-impl`, rebased onto `74a657c` (plan
+052 PR 1, #152, merged). `CACHE_VERSION` is left for the orchestrator to
+bump at PR time.
+
+**What landed.**
+- `js/block-editor.js`: `openPlanDraft(profile, block)` returns
+  `{ block, startDay, erased, profile }`, and `peDraft` holds it while
+  the sheet is open.
+  - `eraseFromDraft(draft, it)` is the "Retirados" erase. It records
+    `{ ex }`, or `{ day, held }` for a day.
+  - `planDraftStale(profile, draft)` checks that the draft was cut from
+    this profile object.
+  - `applyPlanDraft(profile, draft)` returns the renamed count, or
+    `null` having changed nothing.
+  - Every reader of the three old globals reads `peDraft`:
+    `draftExLogged`, the deload options, the priority chips, the editor's
+    render and its "+ Añadir día", the day box, "Retirados", "Enviar
+    a…", `syncDraftFromForm`, `closePlanEditor`, `#editPlan`, the weeks
+    and deload fields, `#peSave`, `#peExport` and `#peDeleteBlock`.
+  - `#peSave` asks `planDraftStale` first, before the form is read and
+    before the undo snapshot. On a refusal it shows
+    `tell('No se ha guardado', 'Los datos cambiaron en otra pestaña:
+    vuelve a abrir el editor.')` and keeps the sheet open.
+- `js/app.js`: one word in `moveExerciseRecord`'s comment.
+- `docs/guide.md`: one row in the editor table, for the refusal.
+- `test/unit.js`:
+  - The plan-053 section: bug 1, bug 2, an exercise that left a day
+    later erased, the same id on two days five ways, and bug 3.
+  - Plan 052's booted `peSaveProbe` now reads `peDraft`.
+  - A booted section drives the editor's own controls: send, retire,
+    erase, save and "Deshacer", plus the refusal through a real
+    'storage' event.
+  - 1079 passed on the branch; 1063 on main.
+
+**The STOP.** Decision 3 as first written (moves first) still lost sets
+nobody confirmed, when the same id sits on two days (see decision 3). The
+maintainer replaced the order (Q-053a) and Step E's rule (Q-053b); both
+are written in above.
+
+**Step E.** A throwaway harness ran 20,000 random sessions per
+configuration, on the same seeds. The old side is origin/main's
+`#editPlan`, erase and `#peSave` bodies, cut from its source and driven
+through its globals. The new side is the branch's same three places.
+- **The new save** had 0 failures on every check:
+  - 8,775 sessions had an erasure (4,052 of a day), 16,481 a move, 7,289
+    both, and 9,804 had one id on two days.
+  - The dialogs counted 62,614 sets, and the save erased exactly those
+    rows.
+  - The whole record matched a reference built another way: what was
+    confirmed removed where it sat, then everything else moved.
+  - Sessions with no erasure were identical to the old save, and the
+    block and variants matched it in every session.
+- **The old save differed** in 2,351 sessions, every one with both a
+  move and an erasure. Measured the same way, the old save erased other
+  than what its dialogs counted in 1,223 sessions. It kept counted sets
+  in 1,186 and erased uncounted ones in 54.
+- **Deliberate breaks**, each caught:
+
+  | Break | Sessions | The unit suite fails on |
+  |---|---|---|
+  | Moves back before the per-exercise purges | 47 (62,770 erased for 62,614 counted) | the same id, A's copy sent onto B; a day erased while holding A's copy |
+  | An erased day's slots cleared before the moves | 755 | the exercise that left a day later erased |
+  | Held exercises not purged (bug 2) | 778 | bug 2 and one same-id assertion |
+  | An erased day's slots never cleared | 4,037 | three assertions |
+
+- **origin/main's editor** fails nine of the new assertions, each on the
+  substance. Through its real controls, the dialog promised 4 sets and 4
+  were still there after the save. The stale-draft refusal never came:
+  the sheet closed, the other tab's data was overwritten, and an undo
+  was taken.
+
+**Smoke.** `--only` "Guardar cambios", "main session", "músculos
+prioritarios" and "reduced motion", against a static server on :8801:
+262 passed, 0 failed.
+
+**Where the executor went beyond the plan:**
+- `eraseFromDraft` and `planDraftStale` are two small functions the plan
+  didn't name.
+- The refusal dialog has a title, "No se ha guardado", and the plan's
+  sentence gets a closing period.
+- The stale check runs before the form is read.
+- Plan 052 had already made `peSaveProbe` a booted test, so it kept that
+  version.
+
+**Follow-up, not done here.** "Enviar a…" onto a day that already holds
+the same id leaves two copies of it on one day, sharing one merged
+record. On the next load `migrate()` renames the second copy (to its
+name's slug), and it starts with no history; the first copy keeps all
+the sets. That predates this plan.
