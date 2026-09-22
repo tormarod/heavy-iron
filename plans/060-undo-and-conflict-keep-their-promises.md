@@ -492,4 +492,36 @@ two-tab cases stay green unchanged; optionally Step 5's smoke step.
   unanswered forces this tab's write (`flushSave`'s deliberate choice).
   Switching to the *other* tab is a hide. Whether that should instead
   keep the other tab's data is a maintainer call.
-- *(Executor: record deviations here.)*
+- Executor, 2026-09-22 (branch `claude/060-undo-conflict`):
+  - Decision 2's premise was checked before coding: all six callers run
+    their writes and `commit()` synchronously after `snapshotForUndo`
+    (the three `deleteBlocks` callers call it after their `await ask`, not
+    between the snapshot and the commit). `restoreFromText` and
+    `loadProfileFromText` also call `flushSave()` → `writeState(true)`
+    after the commit; that bypasses `save()` but is the action's own write,
+    so it needs no expiry. No `setTimeout`/`requestAnimationFrame` in
+    `js/` other than `save()`'s own debounce and `js/boot-guard.js`, so no
+    deferred save can expire undo on its own; the existing clearDay case
+    (advance 1000, then Deshacer) still restores. No STOP condition fired.
+  - Refinement of decision 4 (behaviour the plan did not specify): a pinned
+    toast displaced by one of the **same kind** is superseded, not queued —
+    a second conflict event while the first is up would otherwise queue a
+    stale copy of the same question into the pinned slot and overwrite a
+    queued "Actualizar". With only two pinned kinds of distinct rank, "equal
+    rank" is always "same kind", so this only removes the duplicate.
+  - Also beyond the plan: an ordinary toast that a pinned one pushes aside
+    (e.g. the undo toast, when the conflict arrives during its 400 ms
+    debounce) is queued in the `note` slot rather than lost; its undo is
+    still valid, and `hideToast` drops it if the snapshot expired meanwhile.
+  - Steps 1–3 landed as one commit (they are interleaved in the same few
+    functions of `js/app.js`), not one per step.
+  - Step 5 done: 8 lines in the `dos pestañas` section, no new
+    `waitForTimeout` (`waitForFunction(() => held === true)` and
+    `waitForEvent('load')`). Note that removing only `|| discarding` from
+    `writeState` does not fail the smoke step (nothing calls `save()`
+    between the click and the unload there); reverting the handler to the
+    bare `location.reload()` does. The unit case 5 covers the late save.
+  - The guide's "Two tabs" bullet also says that hiding or closing the tab
+    before answering still saves this tab's change (`flushSave`'s kept
+    trade-off), so "stays on screen until answered" is not read as "nothing
+    is written until answered".

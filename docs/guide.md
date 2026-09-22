@@ -412,11 +412,11 @@ Two smaller safeguards worth knowing about:
   picks it up; if you had unsaved edits here, it says so instead of
   silently overwriting them, and asks which to keep. **Recargar** keeps
   what the other tab saved and drops the change here; **Quedarme con lo
-  mío** does the opposite. Nothing is saved in this tab until you answer,
-  so the question has no ✕ and stays on screen — no other notice can push
-  it aside. Closing or hiding this tab before answering still saves what
-  is here, so a set logged just before the phone goes into a pocket is
-  never lost.
+  mío** does the opposite. While the question waits, this tab holds back
+  its saves, so it has no ✕ and stays on screen — no other notice can push
+  it aside. The one exception: closing or hiding this tab before answering
+  still saves what is here, so a set logged just before the phone goes
+  into a pocket is never lost.
 
 ## Offline and installing
 
