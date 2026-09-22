@@ -144,23 +144,28 @@ at least three deliberate breaks are caught.
 ## Maintenance notes
 
 **Drift.** Clean at the start: nothing in the drift check's files had
-changed since `2805d9c`. main then moved twice while this was in progress.
-First came #142 (plan 049, the rest timer). Then came #143 (the
-restore-limits fix the drift check names: `OWN_LIMITS`,
-`LOG_LIMITS.slots` 224 → 448, `PROFILE_LIMITS.profiles`), #144 (plan
-048, `writeRows`) and #145 (plan 050, `countSets`, which also carried
-this plan's own commit). None of them touched `normalizeImportedProfile`,
-`reKeyImportedSlots`, `RECORD_PARTS`, `setOrder` or migrate's repairs;
-#143 changed only values they read. The branch was rebased over each.
-The plans commit was dropped the second time, as already upstream. Every
+changed since `2805d9c`. main then moved three times while this was in
+progress, and the branch was rebased over each:
+1. #142 (plan 049, the rest timer).
+2. #143 (the restore-limits fix the drift check names: `OWN_LIMITS`,
+   `LOG_LIMITS.slots` 224 → 448, `PROFILE_LIMITS.profiles`), #144 (plan
+   048, `writeRows`) and #145 (plan 050, `countSets`, which also carried
+   this plan's own commit, so the plans commit was dropped as already
+   upstream).
+3. #146 (its follow-up: the block cap at the head of
+   `normalizeImportedProfile` became `OWN_LIMITS.blocks`, 40 → 80).
+
+None of them touched the per-part code, `reKeyImportedSlots`,
+`RECORD_PARTS`, `setOrder` or migrate's repairs. #143 and #146 changed
+only limit values, which is what the drift check anticipated. Every
 conflict was resolved by keeping both sides:
 - the index rows in `plans/README.md`;
 - the "sharing a block" section comment in `js/app.js`, which plan 050
   rewrote: its text is kept, with a sentence saying the checks are each
   part's `accept` now;
 - the `countProfileSets` comment in `js/profile-transfer.js`;
-- `AGENTS.md`'s untrusted-input paragraph, where #143's `OWN_LIMITS`
-  sentence and this plan's now stand side by side;
+- `AGENTS.md`'s untrusted-input paragraph, twice, where #143's and
+  #146's limit sentences and this plan's now stand side by side;
 - a `test/unit.js` section next to plan 050's new send-sheet test.
 
 **Decision 2: every difference, and how it was decided.**
@@ -222,9 +227,9 @@ conflict was resolved by keeping both sides:
   Step E found 0 lost paths.
 
 **Equivalence (Step E).** This was run against `origin/main` at
-`2a87448`, the base this lands on, and first at `f4d392c`, before the
-second rebase, with the same outcome. It used three vm contexts, each
-built the way `loadApp` builds one:
+`f1f1e34`, the base this lands on, and before that at `f4d392c` and
+`2a87448`, with the same outcome each time. It used three vm contexts,
+each built the way `loadApp` builds one:
 - main;
 - the branch;
 - a reference: main with only the three changes above patched in (the
@@ -239,8 +244,8 @@ thrown messages were compared too. Every main-vs-branch difference then
 had to be one the reference explains, and each was attributed to the
 single change that explains it.
 
-There were **19,210 comparisons, with 0 unexplained differences**:
-- `normalizeImportedProfile`, 6,713 runs:
+There were **19,219 comparisons, with 0 unexplained differences**:
+- `normalizeImportedProfile`, 6,716 runs:
   - 600 own-data profiles, from 300 states built by main's own writers:
     `entry`, `setNoteText`, `setEnergy`, `moveSessionEx`,
     `moveExerciseRecord` with peSave's plan edit, `recordTarget`,
@@ -252,25 +257,26 @@ There were **19,210 comparisons, with 0 unexplained differences**:
     junk in every part, block, slot, exercise and field;
   - 3,600 near misses: a plausible wrong value at a position that
     resolves, in every part;
-  - 89 at, just under and just over every cap: blocks, rows, the hard
-    cap, slots, weeks, own-mode days and exercises, order length,
-    variants and their keys, note, drop, text and obj bounds.
+  - 92 at, just under and just over every cap: blocks (at 40 and at the
+    80 #146 allows), rows, the hard cap, slots, weeks, own-mode days and
+    exercises, order length, variants and their keys, note, drop, text
+    and obj bounds.
 - The restore as `restoreFromText` runs it (normalize, strip,
-  `migrate`), 692 runs: 300 own backups, 300 damaged ones with junk
-  top-level keys, and 92 limit cases including 15, 16 and 17 profiles.
-- `migrate()` on 689 states, own and damaged.
+  `migrate`), 695 runs: 300 own backups, 300 damaged ones with junk
+  top-level keys, and 95 limit cases including 15, 16 and 17 profiles.
+- `migrate()` on 692 states, own and damaged.
 - The four named wrappers, and notes' and energy's `accept` against
   main's old wrappers: 10,416 runs over strict and own blocks.
 - A QR "blocklog" built by `blockShareLog`/`Rir`/`Order` and read back:
   300 runs. `setOrder`: 400 runs.
 
-main and the branch differed on **3,230** of them, every one attributed:
+main and the branch differed on **3,238** of them, every one attributed:
 
 | Change | Differences |
 |---|---|
 | 2a: one-id order kept on import | 2,231 |
-| 4: unknown keys stripped | 574 |
-| 2a and 4 in the same input | 303 |
+| 4: unknown keys stripped | 572 |
+| 2a and 4 in the same input | 313 |
 | 2c: `setOrder` through the rule | 120 |
 | 2b: the repair caps first | 2 |
 
@@ -290,7 +296,7 @@ byte, and those differences are all main's own, unchanged:
 - half-typed drops and emptied slots are dropped.
 
 Twelve deliberate breaks were then made to the branch, and **all twelve
-were caught**. Each figure is the unexplained differences in 12,730
+were caught**. Each figure is the unexplained differences in 12,739
 comparisons (60 seeds); "lost" is own-data paths the round-trip check
 flagged.
 
@@ -299,7 +305,7 @@ flagged.
 | rir accepts `'3'` | 15 |
 | log hard cap off by one | 2 |
 | notes cap one short | 960 (107 lost) |
-| order wants two ids again | 692 |
+| order wants two ids again | 708 |
 | order caps after resolving | 33 |
 | variants lose their key cap | 4 |
 | log loses `rejects` | 7 |
@@ -345,11 +351,11 @@ flagged.
 
 **Verification.**
 - `node --check` passes on every `js/*.js`, `sw.js` and `test/*.js`.
-- `node test/unit.js`: 949 passed, 0 failed.
+- `node test/unit.js`: 972 passed, 0 failed.
 - `BASE=http://127.0.0.1:8799 node test/smoke.js --only "profile import
   hardening" --only "main session" --only "Guardar cambios" --only
-  "weight drops"`: 266 passed, 0 failed. It was run before and after the
-  second rebase. The QR sections are sub-headings of "main session", and
-  "weight drops" has a QR round trip of its own.
+  "weight drops"`: 266 passed, 0 failed on the final tree, and it passed
+  after each earlier rebase too. The QR sections are sub-headings of
+  "main session", and "weight drops" has a QR round trip of its own.
 - The equivalence harness is throwaway and not committed.
 - `CACHE_VERSION` is not bumped; that is the orchestrator's step.
