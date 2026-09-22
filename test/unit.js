@@ -3861,6 +3861,49 @@ ok('convertedSetVolume converts that same week to kg instead — both weeks read
 ok('convertedSetVolume reads a single lb-stamped set as the kilos it really moved',
    Math.abs(call(`(function(){ state.prefs.units = 'kg'; return convertedSetVolume({ w: '220.462262185', r: '5', done: true, u: 'lb' }); })()`) - 500) < 1e-6);
 
+/* sessionVolume sums a session's own sets (readSession) rather than a
+   slot's stored rows, so the walks that move onto sessionsOf (plans/057)
+   need it to be convertedSetVolume term for term — proven here over random
+   rows rather than trusted from the one arithmetic reading above, since a
+   session's `w` and its drops are already a separate conversion
+   (rowWeight/convertWeight) that could in principle drift from
+   convertedSetVolume's own. */
+console.log('\n== sessionVolume matches convertedSetVolume over the same rows, term for term (plans/057) ==');
+const sessionVolumeProbe = call(`
+  (function() {
+    const rnd = (lo, hi) => Math.round((lo + Math.random() * (hi - lo)) * 100) / 100;
+    /* Mostly a real number, sometimes empty (nothing typed), sometimes
+       garbage (num() reads either as NaN) — the same three shapes a stored
+       weight or rep count actually comes in. */
+    const field = () => {
+      const r = Math.random();
+      return r < 0.15 ? '' : r < 0.25 ? 'nope' : String(rnd(1, 200));
+    };
+    let maxDiff = 0;
+    for (let trial = 0; trial < 200; trial++) {
+      const n = 1 + Math.floor(Math.random() * 4);
+      const rows = [];
+      for (let i = 0; i < n; i++) {
+        const row = { done: Math.random() < 0.9, w: field(), r: field() };
+        if (Math.random() < 0.5) row.u = 'lb';
+        const dropN = Math.floor(Math.random() * 3);
+        if (dropN) row.d = Array.from({ length: dropN }, () => ({ w: field(), r: field() }));
+        rows.push(row);
+      }
+      /* profile/block/day are stand-ins readSession never reads for volume:
+         only the RIR fallback and the extra-set flag touch them, and
+         sessionVolume reads neither. */
+      const sess = readSession({ rir: {} }, { id: 'b' }, 1, 'd', 'e', rows, undefined);
+      const viaSession = sess ? sessionVolume(sess.sets) : 0;
+      const viaRows = rows.reduce((t, r) => t + convertedSetVolume(r), 0);
+      maxDiff = Math.max(maxDiff, Math.abs(viaSession - viaRows));
+    }
+    return maxDiff;
+  })()
+`);
+ok('sessionVolume matches convertedSetVolume over 200 random trials, drops/lb/empty/NaN included',
+   sessionVolumeProbe < 1e-6, String(sessionVolumeProbe));
+
 /* The chart is the third cross-session reader and the one that says "en kg"
    on its own axis, so it converts too (plans/011). Same fixture as above: a
    block whose second week was logged after a unit switch, at the identical

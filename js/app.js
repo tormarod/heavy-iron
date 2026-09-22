@@ -2987,6 +2987,22 @@ function readSession(profile, block, week, dayId, exId, rows, day) {
   };
 }
 
+/* convertedSetVolume, over a session's own sets instead of a slot's stored
+   rows: a session's `w` is already rowWeight(r) — the exact conversion
+   convertedSetVolume applies to `r.w` itself — and its drops are already the
+   ones dropUsed kept, converted the same way. Summing here is
+   convertedSetVolume term for term over the rows the session was built from
+   (test/unit.js proves it over random rows, drops and lb included), so every
+   walk that used to sum convertedSetVolume over a slot's raw rows can sum
+   this over sessionsOf's sessions instead (plans/057). */
+function sessionVolume(sets) {
+  return sets.reduce((t, s) => {
+    const own = (isNaN(s.w) || isNaN(s.r)) ? 0 : s.w * s.r;
+    const drops = s.drops.reduce((dt, d) => dt + ((isNaN(d.w) || isNaN(d.r)) ? 0 : d.w * d.r), 0);
+    return t + own + drops;
+  }, 0);
+}
+
 /* ---------- the history cache ----------
    Reading a lift's whole history is ~20 µs a session, and a draw asks for
    it once per card, once per exercise of the block for the brake, and —
