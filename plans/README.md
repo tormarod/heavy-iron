@@ -72,7 +72,7 @@ below so it is not lost or re-audited.
 | 048 | [One way to write a set — `writeRows` — and the card's hint and record decisions as pure functions](done/048-card-writes.md) | P3 | S–M | LOW–MED | the unit-stamp fix (another session) | DONE (#144) — `writeRows` owns the set-write order; `setHints`/`recordFlags`/`tickRow` pure; 0 differences in 170,000 fixtures and a whole-card check of 42,816 events |
 | 049 | [The draw ends a rest when the session on screen changes — eight hand-written `stopRest()` calls go](done/049-rest-stops-with-the-session.md) | P3 | S | LOW | — | DONE (#142) — `drawApp` ends a rest when the session on screen changes; eight hand-written `stopRest()` calls gone; candidate 6's event hooks dropped (one listener) |
 | 050 | [One way to count stored sets — and the two screens that counted the wrong ones](done/050-one-set-count.md) | P3 | S | LOW | — | DONE (#145) — one `countSets`; the QR send sheet counts the payload it sends; the block review counts its own weeks |
-| 051 | [The profile's record says how each part is accepted — one import loop over `RECORD_PARTS`, and unknown keys stay out](051-record-parts-accept.md) | P2 | M | MED | 046 (merged) | IN PROGRESS |
+| 051 | [The profile's record says how each part is accepted — one import loop over `RECORD_PARTS`, and unknown keys stay out](done/051-record-parts-accept.md) | P2 | M | MED | 046 (merged) | DONE (#PR051) — every part has `accept`; import loops over `RECORD_PARTS`; unknown profile and backup keys stripped; one-id orders now survive import |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
