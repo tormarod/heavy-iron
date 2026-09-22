@@ -265,8 +265,13 @@ function normalizeImportedBlock(raw, opts) {
      better is still somebody's real history, and "Demasiados días (15)" on
      the app's own backup was the bug. */
   const most = own ? OWN_LIMITS : IMPORT_LIMITS;
+  /* The same headroom for the text the plan editor never capped: the
+     block's name, and each day's name and pair note here, and an
+     exercise's text through its EX_FIELDS entry. OWN_TEXT_LIMIT says why a
+     restore takes more than a paste. */
+  const text = (v, max) => txt(v, own ? OWN_TEXT_LIMIT : max);
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('El JSON no es un objeto válido.');
-  const name = txt(raw.name, IMPORT_LIMITS.name) || 'Bloque importado';
+  const name = text(raw.name, IMPORT_LIMITS.name) || 'Bloque importado';
   /* Both optional: a block that says nothing is the eight-week, deload-on-8
      shape every block had before length was configurable. */
   const weeks = clampInt(raw.weeks, 1, MAX_WEEKS, 8);
@@ -279,7 +284,7 @@ function normalizeImportedBlock(raw, opts) {
   const usedDayIds = new Set();
   const days = raw.days.map((day, di) => {
     if (!day || typeof day !== 'object') throw new Error('El día ' + (di + 1) + ' no es válido.');
-    const dayName = txt(day.name, IMPORT_LIMITS.name) || ('Día ' + (di + 1));
+    const dayName = text(day.name, IMPORT_LIMITS.name) || ('Día ' + (di + 1));
     if (!Array.isArray(day.ex) || !day.ex.length) throw new Error('El día "' + dayName + '" necesita al menos un ejercicio.');
     if (day.ex.length > most.ex) throw new Error('El día "' + dayName + '" tiene ' + day.ex.length + ' ejercicios: el máximo es ' + most.ex + '.');
     /* Ids are unique per block for a paste and per day for own data: two
@@ -294,11 +299,11 @@ function normalizeImportedBlock(raw, opts) {
       /* Named rather than rejected on the own path: the blank exercise
          emptyBlock() ships is a real thing the app saves, and a backup the
          app cannot read back is not a backup. */
-      const n = txt(e.n, IMPORT_LIMITS.exName) || (own ? 'Ejercicio ' + (ei + 1) : '');
+      const n = exField('n').accept(e.n, { own }) || (own ? 'Ejercicio ' + (ei + 1) : '');
       if (!n) throw new Error('Falta el nombre de un ejercicio en "' + dayName + '".');
-      /* The same default migrate() fills a blank rep range with. */
-      const reps = txt(e.reps, IMPORT_LIMITS.reps) || (own ? '10–15' : '');
-      if (!reps) throw new Error('Falta el rango de repeticiones en "' + n + '".');
+      /* Before the id, as always: a paste without a rep range is refused
+         next, naming the exercise, and own data gets the default. */
+      const reps = exField('reps').accept(e.reps, { own, n });
       /* safeKey on the slug too, not just on the stated id: a name can slug
          straight to a reserved word — "Constructor" to `constructor` — and
          an id safeKey refuses is one recordVariant and the import's
@@ -308,58 +313,17 @@ function normalizeImportedBlock(raw, opts) {
       let uniqueId = baseId, suffix = 2;
       while (dayIds.has(uniqueId)) uniqueId = baseId + '-' + (suffix++);
       dayIds.add(uniqueId);
-      const out = {
-        id: uniqueId, n, reps,
-        sets: clampInt(e.sets, 1, 12, 3),
-        rest: clampInt(e.rest, 0, 900, 90),
-      };
-      if (e.alt) out.alt = txt(e.alt, IMPORT_LIMITS.alt);
-      if (e.cue) out.cue = txt(e.cue, IMPORT_LIMITS.cue);
-      if (e.setup) out.setup = txt(e.setup, SETUP_LIMIT);
-      /* clampInt would silently round a fractional "add" — 2.3 becoming 2 —
-         and a program quietly rewritten under someone's feet is worse than
-         a rejected import they can fix and retry. Rejected loudly instead,
-         same as a missing name or rep range. `inc` is exempt: it is
-         genuinely a decimal (a weight step), so it goes through clampNum,
-         which is built for that, not this guard. */
-      if (e.add != null) {
-        const av = isObj(e.add) ? NaN : +e.add;
-        if (!Number.isFinite(av) || !Number.isInteger(av) || av < 1) {
-          throw new Error('El incremento de series ("add") de "' + n + '" tiene que ser un número entero de al menos 1 (llegó ' + JSON.stringify(e.add) + ').');
-        }
-        out.add = clampInt(av, 1, weeks, 1);
-      }
-      if (e.inc != null) { const v = clampNum(e.inc, INC_MIN, INC_MAX, 0, INC_STEP); if (v > 0) out.inc = v; }
-      /* `minRir` — the reserve this lift never goes under, whatever the
-         week's phase text asks for: a squat or a Romanian deadlift nobody
-         takes to failure. A week prescribing 0–1 RIR on one of those is a
-         number you are not going to follow, and a target solved for it is
-         a weight you cannot make. Clamped rather than rejected: it is an
-         advisory floor, not a program-defining integer like `add`. */
-      if (e.minRir != null) { const v = clampInt(e.minRir, 0, 5, 0); if (v > 0) out.minRir = v; }
-      if (e.share) out.share = 1;
-      if (e.ss) out.ss = 1;
-      /* Freeform, same as everywhere else it's set — whoever built this
-         block (an agent, a person, another app's export) defines their own
-         muscle/pattern/type taxonomy. Only trimmed and length-capped; a
-         blank or missing value is left absent rather than rejecting the
-         whole import. */
-      if (e.muscle != null) { const m = safeKey(txt(e.muscle, MUSCLE_LIMIT)); if (m) out.muscle = m; }
-      if (e.pattern != null) { const p = safeKey(txt(e.pattern, PATTERN_LIMIT)); if (p) out.pattern = p; }
-      if (e.type != null) { const t = safeKey(txt(e.type, TYPE_LIMIT)); if (t) out.type = t; }
-      /* Own data only. A share drops retired items outright (blockSharePlan)
-         so the receiver gets the plan as trained, but a restore that
-         resurrected them handed the user back a plan they had already
-         edited away from, with no way to tell. */
-      if (own && e.off) out.off = 1;
-      return out;
+      /* Every other field by its own entry in EX_FIELDS (js/app.js): what
+         each one keeps, on which path, and whether it refuses the block —
+         `add` does, rather than round a program under someone's feet. */
+      return acceptExercise(e, { id: uniqueId, n, reps }, { own, weeks, n });
     });
     let dayId = safeKey(txt(day.id, 60));
     while (!dayId || usedDayIds.has(dayId)) dayId = uid('d');
     usedDayIds.add(dayId);
     const out = { id: dayId, name: dayName, ex };
-    if (day.pair) out.pair = txt(day.pair, IMPORT_LIMITS.pair);
-    /* Same rule as the exercise `off` above. */
+    if (day.pair) out.pair = text(day.pair, IMPORT_LIMITS.pair);
+    /* Same rule as an exercise's `off` (EX_FIELDS). */
     if (own && day.off) out.off = 1;
     return out;
   });

@@ -725,12 +725,8 @@ const UNCLASSIFIED_LABEL = 'Sin clasificar';
 const MUSCLE_LIMIT = 40;
 const PATTERN_LIMIT = 40;
 const TYPE_LIMIT = 40;
-/* `ex.setup` — seat height, pin position, the stuff you discover at the
-   machine and that barely changes week to week. A real field for it, so it
-   stops getting written into `cue` (which is for technique reminders and
-   shows on every set, not settings you check once and forget). Shown
-   collapsed in the session and editable inline there — see the .ex-setup
-   render in drawApp. */
+/* How long the machine settings may be, on every path — see `setup` in
+   EX_FIELDS for what the field is. */
 const SETUP_LIMIT = 200;
 $('muscleSuggestions').innerHTML = MUSCLE_SUGGESTIONS.map(m => '<option value="' + esc(m) + '"></option>').join('');
 $('patternSuggestions').innerHTML = PATTERN_SUGGESTIONS.map(m => '<option value="' + esc(m) + '"></option>').join('');
@@ -906,18 +902,9 @@ function migrate() {
           if (!id2 || usedEx.has(id2)) { id2 = safeKey(slugify(ex.n)) || ('ex-' + i + '-' + j); while (usedEx.has(id2)) id2 = uid('ex'); }
           ex.id = id2;
           usedEx.add(id2);
-          ex.sets = clampInt(ex.sets, 1, 12, 3);
-          ex.rest = clampInt(ex.rest, 0, 900, 90);
-          if (ex.reps == null || ex.reps === '') ex.reps = '10–15';
-          if (!ex.muscle) { if (MUSCLE_BY_ID[ex.id]) ex.muscle = MUSCLE_BY_ID[ex.id]; }
-          else { const m = safeKey(txt(ex.muscle, MUSCLE_LIMIT)); if (m) ex.muscle = m; else delete ex.muscle; }
-          if (ex.pattern != null) { const p = safeKey(txt(ex.pattern, PATTERN_LIMIT)); if (p) ex.pattern = p; else delete ex.pattern; }
-          if (ex.type != null) { const t = safeKey(txt(ex.type, TYPE_LIMIT)); if (t) ex.type = t; else delete ex.type; }
-          if (ex.inc != null) { const v = clampNum(ex.inc, INC_MIN, INC_MAX, 0, INC_STEP); if (v > 0) ex.inc = v; else delete ex.inc; }
-          /* Absent by default, like `share`/`ss`: only the lifts that never
-             go near failure carry one. See weekRir. */
-          if (ex.minRir != null) { const v = clampInt(ex.minRir, 0, 5, 0); if (v > 0) ex.minRir = v; else delete ex.minRir; }
-          if (ex.setup != null) { const s = txt(ex.setup, SETUP_LIMIT); if (s) ex.setup = s; else delete ex.setup; }
+          /* Every other field by its own entry: what a stored exercise may
+             hold is EX_FIELDS', the same table the import reads. */
+          repairExercise(ex, block.weeks);
         });
       });
     });
@@ -3331,6 +3318,24 @@ const IMPORT_LIMITS = { days: 14, ex: 40, name: 80, exName: 120, alt: 200, cue: 
    before this file and is in every shell (AGENTS.md). */
 const OWN_LIMITS = { days: IMPORT_LIMITS.days * 2, ex: IMPORT_LIMITS.ex * 2, blocks: PROFILE_LIMITS.blocks * 2 };
 
+/* The same headroom for text, in the fields the plan editor never capped:
+   an exercise's name, alternative, cue and rep range (`ownMax` in
+   EX_FIELDS), and a day's name, its pair note and the block's name. The
+   editor stops each of them at its IMPORT_LIMITS length now, so anything
+   typed from here on fits every door back in. It did not always stop, and
+   the app's own restore cut what it had let you type: a 147-character name
+   came back as 120, with another slug, a 450-character cue as 400 and a
+   90-character day name as 80 — plans/010's promise broken the way a 15th
+   day broke it above. That text is still in people's storage and can be
+   any length, so this is one flat bound rather than twice each limit:
+   past anything typed by hand, and still small enough that a crafted
+   "backup" draws. The fields the app always held to one length — the
+   machine settings and the three tags, which the editor and migrate() cap,
+   and the phase texts, which no box lets anyone type — keep that length on
+   every path. A paste, a QR block and the AI round trip keep IMPORT_LIMITS
+   (plans/055). */
+const OWN_TEXT_LIMIT = 2000;
+
 function txt(v, max) {
   return String(v == null || isObj(v) ? '' : v).replace(/\s+/g, ' ').trim().slice(0, max);
 }
@@ -3359,6 +3364,266 @@ function txt(v, max) {
 const UNSAFE_KEYS = ['prototype'];
 function safeKey(id) {
   return (id in Object.prototype) || UNSAFE_KEYS.indexOf(id) >= 0 ? '' : id;
+}
+
+/* ---------- what a plan exercise may hold ----------
+   Every field an exercise in a block can carry, declared once: its
+   default, how migrate() repairs a stored one (`repair`), how an imported
+   one is taken (`accept`), the IMPORT_LIMITS length the plan editor stops
+   its box at (`max`, for text) and the line the AI prompt describes it
+   with (`prompt`). Those rules used to be written out separately in
+   normalizeImportedBlock, migrate(), the plan editor and the prompt, and
+   the copies drifted: the editor capped none of the text the importer
+   capped, so the app's own restore cut what the editor had let you type,
+   and migrate() never looked at `add`, the text or the flags (plans/055).
+   All four read this table now, and test/unit.js fails when the code
+   writes an exercise field it does not declare.
+
+   `accept(v, ctx)` is handed the raw value and { own, weeks, n }: whether
+   this is the app's own data coming back (normalizeImportedBlock's `own`),
+   the block's length, and the exercise's name for a refusal to quote. It
+   returns what to keep, or undefined to leave the field out. Only an entry
+   marked `rejects` throws, and it throws rather than coerce. A paste is
+   cut to `max`; a restore to `ownMax` where an entry has one
+   (OWN_TEXT_LIMIT). `repair(ex, weeks)` mends the stored exercise in
+   place. The text repairs this table added (the name, the alternative, the
+   cue and the rep range) only ever cut a string at its bound, never
+   rewrite it, so what the editor stored comes through untouched; the
+   machine settings and the tags keep the repair migrate() always gave
+   them, which tidies their spacing the way an import does.
+
+   `id` and `n` are identity as well as fields. Which id an exercise ends
+   up with, and what a blank name means (a paste is refused over it, a
+   restore names it), stay with the code that files the exercise —
+   normalizeImportedBlock and migrate() — because they decide where its
+   history is kept, not what a value may hold. The table carries the name's
+   lengths and both prompt lines.
+
+   Declared in the order an imported exercise has always been written in:
+   the importer resolves the id, the name and the rep range before the rest
+   (its refusals come in that order, and they name the exercise), writes
+   them first, and the others after them in this order. The one exception
+   is `reps`, after `sets` and `rest`: migrate() appends a field that is
+   missing where its repair reaches it, and it has always filled in those
+   three in that order. The prompt lists them in an order of its own,
+   EX_PROMPT_ORDER. */
+
+/* The length a text field is held to on this path. */
+const exMax = (f, own) => (own && f.ownMax) || f.max;
+
+/* A stored text field as migrate() leaves it: a string is only cut at
+   `max`, never rewritten, since its spacing is whoever typed it; anything
+   else becomes the text txt() reads it as, '' for an object. */
+const storedText = (v, max) => (typeof v === 'string' ? v.slice(0, max) : txt(v, max));
+
+/* An optional one: absent stays absent, text is cut as above, and a value
+   that is not text becomes what a restore would make of it — its text
+   when it is truthy, and nothing when it is not. */
+function repairOptionalText(ex, key, max) {
+  const v = ex[key];
+  if (v === undefined) return;
+  if (typeof v === 'string' || v) ex[key] = storedText(v, max); else delete ex[key];
+}
+
+/* A tag, on the way in and on the shelf: trimmed, capped, and dropped
+   when it is blank or a name safeKey refuses. */
+const acceptTag = (v, max) => (v == null ? undefined : safeKey(txt(v, max)) || undefined);
+function repairTag(ex, key, max) {
+  if (ex[key] == null) return;
+  const t = acceptTag(ex[key], max);
+  if (t) ex[key] = t; else delete ex[key];
+}
+
+/* A flag is stored as 1, and only when it is set. */
+function repairFlag(ex, key) {
+  if (ex[key]) ex[key] = 1; else delete ex[key];
+}
+
+const EX_FIELDS = Object.freeze([
+  /* Identity (above): normalizeImportedBlock and migrate() give every
+     exercise one, and the importer holds a stated one to 60 characters. */
+  { key: 'id',
+    prompt: () => 'string opcional (máx 60 car.) — identificador estable del ejercicio. Si abajo te paso mi bloque actual, conserva el id de cada ejercicio que mantengas, para que su historial siga unido; un ejercicio nuevo puede ir sin id. El mismo ejercicio en dos días lleva el mismo nombre (no repitas el id en dos días: se renombraría)' },
+  /* A string once repaired, blank included: the blank name newExercise()
+     ships is the empty box the editor shows to type into. */
+  { key: 'n', max: IMPORT_LIMITS.exName, ownMax: OWN_TEXT_LIMIT,
+    accept(v, ctx) { return txt(v, exMax(this, ctx.own)); },
+    repair(ex) { ex.n = storedText(ex.n, this.ownMax); },
+    prompt() { return 'string OBLIGATORIO — nombre del ejercicio (máx ' + this.max + ' car.)'; } },
+  { key: 'sets', lo: 1, hi: 12, dflt: 3,
+    accept(v) { return clampInt(v, this.lo, this.hi, this.dflt); },
+    repair(ex) { ex.sets = this.accept(ex.sets); },
+    prompt() { return 'número opcional ' + this.lo + '-' + this.hi + ' (por defecto ' + this.dflt + ')'; } },
+  { key: 'rest', lo: 0, hi: 900, dflt: 90,
+    accept(v) { return clampInt(v, this.lo, this.hi, this.dflt); },
+    repair(ex) { ex.rest = this.accept(ex.rest); },
+    prompt() { return 'número opcional — segundos de descanso ' + this.lo + '-' + this.hi + ' (por defecto ' + this.dflt + '; usa 0 si el ejercicio va encadenado en superserie)'; } },
+  /* Refused on a paste when blank, naming the exercise. Own data gets the
+     default instead, the one migrate() has always filled a blank range
+     with. */
+  { key: 'reps', max: IMPORT_LIMITS.reps, ownMax: OWN_TEXT_LIMIT, dflt: '10–15', rejects: true,
+    accept(v, ctx) {
+      const reps = txt(v, exMax(this, ctx.own)) || (ctx.own ? this.dflt : '');
+      if (!reps) throw new Error('Falta el rango de repeticiones en "' + ctx.n + '".');
+      return reps;
+    },
+    repair(ex) { ex.reps = storedText(ex.reps, this.ownMax) || this.dflt; },
+    prompt() { return 'string OBLIGATORIO — rango de reps, p.ej. "8-12" (máx ' + this.max + ' car.)'; } },
+  { key: 'alt', max: IMPORT_LIMITS.alt, ownMax: OWN_TEXT_LIMIT,
+    accept(v, ctx) { return v ? txt(v, exMax(this, ctx.own)) : undefined; },
+    repair(ex) { repairOptionalText(ex, this.key, this.ownMax); },
+    prompt() { return 'string opcional — alternativa (máx ' + this.max + ' car.)'; } },
+  { key: 'cue', max: IMPORT_LIMITS.cue, ownMax: OWN_TEXT_LIMIT,
+    accept(v, ctx) { return v ? txt(v, exMax(this, ctx.own)) : undefined; },
+    repair(ex) { repairOptionalText(ex, this.key, this.ownMax); },
+    prompt() { return 'string opcional — indicación técnica, para todas las series (máx ' + this.max + ' car.)'; } },
+  /* Seat height, pin position, the stuff you discover at the machine and
+     that barely changes week to week. A real field for it, so it stops
+     getting written into `cue` (which is for technique reminders and shows
+     on every set, not settings you check once and forget). Shown collapsed
+     in the session and editable inline there — see the .ex-setup render in
+     drawApp. One length on every path, a restore included: the editor's
+     box, the card's and migrate() have always held it there. */
+  { key: 'setup', max: SETUP_LIMIT,
+    accept(v) { return v ? txt(v, this.max) : undefined; },
+    repair(ex) {
+      if (ex.setup == null) return;
+      const s = txt(ex.setup, this.max);
+      if (s) ex.setup = s; else delete ex.setup;
+    },
+    prompt() { return 'string opcional — ajustes de la máquina (altura de asiento, posición del respaldo…), no técnica (máx ' + this.max + ' car.)'; } },
+  /* One set more from this week on. clampInt would silently round a
+     fractional "add" — 2.3 becoming 2 — and a program quietly rewritten
+     under someone's feet is worse than a rejected import they can fix and
+     retry, so an import refuses it loudly instead, as it refuses a missing
+     name or rep range. `inc` is exempt: it is genuinely a decimal (a weight
+     step), so it goes through clampNum, which is built for that, not this
+     guard. migrate() has no import to refuse, so it drops a stored one
+     that is not a whole number of weeks, and holds one past the block's
+     end to its last week, as the import does. */
+  { key: 'add', rejects: true,
+    /* The whole number of weeks `v` says, or 0 when it says none. */
+    whole(v) { const n = isObj(v) ? NaN : +v; return Number.isInteger(n) && n >= 1 ? n : 0; },
+    accept(v, ctx) {
+      if (v == null) return undefined;
+      const n = this.whole(v);
+      if (!n) throw new Error('El incremento de series ("add") de "' + ctx.n + '" tiene que ser un número entero de al menos 1 (llegó ' + JSON.stringify(v) + ').');
+      return clampInt(n, 1, ctx.weeks, 1);
+    },
+    repair(ex, weeks) {
+      if (ex.add == null) return;
+      const n = this.whole(ex.add);
+      if (n) ex.add = clampInt(n, 1, weeks, 1); else delete ex.add;
+    },
+    prompt: () => 'número entero opcional 1-weeks — desde esa semana se añade una serie extra (progresión de series; tiene que ser un entero o se rechaza todo el bloque)' },
+  /* One step of weight for the objetivo rule; INC_MIN says why these
+     bounds. Kept only when it is a step. */
+  { key: 'inc',
+    accept(v) {
+      if (v == null) return undefined;
+      const n = clampNum(v, INC_MIN, INC_MAX, 0, INC_STEP);
+      return n > 0 ? n : undefined;
+    },
+    repair(ex) {
+      if (ex.inc == null) return;
+      const n = this.accept(ex.inc);
+      if (n !== undefined) ex.inc = n; else delete ex.inc;
+    },
+    prompt: () => 'número opcional (en ' + units() + '), admite decimales, ' + INC_MIN + '-' + INC_MAX + ' — el escalón de peso más pequeño que se puede cargar en ese ejercicio: lo que sube el objetivo cuando una serie llega al tope del rango, y el paso que se usa mientras no haya pesos registrados de los que leer la pila real de la máquina. Si falta, se usa el incremento por defecto de los ajustes. Pon uno realista por ejercicio (mancuernas y poleas suelen subir de 1-2,5 en 2,5; prensas y hacks, de 5 en 5)' },
+  /* The reserve this lift never goes under, whatever the week's phase text
+     asks for: a squat or a Romanian deadlift nobody takes to failure. A
+     week prescribing 0–1 RIR on one of those is a number you are not going
+     to follow, and a target solved for it is a weight you cannot make.
+     Clamped rather than rejected: it is an advisory floor, not a
+     program-defining integer like `add`. Absent by default, like the
+     flags: only the lifts that never go near failure carry one. See
+     weekRir. */
+  { key: 'minRir', lo: 0, hi: 5,
+    accept(v) {
+      if (v == null) return undefined;
+      const n = clampInt(v, this.lo, this.hi, 0);
+      return n > 0 ? n : undefined;
+    },
+    repair(ex) {
+      if (ex.minRir == null) return;
+      const n = this.accept(ex.minRir);
+      if (n !== undefined) ex.minRir = n; else delete ex.minRir;
+    },
+    prompt() { return 'número entero opcional ' + this.lo + '-' + this.hi + ' — el RIR mínimo de ese ejercicio: nunca se le pide menos reserva que esta, aunque la semana pida menos. Ponlo (1) en los ejercicios que no se llevan al fallo — sentadilla, peso muerto rumano, hip thrust pesado — y déjalo fuera en máquinas y aislamiento'; } },
+  { key: 'share',
+    accept: v => (v ? 1 : undefined),
+    repair(ex) { repairFlag(ex, this.key); },
+    prompt: () => '1 opcional — marca el ejercicio como estación compartida en pareja ("JUNTOS")' },
+  { key: 'ss',
+    accept: v => (v ? 1 : undefined),
+    repair(ex) { repairFlag(ex, this.key); },
+    prompt: () => '1 opcional — marca el ejercicio como parte de una superserie ("SS")' },
+  /* The three tags are freeform, same as everywhere else they are set —
+     whoever built this block (an agent, a person, another app's export)
+     defines their own muscle/pattern/type taxonomy (MUSCLE_SUGGESTIONS says
+     why that is not an enum). Only trimmed and length-capped; a blank or
+     missing one is left absent rather than rejecting the whole import. One
+     length on every path: the editor's boxes and migrate() have always
+     held them to it. A stored exercise with no muscle takes the one
+     MUSCLE_BY_ID gives its id, the backfill for data saved before the
+     field existed. */
+  { key: 'muscle', max: MUSCLE_LIMIT,
+    accept(v) { return acceptTag(v, this.max); },
+    repair(ex) {
+      if (!ex.muscle) { if (MUSCLE_BY_ID[ex.id]) ex.muscle = MUSCLE_BY_ID[ex.id]; return; }
+      repairTag(ex, this.key, this.max);
+    },
+    prompt() { return 'string opcional — músculo principal, libre, p.ej. Pecho/Espalda/Hombro/Bíceps/Tríceps/Cuádriceps/Isquios/Glúteo/Gemelos/Core (máx ' + this.max + ' car.)'; } },
+  { key: 'pattern', max: PATTERN_LIMIT,
+    accept(v) { return acceptTag(v, this.max); },
+    repair(ex) { repairTag(ex, this.key, this.max); },
+    prompt() { return 'string opcional — patrón de movimiento, libre, p.ej. Empuje horizontal/Empuje vertical/Tirón horizontal/Tirón vertical/Rodilla dominante/Cadera dominante (máx ' + this.max + ' car.)'; } },
+  { key: 'type', max: TYPE_LIMIT,
+    accept(v) { return acceptTag(v, this.max); },
+    repair(ex) { repairTag(ex, this.key, this.max); },
+    prompt() { return 'string opcional — tipo de ejercicio, libre, p.ej. Compuesto/Aislamiento (máx ' + this.max + ' car.)'; } },
+  /* Retired: "Retirar" in the editor, out of the plan with its history
+     kept. Own data only, and never in the prompt. A share drops retired
+     items outright (blockSharePlan) so the receiver gets the plan as
+     trained, but a restore that resurrected them handed the user back a
+     plan they had already edited away from, with no way to tell. */
+  { key: 'off',
+    accept: (v, ctx) => (ctx.own && v ? 1 : undefined),
+    repair(ex) { repairFlag(ex, this.key); } },
+].map(f => Object.freeze(f)));
+
+/* One field by name, for the few callers that mean one field in
+   particular; everything that means every field loops over the table. */
+const exField = key => EX_FIELDS.find(f => f.key === key);
+
+/* The order the AI prompt has always described the fields in: what the
+   model needs first — the name, the id and the range — then the numbers,
+   the text, the tags and the flags. It is not the order they are stored
+   in, and test/unit.js holds it to the table: every field with a prompt
+   line is here once, and nothing else is. */
+const EX_PROMPT_ORDER = Object.freeze(['n', 'id', 'reps', 'sets', 'rest', 'add', 'inc', 'minRir',
+  'alt', 'cue', 'setup', 'muscle', 'pattern', 'type', 'share', 'ss']);
+
+/* An imported exercise, written in the order one always has been: `head`
+   — the id, the name and the rep range, which normalizeImportedBlock
+   resolves itself before anything else — and then every other field the
+   table declares, in the table's order. ctx is { own, weeks, n }. Throws
+   where a field `rejects`. */
+function acceptExercise(raw, head, ctx) {
+  const out = Object.assign({}, head);
+  EX_FIELDS.forEach(f => {
+    if (!f.accept || Object.prototype.hasOwnProperty.call(out, f.key)) return;
+    const v = f.accept(raw[f.key], ctx);
+    if (v !== undefined) out[f.key] = v;
+  });
+  return out;
+}
+
+/* migrate()'s share of an exercise, once its id is settled: every field's
+   own repair, in the table's order. `weeks` is the block's, already
+   repaired. */
+function repairExercise(ex, weeks) {
+  EX_FIELDS.forEach(f => { if (f.repair) f.repair(ex, weeks); });
 }
 
 /* ---------- nav ---------- */

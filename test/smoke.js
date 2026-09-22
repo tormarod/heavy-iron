@@ -962,7 +962,10 @@ const ok = (name, cond, extra) => {
       const b = getBlock(), day = dayList(b)[0], ex = exList(day)[0];
       ex.off = 1;
       const shared = blockSharePlan(b).days.find(d => d.id === day.id);
-      ex.off = 0;
+      /* Put back the way "Restaurar" does it, by deleting the flag: an
+         `off: 0` is nothing the app writes, and the next migrate() drops
+         it (plans/055), which "the other profile is untouched" would see. */
+      delete ex.off;
       return shared.ex.every(e => e.id !== ex.id);
     }));
     /* drawQrShow's own numbers (plans/050): blockLoggedSets/blockDoneSets
@@ -981,7 +984,7 @@ const ok = (name, cond, extra) => {
       const withRetired = document.getElementById('qrShowDesc').textContent;
       const wantPayload = setsWithDoneLabel(countSets(blockShareLog(p, b)), countSets(blockShareLog(p, b), true));
       const wantRaw = setsWithDoneLabel(blockLoggedSets(p, b.id), blockDoneSets(p, b.id));
-      ex.off = 0;
+      delete ex.off;
       drawQrShow();
       return withRetired.includes(wantPayload) && wantPayload !== wantRaw;
     }));
