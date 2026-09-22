@@ -3054,6 +3054,20 @@ function slugify(s) {
    only one. */
 const IMPORT_LIMITS = { days: 14, ex: 40, name: 80, exName: 120, alt: 200, cue: 400, reps: 40, pair: 1000, phaseR: 40, phaseT: 400 };
 
+/* The day and exercise ceilings for a block the app wrote itself: a
+   backup, a profile file, a QR "perfil" (normalizeImportedBlock's `own`
+   mode). The plan editor stops at IMPORT_LIMITS, counting retired days and
+   exercises the way every importer does, so nothing it adds needs more.
+   It did not always stop. "+ Añadir día" and "+ Añadir ejercicio" had no
+   ceiling at all, a block restructured a few times went past IMPORT_LIMITS
+   with its retired days in it, and then its own backup would not restore —
+   plans/010's promise, broken by a 15th day. Those blocks are still in
+   people's storage and still have to come back, so this path allows twice
+   the limit: far past anything retiring and adding by hand grew a block
+   to, and still small enough that a crafted "backup" draws. The restore
+   path's ceilings stop a hang; they do not police a plan (plans/004). */
+const OWN_LIMITS = { days: IMPORT_LIMITS.days * 2, ex: IMPORT_LIMITS.ex * 2 };
+
 function txt(v, max) {
   return String(v == null || isObj(v) ? '' : v).replace(/\s+/g, ' ').trim().slice(0, max);
 }
@@ -5826,8 +5840,16 @@ $('pUpload').addEventListener('change', e => {
 
 /* Rows arrive from a camera or from a restored backup file, so they get the
    same treatment as any other imported data: bounded, coerced, never trusted
-   for length or type. */
-const LOG_LIMITS = { rows: 24, val: 12, slots: MAX_WEEKS * IMPORT_LIMITS.days };
+   for length or type.
+
+   `slots` is every week of every day of the biggest block any path
+   accepts — a restored one (OWN_LIMITS), retired days included, since a
+   retired day keeps its rows. reKeyImportedSlots stops reading at this
+   many keys, so sizing it off
+   IMPORT_LIMITS.days would let a block past fourteen days restore and then
+   drop its later sessions without a word. A shared block is fourteen days
+   at most and never comes near it. */
+const LOG_LIMITS = { rows: 24, val: 12, slots: MAX_WEEKS * OWN_LIMITS.days };
 /* A single exercise logging LOG_LIMITS.rows (24) sets in one session is
    already more than a real workout has; two orders of magnitude past that
    is not a long session, it is a row array padded to make every consumer

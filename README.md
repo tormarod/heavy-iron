@@ -336,6 +336,14 @@ or smuggle markup onto the screen:
 | `phase[w].r` / `.t` | 40 / 400 characters |
 | `weeks` | clamped to 1–16 · `deload` must fall inside it, or it's dropped |
 
+`days` and `day.ex` count retired days and exercises too, and the plan
+editor stops at the same two limits, so nothing the app saves goes past
+them. A backup or profile file — the app's own data coming back — is
+allowed twice both (`OWN_LIMITS` in `js/app.js`), because the editor did
+not always stop there and a backup the app wrote has to restore; a full
+backup carries at most 16 profiles and each profile 40 blocks
+(`PROFILE_LIMITS` in `js/profile-transfer.js`).
+
 `blocks/index.json` entries are checked too: `file` must be a plain
 `*.json` name with no path in it, so an entry in that list can only ever
 point at a file inside `blocks/`.

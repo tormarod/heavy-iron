@@ -1417,6 +1417,18 @@ training, and restore it later if you change your mind. If you would
 rather start clean, **+ Nuevo bloque** still copies the current plan
 into a new block and leaves this one's history where it is.
 
+A block holds at most 14 days, and a day at most 40 exercises, **retired
+ones included** — they are still part of the block, and they travel in
+every backup. The editor stops there so that whatever you save can always
+come back in, from a backup, a profile file, **Importar JSON** or a QR
+scan: **+ Añadir día** or **+ Añadir ejercicio** greys out with the
+reason underneath, and **Enviar a…** marks a full day *(completo)*. When
+retired items are what fills it, make room by deleting one under
+**Retirados** (its logged sets go with it), or start the next block with
+**+ Nuevo bloque**, which copies only what you train. A block that grew
+past the limit before the editor stopped there keeps working and still
+restores from its backups; it just can't grow any further.
+
 Two things still work the way they always did: **Borrar este día**
 clears one week's log for the day you are on, and **Borrar todos los
 datos** clears a profile's whole log while leaving the plans in place.
