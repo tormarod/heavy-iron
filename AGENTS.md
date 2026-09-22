@@ -540,10 +540,11 @@ or a write adopted from another tab (plans/060); depth and reload limits
 are in [Documented limits](#documented-limits--settled-decisions-not-bugs).
 Its dialog always promises `UNDO_PROMISE` — the one that still says "No
 se puede deshacer" is deleting a retired exercise's log in the plan
-editor, right to, since nothing snapshots that path until the editor's
-own save.
+editor, which is right to, since nothing snapshots that path until the
+editor's own save.
 
-The six: "Borrar este día" and "Guardar cambios" in the plan editor (unit
+The six, each tested through its real button with "Deshacer" pressed
+after: "Borrar este día" and "Guardar cambios" in the plan editor (unit
 "bootApp(): the shell booted for real, and its own handlers" and
 "\"Editar plan\" on a booted app: send, retire, erase, save", plans/052
 and plans/053), and "Borrar todos los datos", deleting a block, "Cargar
