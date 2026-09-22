@@ -308,20 +308,35 @@ restore and editor case stays green unchanged.
   (`renamedDayProbe`) is a *day* id, which this plan leaves alone.
 - A: `capSlug` is a local arrow beside `baseId`, not a shared helper; if
   `migrate()`'s slug is ever capped (above), lift it into `js/app.js`
-  beside `slugify`. The seven cases are eleven assertions: case 2 is
-  split into "the ids come back whole" and "each day's set is under its
-  own lift".
-- B: the booted cases read the status line straight after
-  "Guardar cambios" and before the clock moves — save()'s debounced write
-  replaces it with "Guardado hh:mm" — and fail if the line read is not the
-  save's own ("Plan actualizado…"), so an assertion of "no renombrado"
-  cannot pass on the wrong line. The "Enviar a…" case calls
-  `moveExToDay` directly (the handler's refusal check does not apply to a
-  day without that id). It guards the start-day lookup; it does not fail
-  under the id-only mutation on its own, since that mutation already fails
-  case 1.
+  beside `slugify`. Case 2 is split into "the ids come back whole" and
+  "each day's set is under its own lift", and a fifth assertion (from the
+  review) holds `capSlug`'s trailing-dash trim: a name of `x`×59 + " y" on
+  two days pastes as `x`×59 and `x`×59`-2`, not `x`×59`-` and
+  `x`×59`--2`. The `EX_FIELDS` comment on the `id` entry (`js/app.js`),
+  which said the importer holds a stated id to 60, now says a paste caps
+  at 60 and a restore keeps a stored id whole.
+- B: the booted cases drive the editor's own controls — the name and cue
+  boxes through their input handlers, "Enviar a…" through its select, which
+  asks `moveExRefusal` first, and a send the select refused fails the case
+  — and read the status line straight after "Guardar cambios", before the
+  clock moves (save()'s debounced write replaces it with "Guardado hh:mm"),
+  failing if the line read is not the save's own ("Plan actualizado…").
+  The plain "Enviar a…" case does NOT guard the start-day lookup: looked
+  up by the day an exercise is on now (`const from = e && d.id`) it still
+  passes, since a lone move lands where its id has no old name either way.
+  Two cases from the review do, each on a fresh boot: an exercise sent and
+  renamed in one save is exactly one rename (found under the day it
+  landed on, there was no old name, so none), and a swap with no rename —
+  Lunes' press to Sábado, Jueves' press to Lunes, Remo to Jueves — is none
+  (the copy that took Lunes compared with the name Lunes' copy had). Both
+  FAIL under that mutation; all seven FAIL under the id-alone one.
 - C: the two passes also change the insertion order of each day's map,
   which `normalizeImportedProfile` (`js/profile-transfer.js`, the
   `exIdMap` it builds for the `variants` part) walks first-wins across
   days. Raw ids now come first there too, the same rule; every existing
-  restore case is unchanged.
+  restore case is unchanged. The day half has its own case (from the
+  review): raw day ids `x`×61 and `x`×60 — the first is cut onto the
+  second's literal id and the second renamed — each keep their rows;
+  with only the day map interleaved, the second day's rows are dropped.
+- In all, sixteen `(plans/063)` assertions: five for A, seven for B, four
+  for C.
