@@ -2977,7 +2977,7 @@ ok('...and its energy', renamedDayProbe.renamed && renamedDayProbe.energy0 && re
 ok('...and a key that is no slot, or a week outside 1..MAX_WEEKS, is dropped rather than carried',
    renamedDayProbe.noteKeys.length === 2 && renamedDayProbe.energyKeys.length === 2, JSON.stringify(renamedDayProbe));
 
-console.log('\n== moveExLog / moveExRir / moveExOrder merge rather than overwrite (plans/008 items 1, 3) ==');
+console.log('\n== moveExerciseRecord merges rather than overwrites (plans/008 items 1, 3) ==');
 const moveProbe = call(`
   (function() {
     const profile = {
@@ -2988,35 +2988,31 @@ const moveProbe = call(`
       rir: { B: { 'w1-d0': { e1: '1' }, 'w1-d1': { e1: '0' } } },
       order: { B: { 'w1-d0': ['e1', 'e2'], 'w1-d1': ['e3'] } },
     };
-    moveExLog(profile, 'B', 'd1', 'd0', 'e1');
+    moveExerciseRecord(profile, 'B', 'd1', 'd0', 'e1');
     const mergedRows = profile.log.B['w1-d0'].e1;
     const sourceLogGone = !profile.log.B['w1-d1'] || !profile.log.B['w1-d1'].e1;
-
-    moveExRir(profile, 'B', 'd1', 'd0', 'e1');
     const rirKeptTheDestinations = profile.rir.B['w1-d0'].e1 === '1';
-
-    moveExOrder(profile, 'B', 'd1', 'd0', 'e1');
     const orderRemoved = profile.order.B['w1-d1'].indexOf('e1') < 0;
     const orderAdded = profile.order.B['w1-d0'].indexOf('e1') >= 0;
 
     /* Calling it again must be a no-op, not a second overwrite — the
        source has nothing left under this id after the first move. */
-    moveExLog(profile, 'B', 'd1', 'd0', 'e1');
+    moveExerciseRecord(profile, 'B', 'd1', 'd0', 'e1');
     const stillBothRows = profile.log.B['w1-d0'].e1.length === 2;
 
     return { mergedRows: JSON.stringify(mergedRows), sourceLogGone, rirKeptTheDestinations, orderRemoved, orderAdded, stillBothRows };
   })()
 `);
-ok('moveExLog concatenates the destination day\'s own rows with the moved ones, in order',
+ok('moveExerciseRecord concatenates the destination day\'s own rows with the moved ones, in order',
    JSON.parse(moveProbe.mergedRows).length === 2 &&
    JSON.parse(moveProbe.mergedRows)[0].w === '50' && JSON.parse(moveProbe.mergedRows)[1].w === '60',
    moveProbe.mergedRows);
 ok('...and empties the source rather than leaving a stale copy', moveProbe.sourceLogGone, JSON.stringify(moveProbe));
-ok('moveExRir never overwrites an RIR chip the destination already has',
+ok('...never overwrites an RIR chip the destination already has',
    moveProbe.rirKeptTheDestinations, JSON.stringify(moveProbe));
-ok('moveExOrder drops the id from the source day\'s recorded order', moveProbe.orderRemoved, JSON.stringify(moveProbe));
+ok('...drops the id from the source day\'s recorded order', moveProbe.orderRemoved, JSON.stringify(moveProbe));
 ok('...and appends it to the destination\'s', moveProbe.orderAdded, JSON.stringify(moveProbe));
-ok('calling moveExLog again after the move destroys nothing (idempotent once the source is empty)',
+ok('calling moveExerciseRecord again after the move destroys nothing (idempotent once the source is empty)',
    moveProbe.stillBothRows, JSON.stringify(moveProbe));
 
 /* "Enviar a otra sesión" used to move the log, the chips and the order but
@@ -3029,7 +3025,7 @@ const moveObjProbe = call(`
       'w3-D': { E: { v: 3, conf: 'baja', sets: [{ w: 42 }] } },
       'w3-D2': { E: { v: 3, conf: 'media', sets: [{ w: 99 }] } },
     } } };
-    moveExObj(p, 'B', 'D', 'D2', 'E');
+    moveExerciseRecord(p, 'B', 'D', 'D2', 'E');
     return {
       moved: p.obj.B['w2-D2'] && p.obj.B['w2-D2'].E ? p.obj.B['w2-D2'].E.conf : null,
       sourceGone: !p.obj.B['w2-D'] || p.obj.B['w2-D'].E === undefined,
@@ -3038,7 +3034,7 @@ const moveObjProbe = call(`
     };
   })()
 `);
-ok('moveExObj files the objetivo record under the destination day and empties the source',
+ok('moveExerciseRecord files the objetivo record under the destination day and empties the source',
    moveObjProbe.moved === 'alta' && moveObjProbe.sourceGone, JSON.stringify(moveObjProbe));
 ok('...and never overwrites a record the destination day already has',
    moveObjProbe.destinationKept === 'media' && moveObjProbe.sourceGoneWeek3, JSON.stringify(moveObjProbe));
@@ -3046,11 +3042,11 @@ ok('...and never overwrites a record the destination day already has',
 /* `obj` is the second map keyed by exercise under the slot, and it was added
    after both sweeps were written: "borrar registro" used to leave the
    objetivo record standing over rows that no longer exist (plans/025). */
-ok('purgeExLog drops the objetivo record with the rows and the chip', call(`
+ok('purging one lift drops the objetivo record with the rows and the chip', call(`
   (function () {
     const p = { log: { B: { 'w2-D': { E: [{ w: '40', r: '10', done: true }] } } },
                 rir: { B: { 'w2-D': { E: '1' } } }, obj: { B: { 'w2-D': { E: { v: 3, sets: [] } } } } };
-    purgeExLog(p, 'B', 'D', 'E');
+    purgeRecord(p, 'B', { day: 'D', exercise: 'E' });
     return !p.log.B['w2-D'] || p.log.B['w2-D'].E === undefined ? (p.obj.B['w2-D'] === undefined || p.obj.B['w2-D'].E === undefined) : false;
   })()
 `) === true);
@@ -3086,11 +3082,7 @@ const peSaveProbe = call(`
     draft.days.forEach(day => {
       day.ex.forEach(ex => {
         const from = originalDay.get(ex);
-        if (from && from !== day.id) {
-          moveExLog(profile, 'B', from, day.id, ex.id);
-          moveExRir(profile, 'B', from, day.id, ex.id);
-          moveExOrder(profile, 'B', from, day.id, ex.id);
-        }
+        if (from && from !== day.id) moveExerciseRecord(profile, 'B', from, day.id, ex.id);
       });
     });
 
@@ -4044,7 +4036,7 @@ console.log('\n== the log key has one reader as well as one builder (plans/009 i
   })()`);
   ok('...and narrows to one week when asked', oneWeek === 'w2-d1', oneWeek);
 
-  /* purgeSessionMeta's onlyWeek is optional, and the sweep this replaced read
+  /* purgeRecord's week is optional, and the sweep this replaced read
      it with a plain truthiness check. A null that narrowed to nothing would
      purge nothing, silently. */
   const nullWeek = call(`(function () {
@@ -4133,20 +4125,20 @@ console.log('\n== "borrar registro" reaches a week past the cap (plans/009 item 
                 rir: { b1: { 'w17-d1': { e1: 2 } } },
                 notes: { b1: { 'w17-d1': 'x' } },
                 energy: { b1: {} }, order: { b1: { 'w17-d1': ['e1'] } } };
-    purgeDayLog(p, 'b1', 'd1');
+    purgeRecord(p, 'b1', { day: 'd1' });
     return [Object.keys(p.log.b1).join(','), Object.keys(p.rir.b1).length,
             Object.keys(p.notes.b1).length, Object.keys(p.order.b1).length].join('|');
   })()`);
-  ok('purgeDayLog takes the w17 rows, the chips, the note and the order with it, and leaves the other day alone',
+  ok('purging a day takes the w17 rows, the chips, the note and the order with it, and leaves the other day alone',
      left === 'w3-d2|0|0|0', left);
 
   const ex = call(`(function () {
     const p = { log: { b1: { 'w17-d1': { e1: [{}], e2: [{}] } } },
                 rir: { b1: { 'w17-d1': { e1: 2, e2: 3 } } } };
-    purgeExLog(p, 'b1', 'd1', 'e1');
+    purgeRecord(p, 'b1', { day: 'd1', exercise: 'e1' });
     return Object.keys(p.log.b1['w17-d1']).join(',') + '|' + Object.keys(p.rir.b1['w17-d1']).join(',');
   })()`);
-  ok('purgeExLog reaches the same week, and takes only its own exercise', ex === 'e2|e2', ex);
+  ok('purging one lift reaches the same week, and takes only its own exercise', ex === 'e2|e2', ex);
 
   /* The editor's purge confirmation quotes these counts, and the purges above
      delete every week the day has. A count that stopped at MAX_WEEKS told
@@ -4165,22 +4157,22 @@ console.log('\n== "borrar registro" reaches a week past the cap (plans/009 item 
 
   const moved = call(`(function () {
     const p = { log: { b1: { 'w17-d1': { e1: [{ w: 1 }] } } } };
-    moveExLog(p, 'b1', 'd1', 'd2', 'e1');
+    moveExerciseRecord(p, 'b1', 'd1', 'd2', 'e1');
     return JSON.stringify(p.log.b1);
   })()`);
-  ok('moveExLog carries a week past the cap across to the other day',
+  ok('moveExerciseRecord carries a week past the cap across to the other day',
      moved === '{"w17-d2":{"e1":[{"w":1}]}}', moved);
 
-  /* moveExOrder's two halves are independent: the destination day can have a
+  /* The session order's move has two independent halves: the destination day can have a
      recorded order in a week the source day has no entry for at all, and the
      exercise still has to join it. Walking only the source's weeks would
      miss that, which is why it walks the weeks either day has. */
   const order = call(`(function () {
     const p = { order: { b1: { 'w1-d1': ['e1', 'e2'], 'w1-d2': ['e9'], 'w17-d2': ['e9'] } } };
-    moveExOrder(p, 'b1', 'd1', 'd2', 'e1');
+    moveExerciseRecord(p, 'b1', 'd1', 'd2', 'e1');
     return JSON.stringify(p.order.b1);
   })()`);
-  ok('moveExOrder drops the id from the source order and appends it to the destination, in every week either has',
+  ok('moving a lift drops its id from the source order and appends it to the destination, in every week either has',
      order === '{"w1-d1":["e2"],"w1-d2":["e9","e1"],"w17-d2":["e9","e1"]}', order);
 }
 
@@ -4570,12 +4562,12 @@ console.log('\n== the history cache: one read per question, dropped by the write
       p.log.A[slot(4, 'd1')] = { bp: [{ w: '70', r: '8', done: true, ts: Date.now() }] };  /* copyPrev + a tick, as one broad write */
       commit(); out.write = before !== read(p) && sessionsOf(p, ${Q}).length === 4;
       p = cacheFixture(); before = read(p);
-      delete p.log.A[slot(3, 'd1')]; purgeSessionMeta(p, 'A', 'd1', 3);  /* clearDay */
+      purgeRecord(p, 'A', { day: 'd1', week: 3 });  /* clearDay */
       commit(); out.clearDay = sessionsOf(p, ${Q}).length === 2;
       p = cacheFixture(); read(p);
-      purgeExLog(p, 'A', 'd1', 'bp'); commit(); out.purge = sessionsOf(p, ${Q}).length === 0;
+      purgeRecord(p, 'A', { day: 'd1', exercise: 'bp' }); commit(); out.purge = sessionsOf(p, ${Q}).length === 0;
       p = cacheFixture(); read(p);
-      moveExLog(p, 'A', 'd1', 'd2', 'bp'); commit(); out.move = sessionsOf(p, ${Q}).every(s => s.day === 'd2');
+      moveExerciseRecord(p, 'A', 'd1', 'd2', 'bp'); commit(); out.move = sessionsOf(p, ${Q}).every(s => s.day === 'd2');
       p = cacheFixture(); read(p);
       /* The plan editor lands a clone of the block: one set fewer makes the
          second logged set an extra one. */
@@ -4591,7 +4583,7 @@ console.log('\n== the history cache: one read per question, dropped by the write
       out.newBlock = sessionsOf(p, ${Q}).length === 4;
       deleteBlocks(p, ['B']); out.deleteBlock = sessionsOf(p, ${Q}).length === 3;
       p = cacheFixture(); read(p);
-      p.log = {}; p.rir = {}; commit(); out.wipe = sessionsOf(p, ${Q}).length === 0;
+      purgeRecord(p); commit(); out.wipe = sessionsOf(p, ${Q}).length === 0;
       return JSON.stringify(out);
     })()`));
     ok('every broad write is read at once: a written slot, clearDay, purge, move, the plan\'s set count, the deload week, a new and a deleted block, wipe',
@@ -4615,7 +4607,7 @@ console.log('\n== the history cache: one read per question, dropped by the write
       /* Undo puts back a snapshot of the whole state. */
       p = cacheFixture(); sessionsOf(p, ${Q});
       snapshotForUndo('x');
-      purgeExLog(p, 'A', 'd1', 'bp'); commit();
+      purgeRecord(p, 'A', { day: 'd1', exercise: 'bp' }); commit();
       out.purged = sessionsOf(getProfile(), ${Q}).length === 0;
       undoLast();
       out.undo = sessionsOf(getProfile(), ${Q}).length === 3;

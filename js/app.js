@@ -147,41 +147,37 @@ function parseSlot(k) {
    convention; this is the one that does not have to.
 
    safeKey is what the hand-written version was missing: a block id is a key
-   on five maps, and `__proto__` is a name a hand-edited file can carry
-   (plans/008 item 2). Returns false when it refuses, so a caller cannot
-   file a block and quietly lose its rows.
+   on every part of the profile's record filed by block, and `__proto__` is
+   a name a hand-edited file can carry (plans/008 item 2). Returns false
+   when it refuses, so a caller cannot file a block and quietly lose its
+   rows.
 
    normalizeImportedProfile deliberately does not come through here: it
    walks the *sender's* keys and re-keys every map afterwards, so it is a
    normalization pass over an untrusted object, not an install into a live
    profile. See plans/009 item 5.
 
-   `obj` is deliberately absent from the list: the record of what the rule
-   asked for travels only with a whole profile (normalizeImportedProfile),
-   never with a block share. Nothing produces one — neither the pasted JSON
-   nor the QR "plan + registro" payload carries it — and nothing ever will:
-   the receiving phone recomputes the objetivo from the log it is sent, and
-   a record it did not show is not its record to hold (decision,
-   plans/025). */
+   Which parts a block carries is RECORD_PARTS' `travelsWithBlock`, and
+   each part's entry there says why it does or does not. Then each part's
+   `install` hook: a phone on an older shell still sends the legacy RIR map
+   beside the log (blockShareRir), so a block arriving by QR or by paste
+   gets the same fold a block already on disk got on load. */
 function installBlockData(profile, blockId, data) {
   const id = safeKey(blockId);
   if (!id) return false;
   const d = data || {};
-  ['log', 'rir', 'order', 'notes', 'energy'].forEach(name => {
-    if (!d[name]) return;
-    if (!profile[name]) profile[name] = {};
-    profile[name][id] = d[name];
+  RECORD_PARTS.forEach(part => {
+    if (!part.travelsWithBlock || !d[part.name]) return;
+    if (!profile[part.name]) profile[part.name] = {};
+    profile[part.name][id] = d[part.name];
   });
-  /* A phone on an older shell still sends the legacy RIR map beside the log
-     (blockShareRir), so a block arriving by QR or by paste gets the same
-     fold a block already on disk got on load. */
-  foldRirMap(profile, id);
+  RECORD_PARTS.forEach(part => { if (part.install) part.install(profile, id); });
   return true;
 }
 
-/* Walk the slots one block of one of the four parallel maps actually holds,
-   in no particular order: fn(key, week, dayId, value), narrowed by `filter`
-   on dayId, week, or both.
+/* Walk the slots one block of one part of the profile's record actually
+   holds (any part keyed by slot, see RECORD_PARTS), in no particular order:
+   fn(key, week, dayId, value), narrowed by `filter` on dayId, week, or both.
 
    The sweeps this replaces rebuilt every *possible* key from 1 to MAX_WEEKS
    and looked each one up, which made "borrar registro" quietly mean "up to
@@ -206,6 +202,257 @@ function forEachSlot(map, blockId, fn, filter) {
     if (f.week != null && s.week !== f.week) return;
     fn(key, s.week, s.dayId, blk[key]);
   });
+}
+
+/* ---------- the profile's record ----------
+   Seven maps sit beside a profile's blocks and together make up its record
+   (CONTEXT.md, "the profile's record"). Nothing used to say so in one
+   place: the list was written out by hand at every purge, move, install and
+   repair, about eighteen copies, and each copy left out a different map
+   with no comment saying whether that was a decision or a slip. A part
+   added later had to be found in all of them, and a missed one was data
+   left behind by "borrar" or lost on "enviar a…", silently.
+
+   So this table is the list. Each entry says how its part is keyed, which
+   is what decides what every operation below does to it:
+
+     'slot+exercise'  blockId → slot → exId → value. A purge of one lift
+                      reaches inside the slot; a move carries the value
+                      to the other day, merging as `merge` says.
+     'slot'           blockId → slot → value. About the session, not one
+                      lift, so a purge of one lift leaves it and a move
+                      does not carry it (unless the part has its own hook).
+     'exercise'       exId → value, with no block above it. Not filed
+                      under any block, so no purge or move reaches it.
+
+   `travelsWithBlock` is what installBlockData files when a block arrives
+   by paste or QR. A hook (`move`, `purgeExercise`, `install`, `repair`)
+   only where a part is special, and its comment says why.
+
+   Adding an eighth part is one entry here. The operations below, the guard
+   test in test/unit.js and the tests that loop over this table pick it up.
+   Import, share and restore still validate each part by hand (plans/046
+   left them out), so a new part needs its own step there; only the orphan
+   pass in normalizeImportedProfile takes its list from this table. */
+const RECORD_PARTS = Object.freeze([
+  /* The sets logged, every row of every session. The record itself; every
+     other part describes something about it. */
+  { name: 'log', keyedBy: 'slot+exercise', merge: 'concat', travelsWithBlock: true },
+
+  /* The legacy one-chip RIR, one value per session, read as a fallback and
+     never written a value again since plans/035. It still travels with a
+     block because a phone on an older shell sends it beside the log
+     (blockShareRir), and it is folded onto the rows wherever it arrives:
+     on install for that block, on every load for all of them. It is
+     cleared with the sets it belonged to, down to one lift: a chip left
+     behind with no set under it is invisible until the day comes back and
+     shows a RIR nobody recorded. A chip the destination already has is
+     kept on a move, since two single values cannot be merged without
+     picking a side. */
+  {
+    name: 'rir', keyedBy: 'slot+exercise', merge: 'keep-destination', travelsWithBlock: true,
+    install: (profile, blockId) => foldRirMap(profile, blockId),
+    /* On every load rather than behind a version gate: the fold is
+       idempotent and costs one pass over a map most profiles barely have,
+       and a gate that skipped it would be one more thing to be wrong about.
+       The fallback read in getRir and readSession means a skipped fold is a
+       slower reader, not data loss. */
+    repair: profile => Object.keys(profile.rir).forEach(bk => foldRirMap(profile, bk)),
+  },
+
+  /* The session note and the energy: free text about the day, and how the
+     lifter arrived at it. They describe the session rather than a set, so
+     they are keyed by slot alone, and unlike a value under an exercise they
+     do not quietly become unreadable when the sets go: a note would still
+     be sitting there when the day came back. Whatever clears a session's
+     sets clears these too; clearing one lift does not.
+
+     They do not travel with a block: no share has ever carried them, and
+     no caller of installBlockData passes them. */
+  { name: 'notes', keyedBy: 'slot' },
+  { name: 'energy', keyedBy: 'slot' },
+
+  /* The session order: the ids of a slot's exercises in the order they were
+     actually done, kept only when that differs from the plan's. Absent
+     means "in the order the plan asks for", which is most sessions. */
+  {
+    name: 'order', keyedBy: 'slot', travelsWithBlock: true,
+    /* Clearing one lift's sets leaves its id in the order, on purpose: the
+       order describes the session, not the sets, and "borrar registro" on
+       one lift does not un-reorder the day. The stored ids are resolved
+       against the plan when read (orderedEx), so an id
+       whose lift has left the day simply drops out. */
+    purgeExercise() {},
+    /* An order is a permutation of a day's exercises, not a map keyed by
+       exercise id, so it needs its own move: drop the id from the source
+       day's recorded order (if it had one) and append it to the
+       destination's (if it has one). A day with no recorded order keeps
+       meaning "the plan's order", which already includes the exercise
+       wherever it now sits in the plan, so there is nothing to add there. */
+    move(profile, blockId, fromDayId, toDayId, exId) {
+      const blk = profile.order[blockId];
+      if (!blk) return;
+      /* The two halves are independent — the destination day can have a
+         recorded order in a week the source day has no entry for at all,
+         and the exercise still has to join it — so this walks the weeks
+         *either* day has, not just the source's. */
+      const weeks = new Set();
+      forEachSlot(profile.order, blockId, (k, w, d) => { if (d === fromDayId || d === toDayId) weeks.add(w); });
+      weeks.forEach(w => {
+        const fromKey = slot(w, fromDayId), toKey = slot(w, toDayId);
+        const fromIds = blk[fromKey];
+        if (Array.isArray(fromIds)) {
+          const i = fromIds.indexOf(exId);
+          if (i >= 0) fromIds.splice(i, 1);
+          if (!fromIds.length) delete blk[fromKey];
+        }
+        const toIds = blk[toKey];
+        if (Array.isArray(toIds) && toIds.indexOf(exId) < 0) toIds.push(exId);
+      });
+    },
+    /* A slot that is not a list of distinct, usable ids cannot be drawn in
+       any order, so it goes: the plan's order is the safe reading. */
+    repair(profile) {
+      Object.keys(profile.order).forEach(bk => {
+        const blk = profile.order[bk];
+        if (!blk || typeof blk !== 'object' || Array.isArray(blk)) { delete profile.order[bk]; return; }
+        Object.keys(blk).forEach(k => {
+          const ids = blk[k];
+          if (!Array.isArray(ids)) { delete blk[k]; return; }
+          const seen = new Set();
+          blk[k] = ids.filter(id => typeof id === 'string' && safeKey(id) && !seen.has(id) && seen.add(id)).slice(0, ORDER_LIMIT);
+          if (!blk[k].length) delete blk[k];
+        });
+      });
+    },
+  },
+
+  /* The objetivo record: the target the rule put on screen for a lift in a
+     slot, written once when the session starts. It is the only thing that
+     can tell a back-off the plan asked for from a weight that had to come
+     off. Keyed by exercise under the slot like the log, so a purge of one
+     lift reaches it; a record left behind would outlive the sets it
+     described and, if the id came back on that day, block the real one
+     (recordTarget writes once). The destination's own record is kept on a
+     move: it describes the session that was actually shown there.
+
+     It never travels with a block (decision, plans/025): the receiving
+     phone recomputes the objetivo from the log it is sent, and a record it
+     did not show is not its record to hold. It moves only with a whole
+     profile. */
+  { name: 'obj', keyedBy: 'slot+exercise', merge: 'keep-destination' },
+
+  /* The variants: the names an exercise has had, each with the date it
+     started (exId → [{ n, since }]). Keyed by exercise id rather than by
+     block, because an exercise is renamed in ONE block and the history the
+     objetivo gathers crosses all of them.
+
+     They survive "borrar todo el registro" and deleting a block, on
+     purpose: they are the plan's naming history, not what was lifted, and
+     the log keeps no copy of the name a session was done under, so a
+     variant thrown away cannot be rebuilt. */
+  {
+    name: 'variants', keyedBy: 'exercise',
+    /* After the blocks are repaired (ensureRecord runs last in migrate),
+       because the lateral-raise seed reads the name each of its three
+       slots is carrying right now. */
+    repair(profile) {
+      Object.keys(profile.variants).forEach(exId => {
+        const list = profile.variants[exId];
+        if (!Array.isArray(list)) { delete profile.variants[exId]; return; }
+        const clean = list.filter(v => v && typeof v === 'object' && !isObj(v.since) && VARIANT_SINCE_RE.test(String(v.since)))
+          .map(v => ({ n: txt(v.n, IMPORT_LIMITS.exName) || '', since: String(v.since) }))
+          .slice(-VARIANT_LIMIT);
+        if (clean.length) profile.variants[exId] = clean; else delete profile.variants[exId];
+      });
+      seedLateralVariants(profile);
+    },
+  },
+].map(part => Object.freeze(part)));
+
+/* Clear part of the profile's record, the one way every "borrar" does it:
+
+     purgeRecord(profile)                              whole profile (wipe)
+     purgeRecord(profile, blockId)                     one block's (deleteBlocks)
+     purgeRecord(profile, blockId, { day })            one day, every week
+     purgeRecord(profile, blockId, { day, week })      one week of one day (clearDay)
+     purgeRecord(profile, blockId, { day, exercise })  one lift on one day, every week
+
+   A day walks every week the day actually has rather than the block's
+   length, on purpose: a block shortened from 12 weeks to 6 still has rows
+   filed under weeks 7-12, and "borrar registro" has to mean all of it,
+   including a week above MAX_WEEKS from a hand-edited or older backup (see
+   forEachSlot).
+
+   The whole profile gets fresh empty maps, not a sweep: everything the
+   sheet promises, not just the sets. The legacy RIR chips used to survive
+   a wipe, invisibly, but still on disk after you asked for them to be
+   gone. */
+function purgeRecord(profile, blockId, scope) {
+  const s = scope || {};
+  RECORD_PARTS.forEach(part => {
+    if (part.keyedBy === 'exercise') return;
+    if (blockId == null) { profile[part.name] = {}; return; }
+    const map = profile[part.name];
+    if (!map) return;
+    if (s.day == null) { delete map[blockId]; return; }
+    const blk = map[blockId];
+    if (!blk) return;
+    if (s.exercise != null) {
+      if (part.purgeExercise) { part.purgeExercise(profile, blockId, s); return; }
+      if (part.keyedBy !== 'slot+exercise') return;
+      forEachSlot(map, blockId, (k, w, d, v) => { if (v) delete v[s.exercise]; }, { dayId: s.day, week: s.week });
+      return;
+    }
+    forEachSlot(map, blockId, k => delete blk[k], { dayId: s.day, week: s.week });
+  });
+}
+
+/* "Send to another session" in the plan editor: the exercise moves between
+   draft days right away, but everything filed under the session it was in
+   stays there until the draft is saved. This is what makes that filing
+   catch up, across every week the day actually has.
+
+   Merges into the destination's existing entry for the id rather than
+   overwriting it: a block can carry the same exercise id on two days by
+   design (see migrate()'s day/exercise-id repair), so the destination can
+   already have its own entry, and blindly assigning would erase it. How
+   is each part's `merge`. Either way nothing is ever destroyed by calling
+   this, including calling it twice, which peSave cannot do today but a
+   future bug easily could. */
+function moveExerciseRecord(profile, blockId, fromDayId, toDayId, exId) {
+  RECORD_PARTS.forEach(part => {
+    const map = profile[part.name];
+    if (!map || !map[blockId]) return;
+    if (part.move) { part.move(profile, blockId, fromDayId, toDayId, exId); return; }
+    if (part.keyedBy !== 'slot+exercise') return;
+    const blk = map[blockId];
+    forEachSlot(map, blockId, (fromKey, w, d, from) => {
+      if (!from || from[exId] === undefined) return;
+      const toKey = slot(w, toDayId);
+      if (!blk[toKey]) blk[toKey] = {};
+      const dest = blk[toKey];
+      const v = from[exId];
+      if (part.merge === 'concat' && Array.isArray(v)) {
+        dest[exId] = dest[exId] ? dest[exId].concat(v) : v;
+      } else if (dest[exId] === undefined) {
+        dest[exId] = v;
+      }
+      delete from[exId];
+      if (!Object.keys(from).length) delete blk[fromKey];
+    }, { dayId: fromDayId });
+  });
+}
+
+/* migrate()'s share: give every part the shape the app expects, then run
+   each part's own repair. Absent is the normal case for most of them —
+   every backup written before v3 lacks obj and variants — so a part that is
+   missing, or not an object, starts empty rather than failing the load. */
+function ensureRecord(profile) {
+  RECORD_PARTS.forEach(part => {
+    if (!profile[part.name] || typeof profile[part.name] !== 'object') profile[part.name] = {};
+  });
+  RECORD_PARTS.forEach(part => { if (part.repair) part.repair(profile); });
 }
 
 let uidN = 0;
@@ -359,58 +606,6 @@ function migrate() {
 
     if (!profile.label) profile.label = seed.label;
     if (ACCENTS.indexOf(profile.theme) < 0 && !legacyAccent(profile.theme)) profile.theme = seed.theme;
-    if (!profile.log || typeof profile.log !== 'object') profile.log = {};
-    if (!profile.rir || typeof profile.rir !== 'object') profile.rir = {};
-    /* The record is `row.rir` since plans/035; this map is what every
-       session logged before it has. Folded onto the rows here rather than
-       behind a version gate: the fold is idempotent and costs one pass over
-       a map most profiles barely have, and a gate that skipped it would be
-       one more thing to be wrong about — the fallback read in getRir and
-       readSession means a skipped fold is a slower reader, not data loss. */
-    Object.keys(profile.rir).forEach(bk => foldRirMap(profile, bk));
-    /* Two more parallel maps with the same blockId → slot shape as `rir`,
-       and absent by default for the same reason. Unlike RIR they describe
-       the *session* rather than a set, which is why they are keyed by slot
-       alone with no exercise under them. */
-    if (!profile.notes || typeof profile.notes !== 'object') profile.notes = {};
-    if (!profile.energy || typeof profile.energy !== 'object') profile.energy = {};
-    /* A third one with the same shape, holding an array of exercise ids
-       rather than a string — the order the session was actually done in.
-       See getOrder/setOrder: absent means "in the order the plan asks
-       for", which is the overwhelming majority of sessions. */
-    if (!profile.order || typeof profile.order !== 'object') profile.order = {};
-    /* A sixth map with the `rir` shape — blockId → slot → exId — holding
-       the target this rule actually put on the screen that session. It is
-       the only thing that can tell a back-off the plan asked for from a
-       weight that had to come off, and the only way to measure the rule's
-       own error instead of assuming it. Written by the session view, read
-       by nothing that matters yet, and absent in every backup written
-       before v3, so every reader has to cope with it missing. */
-    if (!profile.obj || typeof profile.obj !== 'object') profile.obj = {};
-    /* Keyed by exercise id rather than by block: an exercise is renamed in
-       ONE block and the history the target rule gathers crosses all of
-       them, so the record of "this is a different lift from here on" has
-       to live where the id does. */
-    if (!profile.variants || typeof profile.variants !== 'object') profile.variants = {};
-    Object.keys(profile.variants).forEach(exId => {
-      const list = profile.variants[exId];
-      if (!Array.isArray(list)) { delete profile.variants[exId]; return; }
-      const clean = list.filter(v => v && typeof v === 'object' && !isObj(v.since) && VARIANT_SINCE_RE.test(String(v.since)))
-        .map(v => ({ n: txt(v.n, IMPORT_LIMITS.exName) || '', since: String(v.since) }))
-        .slice(-VARIANT_LIMIT);
-      if (clean.length) profile.variants[exId] = clean; else delete profile.variants[exId];
-    });
-    Object.keys(profile.order).forEach(bk => {
-      const blk = profile.order[bk];
-      if (!blk || typeof blk !== 'object' || Array.isArray(blk)) { delete profile.order[bk]; return; }
-      Object.keys(blk).forEach(k => {
-        const ids = blk[k];
-        if (!Array.isArray(ids)) { delete blk[k]; return; }
-        const seen = new Set();
-        blk[k] = ids.filter(id => typeof id === 'string' && safeKey(id) && !seen.has(id) && seen.add(id)).slice(0, ORDER_LIMIT);
-        if (!blk[k].length) delete blk[k];
-      });
-    });
     if (!profile.blocks || typeof profile.blocks !== 'object' || !Object.keys(profile.blocks).length) {
       profile.blocks = seed.blocks;
       profile.blockOrder = seed.blockOrder.slice();
@@ -491,9 +686,12 @@ function migrate() {
       });
     });
 
-    /* After the blocks are repaired, because it reads the name each of the
-       three slots is carrying right now. */
-    seedLateralVariants(profile);
+    /* The profile's record last, after the blocks are repaired: the
+       variants' repair seeds the lateral raises from the name each of the
+       three slots is carrying right now. Nothing above reads a part of
+       the record, so creating them here rather than first changes
+       nothing. */
+    ensureRecord(profile);
   });
 
   /* Whatever happened above, the app cannot draw with no profile at all. */
@@ -2242,7 +2440,8 @@ function parkedRows(profile, blockId, w, dayId, exId, n) {
 }
 
 /* The count the plan editor quotes before "borrar registro", so it walks
-   exactly what purgeExLog/purgeDayLog walk: every week the day has. It used
+   exactly what purgeRecord walks for a day or one lift on it: every week
+   the day has. It used
    to rebuild keys 1..MAX_WEEKS, and a week filed above the cap was deleted
    by the purge without ever having been counted in the warning. */
 function loggedSets(profile, blockId, dayId, exId) {
@@ -2263,143 +2462,6 @@ function weeksBeyondEnd(profile, block) {
     Object.keys(s || {}).forEach(exId => { if (Array.isArray(s[exId])) n += s[exId].filter(rowUsed).length; });
   });
   return n;
-}
-
-/* These walk every week the day actually has rather than the block's length,
-   on purpose: a block shortened from 12 weeks to 6 still has rows filed under
-   weeks 7-12, and "borrar registro" has to mean all of it. They used to walk
-   1..MAX_WEEKS for the same reason, which was the same intention with a cap
-   on it — a key above the cap, from a hand-edited or older backup, was left
-   behind to reappear if the block was ever lengthened again. */
-function purgeExLog(profile, blockId, dayId, exId) {
-  purgeRir(profile, blockId, dayId, exId);
-  purgeObj(profile, blockId, dayId, exId);
-  forEachSlot(profile.log, blockId, (k, w, d, s) => { if (s) delete s[exId]; }, { dayId: dayId });
-}
-
-function purgeDayLog(profile, blockId, dayId) {
-  purgeRir(profile, blockId, dayId);
-  purgeSessionMeta(profile, blockId, dayId);
-  const blk = profile.log[blockId];
-  forEachSlot(profile.log, blockId, k => delete blk[k], { dayId: dayId });
-}
-
-/* The session-level maps are keyed by slot alone, with no exercise under
-   them, so unlike `rir` they do not quietly become unreadable when the
-   sets they belonged to go: a note — or an order that says you started with
-   the third exercise — would still be sitting there when the day came back.
-   Whatever clears a session's sets clears these too. */
-function purgeSessionMeta(profile, blockId, dayId, onlyWeek) {
-  [profile.notes, profile.energy, profile.order, profile.obj].forEach(map => {
-    const blk = map && map[blockId];
-    if (!blk) return;
-    forEachSlot(map, blockId, k => delete blk[k], { dayId: dayId, week: onlyWeek });
-  });
-}
-
-/* `rir` and `obj` are the two parallel maps keyed by exercise under the slot,
-   so each needs its own sweep: purgeSessionMeta cannot reach inside a slot,
-   and a chip left behind with no set under it is invisible until the day
-   comes back and shows a RIR nobody recorded. */
-function purgeRir(profile, blockId, dayId, exId) {
-  const blk = profile.rir && profile.rir[blockId];
-  if (!blk) return;
-  forEachSlot(profile.rir, blockId, (k, w, d, s) => {
-    if (!s) return;
-    if (exId) delete s[exId];
-    else delete blk[k];
-  }, { dayId: dayId });
-}
-
-/* The same sweep for the objetivo record: it is the other map keyed by
-   exercise under the slot, and a record left behind after "borrar
-   registro" outlives the sets it described — and, if the id is ever reused
-   on that day, blocks the real record (recordTarget writes once). */
-function purgeObj(profile, blockId, dayId, exId) {
-  const blk = profile.obj && profile.obj[blockId];
-  if (!blk) return;
-  forEachSlot(profile.obj, blockId, (k, w, d, s) => {
-    if (!s) return;
-    if (exId) delete s[exId];
-    else delete blk[k];
-  }, { dayId: dayId });
-}
-
-/* "Send to another session" in the plan editor: the exercise moves between
-   draft days right away, but everything filed under the session it was in —
-   the log, the RIR chips (moveExRir), the objetivo record (moveExObj) and
-   the session order (moveExOrder, below) — stays there until the draft is
-   saved. This is what makes that filing catch up, across every week the
-   block could have.
-
-   Merges into the destination's existing entry for the id rather than
-   overwriting it: a block can carry the same exercise id on two days by
-   design (see migrate()'s day/exercise-id repair), so the destination can
-   already have its own rows for this id, and blindly assigning would erase
-   them. An array (a day's logged rows) is concatenated; anything else (an
-   RIR chip, an objetivo record) is left alone if the destination already
-   has one, since there is no way to merge two single values without
-   picking a side — and for a record that is what it wants anyway: the
-   destination day's own record describes the session that was actually
-   shown there. Either way
-   nothing is ever destroyed by calling this — including calling it twice,
-   which peSave cannot do today but a future bug easily could. */
-function moveExKeyed(map, blockId, fromDayId, toDayId, exId) {
-  const blk = map[blockId];
-  if (!blk) return;
-  forEachSlot(map, blockId, (fromKey, w, d, from) => {
-    if (!from || from[exId] === undefined) return;
-    const toKey = slot(w, toDayId);
-    if (!blk[toKey]) blk[toKey] = {};
-    const dest = blk[toKey];
-    if (Array.isArray(from[exId])) {
-      dest[exId] = dest[exId] ? dest[exId].concat(from[exId]) : from[exId];
-    } else if (dest[exId] === undefined) {
-      dest[exId] = from[exId];
-    }
-    delete from[exId];
-    if (!Object.keys(from).length) delete blk[fromKey];
-  }, { dayId: fromDayId });
-}
-
-function moveExLog(profile, blockId, fromDayId, toDayId, exId) {
-  moveExKeyed(profile.log, blockId, fromDayId, toDayId, exId);
-}
-
-function moveExRir(profile, blockId, fromDayId, toDayId, exId) {
-  moveExKeyed(profile.rir, blockId, fromDayId, toDayId, exId);
-}
-
-function moveExObj(profile, blockId, fromDayId, toDayId, exId) {
-  moveExKeyed(profile.obj, blockId, fromDayId, toDayId, exId);
-}
-
-/* Order arrays are a permutation of a day's exercises, not a map keyed by
-   exercise id like log/rir are, so they need their own move: drop the id
-   from the source day's recorded order (if it had one) and append it to
-   the destination's (if it has one). A day with no recorded order keeps
-   meaning "the plan's order", which already includes the exercise wherever
-   it now sits in the plan, so there is nothing to add there. */
-function moveExOrder(profile, blockId, fromDayId, toDayId, exId) {
-  const blk = profile.order[blockId];
-  if (!blk) return;
-  /* The two halves are independent — the destination day can have a recorded
-     order in a week the source day has no entry for at all, and the exercise
-     still has to join it — so this walks the weeks *either* day has, not
-     just the source's. */
-  const weeks = new Set();
-  forEachSlot(profile.order, blockId, (k, w, d) => { if (d === fromDayId || d === toDayId) weeks.add(w); });
-  weeks.forEach(w => {
-    const fromKey = slot(w, fromDayId), toKey = slot(w, toDayId);
-    const fromIds = blk[fromKey];
-    if (Array.isArray(fromIds)) {
-      const i = fromIds.indexOf(exId);
-      if (i >= 0) fromIds.splice(i, 1);
-      if (!fromIds.length) delete blk[fromKey];
-    }
-    const toIds = blk[toKey];
-    if (Array.isArray(toIds) && toIds.indexOf(exId) < 0) toIds.push(exId);
-  });
 }
 
 /* Everything logged anywhere in a block — the number that decides whether
@@ -4468,9 +4530,11 @@ $('clearDay').onclick = async () => {
   });
   if (!okd) return;
   snapshotForUndo('Borrado ' + day.name + ', semana ' + profile.week + '.');
-  if (profile.log[block.id]) delete profile.log[block.id][slot(profile.week, day.id)];
-  if (profile.rir[block.id]) delete profile.rir[block.id][slot(profile.week, day.id)];
-  purgeSessionMeta(profile, block.id, day.id, profile.week);
+  /* This week only, as the sheet says, and every part of the session with
+     its sets: the note, the energy and the order are keyed by slot alone,
+     so unlike a value under an exercise they would still be sitting there
+     when the day came back. */
+  purgeRecord(profile, block.id, { day: day.id, week: profile.week });
   commit();
   mark('Día borrado');
 };
@@ -4484,15 +4548,10 @@ $('wipe').onclick = async () => {
   });
   if (!okd) return;
   snapshotForUndo('Borrado todo el registro de ' + profile.label + '.');
-  /* Everything the sheet promises, not just the sets: the RIR chips used
-     to survive this, invisibly (nothing reads one without the sets it
-     belonged to) but still on disk after you asked for them to be gone. */
-  profile.log = {};
-  profile.rir = {};
-  profile.notes = {};
-  profile.energy = {};
-  profile.order = {};
-  profile.obj = {};
+  /* Everything the sheet promises, not just the sets (see purgeRecord).
+     The plan stays, as the sheet says, and so do the variants, its naming
+     history: their entry in RECORD_PARTS says why. */
+  purgeRecord(profile);
   commit();
   mark('Registro de ' + profile.label + ' borrado');
 };

@@ -70,15 +70,15 @@ function deleteBlocks(profile, ids) {
 
   snapshotForUndo(drop.size === 1 ? 'Bloque eliminado.' : drop.size + ' bloques eliminados.');
 
-  /* The log is not the only thing filed under a block id: rir, notes,
-     energy, order and obj are five parallel maps with the same blockId key,
-     and nothing reads one without the block it belonged to. Leaving them
-     behind grows the log forever with data no screen can ever show — on a
-     storage backend the browser may evict when the phone fills up. */
+  /* The log is not the only thing filed under a block id: every part of
+     the profile's record keyed by slot is too, and nothing reads one
+     without the block it belonged to. Leaving them behind grows the record
+     forever with data no screen can ever show — on a storage backend the
+     browser may evict when the phone fills up. purgeRecord drops them all;
+     the variants stay, and their entry in RECORD_PARTS says why. */
   drop.forEach(id => {
     delete profile.blocks[id];
-    [profile.log, profile.rir, profile.notes, profile.energy, profile.order, profile.obj]
-      .forEach(map => { if (map) delete map[id]; });
+    purgeRecord(profile, id);
   });
   profile.blockOrder = keep;
   if (drop.has(profile.activeBlock)) {
@@ -1131,28 +1131,24 @@ function wireBlockEditor() {
        the one that needs the same one-level undo every other destructive
        action in this sheet already gets. */
     snapshotForUndo('Plan actualizado.');
-    /* Catch the real log, RIR chips and session order up on any "enviar
-       a…" moves made while the sheet was open, before anything below reads
-       or purges them by session id. Merges into whatever the destination
-       day already has rather than overwriting it — the same id can live on
-       two days by design, so this can run more than once on the same
-       exercise without losing either day's history. */
+    /* Catch the profile's record up on any "enviar a…" moves made while
+       the sheet was open (the log, the legacy RIR chips, the objetivo
+       record and the session order: moveExerciseRecord), before anything
+       below reads or purges it by session id. Merges into whatever the
+       destination day already has rather than overwriting it — the same
+       id can live on two days by design, so this can run more than once on
+       the same exercise without losing either day's history. */
     peDraftBlock.days.forEach(day => {
       day.ex.forEach(ex => {
         const from = peDraftOriginalDay.get(ex);
-        if (from && from !== day.id) {
-          moveExLog(profile, peDraftBlock.id, from, day.id, ex.id);
-          moveExRir(profile, peDraftBlock.id, from, day.id, ex.id);
-          moveExObj(profile, peDraftBlock.id, from, day.id, ex.id);
-          moveExOrder(profile, peDraftBlock.id, from, day.id, ex.id);
-        }
+        if (from && from !== day.id) moveExerciseRecord(profile, peDraftBlock.id, from, day.id, ex.id);
       });
     });
     /* The only path that erases logged sets, and only the ones explicitly
        confirmed in "Retirados". */
     peDraftPurge.forEach(p => {
-      if (p.exId) purgeExLog(profile, peDraftBlock.id, p.dayId, p.exId);
-      else purgeDayLog(profile, peDraftBlock.id, p.dayId);
+      if (p.exId) purgeRecord(profile, peDraftBlock.id, { day: p.dayId, exercise: p.exId });
+      else purgeRecord(profile, peDraftBlock.id, { day: p.dayId });
     });
     /* An exercise whose NAME changed is a different lift from today on —
        "Elevaciones laterales en polea" became "Elevaciones en Y en polea
