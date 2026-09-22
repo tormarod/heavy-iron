@@ -103,4 +103,91 @@ least two deliberate breaks are caught.
 
 ## Maintenance notes
 
-(Filled in when the PR lands.)
+DONE, in the form the plan describes — no walk had already been moved by
+054 or 056 (the drift check's diff was their deload-span/RIR-per-day and
+Diagnóstico-rows-in-app.js changes, none of it touching these five), so
+all five moved and both parameters went.
+
+`sessionVolume(sets)` sits beside `readSession`; its unit test builds
+random sessions through `readSession` itself (not hand-built `sets`
+arrays) so the comparison exercises the real integration, not a second
+copy of the arithmetic — 200 trials, 1-4 rows each, drops/lb/empty/NaN,
+max diff under 1e-6.
+
+Step B's five commits: `blockTonnageByWeek` (with decision 4's raw-mode
+removal, since a function that always converts and a function you can
+still ask to convert are one edit, not two); `volumeTotals('log', …)`,
+one sessionsOf query per exercise `dayList`/`exList` still shows, unlike
+`blockTonnageByWeek` which asks unfiltered (a retired exercise's sets
+count for tonnage, not for this week's adherence); the block review's
+`doneSets` and energy comparison together, since both are raw walks
+inside `buildBlockReview` and the table's own "Where" column names both
+locations under the one row — `doneSets` was already correctly bounded
+by hand, so only the energy walk's output changes (decision 3's first
+visible fix); `trainedDays`, which had no bound at all, not even the one
+`doneSets` had (decision 3's second fix); `landingNote`, scoped like
+`volumeTotals`. `collectHistory`'s cap came out in its own commit, since
+it was already on sessionsOf and only lost a parameter. Every walk with
+no prior test (`volumeTotals`, `trainedDays`, `landingNote`) got one; the
+two decision-3 fixes got a unit test each, extending the plans/050
+stranded-week fixture for the review's case rather than a new one.
+
+**Step D equivalence.** Two vm contexts (origin/main and the branch),
+300 random profiles (100 with a stranded week, 200 without), comparing
+`blockTonnageByWeek`, `volumeTotals('log', …)` over every in-range week,
+`buildBlockReview`, `trainedDays` and `landingNote`. Compared with a
+relative-epsilon deep-equal, not JSON string equality — summing the same
+kilos through `sessionVolume`'s reduce instead of a raw-row reduce is not
+associative at double precision, and the first run's "differences" were
+all noise in the 13th significant digit before that fix.
+
+Counts: `blockTonnageByWeek`, `volumeTotals`, `landingNote` and
+`buildBlockReview` minus its `.energy` field — identical on all 300
+trials, stranded or not. `.energy` — identical on 243, differs on the
+other 57, every one of them a stranded trial. `trainedDays` — identical
+on 200, differs on all 100 stranded ones. Zero differences fell outside
+what decision 3 allows, and zero appeared on a plain block. `weeks`
+in `volumeTotals`'s probe was bounded to the block's own length, not the
+stranded fixture's longer `maxLogWeek` — the same reasoning collectHistory's
+own removed parameter rests on: `profile.week` is clamped to
+`blockWeeks(block)` by `drawApp` before any sheet can read it, so a week
+beyond that is not a question the app ever asks this function, and
+probing it anyway produced a difference that told me nothing about a
+real caller.
+
+Two deliberate breaks, patched into a third context built from the
+working tree, to show the harness would have caught a real regression
+and "zero unexpected differences" is not a vacuous result: reverting
+`blockTonnageByWeek` to `weeks: 'logged'` (folding a stranded week into
+week 1 instead of dropping it) was flagged on 18/60 mutant trials;
+flipping `sessionVolume`'s drop sign (`- drops` instead of `+ drops`) was
+flagged on 57/60, starting at trial 0 on a plain block. Both caught.
+
+**Two smoke fixtures needed more than the signature change.** Both
+`blockTonnageByWeek` unit-style cases construct a bare `{ log: {...} }`
+profile with no `.blocks` — harmless for the old raw walk, but
+`sessionsOf` resolves the block from `profile.blocks[id]` regardless of
+what the caller already has in hand, so both needed `blocks: { tb: block
+}` added. The same two cases run inside "main session," which picks lb
+at first-run setup and never switches back — `blockTonnageByWeek` always
+converts now (the raw mode these two never asked for is exactly what
+went), so their kg fixture read back at 220.46/440.92 lb instead of the
+100/200 the assertions name; pinned `state.prefs.units = 'kg'` for the
+call and restored it after, since the point of both is the week bound
+and the retired exercise, not the unit. Separately, "once an earlier
+week carries kilos the strip splits into block and week" writes straight
+into `profile.log` the way most of this file's fixtures do — harmless
+against the old raw walk, but this profile had already been asked its
+history earlier in the same session, so the write left `blockTonnageByWeek`
+reading sessionsOf's cache stale without `logChanged()`.
+
+**Verification.** `node test/unit.js`: 1140 passed (was 1136 before this
+plan's four new tests plus one adapted). `node test/smoke.js` (full —
+`test/smoke.js` itself changed): 584 passed, 0 failed, on a static server
+at :8805. Both STOP conditions checked and clear: no non-stranded trial
+differed, and both removed parameters left their one real caller's
+result unchanged.
+
+No deviations from decisions 1-4.
+
+See PR (number filled in by the orchestrator once opened).
