@@ -3495,7 +3495,11 @@ function drawApp() {
         ? 'Hay 1 serie registrada en semanas por encima de las ' + blockWeeks(block) + ' que tiene ahora el bloque. Se guarda: alarga el bloque en "Editar plan" para volver a verla.'
         : 'Hay ' + stranded + ' series registradas en semanas por encima de las ' + blockWeeks(block) + ' que tiene ahora el bloque. Se guardan: alarga el bloque en "Editar plan" para volver a verlas.')
     : '';
-  $('beyond').style.display = stranded ? 'block' : 'none';
+  /* .hidden, not .style.display, on all four notes in this file — see the
+     rule at openAsk: they ship with the attribute, and an inline display
+     over it left every one permanently [hidden] in the DOM while visibly
+     on screen (plans/041). */
+  $('beyond').hidden = !stranded;
 
   drawSessionFoot(profile, days);
 }
@@ -4186,7 +4190,7 @@ function drawOrderNote(profile, block, day, sessionEx) {
   if (!host) return;
   const changed = !sameIds(sessionEx.map(e => e.id), exList(day).map(e => e.id));
   host.innerHTML = '';
-  host.style.display = changed ? 'flex' : 'none';
+  host.hidden = !changed;
   if (!changed) return;
   const txtEl = document.createElement('span');
   txtEl.textContent = 'Orden cambiado: empezaste por ' + sessionEx[0].n + '.';
@@ -4293,18 +4297,18 @@ function drawDeloadCheck(profile, block) {
      tick, and on any week that is not the one after the deload the only
      thing that walk can produce is display:none. */
   const dl = deloadWeek(block);
-  if (!dl || profile.week !== dl + 1) { el.style.display = 'none'; return; }
+  if (!dl || profile.week !== dl + 1) { el.hidden = true; return; }
   const d = deloadCheck(profile, block);
   /* Only where it is the news of the week — standing on the week after the
      deload. The block review carries it the rest of the time. */
-  if (!d) { el.style.display = 'none'; return; }
+  if (!d) { el.hidden = true; return; }
   const pct = (d.change > 0 ? '+' : d.change < 0 ? '−' : '') +
     String(Math.abs(Math.round(d.change * 10) / 10)).replace('.', ',') + ' %';
   el.textContent = (d.change >= 1 ? '✓ La descarga funcionó: ' : d.change <= -1 ? '⚠ Tras la descarga has bajado: ' : '→ Tras la descarga estás igual: ') +
     pct + ' respecto a la semana ' + d.before +
     ' (sobre ' + (d.n === 1 ? '1 ejercicio' : d.n + ' ejercicios') + ').';
   el.className = 'deload-check' + (d.change >= 1 ? ' good' : d.change <= -1 ? ' bad' : '');
-  el.style.display = 'block';
+  el.hidden = false;
 }
 
 /* ---------- the global brake, said out loud ----------
@@ -4315,10 +4319,10 @@ function drawDeloadCheck(profile, block) {
    it can never disagree. */
 function drawBrakeNote(profile, block) {
   const el = $('brakeNote');
-  if (!brakeCached(profile, block, profile.week, Date.now())) { el.style.display = 'none'; return; }
+  if (!brakeCached(profile, block, profile.week, Date.now())) { el.hidden = true; return; }
   el.textContent = 'Esta semana no sube nada: ' + BRAKE_COUNT +
     ' ejercicios han bajado a la vez. Mira sueño, comida o fatiga antes que el plan.';
-  el.style.display = 'block';
+  el.hidden = false;
 }
 
 /* ---------- day/data actions ---------- */
