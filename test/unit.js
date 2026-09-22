@@ -3519,6 +3519,32 @@ console.log('\n== the plan draft: saving erases exactly what "Borrar registro" c
   ok('bug 2: erasing a day that received an exercise takes that exercise\'s sets and the day\'s own slots, what the dialog counted, and nothing else',
      !bug2.threw && bug2.left.length === 0 && bug2.untouched && bug2.counted === 5 && bug2.erased === 5, JSON.stringify(bug2));
 
+  /* The other way round, and the reason an erased day's own slots are
+     cleared only after the moves: y leaves day B for A, then B is erased.
+     The dialog counts what B still holds; y's sets go to A with it. */
+  const leftFirst = tryCall(`(function () {
+    ${FIXTURE}
+    const p = fixture(false);
+    const setsBefore = blockLoggedSets(p, 'B');
+    const draft = openPlanDraft(p, p.blocks.B);
+    const [dA, dB] = draft.block.days;
+    moveExToDay(dB.ex[0], dB, dA);
+    dB.off = 1;
+    const counted = dialogCount(p, draft, { day: dB });
+    eraseFromDraft(draft, { day: dB });
+    applyPlanDraft(p, draft);
+    const rows = [];
+    forEachSlot(p.log, 'B', (k, w, d, s) => Object.keys(s || {}).forEach(id => (s[id] || []).forEach(r => { if (rowUsed(r)) rows.push(d + ':' + id + ':' + r.w); })));
+    return {
+      counted: counted, erased: setsBefore - blockLoggedSets(p, 'B'), rows: rows.sort(),
+      chip: ((p.rir.B || {})['w1-dA'] || {}).y || null, dayB: flat(p).filter(l => field(l, 1) === 'dB'),
+    };
+  })()`);
+  ok('an exercise sent away from a day that is then erased keeps its sets, on the day it went to: only what the day still held goes',
+     !leftFirst.threw && leftFirst.counted === 1 && leftFirst.erased === 1 && leftFirst.chip === '2+' && leftFirst.dayB.length === 0 &&
+     JSON.stringify(leftFirst.rows) === JSON.stringify(['dA:w:30', 'dA:x:50', 'dA:x:52', 'dA:y:60', 'dA:y:62', 'dC:u:40', 'dC:z:80']),
+     JSON.stringify(leftFirst));
+
   /* Decision 3's edge: the same id on days A and B, and B's copy erased.
      Whichever way the other copy's record is caught up — not at all, moved
      to a third day, or moved onto the very day being purged — A's copy
@@ -6279,6 +6305,129 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
     const x = a.split('\n'), y = b.split('\n'), i = x.findIndex((l, k) => l !== y[k]);
     return i < 0 ? x.length + ' lines against ' + y.length : 'line ' + (i + 1) + ': ' + x[i] + ' | whole shell: ' + y[i];
   };
+
+  /* The plan editor's own controls on a booted app (plans/053). Its rows
+     are built from innerHTML, and the fake document answers each selector
+     on a row with the element the editor bound its handler on, so these
+     are the real "Enviar a…", "Quitar", "Borrar registro" and "Guardar
+     cambios", found by the exercise's name in their box. */
+  console.log('\n== "Editar plan" on a booted app: send, retire, erase, save (plans/053) ==');
+  const planEditor = boot => {
+    const host = boot.$('peDays');
+    const days = () => host.children.filter(c => c.className === 'pe-day');
+    return {
+      row: (day, name) => days()[day].querySelector('.pe-exlist').children.find(r => r.querySelector('.f-n').value === name),
+      retired: name => {
+        const box = host.children.find(c => c.className === 'pe-retired');
+        return box ? box.children.find(r => r.querySelector('b').textContent === name) : undefined;
+      },
+    };
+  };
+  /* A press that asks: what the dialog said, then its answer, then the
+     press run to its end. A press that should not ask and does is
+     answered too, so a dialog nobody expected cannot leave the suite
+     waiting on it; what it said is handed back to fail on. */
+  const pressAnswering = async (boot, press, answer) => {
+    const pressing = press();
+    const asked = boot.call('!!askResolve') ? { title: boot.$('askT').textContent, body: boot.$('askBody').textContent } : null;
+    if (asked) boot.$(answer).onclick();
+    await pressing;
+    return asked;
+  };
+
+  /* Bug 1 through the real controls: the first exercise of day 1, logged
+     in week 1, is sent to day 2, retired there and erased. Its sets sit
+     under day 1 until the save, which is where the dialog counted them and
+     where the save has to erase them; the old one purged day 2, where
+     there was nothing, and every set stayed. */
+  {
+    const boot = settled(seeded({ week: 2, day: 0 }));
+    const read = booted => JSON.parse(booted.call(`JSON.stringify((function () {
+      const p = getProfile(), b = getBlock(), used = {};
+      forEachSlot(p.log, b.id, (k, w, d, s) => Object.keys(s || {}).forEach(id => {
+        const n = (Array.isArray(s[id]) ? s[id] : []).filter(rowUsed).length;
+        if (n) used[k + ' ' + id] = n;
+      }));
+      return { used: used, plan: b.days.map(d => d.ex.map(e => e.id)) };
+    })())`));
+    const x = JSON.parse(boot.call('JSON.stringify((({ id, n }) => ({ id, n }))(getBlock().days[0].ex[0]))'));
+    const setsOf = (used, own) => Object.keys(used).filter(k => (k.split(' ')[1] === x.id) === own).reduce((t, k) => t + used[k], 0);
+    const without = used => JSON.stringify(Object.keys(used).filter(k => k.split(' ')[1] !== x.id).sort().map(k => k + ' ' + used[k]));
+    const before = read(boot);
+    let err = '', retiring = null, erasing = null, saving = 'not pressed', closed = false;
+    try {
+      const ed = planEditor(boot);
+      boot.$('editPlan').onclick();
+      const send = ed.row(0, x.n).querySelector('.pe-move-sel');
+      send.value = boot.call('getBlock().days[1].id');
+      send.onchange();
+      retiring = await pressAnswering(boot, () => ed.row(1, x.n).querySelector('.e-del').onclick(), 'askOk');
+      erasing = await pressAnswering(boot, () => ed.retired(x.n).querySelector('.a-del').onclick(), 'askOk');
+      saving = await pressAnswering(boot, () => boot.$('peSave').onclick(), 'askOk');
+      closed = boot.call('peDraft === null') && !boot.$('planSheet').classList.contains('up');
+    } catch (e) { err = e.message; }
+    const after = read(boot);
+    const promised = erasing ? Number((/ y sus (\d+) series? registradas?\./.exec(erasing.body) || [])[1]) : NaN;
+    ok('"Enviar a…", "Quitar" and "Borrar registro" on the real editor, then "Guardar cambios": the exercise\'s sets are gone, as many as the dialog said',
+       !err && saving === null && !!retiring && closed && promised > 0 && promised === setsOf(before.used, true) &&
+       setsOf(after.used, true) === 0 && after.plan.every(d => d.indexOf(x.id) < 0),
+       err || JSON.stringify({ retiring, erasing, saving, closed, promised, before: setsOf(before.used, true), after: setsOf(after.used, true), plan: after.plan }));
+    ok('...and every other set is where it was', without(after.used) === without(before.used), without(after.used));
+    boot.clock.advance(1000);
+    const back = read(reopen(boot));
+    ok('...and save() writes it that way, as the next open reads it', JSON.stringify(back) === JSON.stringify(after), JSON.stringify(back));
+    let undoErr = '';
+    try { boot.$('toastAct').onclick(); } catch (e) { undoErr = e.message; }
+    ok('"Deshacer" on the toast the save leaves brings the sets and the exercise back',
+       !undoErr && JSON.stringify(read(boot)) === JSON.stringify(before), undoErr || JSON.stringify(read(boot)));
+  }
+
+  /* Bug 3 through the real button: the editor is open with a rename in
+     its draft when another tab's write arrives — one more set, written to
+     the storage both tabs share, and the 'storage' event this tab gets
+     for it. With nothing pending here the handler adopts it by replacing
+     the profile objects, so the draft was cut from one that is gone. */
+  {
+    const boot = settled(seeded({ week: 2, day: 0 }));
+    const key = boot.call('STORAGE_KEY');
+    const first = boot.call('getBlock().days[0].ex[0].n');
+    let err = '', adopted = false, asked = null, open = false;
+    const theirs = boot.saved();
+    const tp = theirs.profiles[theirs.activeProfile], tb = tp.blocks[tp.activeBlock], other = tb.days[1];
+    tp.log[tb.id]['w1-' + other.id] = { [other.ex[0].id]: [{ w: '70', r: '8', done: true, ts: BOOT_TIME - 3 * 864e5 }] };
+    const raw = JSON.stringify(theirs);
+    try {
+      boot.$('editPlan').onclick();
+      const mine = boot.call('getProfile()');
+      boot.type(planEditor(boot).row(0, first).querySelector('.f-n'), first + ' (otra máquina)');
+      boot.store[key] = raw;
+      boot.fire(boot.ctx.window, 'storage', { key: key, newValue: raw });
+      adopted = boot.call('getProfile()') !== mine;
+      asked = await pressAnswering(boot, () => boot.$('peSave').onclick(), 'askOk');
+      open = boot.$('planSheet').classList.contains('up') && boot.call('peDraft !== null');
+    } catch (e) { err = e.message; }
+    boot.clock.advance(1000);
+    ok('"Guardar cambios" on a draft cut before another tab\'s write was adopted refuses, says so, and leaves the sheet open',
+       !err && adopted && !!asked && asked.title === 'No se ha guardado' &&
+       asked.body === 'Los datos cambiaron en otra pestaña: vuelve a abrir el editor.' && open,
+       err || JSON.stringify({ adopted, asked, open }));
+    ok('...and writes nothing: the other tab\'s data stays as it wrote it, the rename is not saved, and there is no undo to offer',
+       boot.store[key] === raw && boot.call('getBlock().days[0].ex[0].n') === first && boot.call('undoSnapshot === null'),
+       JSON.stringify({ stored: boot.store[key] === raw, name: boot.call('getBlock().days[0].ex[0].n'), undo: boot.call('undoSnapshot === null') }));
+  }
+
+  /* The runtime half of rule 2's standing breach (RULE2_STANDING, near the
+     top): js/review.js builds the review on names only js/diagnostics.js
+     defines, so a precache hole that drops the one and keeps the other
+     leaves "Ver la revisión" throwing — and "+ Nuevo bloque" with it, since
+     the review is offered on the way to the new block's name. Every other
+     hole has to end where a whole shell does, with the block made: through
+     the review when js/review.js is there, straight to the name when it is
+     not (newBlock's typeof test). The files the review cannot open without
+     are read off the standing list, so fixing the breach there moves the
+     expectation here: the list only shrinks. */
+  console.log('\n== a precache hole: "+ Nuevo bloque" → "Ver la revisión" still makes the block (AGENTS.md rules 1 and 2) ==');
+  const reviewNeeds = new Set(RULE2_STANDING.filter(s => s.indexOf('js/review.js reads ') === 0).map(s => s.split(' from ')[1]));
   for (const file of GUARDED_SPLIT) {
     const boot = bootApp({ omit: [file], state: reviewState() });
     let threw = '', review = null;
