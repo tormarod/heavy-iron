@@ -286,6 +286,29 @@ const RECORD_PARTS = Object.freeze([
         return kept.length ? kept : undefined;
       }));
     },
+    /* No writer ever stores a lift's rows as anything but a list, or a row
+       as anything but a plain object — but storage does not enforce that,
+       and a tick that reached entry() over the wrong shape used to throw
+       inside the draw, landing on the recovery screen for data that was
+       repairable (plans/071). A non-list is dropped outright: nothing
+       reads it (sessionsOf, the CSV export and pruneLog all skip a lift
+       whose rows are not an array), so no set anyone could ever see is
+       lost. A bad row is replaced in place rather than filtered out, so a
+       real row after it keeps its own set number — the same empty row
+       entry() already pads a short list with. */
+    repair(profile) {
+      Object.keys(profile.log).forEach(bk => {
+        forEachSlot(profile.log, bk, (key, w, dayId, sl) => {
+          Object.keys(sl).forEach(exId => {
+            const rows = sl[exId];
+            if (!Array.isArray(rows)) { delete sl[exId]; return; }
+            rows.forEach((r, i) => {
+              if (!r || typeof r !== 'object' || Array.isArray(r)) rows[i] = { w: '', r: '', done: false };
+            });
+          });
+        });
+      });
+    },
   },
 
   /* The legacy one-chip RIR, one value per session, read as a fallback and
