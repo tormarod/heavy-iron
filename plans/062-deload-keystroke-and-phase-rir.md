@@ -344,3 +344,35 @@ two mutations.
   green. `node test/unit.js`: 1204 passed/0 failed before, 1206
   passed/0 failed after (two new cases). No CRLF introduced (checked with
   `node -e` per AGENTS.md, not Python). Bumped `v126` → `v127`.
+- Step B (executor): drift check against `b15ae87..origin/main` showed
+  only plan 059's `saysDescarga` change in `js/app.js`; `phaseRir` was
+  byte-identical to the excerpt, and 059's "parse on Safari 15" check was
+  on `main`. The rule is written as one exec loop over markers (a
+  consumed prefix group stands in for the lookbehind), with the checks
+  around each number as plain `if`s on `r.slice`. Two choices the plan
+  left open: (1) the decimal check after a number is done in code on the
+  greedy match, not as a lookahead inside the regex — a lookahead lets
+  `\d+` backtrack, so "RIR 10.5" would have read 1 and "RIR 2-3,5" 2; and
+  the check before a number is the hint's "not a digit, `.` or `,`", so
+  ".5 RIR" is refused (it is a decimal) and so is a number glued to a
+  full stop ("Semana dura.2 RIR" → null — the safe direction). (2) After
+  "RIR", "objetivo" and the one symbol may come in either order ("RIR:
+  objetivo 2" reads 2 as well as "RIR objetivo: 1-2"). The seed check
+  sweeps `genericPhase` to `MAX_WEEKS` (16 today) rather than a literal 16,
+  and fails if any of its three sources contributes nothing: it compares
+  16 seed, 19 published and 1,632 generic labels. The plan's Test plan
+  says 15 new fixed cases; its list has 16 (the table's nine plus seven
+  extras), and all 16 are in. Also touched, both in `test/unit.js`: the
+  section header gained "plans/062", and a comment in the targetFor
+  section that still said phaseRir reads "a number immediately next to
+  'RIR'" now says what it reads. Mutations: dropping the week-word check
+  FAILed "Semana 3 RIR 2" and "semana3 RIR 2" (both read 3); dropping the
+  whole-token check (prefix group and lookahead) FAILed "sufrir 2" (read
+  2); a third, unasked, made a range read its upper end and the seed
+  check FAILed with 1,514 moved labels — it is not vacuous. All reverted.
+  `node test/unit.js`: 1208 passed/0 failed before, 1225 passed/0 failed
+  after (16 fixed cases and the seed check). Shapes still read the old
+  way, left alone because the table is the contract, and candidates for
+  new rows: "S3 RIR 2" reads 3 (`S` is not a week word), "2 a 3 RIR"
+  reads 3 (a range written with "a" is not a range), and the singular
+  "1 rep en reserva" / "1 repetición en reserva" is not a marker (null).
