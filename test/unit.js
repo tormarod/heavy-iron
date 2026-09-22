@@ -69,6 +69,47 @@ ok('sw.js reads the cache via fromCache, not bare caches.match',
    !swSrc.includes('caches.match('),
    'found bare caches.match( in sw.js');
 
+/* On 2026-09-22, plan 054 (c7aaee4) shipped a regex lookbehind in
+   js/app.js. Safari does not parse lookbehind before 16.4, and a regex
+   literal the engine cannot read is a SyntaxError for the whole file —
+   js/app.js never ran, the page sat on "Cargando tu registro…" forever,
+   and even the recovery screen (which lives in that same file) was out of
+   reach. Plan 059 removed that one line and wrote the floor down: Safari
+   15 / iOS 15. This list is of features, not a compiler: it catches a
+   slip back to a *known* newer one; something new and equally
+   unsupported is caught by review, and belongs on this list once found.
+   Line-based on purpose, like the id-dating section above — a comment
+   that trips a pattern is reworded, not special-cased. The regex `v`
+   flag (Safari 17) is left off: a line-based pattern for a flag letter
+   after a regex literal cannot be told from division. */
+console.log('\n== shipped scripts parse on Safari 15 (plans/059) ==');
+const safariFloorPatterns = [
+  { re: /\(\?<[=!]/, feature: 'regex lookbehind' },                  // Safari 16.4
+  { re: /\.at\(/, feature: 'Array/String.prototype.at' },            // Safari 15.4
+  { re: /\bObject\.hasOwn\b/, feature: 'Object.hasOwn' },            // Safari 15.4
+  { re: /\bstructuredClone\b/, feature: 'structuredClone' },         // Safari 15.4
+  { re: /\.findLast(Index)?\(/, feature: 'findLast/findLastIndex' }, // Safari 15.4
+  { re: /\.to(Sorted|Reversed|Spliced)\(/, feature: 'change-by-copy arrays' }, // Safari 16
+  { re: /\.with\(/, feature: 'Array.prototype.with' },                // Safari 16
+  { re: /\bstatic\s*\{/, feature: 'class static blocks' },            // Safari 16.4
+  { re: /\bArray\.fromAsync\b/, feature: 'Array.fromAsync' },         // Safari 16.4
+  { re: /\bPromise\.withResolvers\b/, feature: 'Promise.withResolvers' }, // Safari 17.4
+  { re: /\b(Object|Map)\.groupBy\b/, feature: 'groupBy' },            // Safari 17.4
+];
+const safariFloorHits = [];
+function scanForSafariFloor(file, src) {
+  src.split('\n').forEach((line, i) => {
+    safariFloorPatterns.forEach(p => {
+      if (p.re.test(line)) safariFloorHits.push(file + ':' + (i + 1) + '  ' + p.feature);
+    });
+  });
+}
+/* jsFiles is already js/*.js, non-recursive, js/vendor/ excluded. */
+jsFiles.forEach(f => scanForSafariFloor(f, fs.readFileSync(path.join(ROOT, f), 'utf8')));
+scanForSafariFloor('sw.js', swSrc);
+ok('no shipped script uses syntax newer than Safari 15 (plans/059)',
+   safariFloorHits.length === 0, safariFloorHits.join('; '));
+
 /* AGENTS.md's precache-hole rule "reads the same on ids": a file other than
    js/app.js can be served against an index.html older than itself, because
    sw.js's repairCache re-adds a missing URL from the server — the current
@@ -2170,7 +2211,8 @@ ok('...and ex.minRir still floors what the fallback came back with',
 
    (The plan's other motivating example, "Descarga 60%", is not usable for
    this comparison: the word "Descarga" already marks the week a deload
-   through DESCARGA_RE/deloadAt — plans/054, predating this plan — so
+   through saysDescarga/deloadAt — plans/054, predating this plan, renamed
+   from a lookbehind regex by plans/059 with no change in behaviour — so
    targetFor takes the deload branch before weekRir/phaseRir are ever
    reached, whatever number follows. That path is unrelated to this fix;
    see the Maintenance notes.) */
@@ -2399,6 +2441,36 @@ ok('deloadWeeks: "sin descarga" and "no descarga" do not count, whatever the cas
 ok('...and the same two directions hold for deloadAt, which is deloadWeeks\' own membership test',
    call(`deloadAt({ deload: 0, weeks: 8, phase: { 3: { r: 'Sin descarga, apretar' } } }, 3)`) === false &&
    call(`deloadAt({ deload: 0, weeks: 8, phase: { 3: { r: 'Descarga activa' } } }, 3)`) === true);
+
+/* plans/059: the lookbehind above used to answer this in one regex; Safari
+   only parses lookbehind from 16.4, so js/app.js replaced it with a loop
+   over the plain matches (saysDescarga). Node still understands
+   lookbehind, and this file is not scanned by the Step 3 syntax check
+   below (js/ and sw.js only), so the old regex is rebuilt right here as
+   the reference the loop must still agree with, over a large seeded
+   sample rather than the handful of cases above. A different seed from
+   the phaseRir fuzz further down, and its own block scope, so the two
+   generators never share state. */
+(function () {
+  let seed = 590922;
+  function rnd() { seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff; return seed / 0x7fffffff; }
+  const frags = ['descarga', 'Descarga', 'DESCARGA', 'sin', 'no', 'nos', 'casino',
+    ' ', '  ', ',', '-', 'semana', '2', 'RIR'];
+  const oldDescargaRe = /(?<!\b(?:sin|no)\s+)descarga/i;
+  const mismatches = [];
+  for (let i = 0; i < 2000; i++) {
+    const len = Math.floor(rnd() * 9);
+    const parts = [];
+    for (let j = 0; j < len; j++) parts.push(frags[Math.floor(rnd() * frags.length)]);
+    const s = parts.join('');
+    const expected = oldDescargaRe.test(s);
+    const actual = call('saysDescarga(' + JSON.stringify(s) + ')');
+    if (actual !== expected) mismatches.push({ s: s, expected: expected, actual: actual });
+  }
+  ok('saysDescarga answers exactly what the lookbehind it replaced answered, over 2,000 seeded labels (plans/059)',
+     mismatches.length === 0, JSON.stringify(mismatches.slice(0, 5)));
+})();
+
 ok('the default phase texts (js/data.js) still resolve "Descarga" as a deload week, unchanged by the negation rule',
    call(`deloadAt({ deload: 0, weeks: 8, phase: DEFAULT_PHASE_TU }, 8)`) === true &&
    call(`deloadAt({ deload: 0, weeks: 8, phase: DEFAULT_PHASE_PAREJA }, 8)`) === true &&
