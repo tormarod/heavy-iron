@@ -255,8 +255,14 @@ passes 1033/0.
 
 ### PR 2 — one history fixture (branch `claude/052-pr2`)
 
-**Drift.** Clean: main had not moved from `74a657c` (PR 1's merge), so
-"Current state" above is what this PR read.
+**Drift.** Clean at the start: main had not moved from `74a657c` (PR 1's
+merge), so "Current state" above is what this PR read. Main moved again
+before this PR committed — see the PASS-list diff below — and a second
+drift check (`git diff --stat 8142e33..90140b3 -- test/unit.js
+test/smoke.js js/ AGENTS.md`) after rebasing onto it showed only that
+PR's own known change (`js/diagnostics.js`'s rows into `js/app.js`,
+`RULE2_STANDING` retired with the breach it tracked) plus PR 1's; no
+further, unaccounted drift.
 
 **Step G, decision 5: done.** `targetProbe`, `brakeProbe`, `twoDayProbe`
 and `diagProbe` — the four that built a bare profile by hand — now build
@@ -286,10 +292,19 @@ former home. The `sessionsOf` section's own copy of both the function
 and its describing comment is gone; a one-line pointer stands in its
 place.
 
-**The PASS-list diff.** 1063 before, 1063 after, 0 failed either run,
-run twice more after the last edit for stability. `diff` of the full
-`PASS`/`FAIL` line list, before against after: empty — the same 1063
-names, in the same order, all `PASS`. No STOP condition fired.
+**The PASS-list diff.** Run twice against the branch's own base
+(`74a657c`, PR 1's merge): 1063 before, 1063 after, 0 failed either run.
+Main then moved out from under the branch mid-task — PR #153 landed
+"Move the Diagnóstico's rows into app.js" (10 new tests, `diagRows` and
+friends now in `js/app.js`) — so the branch was rebased onto the new tip
+(`90140b3`, clean, no conflicts) and re-verified there: 1073 before,
+1073 after, 0 failed either run, run twice more after the last edit for
+stability. `diff` of the full `PASS`/`FAIL` line list, before against
+after, both times: empty — the same names, in the same order, all
+`PASS`. No STOP condition fired. (`diagRows` moving files between the
+two runs is why the count itself differs from the branch's first
+verification; the diff each time was against that run's own before, not
+across the rebase.)
 
 **diagProbe's phase, and why it is not empty.** The other three probes
 carry no risk in translation: their bare profile's fields map onto the
