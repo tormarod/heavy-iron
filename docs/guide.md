@@ -1458,6 +1458,19 @@ the same file twice — the picker adds their position and creation date
 (`Bloque 1 (3) · 12 ago 26`) so you can tell which is which before
 deleting one.
 
+A profile holds at most **40 blocks**, and this is where room is made.
+The limit is what keeps every backup restorable, so every way of adding
+a block stops there: at 40, **+ Nuevo bloque**, **Importar JSON** (a
+paste or a block from the list), a block scanned by QR and the JSON
+pasted back into **Revisión del bloque** say so instead of adding one,
+and send you here — **+ Nuevo bloque** with a button that opens this
+sheet. Pasting every attempt at an AI-written block is the quick way to
+get there, and those attempts are easy to spot: the ones you never
+trained say *sin registro*, and deleting one takes no logged set with
+it. A profile that went past 40 before the limit existed keeps working
+and still restores from its backups; it just can't take another block
+until it is back under.
+
 ## Exporting the current plan as a template
 
 **Editar plan** also has **Descargar plan (JSON)**, next to **Guardar
@@ -1479,7 +1492,9 @@ Instead of building a training block by hand in the plan editor, you can
 generate one as JSON and import it via the **Importar JSON** row of the
 bar's **Plan** hub. It always imports into whichever profile
 (Hombre/Mujer) is currently selected, and never overwrites existing
-blocks or logged history — it just adds a new block.
+blocks or logged history — it just adds a new block, as long as the
+profile has room for one (at most 40; see
+[Deleting blocks](#deleting-blocks-you-no-longer-want)).
 
 Two ways to get JSON in:
 

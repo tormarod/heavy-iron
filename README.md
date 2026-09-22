@@ -340,9 +340,12 @@ or smuggle markup onto the screen:
 editor stops at the same two limits, so nothing the app saves goes past
 them. A backup or profile file — the app's own data coming back — is
 allowed twice both (`OWN_LIMITS` in `js/app.js`), because the editor did
-not always stop there and a backup the app wrote has to restore; a full
-backup carries at most 16 profiles and each profile 40 blocks
-(`PROFILE_LIMITS` in `js/profile-transfer.js`).
+not always stop there and a backup the app wrote has to restore. The
+same goes one level up: a profile holds at most 40 blocks, where **+ Nuevo
+bloque** and every import stop (`PROFILE_LIMITS.blocks` in
+`js/profile-transfer.js`), and a backup or profile file may bring back
+twice that per profile (`OWN_LIMITS.blocks`); a full backup carries at
+most 16 profiles (`PROFILE_LIMITS.profiles`).
 
 `blocks/index.json` entries are checked too: `file` must be a plain
 `*.json` name with no path in it, so an entry in that list can only ever

@@ -3057,8 +3057,25 @@ const IMPORT_LIMITS = { days: 14, ex: 40, name: 80, exName: 120, alt: 200, cue: 
    people's storage and still have to come back, so this path allows twice
    the limit: far past anything retiring and adding by hand grew a block
    to, and still small enough that a crafted "backup" draws. The restore
-   path's ceilings stop a hang; they do not police a plan (plans/004). */
-const OWN_LIMITS = { days: IMPORT_LIMITS.days * 2, ex: IMPORT_LIMITS.ex * 2 };
+   path's ceilings stop a hang; they do not police a plan (plans/004).
+
+   `blocks` is the same rule one level up, for the profile those files
+   carry (normalizeImportedProfile). "+ Nuevo bloque" and every import stop
+   at PROFILE_LIMITS.blocks (blocksFullNote, js/block-editor.js), and they
+   did not always stop either: each pasted attempt at an AI-written block
+   is a block of its own, nothing kept a profile from passing forty that
+   way, and its own backup then refused the 41st. Both halves, because
+   neither is the fix alone: the ceiling without this headroom leaves a
+   profile already past forty unable to come back from its own backup, and
+   the headroom without the ceiling only moves the refusal to the 81st
+   block, since nothing would stop the 81st being added. Nor can it be
+   unlimited, since this count is what keeps a crafted backup from walking
+   ten thousand blocks. Twice is safe because a restore walks a profile
+   block by block, so eighty costs twice what forty already could; and a
+   profile only ever passed forty by hand, one block at a time, so twice is
+   as many again. PROFILE_LIMITS is js/profile-transfer.js's, which loads
+   before this file and is in every shell (AGENTS.md). */
+const OWN_LIMITS = { days: IMPORT_LIMITS.days * 2, ex: IMPORT_LIMITS.ex * 2, blocks: PROFILE_LIMITS.blocks * 2 };
 
 function txt(v, max) {
   return String(v == null || isObj(v) ? '' : v).replace(/\s+/g, ' ').trim().slice(0, max);
