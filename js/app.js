@@ -1142,6 +1142,12 @@ let held = false;
    unload's forced flush, not a save() that sneaks in first. Cleared again if
    the page is still there a few seconds later (see the handler). */
 let discarding = false;
+/* Whether writeState turned a write away while `discarding`. If the reload
+   was stopped, that write was a change made on the page left standing, and
+   clearing `discarding` alone did not bring it back: the save() carrying it
+   had already been refused, so a tab closed before the next save() found
+   nothing pending and the change was lost. The handler's timer replays it. */
+let refusedWhileDiscarding = false;
 
 /* A failed setItem (quota, private-mode limits) used to be reported only in
    the footer #status line — easy to miss, and every later keystroke retries
@@ -1151,7 +1157,8 @@ let discarding = false;
 let quotaToastShown = false;
 
 function writeState(force) {
-  if (frozen || discarding) return;
+  if (frozen) return;
+  if (discarding) { refusedWhileDiscarding = true; return; }
   if (held && !force) return;
   if (held) {
     held = false;
@@ -1265,14 +1272,21 @@ window.addEventListener('storage', e => {
          it would ever make — a session logged into a tab that silently
          saved nothing. So it is cleared again once the page has plainly
          not gone, and whatever is written from then on starts from the
-         other tab's data, which is what "Recargar" chose. */
+         other tab's data, which is what "Recargar" chose — a change made
+         on it in the meantime included, which is saved then. */
       'Recargar', () => {
         adoptStored(readRaw());
         discarding = true;
         held = false;
         clearTimeout(saveT);
         saveT = null;
-        setTimeout(() => { discarding = false; }, 3000);
+        setTimeout(() => {
+          discarding = false;
+          if (refusedWhileDiscarding) {
+            refusedWhileDiscarding = false;
+            save();
+          }
+        }, 3000);
         location.reload();
       },
       'conflict'

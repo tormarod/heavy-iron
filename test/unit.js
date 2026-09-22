@@ -8137,6 +8137,26 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
          !err && written === 44, err || 'barWeight on disk: ' + written);
     }
 
+    /* A change made on that page inside the 3 s is refused like every other
+       write while `discarding` — and its save() does not come round again,
+       so a tab closed before the next one lost it. The timer that ends the
+       window writes it. */
+    {
+      const boot = settled(seeded({ week: 1, day: 0 }));
+      let err = '', got = null;
+      try {
+        conflict(boot);
+        boot.$('toastAct2').onclick();
+        boot.type(boot.$('sesNote'), 'tras recargar');
+        boot.clock.advance(3000);
+        boot.clock.advance(1000);
+        const s = boot.saved(), p = s.profiles[s.activeProfile], b = p.blocks[p.activeBlock];
+        got = { bar: s.prefs.barWeight, note: ((p.notes || {})[b.id] || {})['w1-' + b.days[0].id] || null };
+      } catch (e) { err = e.message; }
+      ok('a change made inside the 3 s after a stopped "Recargar" is written once they are up, on top of the other tab\'s data',
+         !err && !!got && got.bar === 22 && got.note === 'tras recargar', err || JSON.stringify(got));
+    }
+
     /* Hiding or closing the tab while the question is up forces this tab's
        write (flushSave's own choice: a set logged just before the phone is
        pocketed is never lost), which is "Quedarme con lo mío" answered. */

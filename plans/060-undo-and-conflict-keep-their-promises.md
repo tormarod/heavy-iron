@@ -551,12 +551,13 @@ two-tab cases stay green unchanged; optionally Step 5's smoke step.
       mío" answered.
     - "Recargar" adopts what storage holds first (`adoptStored`, shared
       with the `'storage'` listener), then discards and reloads, and
-      clears `discarding` 3 s later if the page is still alive. A residual
-      edge, not handled: a change made inside those 3 s is refused by
-      `writeState` and is written only by the next `save()` after it; if
-      the tab is closed before any, `flushSave` finds nothing pending and
-      it is lost. Reaching it needs the reload stopped and a change within
-      3 s.
+      clears `discarding` 3 s later if the page is still alive. A change
+      made inside those 3 s is refused by `writeState` like any other
+      write, and its `save()` does not come round again — so, as first
+      pushed, a tab closed before the next `save()` lost it. At the tech
+      lead's go-ahead, `writeState` now remembers a refusal
+      (`refusedWhileDiscarding`) and the 3 s timer calls `save()` when
+      there was one, writing the change on top of the adopted data.
     - Tests: eight more booted cases (12 more assertions) — Actualizar up
       then Deshacer at once and back after ✕; Actualizar arriving over the
       undo toast waits; Actualizar back after the question is answered;
@@ -564,7 +565,9 @@ two-tab cases stay green unchanged; optionally Step 5's smoke step.
       "Borrar este día"'s save delay, Deshacer back after "Quedarme" and
       still restoring; the same with a tick in between (no expired
       Deshacer); a forced write hides the question; a stopped "Recargar"
-      is on the other tab's data and saves again after 3 s. Case 5 now
+      is on the other tab's data and saves again after 3 s; and (the
+      follow-up) a note typed inside those 3 s is on disk once they are
+      up, on top of the other tab's data. Case 5 now
       makes a late *change* (barWeight 33) rather than a bare `save()`,
       because after the adopt a bare save would write the other tab's own
       data back and prove nothing. Case 6's order is note first, then
