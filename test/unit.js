@@ -64,6 +64,10 @@ ok('every js/ entry in SHELL exists on disk',
    shellFiles.filter(f => f.startsWith('js/')).every(f => fs.existsSync(path.join(ROOT, f))),
    JSON.stringify(shellFiles.filter(f => f.startsWith('js/') && !fs.existsSync(path.join(ROOT, f)))));
 
+ok('sw.js reads the cache via fromCache, not bare caches.match',
+   !swSrc.includes('caches.match('),
+   'found bare caches.match( in sw.js');
+
 /* WCAG 2.x contrast, computed from css/style.css's own hex values rather
    than eyeballed: sRGB -> linear -> relative luminance -> the ratio itself
    (ten lines, as plans/032 describes it). --soft's three backgrounds are

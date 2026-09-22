@@ -271,4 +271,23 @@ last session left it. If the guide does not describe it, add nothing.
 
 ## Maintenance notes
 
-_(one subsection per step, filled by its executor)_
+### B
+
+**What landed:**
+- Added `fromCache(name, key)` helper to `sw.js` to scope cache reads to the cache the branch names
+- Replaced all `caches.match()` calls with scoped reads using `fromCache`:
+  - `networkFirst` catch block: `caches.match(request)` → `fromCache(cacheName, request)`
+  - `cacheFirst` first read: `caches.match(request)` → `fromCache(cacheName, request)`
+  - Navigate branch: `caches.match('index.html')` → `fromCache(SHELL_CACHE, 'index.html')`
+  - Navigate fallback: both `caches.match()` calls → `fromCache(SHELL_CACHE, ...)`
+- Added sentence to navigate branch comment naming the route this closes
+- Added unit assertion in `test/unit.js` to verify `sw.js` contains no bare `caches.match(`
+
+**Deviations:** None. The plan was followed exactly.
+
+**Smoke sections tested:**
+- `aviso de versión nueva`: 7 passed
+- `offline`: 5 passed
+- `arranque roto: el guardián cambia al worker en espera` (hole repair): 6 passed
+
+All smoke tests passed without changes in outcome.
