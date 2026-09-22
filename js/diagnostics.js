@@ -337,8 +337,10 @@ function drawDiag() {
     const el = document.createElement('div');
     el.className = 'diag-row ' + r.trend;
     /* Two exercises can share a name (the same lateral raise on two days),
-       so the row carries the id it was computed from. */
+       so the row carries the id it was computed from — and the day, since
+       one lift planned on two days is two rows. */
     el.dataset.ex = r.id;
+    el.dataset.day = r.dayId;
     el.innerHTML =
       '<div class="diag-head">' +
         '<span class="diag-name"></span>' +
@@ -347,7 +349,10 @@ function drawDiag() {
       '<div class="diag-num"></div>' +
       '<div class="diag-read"></div>' +
       '<div class="diag-do"></div>';
-    el.querySelector('.diag-name').textContent = r.name;
+    /* The row's label names the day of a lift planned on two (plans/056).
+       A precache hole can pair this file with an app.js whose rows have no
+       label yet, and a row with no name is worse than one without its day. */
+    el.querySelector('.diag-name').textContent = r.label || r.name;
     el.querySelector('.diag-chip').textContent = DIAG_TRENDS[r.trend].label;
     el.querySelector('.diag-num').textContent = r.trend === 'none'
       ? (r.sessions === 0 ? 'sin sesiones registradas'
