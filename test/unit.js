@@ -2487,19 +2487,22 @@ console.log('\n== decision 1 (plans/054): deloadWeek is read nowhere but app.js\
      seen === 2, seen + ': ' + JSON.stringify(fixture));
 }
 /* deloadWeek(block) stays only as: app.js's own deloadWeeks (which folds
-   the field into the union), and the editor's field accessor —
-   renderDeloadOptions and peWeeks.oninput, both in js/block-editor.js. Any
-   other read is one of the seven that plans/054 moved onto deloadWeeks or
+   the field into the union), and the editor's one field accessor —
+   renderDeloadOptions, in js/block-editor.js. peWeeks.oninput used to read
+   it too (a dead check: deloadWeek already answers 0 once the deload no
+   longer fits, so `> block.weeks` never both differed and mattered), but
+   plans/062 dropped that line along with the write it guarded. Any other
+   read is one of the seven that plans/054 moved onto deloadWeeks or
    deloadAt, or a new one just like them. */
 /* In SHELL_SCRIPTS order (block-editor.js before app.js), so the two
    JSON.stringify calls below agree on key order too. */
-const DELOAD_WEEK_ALLOWED = { 'js/block-editor.js': 2, 'js/app.js': 1 };
+const DELOAD_WEEK_ALLOWED = { 'js/block-editor.js': 1, 'js/app.js': 1 };
 const deloadWeekReads = {};
 SHELL_SCRIPTS.forEach(f => {
   const n = (codeOnly(shellSrc[f]).match(/\bdeloadWeek\s*\(/g) || []).length;
   if (n) deloadWeekReads[f] = n;
 });
-ok('deloadWeek( is called only in app.js\'s own deloadWeeks and the editor\'s two field reads — nowhere else in js/',
+ok('deloadWeek( is called only in app.js\'s own deloadWeeks and the editor\'s one field read — nowhere else in js/',
    JSON.stringify(deloadWeekReads) === JSON.stringify(DELOAD_WEEK_ALLOWED),
    JSON.stringify(deloadWeekReads));
 
@@ -7424,6 +7427,54 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
     ok('...and writes nothing: the other tab\'s data stays as it wrote it, the rename is not saved, and there is no undo to offer',
        boot.store[key] === raw && boot.call('getBlock().days[0].ex[0].n') === first && boot.call('undoSnapshot === null'),
        JSON.stringify({ stored: boot.store[key] === raw, name: boot.call('getBlock().days[0].ex[0].n'), undo: boot.call('undoSnapshot === null') }));
+  }
+
+  /* The weeks box's oninput used to write the deload select's value into
+     the draft on every keystroke, not just once the field was committed.
+     Typing "10" passes through "1" on the way there — Playwright's fill()
+     sends one event and missed this, a real keystroke does not — and the
+     deload list for a one-week block has no week 8, so the deload was
+     quietly zeroed while the block was still an 8-week one underneath.
+     Two keys, one boot.type() call each so each fires its own 'input'
+     the way a keystroke does, then the 'change' that commits the field
+     (plans/062). */
+  {
+    const boot = settled(seeded({ week: 2, day: 0 }));
+    let err = '', saving = null;
+    try {
+      if (boot.call('deloadWeek(getBlock())') !== 8) throw new Error('fixture is not an 8-week block with its deload on week 8');
+      boot.$('editPlan').onclick();
+      boot.type(boot.$('peWeeks'), '1');
+      boot.type(boot.$('peWeeks'), '10');
+      boot.fire(boot.$('peWeeks'), 'change');
+      saving = await pressAnswering(boot, () => boot.$('peSave').onclick(), 'askOk');
+    } catch (e) { err = e.message; }
+    boot.clock.advance(1000);
+    const got = { weeks: boot.call('getBlock().weeks'), deload: boot.call('getBlock().deload'), deloadWeeks: boot.call('JSON.stringify(deloadWeeks(getBlock()))') };
+    ok('typing 10 into an 8-week block\'s weeks box, one key at a time, keeps the week-8 deload (plans/062)',
+       !err && got.weeks === 10 && got.deload === 8 && got.deloadWeeks === '[8]',
+       err || JSON.stringify(got));
+  }
+
+  /* The same keystrokes, but shortening the block below its own deload
+     week: this is the genuine case renderDeloadOptions()/syncDraftFromForm
+     already handle by clearing the deload, and it must keep doing so —
+     oninput no longer writing the draft's deload must not be mistaken for
+     oninput never clearing it (plans/062). */
+  {
+    const boot = settled(seeded({ week: 2, day: 0 }));
+    let err = '', saving = null;
+    try {
+      boot.$('editPlan').onclick();
+      boot.type(boot.$('peWeeks'), '6');
+      boot.fire(boot.$('peWeeks'), 'change');
+      saving = await pressAnswering(boot, () => boot.$('peSave').onclick(), 'askOk');
+    } catch (e) { err = e.message; }
+    boot.clock.advance(1000);
+    const got = { weeks: boot.call('getBlock().weeks'), deload: boot.call('getBlock().deload') };
+    ok('shortening an 8-week block to 6, below its week-8 deload, still clears the deload (plans/062)',
+       !err && got.weeks === 6 && got.deload === 0,
+       err || JSON.stringify(got));
   }
 
   /* "Enviar a…" onto a day that already holds the same id. One lift on two
