@@ -560,4 +560,43 @@ end the suite (see how those sections wrap their bodies in `try`).
     caller of `migrate()` with no guard. Its input is this tab's own
     snapshot of a state that was already migrated, so a throw there would
     be an app bug, not damaged data.
+- **Step A (`claude/071-a`), deviations and findings:**
+  - **No deviations from A.1/A.2's target shapes.** The repair is the
+    plan's own target shape verbatim; the tests are the four cases as
+    described, in the two locations named.
+  - **Case 4's "second part of the section" gets no console.log of its
+    own.** The plan quotes one heading, for the top of the section; case 4
+    sits in the booted area under whatever heading precedes it there
+    ("adoptStored migrates before it commits (plans/067 B)"), marked
+    instead by a comment naming it as this section's case 4. Its own two
+    `ok()` names still say "(plans/071)".
+  - **The `__proto__` fixture (case 3) is built differently from plan
+    067 case 6's.** `{ __proto__: x }` as an object literal sets the
+    prototype rather than creating an own key, so case 6 writes its JSON
+    fixture by hand, brace by brace. `{ ['__proto__']: x }` — a *computed*
+    property name — does create a genuine own key (checked directly: it
+    round-trips through JSON.stringify/JSON.parse as an ordinary
+    `"__proto__"` key, same as case 6's hand-written text), so case 3
+    builds the fixture as a normal object with a placeholder key and a
+    one-line text swap after `JSON.stringify`. No hand-counted braces, same
+    fixture shape.
+  - **Case 4 does not need to guard the boot itself.** `render()` already
+    wraps `drawApp()` in its own try/catch (`js/app.js`, unrelated to this
+    plan) and calls `showRecovery` on a throw, so a draw that throws over
+    damaged log rows lands the boot on the recovery screen — `ready` false,
+    `frozen` true — rather than throwing out of `bootApp()`. Confirmed by
+    mutation: with the repair removed, `settled(seeded(...))` returns
+    normally and only the *following* `ready && !frozen` read (and the
+    card lookups after it) fail as assertions, never as an uncaught throw.
+  - **`origin/main` moved twice while this step was in progress**: plan
+    072 (doc checks) merged, then this same plan's Step B merged and
+    bumped `CACHE_VERSION` to v140. Rebased onto both with no conflicts
+    (Step B touches `migrate()`'s prefs block, `load()`, and the two split
+    rule (a) comments; this step touches only the log part's `repair`) and
+    re-bumped to v141 as this PR's own last commit.
+  - **Timing (A.4), for the record beyond the PR body:** median of 5 runs
+    on two profiles × 10 blocks × 16 weeks × 6 days × 8 lifts × 5 ticked
+    rows (76,800 rows total, matching the plan's "~77,000"): 17.55 ms
+    without this repair, 26.38 ms with it, +8.83 ms — under the 50 ms
+    ceiling.
 - *(Executor: record deviations here.)*

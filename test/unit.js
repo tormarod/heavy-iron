@@ -1311,6 +1311,136 @@ ok('...and a phase stored as {} comes back as the whole generic ramp', phaseFill
 });
 call('state = __before067; __before067 = null;');
 
+console.log('\n== the log\'s leaf: rows that are not a list, rows that are not rows (plans/071) ==');
+/* Plan 067 made every *container* of the record repairable; this is the
+   log part's own leaf, one level deeper than any container repair reaches,
+   and the two holes left there, both found by booting the real shell on
+   damaged storage. No writer produces either shape — this is robustness
+   for storage no writer wrote, exactly like the section above. Case 4,
+   through a real boot, is further down, right after "adoptStored migrates
+   before it commits (plans/067 B)": it needs bootApp(), which this section
+   does not have. */
+
+/* 1. A lift's rows stored as anything but a list: a string, a number, a
+   plain object, or an array-like object (a `{"0": row}` a hand-edited or
+   partially-repaired file could plausibly hold). Every one of these used
+   to sit unread until a draw's `entry()` reached it and threw. The repair
+   drops the key outright, not to `[]`: kept as an empty list, the lift
+   would still read as a session with a record and no rows in it, which is
+   worse than no record at all. */
+{
+  const goodRow = { w: '60', r: '8', done: true };
+  const dropState = {
+    activeProfile: 'hombre',
+    profiles: { hombre: {
+      blocks: { b1: { name: 'B', weeks: 8, deload: 0, days: [
+        { id: 'd0', name: 'D', ex: [
+          { id: 'str', n: 'Uno', sets: 3, reps: '10' },
+          { id: 'num', n: 'Dos', sets: 3, reps: '10' },
+          { id: 'obj', n: 'Tres', sets: 3, reps: '10' },
+          { id: 'idx', n: 'Cuatro', sets: 3, reps: '10' },
+          { id: 'e1', n: 'Cinco', sets: 3, reps: '10' },
+        ] },
+      ] } },
+      blockOrder: ['b1'], activeBlock: 'b1',
+      log: { b1: { 'w1-d0': {
+        str: 'x', num: 5, obj: {}, idx: { '0': { w: '50', r: '8', done: true } },
+        e1: [goodRow],
+      } } },
+    } },
+  };
+  let err = '', got = null;
+  try {
+    got = JSON.parse(fromStorage(dropState, `JSON.stringify({
+      keys: Object.keys(state.profiles.hombre.log.b1['w1-d0']),
+      e1: state.profiles.hombre.log.b1['w1-d0'].e1,
+    })`));
+  } catch (e) { err = e.message; }
+  ok('a lift\'s rows stored as a string, a number, a plain object or an array-like object are all dropped, not left for a draw to throw on (plans/071)',
+     !err && JSON.stringify(got.keys) === JSON.stringify(['e1']), err || JSON.stringify(got && got.keys));
+  ok('...and the real lift beside them in the same slot is untouched, byte for byte',
+     !err && JSON.stringify(got.e1) === JSON.stringify([goodRow]), err || JSON.stringify(got));
+}
+
+/* 2. A row that is not a plain object — null, a number, a string, or a
+   nested list — is replaced by an empty row in its own place, the same
+   one entry() already pads a short list with: a real row after a bad one
+   keeps its own set number, which dropping the bad ones instead (the
+   mutation check below) would not. */
+{
+  const R = { w: '80', r: '6', done: true };
+  const R2 = { w: '82.5', r: '5', done: true };
+  const E = { w: '', r: '', done: false };
+  const rowState = {
+    activeProfile: 'hombre',
+    profiles: { hombre: {
+      blocks: { b1: { name: 'B', weeks: 8, deload: 0, days: [
+        { id: 'd0', name: 'D', ex: [{ id: 'e1', n: 'Uno', sets: 6, reps: '10' }] },
+      ] } },
+      blockOrder: ['b1'], activeBlock: 'b1',
+      log: { b1: { 'w1-d0': { e1: [null, R, 5, 's', [], R2] } } },
+    } },
+  };
+  let err = '', rows = null;
+  try {
+    rows = JSON.parse(fromStorage(rowState, "JSON.stringify(state.profiles.hombre.log.b1['w1-d0'].e1)"));
+  } catch (e) { err = e.message; }
+  ok('a row that is not a plain object becomes an empty row in place, one bad row at a time (plans/071)',
+     !err && JSON.stringify(rows) === JSON.stringify([E, R, E, E, E, R2]), err || JSON.stringify(rows));
+  ok('...so a real row after a repaired one keeps its own set number, and both real rows are unchanged',
+     !err && !!rows && JSON.stringify(rows[1]) === JSON.stringify(R) && JSON.stringify(rows[5]) === JSON.stringify(R2),
+     err || JSON.stringify(rows));
+}
+
+/* 3. A lift key may itself be an own "__proto__" or "constructor" (plan
+   067 case 6 found the session reader doing the wrong thing with one of
+   these). `sl[exId]` reads the own property JSON.parse put there, and
+   `delete sl[exId]` deletes it — neither goes through the accessor that
+   only an assignment (`sl[exId] = x`) would trigger — so the repair needs
+   no special case for it, and this checks that holds. The fixture is
+   built by JSON.stringify with a placeholder key, then a text swap: an
+   object literal's `__proto__: x` sets the prototype instead of creating
+   an own key, so it cannot build this one directly (case 6 above writes
+   the same fixture by hand instead; this gets there without counting
+   braces). */
+{
+  const badRow = { w: '70', r: '8', done: true };
+  const goodRow = { w: '55', r: '9', done: true };
+  const E = { w: '', r: '', done: false };
+  const protoLogState = JSON.stringify({
+    activeProfile: 'hombre',
+    profiles: { hombre: {
+      blocks: { b1: { name: 'B', weeks: 8, deload: 0, days: [
+        { id: 'd0', name: 'D', ex: [{ id: 'e1', n: 'Uno', sets: 3, reps: '10' }] },
+      ] } },
+      blockOrder: ['b1'], activeBlock: 'b1',
+      log: { b1: { 'w1-d0': { PROTO_PLACEHOLDER: 'x', constructor: [null, badRow], e1: [goodRow] } } },
+    } },
+  }).replace('"PROTO_PLACEHOLDER"', '"__proto__"');
+  const protoBefore = call('Object.keys(Object.prototype).length');
+  const objBefore = call('Object.keys(Object).length');
+  let err = '', got = null;
+  try {
+    got = JSON.parse(fromStorage(protoLogState, `(() => {
+      const s = state.profiles.hombre.log.b1['w1-d0'];
+      return JSON.stringify({
+        keys: Object.keys(s), ctor: s.constructor, e1: s.e1,
+        protoAfter: Object.keys(Object.prototype).length, objAfter: Object.keys(Object).length,
+      });
+    })()`));
+  } catch (e) { err = e.message; } finally {
+    call(INDEX_KEYS_ON + '.forEach((names, i) => names.forEach(n => { delete [Object.prototype, Object][i][n]; }))');
+  }
+  ok('a lift\'s rows filed under an own "__proto__" key are dropped exactly like any other bad key (plans/071)',
+     !err && JSON.stringify(got.keys) === JSON.stringify(['constructor', 'e1']), err || JSON.stringify(got && got.keys));
+  ok('...a bad row under "constructor" is repaired in place, and the real lift beside both is untouched',
+     !err && JSON.stringify(got.ctor) === JSON.stringify([E, badRow]) && JSON.stringify(got.e1) === JSON.stringify([goodRow]),
+     err || JSON.stringify(got));
+  ok('...and Object.prototype and Object gain no new key from any of it',
+     !err && got.protoAfter === protoBefore && got.objAfter === objBefore,
+     err || JSON.stringify({ before: { protoBefore, objBefore }, after: got && { p: got.protoAfter, o: got.objAfter } }));
+}
+
 console.log('\n== normalizeImportedProfile ==');
 
 /* The most important assertion in this section: a profile the app itself
@@ -9188,6 +9318,44 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
          !err && after === before && bar === 11 && reloads === 1,
          err || JSON.stringify({ same: after === before, bar, reloads }));
     }
+  }
+
+  /* Case 4 of "the log's leaf" section above (plans/071), reached the way
+     a phone actually reaches it: a real boot, where migrate() runs inside
+     load()'s own draw rather than being called directly. Before this
+     repair, either shape here reached entry() during the very first draw
+     render() does, threw there, and render()'s own try/catch sent the app
+     to the recovery screen instead of the day the week 1 session was
+     logged for. */
+  {
+    let exIds = null;
+    const boot = settled(seeded({ week: 1, day: 0 }, (p, b) => {
+      const day = b.days[0], k = 'w1-' + day.id, sl = p.log[b.id][k];
+      exIds = [day.ex[0].id, day.ex[1].id];
+      sl[exIds[0]] = 'x';
+      sl[exIds[1]] = [null];
+    }));
+
+    let err1 = '', drew = null;
+    try { drew = boot.call('ready && !frozen'); } catch (e) { err1 = e.message; }
+    ok('a boot over a lift\'s rows stored as a string, or as [null], draws instead of landing on the recovery screen (plans/071)',
+       !err1 && drew === true, err1 || 'ready && !frozen: ' + drew);
+
+    const readTicks = booted => JSON.parse(booted.call(`JSON.stringify(${JSON.stringify(exIds)}.map(id => {
+      const p = getProfile(), b = getBlock(), k = 'w1-' + currentDay().id;
+      const r = (((p.log[b.id] || {})[k] || {})[id] || [])[0];
+      return !!r && r.done === true;
+    }))`));
+    let err2 = '', before = null, after = null;
+    try {
+      exIds.forEach(id => { boot.card(id).set(0).tick.onclick(); });
+      before = readTicks(boot);
+      boot.clock.advance(1000);
+      after = readTicks(reopen(boot));
+    } catch (e) { err2 = e.message; }
+    ok('...and a tick on each of the two damaged cards lands, and is still there after a reload',
+       !err2 && !!before && before.every(Boolean) && !!after && after.every(Boolean),
+       err2 || JSON.stringify({ before, after }));
   }
 
   /* "Enviar a…" onto a day that already holds the same id. One lift on two
