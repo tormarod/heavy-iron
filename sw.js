@@ -82,6 +82,8 @@ const VENDOR = [
    the plain URL, so cache.match(url) finds these entries as before. */
 const fromServer = url => new Request(url, { cache: 'reload' });
 
+const fromCache = (name, key) => caches.open(name).then(c => c.match(key));
+
 function precache(cacheName, urls) {
   return caches.open(cacheName)
     .then(cache => Promise.all(urls.map(url => cache.add(fromServer(url)).catch(() => null))));
@@ -154,11 +156,11 @@ function networkFirst(request, cacheName) {
       }
       return response;
     })
-    .catch(() => caches.match(request).then(hit => hit || Promise.reject(new Error('offline'))));
+    .catch(() => fromCache(cacheName, request).then(hit => hit || Promise.reject(new Error('offline'))));
 }
 
 function cacheFirst(request, cacheName) {
-  return caches.match(request).then(hit => {
+  return fromCache(cacheName, request).then(hit => {
     if (hit) return hit;
     return fetch(request).then(response => {
       /* Only responses we can actually read the status of. An opaque response
@@ -196,14 +198,16 @@ self.addEventListener('fetch', event => {
      page offers "Actualizar", and the swap reloads onto it. Any other
      in-scope navigation (a block JSON opened directly) is not the app page
      and keeps the network-first path; so does the page when the precache
-     has no copy of it. */
+     has no copy of it. With a newer worker installed and waiting, this scopes
+     the fallback read to the shell cache, closing the route the mixed shell
+     used to travel — a hole in the old cache served by the new one's copy. */
   if (request.mode === 'navigate') {
     const scopePath = new URL(self.registration.scope).pathname;
     const isAppPage = sameOrigin && (url.pathname === scopePath || url.pathname === scopePath + 'index.html');
     event.respondWith(
-      (isAppPage ? caches.match('index.html') : Promise.resolve(null))
+      (isAppPage ? fromCache(SHELL_CACHE, 'index.html') : Promise.resolve(null))
         .then(hit => hit || networkFirst(request, SHELL_CACHE))
-        .catch(() => caches.match('index.html').then(hit => hit || caches.match('./')))
+        .catch(() => fromCache(SHELL_CACHE, 'index.html').then(hit => hit || fromCache(SHELL_CACHE, './')))
     );
     return;
   }
