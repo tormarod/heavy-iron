@@ -217,12 +217,20 @@ app's own writers cannot exceed — which is why the plan editor stops at
 `IMPORT_LIMITS`, and "+ Nuevo bloque" and every import at
 `PROFILE_LIMITS.blocks` — or the app's own backup stops restoring
 (plans/010's promise, broken by a 15th day and then by a 41st block). A
+part of the profile's record is accepted by its own `accept` in
+`RECORD_PARTS` (`js/app.js`): its value check, re-keyed to the ids its
+block landed with. `normalizeImportedProfile` (`js/profile-transfer.js`;
+`normalizeImportedBackup` runs it on every profile of a backup) loops
+over the table with it, and the `normalizeImportedLog`/`Rir`/`Order`/`Obj`
+the QR path calls are thin calls to it — a new check goes on the part,
+not beside one of those names. A restored or loaded profile keeps only
+the table's parts and `NON_RECORD_FIELDS`, and a backup's top level only
+`BACKUP_FIELDS`; any other key a file carries is dropped (plans/051). A
 key that will be used to *index* `state.profiles` — a backup's
-`activeProfile`, a profile file's `key` — is
-checked as an own property first (`migrate()`, `profileSlotFor` in
-`js/profile-transfer.js`), because a plain object answers
-`obj['constructor']` truthily and `obj['__proto__'] = x` re-points its
-prototype (plans/040).
+`activeProfile`, a profile file's `key` — is checked as an own property
+first (`migrate()`, `profileSlotFor` in `js/profile-transfer.js`),
+because a plain object answers `obj['constructor']` truthily and
+`obj['__proto__'] = x` re-points its prototype (plans/040).
 
 ## The CSP
 
@@ -302,14 +310,18 @@ that exist, which is the only way a purge reaches a week filed above
 The maps that make up **the profile's record** (`CONTEXT.md`) are declared
 in one place, `RECORD_PARTS` in `js/app.js`, beside `forEachSlot`: each
 entry says how its part is keyed, how a move merges it, whether it travels
-with a shared block, and why. Every purge (`purgeRecord`), the move in the
-plan editor (`moveExerciseRecord`), migrate's creation and repair
-(`ensureRecord`) and `installBlockData` loop over that table, and so do the
-tests, so a new part is one entry there rather than an edit at each
-operation. `test/unit.js` fails if a migrated profile carries a key that is
-neither in the table nor in its short list of non-record fields. Import,
-share and restore still validate each part by hand, outside the table
-(plans/046 left them out), so a new part needs its own step there.
+with a shared block, how a value from outside is accepted, and why. Every
+purge (`purgeRecord`), the move in the plan editor (`moveExerciseRecord`),
+migrate's creation and repair (`ensureRecord`), `installBlockData`, and
+the import and restore (each part's `accept`, plans/051) loop over that
+table, and so do the tests, so a new part is one entry there rather than
+an edit at each operation.
+`test/unit.js` fails if a migrated profile carries a key that is neither
+in the table nor in `NON_RECORD_FIELDS` beside it, the same list a restore
+keeps, and if a part has no `accept`. Only the block share still builds
+its parts by hand (`blockShareLog`/`Rir`/`Order`): its payload's keys are
+a contract with phones on older shells, and `test/unit.js` fails if they
+stop being the parts marked `travelsWithBlock`.
 
 To *read* what was lifted, use `sessionsOf` (`js/app.js`, "sessions: the
 one reading of the log") instead of filtering raw log rows: it owns which

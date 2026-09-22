@@ -4693,6 +4693,100 @@ console.log('\n== a restore keeps what the app reads, and nothing else (plans/05
   ok('the state the app writes holds nothing BACKUP_FIELDS leaves out', own.stray.length === 0, JSON.stringify(own.stray));
 }
 
+console.log('\n== RECORD_PARTS: each part says how it is accepted (plans/051) ==');
+{
+  /* The import named every part by hand and failed three times the same
+     way, a part handled differently or not at all. It loops over the table
+     now, so the table has to say for every part how a value from outside
+     is taken in. */
+  const noAccept = call(`RECORD_PARTS.filter(part => typeof part.accept !== 'function').map(part => part.name)`);
+  ok('every part of the record has an accept', noAccept.length === 0, JSON.stringify(noAccept));
+
+  /* And what it takes in unchanged is what the app itself wrote: one value
+     for every part, each through the app's own writer. The legacy chips go
+     in by hand, the way a profile logged before plans/035 carries them,
+     since nothing has written one since. A part added to the table with no
+     sample here fails on purpose rather than passing on an empty map.
+     Compared with keys sorted, because the objetivo record's accept
+     rebuilds each record in its own field order. The session order
+     includes the one-id order "Enviar a otra sesión" leaves behind, which
+     the import used to drop (plans/051, decision 2). */
+  const perPart = call(`(function () {
+    state = defaultState(); migrate();
+    const profile = state.profiles.hombre;
+    const block = profile.blocks[profile.blockOrder[0]];
+    const day = block.days[0];
+    const a = exList(day)[0], b = exList(day)[1];
+    const row = entry(profile, block.id, 1, day.id, a.id, a.sets)[0];
+    row.w = '42,5'; row.r = '10'; row.done = true; row.ts = Date.UTC(2026, 0, 5); row.rir = '2';
+    profile.rir[block.id] = { [slot(2, day.id)]: { [b.id]: '2+' } };
+    setNoteText(profile, block.id, 1, day.id, 'Buena sesión');
+    setEnergy(profile, block.id, 1, day.id, 'alta');
+    moveSessionEx(profile, block, 1, day, b.id, -1);
+    recordTarget(profile, block.id, 1, day.id, a.id, { conf: 'media', kind: 'objetivo', hold: true, brake: true, rirWeek: 2,
+      sets: [{ w: 42.5, r: 10, move: '↑' }, { w: 40, r: 9, move: '' }] });
+    recordVariant(profile, a.id, a.n, a.n + ' en máquina', Date.UTC(2026, 0, 12));
+
+    /* A day of two lifts with an order recorded, then one of them sent to
+       the other day the way peSave files it: the plan moves first, then
+       moveExerciseRecord, and the order left behind holds one id. */
+    const nb = emptyBlock();
+    const x = Object.assign(newExercise(), { n: 'Press' }), y = Object.assign(newExercise(), { n: 'Remo' });
+    nb.days = [{ id: 'd0', name: 'A', ex: [x, y] }, { id: 'd1', name: 'B', ex: [Object.assign(newExercise(), { n: 'Curl' })] }];
+    profile.blocks[nb.id] = nb; profile.blockOrder.push(nb.id);
+    migrate();
+    const da = nb.days[0], db = nb.days[1];
+    entry(profile, nb.id, 1, da.id, x.id, 1)[0].w = '50';
+    moveSessionEx(profile, nb, 1, da, y.id, -1);
+    da.ex.splice(da.ex.indexOf(x), 1); db.ex.push(x);
+    moveExerciseRecord(profile, nb.id, da.id, db.id, x.id);
+    migrate();
+
+    const before = JSON.parse(JSON.stringify(profile));
+    const after = normalizeImportedProfile(JSON.parse(JSON.stringify(profile)));
+    const sorted = v => JSON.stringify(v, (k, val) => (val && typeof val === 'object' && !Array.isArray(val))
+      ? Object.keys(val).sort().reduce((o, key) => { o[key] = val[key]; return o; }, {}) : val);
+    const samples = part => Object.keys(before[part.name]).reduce((n, k) =>
+      n + (part.keyedBy === 'exercise' ? 1 : Object.keys(before[part.name][k] || {}).length), 0);
+    return {
+      parts: RECORD_PARTS.map(part => ({ name: part.name, samples: samples(part),
+        same: sorted(after[part.name]) === sorted(before[part.name]),
+        before: sorted(before[part.name]).slice(0, 300), after: sorted(after[part.name]).slice(0, 300) })),
+      oneId: JSON.stringify(before.order[nb.id] && before.order[nb.id][slot(1, da.id)]),
+      want: JSON.stringify([y.id]),
+    };
+  })()`);
+  ok('the fixture carries the one-id order the move leaves behind', perPart.oneId === perPart.want, perPart.oneId);
+  perPart.parts.forEach(r => {
+    ok('what the app wrote into ' + r.name + ' comes back from normalizeImportedProfile unchanged',
+       r.samples > 0 && r.same, r.samples ? r.before + ' vs ' + r.after : 'no own-data sample for this part in the fixture');
+  });
+
+  /* The order rule, once (decision 2), read by the import, migrate()'s
+     repair and setOrder alike: the cap comes before the ids are resolved,
+     one id is still an order, and an id is kept once and only if it is a
+     usable key. */
+  const rule = call(`(function () {
+    const order = recordPart('order');
+    const p = { order: {} };
+    setOrder(p, 'b', 1, 'd', ['a', 'a', '__proto__', 5, 'b']);
+    const q = { order: { b: { 'w1-d': ['a', 'constructor', 'a'], 'w2-d': ['a'], 'w3-d': 'a' } }, variants: {} };
+    recordPart('order').repair(q);
+    return {
+      oneId: JSON.stringify(order.clean(['a'])),
+      capFirst: order.clean(Array(ORDER_LIMIT).fill('ghost').concat(['a', 'b']), id => (id === 'ghost' ? '' : id)) === undefined,
+      nothing: order.clean([]) === undefined && order.clean('ab') === undefined,
+      written: JSON.stringify(p.order.b),
+      repaired: JSON.stringify(q.order.b),
+    };
+  })()`);
+  ok('one id is still an order', rule.oneId === '["a"]', rule.oneId);
+  ok('the cap comes before the ids are resolved, so junk past it cannot push a real id in', rule.capFirst === true);
+  ok('an empty list, or no list, is no order', rule.nothing === true);
+  ok('setOrder writes through the rule: each id once, and only a usable key', rule.written === '{"w1-d":["a","b"]}', rule.written);
+  ok("migrate()'s repair reads the same rule", rule.repaired === '{"w1-d":["a"],"w2-d":["a"]}', rule.repaired);
+}
+
 console.log('\n== sessionsOf: the one reading of the log (plans/038) ==');
 {
   /* The fixture builder: sessions in, a profile out, so these cases say
@@ -5489,6 +5583,20 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
      shareCountProbe.payloadUsed === 1 && shareCountProbe.payloadDone === 1 &&
      shareCountProbe.rawUsed === 3 && shareCountProbe.rawDone === 3,
      JSON.stringify(shareCountProbe));
+
+  console.log('\n== the QR "blocklog" payload carries the parts that travel with a block (plans/051) ==');
+  /* The share still builds its parts by hand, on purpose: the payload's
+     keys are a contract with phones on older shells, and blockShareRir
+     reads the log rather than its own part. So nothing ties them to
+     RECORD_PARTS but this: what the plan-and-log payload adds to the
+     plan-only one has to be exactly the parts marked travelsWithBlock,
+     the ones installBlockData files on the phone that scans it. */
+  const planOnly = await call('buildQrPayload("block", getProfile(), getBlock())');
+  const withLog = await call('buildQrPayload("blocklog", getProfile(), getBlock())');
+  const carried = Object.keys(withLog).filter(k => !(k in planOnly)).sort();
+  const travels = call('RECORD_PARTS.filter(part => part.travelsWithBlock).map(part => part.name)').slice().sort();
+  ok('what "blocklog" adds to "block" is exactly the parts with travelsWithBlock',
+     JSON.stringify(carried) === JSON.stringify(travels), JSON.stringify(carried) + ' vs ' + JSON.stringify(travels));
 
   console.log('\n== the round-trip text carries the app\'s own context (plans/016) ==');
   call('state = defaultState(); migrate(); state.setupDone = true; state.prefs.units = "kg";');
