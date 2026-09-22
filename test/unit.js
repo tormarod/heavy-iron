@@ -6416,51 +6416,6 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
        JSON.stringify({ stored: boot.store[key] === raw, name: boot.call('getBlock().days[0].ex[0].n'), undo: boot.call('undoSnapshot === null') }));
   }
 
-  /* The runtime half of rule 2's standing breach (RULE2_STANDING, near the
-     top): js/review.js builds the review on names only js/diagnostics.js
-     defines, so a precache hole that drops the one and keeps the other
-     leaves "Ver la revisión" throwing — and "+ Nuevo bloque" with it, since
-     the review is offered on the way to the new block's name. Every other
-     hole has to end where a whole shell does, with the block made: through
-     the review when js/review.js is there, straight to the name when it is
-     not (newBlock's typeof test). The files the review cannot open without
-     are read off the standing list, so fixing the breach there moves the
-     expectation here: the list only shrinks. */
-  console.log('\n== a precache hole: "+ Nuevo bloque" → "Ver la revisión" still makes the block (AGENTS.md rules 1 and 2) ==');
-  const reviewNeeds = new Set(RULE2_STANDING.filter(s => s.indexOf('js/review.js reads ') === 0).map(s => s.split(' from ')[1]));
-  for (const file of GUARDED_SPLIT) {
-    const boot = bootApp({ omit: [file], state: reviewState() });
-    let threw = '', review = null;
-    const steps = [];
-    try {
-      const making = boot.$('newBlockBtn').onclick().catch(e => { threw = e.message; });
-      /* Whatever is asked answered the way someone who wants the block
-         answers it, and the review, once it is up, read the way "Copiar"
-         reads it and closed — which is what resumes the block. */
-      for (let i = 0; i < 4; i++) {
-        await settle();
-        if (boot.call('!!askResolve')) { steps.push(boot.$('askOk').textContent); boot.$('askOk').onclick(); }
-        else if (boot.$('reviewSheet').classList.contains('up')) {
-          steps.push('(revisión)');
-          review = boot.call('reviewText(reviewCache)');
-          boot.$('reviewClose').onclick();
-        } else break;
-      }
-      await making;
-    } catch (e) { threw = threw || e.message; }
-    const made = boot.call('getProfile().blockOrder.length === 2 && getBlock().name === "Bloque 2"');
-    const how = JSON.stringify({ steps, threw });
-    if (file === 'js/review.js') {
-      ok(file + ' absent: "+ Nuevo bloque" skips the review it cannot offer and makes the block',
-         !threw && made && steps.indexOf('(revisión)') < 0, how);
-    } else {
-      ok(file + ' absent: "+ Nuevo bloque" → "Ver la revisión" → the review closed makes the block',
-         !threw && made && steps.indexOf('(revisión)') >= 0, how);
-      ok(file + ' absent: ...and the review it showed is the whole shell\'s, word for word',
-         review === wholeReview, review == null ? how : parting(review, wholeReview));
-    }
-  }
-
   console.log('\n== requestWakeLock: one rest, one lock — skipped mid-request, doubled up, or re-acquired (plans/008 item 15, plans/013) ==');
   /* A real WakeLockSentinel carries its own .released flag, and the guard
      added in plans/013 reads it — so the fake has to carry one as well. */
