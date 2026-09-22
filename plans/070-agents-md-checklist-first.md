@@ -223,9 +223,33 @@ and the unit suite's link check.
     exception. The ids subsection links to it for the consequence (a
     throw there takes `load()` with it). The second `SHELL_SCRIPTS`
     sentence under How to verify is folded into the split recipe.
-  - Length 440 → 587 lines. The growth is the checklist (73 lines) and
-    17 new headings; the prose is within a few lines of its old length.
-    116 of the old file's 132 prose sentences survive word for word
-    (whitespace collapsed). The other 16 were re-cut for the new headings
-    or links (four only by a bullet marker or a heading now beside them),
-    and the PR lists each.
+  - Length 440 → 600 lines after the review round below. The growth is
+    the checklist (75 lines) and 17 new headings. 112 of the old file's
+    132 prose sentences survive word for word (whitespace collapsed).
+    Sixteen were re-cut for the new headings or links (four only by a
+    bullet marker or a heading now beside them), and four were corrected
+    in review. The PR lists each.
+- Review round, 2026-09-23 (orchestrator, PR #183): five corrections of
+  fact. Each is a statement the file made that the repo does not bear
+  out, not a rule changed:
+  1. the PR hook's matcher is `mcp__.*__create_pull_request`, which is
+     any MCP server's create-PR tool, since plan 061; the file named only
+     `mcp__github__create_pull_request`;
+  2. the smoke gate's skip list (`TESTED_PATHS`) also has
+     `manifest.webmanifest`;
+  3. "the four script lists agree" holds `index.html` and
+     `SHELL_SCRIPTS` to the same order, but `SHELL` to membership only;
+  4. the slot-regex check scans four named files (`js/app.js`,
+     `js/chart.js`, `js/diagnostics.js`, `js/review.js`), and a new file
+     that reads slots joins that list;
+  5. the contrast section checks the pairs it names, in both themes, and
+     a new pair only once it is added there.
+  The checklist's "A style" and log-key lines carry 5 and 4 too.
+  Recorded as follow-ups, not fixed here: the "AGENTS.md rule (a)"
+  comments in `js/` and `test/`; the unit slugger dropping `_`; making
+  the tests match the old wording. Two more for that list:
+  - `js/block-editor.js` walks slots through `forEachSlot` but is not
+    among the four files the regex check scans.
+  - "read in four files" is historical: `slot`, `parseSlot` and
+    `forEachSlot` are called from `js/app.js`, `js/review.js` and
+    `js/block-editor.js` today.
