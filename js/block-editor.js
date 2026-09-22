@@ -704,6 +704,28 @@ function eraseFromDraft(draft, it) {
   }
 }
 
+/* `n` day ids for applyPlanDraft to lift moved exercises through: ones no
+   part of this block's record is filed under, and that no day of the
+   draft has, started with or erased. A day id is whatever string a backup
+   carried, bar the few safeKey refuses, so no name is spare on its own.
+   A record lifted onto a day the record already uses would be merged
+   into the sessions filed there and carried off with them. One lifted
+   onto a day of the draft could be on the very day it is going to, and
+   then be put down from that day onto itself, which moveExerciseRecord
+   does by adding the rows to themselves and deleting them. Nothing is
+   left filed under a spare day: the second pass puts every record down. */
+function spareDayIds(profile, draft, n) {
+  const taken = new Set(draft.block.days.map(d => d.id));
+  draft.startDay.forEach(dayId => taken.add(dayId));
+  draft.erased.forEach(e => { if (e.day) taken.add(e.day.id); });
+  RECORD_PARTS.forEach(part => {
+    if (part.keyedBy !== 'exercise') forEachSlot(profile[part.name], draft.block.id, (k, w, dayId) => taken.add(dayId));
+  });
+  const out = [];
+  for (let i = 0; out.length < n; i++) if (!taken.has('de-paso-' + i)) out.push('de-paso-' + i);
+  return out;
+}
+
 /* "Guardar cambios" without the dialogs: bring the profile's record into
    line with the draft and land the draft as the block. Returns how many
    exercises were renamed, which the status line reports — or null,
@@ -742,16 +764,31 @@ function applyPlanDraft(profile, draft) {
   /* Catch the profile's record up on any "enviar a…" moves made while
      the sheet was open (the log, the legacy RIR chips, the objetivo
      record and the session order: moveExerciseRecord), before anything
-     below reads or purges it by session id. Merges into whatever the
-     destination day already has rather than overwriting it — the same
-     id can live on two days by design, so this can run more than once on
-     the same exercise without losing either day's history. */
-  block.days.forEach(day => {
-    day.ex.forEach(ex => {
-      const from = draft.startDay.get(ex);
-      if (from && from !== day.id) moveExerciseRecord(profile, block.id, from, day.id, ex.id);
-    });
-  });
+     below reads or purges it by session id.
+
+     In two passes: every moved exercise's record is first lifted onto a
+     day of its own that nothing is filed under (spareDayIds), and only
+     then is each one put down on the day the exercise went to. The same
+     id can live on two days by design, and the record is filed by day and
+     id. Moved straight across one at a time, in the plan's order of days,
+     a copy sent to the day another copy was leaving could get there
+     first: it was merged into that copy's sessions, and the two left
+     together. Monday's copy sent to Saturday and Thursday's to Monday put
+     all four sets on Saturday and dropped one objetivo record (plans/053's
+     second follow-up). Lifted first, each record is on its own when it is
+     put down, whatever order the moves were made or run in. Putting it
+     down still merges into whatever the destination already has under
+     that id rather than overwriting it, so no set would be lost if two
+     copies ever did end up on one day, which moveExRefusal is there to
+     stop. */
+  const moving = [];
+  block.days.forEach(day => day.ex.forEach(ex => {
+    const from = draft.startDay.get(ex);
+    if (from && from !== day.id) moving.push({ id: ex.id, from: from, to: day.id });
+  }));
+  const via = spareDayIds(profile, draft, moving.length);
+  moving.forEach((m, i) => moveExerciseRecord(profile, block.id, m.from, via[i], m.id));
+  moving.forEach((m, i) => moveExerciseRecord(profile, block.id, via[i], m.to, m.id));
   draft.erased.forEach(e => { if (e.day) purgeRecord(profile, block.id, { day: e.day.id }); });
   /* An exercise whose NAME changed is a different lift from today on —
      "Elevaciones laterales en polea" became "Elevaciones en Y en polea
