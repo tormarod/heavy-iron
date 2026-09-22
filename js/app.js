@@ -2473,15 +2473,7 @@ function weeksBeyondEnd(profile, block) {
 /* Everything logged anywhere in a block — the number that decides whether
    a block is disposable, so it is the number every "¿eliminar?" shows. */
 function blockLoggedSets(profile, blockId) {
-  const blk = profile.log[blockId];
-  if (!blk) return 0;
-  let n = 0;
-  Object.keys(blk).forEach(k => {
-    const s = blk[k];
-    if (!s) return;
-    Object.keys(s).forEach(exId => { if (Array.isArray(s[exId])) n += s[exId].filter(rowUsed).length; });
-  });
-  return n;
+  return countSets(profile.log[blockId]);
 }
 
 /* The card's first band: the latest earlier week of this same session —
@@ -6163,15 +6155,24 @@ function blockShareOrder(profile, block) {
   return out;
 }
 
-/* Two different numbers, and the difference is the whole point of showing
-   them. A row counts as "registrada" the moment it holds anything at all —
+/* The one counter every raw storage count reduces to (plans/050): every
+   other counting function below and in js/profile-transfer.js is a
+   one-liner over this. It keeps walking every stored key rather than
+   switching to forEachSlot, because blockLoggedSets feeds the delete
+   dialogs, and those have to count everything deleteBlocks deletes,
+   including a key that is not a real slot. A caller that wants only what a
+   share payload carries — the QR send sheet — hands it blockShareLog's
+   output instead of a raw block log; see js/qr-transfer.js.
+
+   Two different numbers, and the difference is the whole point of showing
+   them at all. A row counts as "registrada" the moment it holds anything —
    including a weight typed into the box and then never ticked. Only a row
    marked *done* feeds the progress chart, the RÉCORD badge or the volume
    dashboard. A transfer carries both kinds faithfully, so a block that was
    full of untouched numbers before it was sent is still full of them after,
    and the sheet has to say so rather than promising "234 series" and
    handing over a chart with nothing in it. */
-function countShareLog(log, onlyDone) {
+function countSets(log, onlyDone) {
   let n = 0;
   Object.keys(log || {}).forEach(k => {
     const s = log[k];
@@ -6185,15 +6186,7 @@ function countShareLog(log, onlyDone) {
 
 /* The done-only twin of blockLoggedSets, for the same reason. */
 function blockDoneSets(profile, blockId) {
-  const blk = profile.log[blockId];
-  if (!blk) return 0;
-  let n = 0;
-  Object.keys(blk).forEach(k => {
-    const s = blk[k];
-    if (!s) return;
-    Object.keys(s).forEach(exId => { if (Array.isArray(s[exId])) n += s[exId].filter(r => r && r.done).length; });
-  });
-  return n;
+  return countSets(profile.log[blockId], true);
 }
 
 /* "12 series registradas" when every one of them is ticked, and the fuller

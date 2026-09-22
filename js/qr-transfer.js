@@ -553,8 +553,8 @@ async function applyQrPayload(payload) {
       mark('Ese bloque no se puede usar: ' + e.message, true);
       return;
     }
-    const sets = log ? countShareLog(log) : 0;
-    const doneSets = log ? countShareLog(log, true) : 0;
+    const sets = log ? countSets(log) : 0;
+    const doneSets = log ? countSets(log, true) : 0;
     const profile = getProfile();
     const from = txt(payload.from, IMPORT_LIMITS.name);
 

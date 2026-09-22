@@ -947,7 +947,7 @@ const ok = (name, cond, extra) => {
     ok('the plan+log payload carries the sets actually logged', await page.evaluate(async () => {
       const payload = await buildQrPayload('blocklog', getProfile(), getBlock());
       return payload.kind === 'blocklog' &&
-             countShareLog(payload.log) === blockLoggedSets(getProfile(), getBlock().id);
+             countSets(payload.log) === blockLoggedSets(getProfile(), getBlock().id);
     }));
     ok('empty padding rows are not shipped', await page.evaluate(async () => {
       const p = getProfile(), b = getBlock();
