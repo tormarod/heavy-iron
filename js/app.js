@@ -3491,7 +3491,10 @@ function repairFlag(ex, key) {
 
 const EX_FIELDS = Object.freeze([
   /* Identity (above): normalizeImportedBlock and migrate() give every
-     exercise one, and the importer holds a stated one to 60 characters. */
+     exercise one. A paste holds an id to 60 characters, stated or slugged
+     from the name; a restore gives a stored one back whole, since cutting
+     it merged two long names into one lift (plans/063). The prompt's
+     "máx 60" is the paste's rule, which is the only one an AI writes to. */
   { key: 'id',
     prompt: () => 'string opcional (máx 60 car.) — identificador estable del ejercicio. Si abajo te paso mi bloque actual, conserva el id de cada ejercicio que mantengas, para que su historial siga unido; un ejercicio nuevo puede ir sin id. El mismo ejercicio en dos días lleva el mismo nombre (no repitas el id en dos días: se renombraría)' },
   /* A string once repaired, blank included: the blank name newExercise()
