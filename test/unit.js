@@ -4660,6 +4660,29 @@ ok('no RIR phrase falls back to the lowest digit anywhere',
 ok('no digits at all returns null',
    call('phaseRir({ phase: [{ r: "Deload" }] }, 0)') === null);
 
+/* trainedDays had no test of its own (plans/057): it fed the calendar
+   straight off a raw walk of the whole log, no week bound at all — wider
+   even than the bug decision 3 names for the review's energy comparison,
+   since that one at least stopped at the block's own weeks by hand
+   elsewhere on the same screen (doneSets, js/review.js). */
+console.log('\n== trainedDays reads sessionsOf: a stranded week never reaches the calendar (plans/057) ==');
+const trainedDaysProbe = call(`
+  (function() {
+    state = defaultState(); migrate();
+    const pr = state.profiles.hombre;
+    const block = pr.blocks[pr.blockOrder[0]];   /* 8 weeks */
+    const day = block.days[0], ex = day.ex[0];
+    pr.log[block.id] = {};
+    pr.log[block.id][slot(1, day.id)] = { [ex.id]: [{ w: '60', r: '8', done: true, ts: Date.UTC(2026, 0, 5, 12) }] };
+    /* Week 9 is past this block's own 8 weeks — stranded on purpose. */
+    pr.log[block.id][slot(9, day.id)] = { [ex.id]: [{ w: '999', r: '1', done: true, ts: Date.UTC(2026, 2, 2, 12) }] };
+    return trainedDays(pr, block);
+  })()
+`);
+ok('a stranded week\'s ticked day never reaches the calendar',
+   Object.keys(trainedDaysProbe).length === 1 && Object.values(trainedDaysProbe)[0] === 1,
+   JSON.stringify(trainedDaysProbe));
+
 console.log('\n== buildHeatmapSVG: week count is calendar days, not milliseconds (plans/008 item 16) ==');
 const heatWeeks = heat => {
   const m = heat.svg.match(/viewBox="0 0 (\d+)/);
