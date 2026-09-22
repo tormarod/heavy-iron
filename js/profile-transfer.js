@@ -53,8 +53,9 @@ function describeProfileProblem(p, pk) {
    thousand exercises hangs the phone exactly like an oversized block does;
    it just arrives through a different door. This meets it with the same
    standard: reuse the audited block normalizer for every block, cap the one
-   thing it doesn't bound (how many blocks there are), and validate the two
-   fields (label, theme) that reach the screen unescaped otherwise.
+   thing it doesn't bound (how many blocks there are), validate the two
+   fields (label, theme) that reach the screen unescaped otherwise, and
+   keep no key a profile is not made of.
 
    Mutates and returns `p`. Throws only when a count is so far beyond a real
    training history that the data cannot be saved — never for anything the
@@ -108,7 +109,18 @@ function profileSlotFor(key) {
   return k && Object.prototype.hasOwnProperty.call(state.profiles, k) ? k : state.activeProfile;
 }
 
+/* Drops every own key of `o` that `keys` does not name. A file used to
+   carry any extra key it liked into storage, because nothing whitelisted
+   them, and every backup taken afterwards carried it out again; what the
+   app never reads is not the app's to keep (plans/051). `delete` on an own
+   '__proto__' removes that property and never touches the prototype. */
+function keepOnly(o, keys) {
+  Object.keys(o).forEach(k => { if (keys.indexOf(k) < 0) delete o[k]; });
+  return o;
+}
+
 function normalizeImportedProfile(p) {
+  keepOnly(p, RECORD_PARTS.map(part => part.name).concat(NON_RECORD_FIELDS));
   const rawIds = Object.keys(p.blocks);
   if (rawIds.length > OWN_LIMITS.blocks) {
     throw new Error('tiene ' + rawIds.length + ' bloques: el máximo es ' + OWN_LIMITS.blocks + '.');
@@ -133,12 +145,12 @@ function normalizeImportedProfile(p) {
      string is just a key. */
   const keyMap = new Map();
   /* raw exercise id -> the id it ended up with, unioned across every block.
-     The six slot-keyed maps are re-keyed block by block inside the loop
-     below, but `variants` is keyed by exercise id alone with no block above
-     it, so it has nowhere to look a per-block map up from and needs this
-     one flat union instead. First occurrence wins, matching importIdMaps'
-     own rule. A Map for the same reason keyMap is one: the key is an
-     untrusted string. */
+     The parts filed by block are re-keyed block by block inside the loop
+     below, but a part keyed by exercise id alone (the variants) has no
+     block above it, so it has nowhere to look a per-block map up from and
+     needs this one flat union instead. First occurrence wins, matching
+     importIdMaps' own rule. A Map for the same reason keyMap is one: the
+     key is an untrusted string. */
   const exIdMap = new Map();
   rawIds.forEach(bk => {
     const raw = p.blocks[bk];
@@ -161,58 +173,38 @@ function normalizeImportedProfile(p) {
     blocks[id] = normalized;
 
     /* Filled here, inside the loop, because it needs `normalized` — the
-       block as it actually landed — and read after the loop by the
-       `variants` block below, which no longer has either form in hand. */
+       block as it actually landed — and read after the loop by the parts
+       keyed by exercise, which no longer have either form in hand. */
     const ids = importIdMaps(raw, normalized).exMap;
     Object.keys(ids).forEach(dayId => Object.keys(ids[dayId]).forEach(rawEx => {
       if (!exIdMap.has(rawEx)) exIdMap.set(rawEx, ids[dayId][rawEx]);
     }));
 
-    /* The QR "blocklog" path already runs every row through the same
-       per-row limits and RIR enum (LOG_LIMITS / normalizeImportedLog /
-       normalizeImportedRir, js/app.js) before trusting them; a restored
-       backup or a loaded profile file is exactly as untrusted as a scanned
-       block and used to skip this entirely (plans/008, item 4) — an
-       oversized or hand-repaired row array restored without complaint, and
-       the first tap on the volume dashboard or the CSV export hung the
-       tab. Re-keyed the same way a QR transfer is, in case
-       normalizeImportedBlock above renamed an id this profile's log still
-       refers to by its old name (a duplicate, or a blocked key like
-       `__proto__`). ownGet, not a naive `p.log[bk]`: see its own comment. */
-    const rawLog = ownGet(p.log, bk);
-    if (rawLog) {
+    /* Every part of the record filed by block, through its own `accept`
+       (RECORD_PARTS). A restored backup or a loaded profile file is exactly
+       as untrusted as a scanned block, and used to skip the per-row limits
+       the QR path already ran (plans/008, item 4): an oversized or
+       hand-repaired row array restored without complaint, and the first
+       tap on the volume dashboard or the CSV export hung the tab. Each part
+       is re-keyed the way a QR transfer is, in case normalizeImportedBlock
+       above renamed an id or a day it is filed under (a duplicate, a
+       blocked key like `__proto__`, a day id past 60 characters). A part
+       this code named by hand was the part it forgot: the session order
+       was not re-keyed before plans/010, nor notes and energy before #138.
+       Only a part that `rejects` can refuse the file, and the refusal
+       names the block. ownGet, not a naive `p.log[bk]`: see its own
+       comment. */
+    RECORD_PARTS.forEach(part => {
+      if (part.keyedBy === 'exercise') return;
+      const rawPart = ownGet(p[part.name], bk);
+      if (!rawPart) return;
+      if (!part.rejects) { p[part.name][bk] = part.accept(rawPart, raw, normalized); return; }
       try {
-        p.log[bk] = normalizeImportedLog(rawLog, raw, normalized);
+        p[part.name][bk] = part.accept(rawPart, raw, normalized);
       } catch (e) {
         throw new Error('el registro del bloque "' + normalized.name + '" ' + e.message);
       }
-    }
-    const rawRir = ownGet(p.rir, bk);
-    if (rawRir) p.rir[bk] = normalizeImportedRir(rawRir, raw, normalized);
-
-    /* Same re-keying as log and rir: a renamed exercise id (a blocked key,
-       or a duplicate on the strict path) would otherwise leave the recorded
-       session order pointing at ids no card on this phone has, and it would
-       silently fall back to plan order. Never done here before plans/010. */
-    const rawOrder = ownGet(p.order, bk);
-    if (rawOrder) p.order[bk] = normalizeImportedOrder(rawOrder, raw, normalized);
-
-    /* Same again for the objetivo record: per exercise, so it is re-keyed
-       like the log and the chips, and absent in every file written before
-       v3 — which restores as no record at all rather than as an error. */
-    const rawObj = ownGet(p.obj, bk);
-    if (rawObj) p.obj[bk] = normalizeImportedObj(rawObj, raw, normalized);
-
-    /* Notes and energy are per session, not per exercise, but their key
-       is still slot(week, dayId): a day normalizeImportedBlock renamed
-       (a blocked key, a duplicate, an id past 60 characters) left them
-       filed under a day that no longer exists. Re-keyed through the same
-       day map as the four above, with the same week bound, and their own
-       value checks. */
-    const rawNotes = ownGet(p.notes, bk);
-    if (rawNotes) p.notes[bk] = normalizeImportedNotes(rawNotes, raw, normalized);
-    const rawEnergy = ownGet(p.energy, bk);
-    if (rawEnergy) p.energy[bk] = normalizeImportedEnergy(rawEnergy, raw, normalized);
+    });
   });
   p.blocks = blocks;
 
@@ -227,8 +219,8 @@ function normalizeImportedProfile(p) {
      null where a block's map should be) is dropped here for every part
      alike: the loop above leaves it untouched, and notes and energy used to
      be the only two that deleted it. The parts filed by block are
-     RECORD_PARTS' less the one keyed by exercise alone, the variants, which
-     are re-keyed on their own below. */
+     RECORD_PARTS' less the ones keyed by exercise alone, which are
+     re-keyed on their own below. */
   RECORD_PARTS.filter(part => part.keyedBy !== 'exercise').forEach(part => {
     const key = part.name;
     const map = p[key];
@@ -252,32 +244,13 @@ function normalizeImportedProfile(p) {
   const activeId = keyMap.get(p.activeBlock);
   p.activeBlock = (activeId && blocks[activeId]) ? activeId : order[order.length - 1];
 
-  /* Variants are keyed by exercise id and not by block, so the block-by-block
-     re-keying above cannot reach them — `exIdMap` is the union it left
-     behind for exactly this. An id the importer renamed (a duplicate, or a
-     blocked key like `__proto__`) follows its exercise here, the same way
-     the log, the chips, the order and the objetivo record do; without that
-     the rename history stayed attached to an id nothing trains any more, or
-     to the wrong lift. An id the file never mentions is kept as before, on
-     safeKey alone: harmless, because nothing asks for it. A malformed date
-     is not harmless — it would cut a history at a moment nobody can name —
-     so anything that is not a plain YYYY-MM-DD is dropped, which leaves the
-     exercise reading as one unbroken variant: the reading it had before v3. */
-  if (p.variants && typeof p.variants === 'object' && !Array.isArray(p.variants)) {
-    const vars = {};
-    Object.keys(p.variants).slice(0, IMPORT_LIMITS.days * IMPORT_LIMITS.ex).forEach(rawExId => {
-      const exId = exIdMap.get(rawExId) || safeKey(rawExId);
-      const list = p.variants[rawExId];
-      if (!exId || !Array.isArray(list)) return;
-      const clean = list.filter(v => v && typeof v === 'object' && !isObj(v.since) && VARIANT_SINCE_RE.test(String(v.since)))
-        .map(v => ({ n: txt(v.n, IMPORT_LIMITS.exName) || '', since: String(v.since) }))
-        .slice(-VARIANT_LIMIT);
-      if (clean.length) vars[exId] = clean;
-    });
-    p.variants = vars;
-  } else {
-    p.variants = {};
-  }
+  /* The parts keyed by exercise id and not by block, which the block-by-block
+     re-keying above cannot reach: `exIdMap` is the union it left behind for
+     exactly this, and each part's `accept` says what it keeps. A part that
+     is missing or malformed comes back empty. */
+  RECORD_PARTS.forEach(part => {
+    if (part.keyedBy === 'exercise') p[part.name] = part.accept(p[part.name], exIdMap);
+  });
 
   p.label = txt(p.label, 80);
   /* accentOf already encodes "in ACCENTS, or a known legacy value, or the
@@ -285,6 +258,32 @@ function normalizeImportedProfile(p) {
   p.theme = accentOf(p);
 
   return p;
+}
+
+/* What a backup's top level keeps, which is what it becomes: the state.
+   These are the fields load() and migrate() read off it, and so the ones
+   the app writes (plans/051). `v` is deliberately absent: it is the
+   version stamp on the wrapper around the state ({ app, v, saved, data }),
+   never a field of the state itself, so listing it here would keep nothing
+   and suggest otherwise. The guard in test/unit.js fails when the app
+   writes a top-level key this list does not name, since a restore would
+   then drop it. */
+const BACKUP_FIELDS = ['profiles', 'activeProfile', 'mode', 'prefs', 'setupDone'];
+
+/* A whole backup the way normalizeImportedProfile takes one profile: each
+   of them through it, then the top level cut down to BACKUP_FIELDS.
+   Mutates `data`; throws, naming the profile, when one cannot be restored.
+   Out of restoreFromText so what a restore keeps can be tested without a
+   dialog. */
+function normalizeImportedBackup(data) {
+  Object.keys(data.profiles).forEach(pk => {
+    try {
+      normalizeImportedProfile(data.profiles[pk]);
+    } catch (e) {
+      throw new Error('el perfil "' + pk + '" ' + e.message);
+    }
+  });
+  return keepOnly(data, BACKUP_FIELDS);
 }
 
 /* A profile's total, over every block it has. countSets (js/app.js) is the
@@ -321,13 +320,11 @@ async function restoreFromText(text) {
   const problem = describeBackupProblem(data);
   if (problem) { mark('Esa copia no se puede usar: ' + problem, true); return; }
 
-  for (const pk of Object.keys(data.profiles)) {
-    try {
-      normalizeImportedProfile(data.profiles[pk]);
-    } catch (e) {
-      mark('Esa copia no se puede usar: el perfil "' + pk + '" ' + e.message, true);
-      return;
-    }
+  try {
+    normalizeImportedBackup(data);
+  } catch (e) {
+    mark('Esa copia no se puede usar: ' + e.message, true);
+    return;
   }
 
   const mine = countBackupSets(state);

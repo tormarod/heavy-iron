@@ -796,7 +796,12 @@ const orderRekey = call(`
     const block = profile.blocks[profile.blockOrder[0]];
     const day = block.days[0];
     day.ex[0].id = '__proto__';
-    setOrder(profile, block.id, 1, day.id, ['__proto__', day.ex[1].id, day.ex[2].id]);
+    /* Straight into the map, not through setOrder: that writes through the
+       order part's rule now, which refuses a blocked id on the way in
+       (plans/051). A file carries one anyway when it was written before
+       migrate() refused the name, or edited by hand. */
+    profile.order[block.id] = {};
+    profile.order[block.id][slot(1, day.id)] = ['__proto__', day.ex[1].id, day.ex[2].id];
 
     const after = normalizeImportedProfile(JSON.parse(JSON.stringify(profile)));
     const ab = after.blocks[after.blockOrder[0]];
@@ -4435,10 +4440,11 @@ console.log('\n== RECORD_PARTS: one table for the profile\'s record (plans/046) 
      use through the app's own writers, may carry nothing but the table's
      parts and the fields below, which are the profile's settings and plan,
      not its record. A new key on a profile fails here until it is either
-     declared in RECORD_PARTS or added to this list on purpose. A real
-     object, not the source text, so it cannot be fooled by how a write is
-     spelled. */
-  const NON_RECORD = ['label', 'theme', 'blocks', 'blockOrder', 'activeBlock', 'week', 'day'];
+     declared in RECORD_PARTS or added to NON_RECORD_FIELDS on purpose. It
+     is the app's own list, the one a restore keeps (plans/051), so the two
+     cannot drift apart. A real object, not the source text, so it cannot
+     be fooled by how a write is spelled. */
+  const NON_RECORD = call('NON_RECORD_FIELDS');
   const guard = call(`(function () {
     state = defaultState();
     migrate();
@@ -4614,6 +4620,171 @@ console.log('\n== RECORD_PARTS: one table for the profile\'s record (plans/046) 
       if (!p[part.name] || typeof p[part.name] !== 'object') bad.push(part.name + ' is ' + JSON.stringify(p[part.name]));
     });`);
   ok('ensureRecord gives every part an object, missing or malformed', ensured.length === 0, JSON.stringify(ensured));
+}
+
+console.log('\n== a restore keeps what the app reads, and nothing else (plans/051) ==');
+{
+  /* Nothing whitelisted the keys of a restored profile or of a backup's top
+     level, so whatever else a file carried went into storage untouched, and
+     out again in every backup after. Built as JSON text and parsed, not as
+     an object literal: a literal '__proto__' key sets the prototype instead
+     of making a property, which would test nothing, and JSON.parse is how
+     these keys really arrive. */
+  const EXTRA = '"__proto__":{"polluted":true},"constructor":"x","hasOwnProperty":1,"units":"lb","foo":[1,2],';
+  const profile = call(`(function () {
+    state = defaultState(); migrate();
+    const p = normalizeImportedProfile(JSON.parse('{' + ${JSON.stringify(EXTRA)} + JSON.stringify(state.profiles.hombre).slice(1)));
+    const allowed = RECORD_PARTS.map(part => part.name).concat(NON_RECORD_FIELDS);
+    return {
+      stray: Object.keys(p).filter(k => allowed.indexOf(k) < 0),
+      missing: allowed.filter(k => !Object.prototype.hasOwnProperty.call(p, k)),
+      proto: Object.getPrototypeOf(p) === Object.prototype && !('polluted' in p),
+    };
+  })()`);
+  ok('a restored profile keeps none of the extra keys a file carried, "__proto__" and "constructor" included',
+     profile.stray.length === 0, JSON.stringify(profile.stray));
+  ok('...and its prototype is still the plain one', profile.proto === true);
+  ok('...while every part of the record and every field beside it is still there',
+     profile.missing.length === 0, JSON.stringify(profile.missing));
+
+  const backup = call(`(function () {
+    state = defaultState(); migrate();
+    const data = normalizeImportedBackup(JSON.parse('{' + ${JSON.stringify(EXTRA + '"saved":"2026-01-01","app":"heavy-iron-v1",')} + JSON.stringify(state).slice(1)));
+    return {
+      stray: Object.keys(data).filter(k => BACKUP_FIELDS.indexOf(k) < 0),
+      missing: Object.keys(state).filter(k => !Object.prototype.hasOwnProperty.call(data, k)),
+      proto: Object.getPrototypeOf(data) === Object.prototype && !('polluted' in data),
+    };
+  })()`);
+  ok("a restored backup's top level keeps none of the extra keys a file carried", backup.stray.length === 0, JSON.stringify(backup.stray));
+  ok('...and its prototype is still the plain one', backup.proto === true);
+  ok('...and keeps every field of the state it was taken from', backup.missing.length === 0, JSON.stringify(backup.missing));
+
+  /* The other half, and the STOP condition plans/051 carried: nothing the
+     app itself writes may be dropped by that (plans/010). A state used
+     through the app's own writers, every key of it and of each profile
+     compared before and after a restore; and its top level holds nothing
+     BACKUP_FIELDS leaves out, so a new top-level field fails here, the way
+     a new profile field fails the guard above, instead of vanishing on the
+     next restore. */
+  const own = call(`(function () {
+    state = defaultState(); migrate();
+    state.mode = 'solo'; state.setupDone = true; state.prefs.units = 'lb';
+    const profile = state.profiles.hombre;
+    const block = profile.blocks[profile.blockOrder[0]];
+    const day = block.days[0], ex = day.ex[0];
+    const row = entry(profile, block.id, 1, day.id, ex.id, ex.sets)[0];
+    row.w = '40'; row.r = '10'; row.done = true; row.ts = Date.now(); row.rir = '2';
+    setNoteText(profile, block.id, 1, day.id, 'Bien');
+    setEnergy(profile, block.id, 1, day.id, 'alta');
+    setOrder(profile, block.id, 1, day.id, day.ex.map(e => e.id).reverse());
+    recordTarget(profile, block.id, 1, day.id, ex.id, { conf: 'alta', kind: 'objetivo', hold: true, brake: true, rirWeek: 2, sets: [{ w: 40, r: 10, move: '↑' }] });
+    recordVariant(profile, ex.id, ex.n, ex.n + ' en máquina', Date.now());
+    migrate();
+    const before = JSON.parse(JSON.stringify(state));
+    const after = normalizeImportedBackup(JSON.parse(JSON.stringify(state)));
+    const lost = Object.keys(before).filter(k => !Object.prototype.hasOwnProperty.call(after, k));
+    Object.keys(before.profiles).forEach(pk => Object.keys(before.profiles[pk]).forEach(k => {
+      if (!Object.prototype.hasOwnProperty.call(after.profiles[pk], k)) lost.push(pk + '.' + k);
+    }));
+    return { lost: lost, stray: Object.keys(before).filter(k => BACKUP_FIELDS.indexOf(k) < 0) };
+  })()`);
+  ok('a restore drops nothing the app itself writes, on a profile or at the top level', own.lost.length === 0, JSON.stringify(own.lost));
+  ok('the state the app writes holds nothing BACKUP_FIELDS leaves out', own.stray.length === 0, JSON.stringify(own.stray));
+}
+
+console.log('\n== RECORD_PARTS: each part says how it is accepted (plans/051) ==');
+{
+  /* The import named every part by hand and failed three times the same
+     way, a part handled differently or not at all. It loops over the table
+     now, so the table has to say for every part how a value from outside
+     is taken in. */
+  const noAccept = call(`RECORD_PARTS.filter(part => typeof part.accept !== 'function').map(part => part.name)`);
+  ok('every part of the record has an accept', noAccept.length === 0, JSON.stringify(noAccept));
+
+  /* And what it takes in unchanged is what the app itself wrote: one value
+     for every part, each through the app's own writer. The legacy chips go
+     in by hand, the way a profile logged before plans/035 carries them,
+     since nothing has written one since. A part added to the table with no
+     sample here fails on purpose rather than passing on an empty map.
+     Compared with keys sorted, because the objetivo record's accept
+     rebuilds each record in its own field order. The session order
+     includes the one-id order "Enviar a otra sesión" leaves behind, which
+     the import used to drop (plans/051, decision 2). */
+  const perPart = call(`(function () {
+    state = defaultState(); migrate();
+    const profile = state.profiles.hombre;
+    const block = profile.blocks[profile.blockOrder[0]];
+    const day = block.days[0];
+    const a = exList(day)[0], b = exList(day)[1];
+    const row = entry(profile, block.id, 1, day.id, a.id, a.sets)[0];
+    row.w = '42,5'; row.r = '10'; row.done = true; row.ts = Date.UTC(2026, 0, 5); row.rir = '2';
+    profile.rir[block.id] = { [slot(2, day.id)]: { [b.id]: '2+' } };
+    setNoteText(profile, block.id, 1, day.id, 'Buena sesión');
+    setEnergy(profile, block.id, 1, day.id, 'alta');
+    moveSessionEx(profile, block, 1, day, b.id, -1);
+    recordTarget(profile, block.id, 1, day.id, a.id, { conf: 'media', kind: 'objetivo', hold: true, brake: true, rirWeek: 2,
+      sets: [{ w: 42.5, r: 10, move: '↑' }, { w: 40, r: 9, move: '' }] });
+    recordVariant(profile, a.id, a.n, a.n + ' en máquina', Date.UTC(2026, 0, 12));
+
+    /* A day of two lifts with an order recorded, then one of them sent to
+       the other day the way peSave files it: the plan moves first, then
+       moveExerciseRecord, and the order left behind holds one id. */
+    const nb = emptyBlock();
+    const x = Object.assign(newExercise(), { n: 'Press' }), y = Object.assign(newExercise(), { n: 'Remo' });
+    nb.days = [{ id: 'd0', name: 'A', ex: [x, y] }, { id: 'd1', name: 'B', ex: [Object.assign(newExercise(), { n: 'Curl' })] }];
+    profile.blocks[nb.id] = nb; profile.blockOrder.push(nb.id);
+    migrate();
+    const da = nb.days[0], db = nb.days[1];
+    entry(profile, nb.id, 1, da.id, x.id, 1)[0].w = '50';
+    moveSessionEx(profile, nb, 1, da, y.id, -1);
+    da.ex.splice(da.ex.indexOf(x), 1); db.ex.push(x);
+    moveExerciseRecord(profile, nb.id, da.id, db.id, x.id);
+    migrate();
+
+    const before = JSON.parse(JSON.stringify(profile));
+    const after = normalizeImportedProfile(JSON.parse(JSON.stringify(profile)));
+    const sorted = v => JSON.stringify(v, (k, val) => (val && typeof val === 'object' && !Array.isArray(val))
+      ? Object.keys(val).sort().reduce((o, key) => { o[key] = val[key]; return o; }, {}) : val);
+    const samples = part => Object.keys(before[part.name]).reduce((n, k) =>
+      n + (part.keyedBy === 'exercise' ? 1 : Object.keys(before[part.name][k] || {}).length), 0);
+    return {
+      parts: RECORD_PARTS.map(part => ({ name: part.name, samples: samples(part),
+        same: sorted(after[part.name]) === sorted(before[part.name]),
+        before: sorted(before[part.name]).slice(0, 300), after: sorted(after[part.name]).slice(0, 300) })),
+      oneId: JSON.stringify(before.order[nb.id] && before.order[nb.id][slot(1, da.id)]),
+      want: JSON.stringify([y.id]),
+    };
+  })()`);
+  ok('the fixture carries the one-id order the move leaves behind', perPart.oneId === perPart.want, perPart.oneId);
+  perPart.parts.forEach(r => {
+    ok('what the app wrote into ' + r.name + ' comes back from normalizeImportedProfile unchanged',
+       r.samples > 0 && r.same, r.samples ? r.before + ' vs ' + r.after : 'no own-data sample for this part in the fixture');
+  });
+
+  /* The order rule, once (decision 2), read by the import, migrate()'s
+     repair and setOrder alike: the cap comes before the ids are resolved,
+     one id is still an order, and an id is kept once and only if it is a
+     usable key. */
+  const rule = call(`(function () {
+    const order = recordPart('order');
+    const p = { order: {} };
+    setOrder(p, 'b', 1, 'd', ['a', 'a', '__proto__', 5, 'b']);
+    const q = { order: { b: { 'w1-d': ['a', 'constructor', 'a'], 'w2-d': ['a'], 'w3-d': 'a' } }, variants: {} };
+    recordPart('order').repair(q);
+    return {
+      oneId: JSON.stringify(order.clean(['a'])),
+      capFirst: order.clean(Array(ORDER_LIMIT).fill('ghost').concat(['a', 'b']), id => (id === 'ghost' ? '' : id)) === undefined,
+      nothing: order.clean([]) === undefined && order.clean('ab') === undefined,
+      written: JSON.stringify(p.order.b),
+      repaired: JSON.stringify(q.order.b),
+    };
+  })()`);
+  ok('one id is still an order', rule.oneId === '["a"]', rule.oneId);
+  ok('the cap comes before the ids are resolved, so junk past it cannot push a real id in', rule.capFirst === true);
+  ok('an empty list, or no list, is no order', rule.nothing === true);
+  ok('setOrder writes through the rule: each id once, and only a usable key', rule.written === '{"w1-d":["a","b"]}', rule.written);
+  ok("migrate()'s repair reads the same rule", rule.repaired === '{"w1-d":["a"],"w2-d":["a"]}', rule.repaired);
 }
 
 console.log('\n== sessionsOf: the one reading of the log (plans/038) ==');
@@ -5412,6 +5583,20 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
      shareCountProbe.payloadUsed === 1 && shareCountProbe.payloadDone === 1 &&
      shareCountProbe.rawUsed === 3 && shareCountProbe.rawDone === 3,
      JSON.stringify(shareCountProbe));
+
+  console.log('\n== the QR "blocklog" payload carries the parts that travel with a block (plans/051) ==');
+  /* The share still builds its parts by hand, on purpose: the payload's
+     keys are a contract with phones on older shells, and blockShareRir
+     reads the log rather than its own part. So nothing ties them to
+     RECORD_PARTS but this: what the plan-and-log payload adds to the
+     plan-only one has to be exactly the parts marked travelsWithBlock,
+     the ones installBlockData files on the phone that scans it. */
+  const planOnly = await call('buildQrPayload("block", getProfile(), getBlock())');
+  const withLog = await call('buildQrPayload("blocklog", getProfile(), getBlock())');
+  const carried = Object.keys(withLog).filter(k => !(k in planOnly)).sort();
+  const travels = call('RECORD_PARTS.filter(part => part.travelsWithBlock).map(part => part.name)').slice().sort();
+  ok('what "blocklog" adds to "block" is exactly the parts with travelsWithBlock',
+     JSON.stringify(carried) === JSON.stringify(travels), JSON.stringify(carried) + ' vs ' + JSON.stringify(travels));
 
   console.log('\n== the round-trip text carries the app\'s own context (plans/016) ==');
   call('state = defaultState(); migrate(); state.setupDone = true; state.prefs.units = "kg";');
