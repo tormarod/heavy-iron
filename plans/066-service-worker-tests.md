@@ -306,4 +306,37 @@ Eleven cases and two mutation checks, all in `test/unit.js`.
   here; update the case in the same PR and say why in its name.
 - If the maintainer decides ninth-audit #7 (runtime cache lifetime,
   delete-before-repair), cases 4 and 10 are where the decision is pinned.
-- *(Executor: record deviations here.)*
+- Executed on `claude/066-sw-tests` from `1e5129c`; the drift check was
+  empty. `sw.js` untouched; no case exposed a real `sw.js` bug.
+- Deviations, all small:
+  - Case 5 installs **with a hole** before going offline. A fully cached
+    install never fetches during activate, so "activate offline" would
+    not have touched the network at all; with a hole, `repairAll` really
+    does ask an offline network (the case asserts it did) and its
+    rejection has to be swallowed.
+  - Case 6 navigates to the **scope** (`https://example.test/app/`), not
+    the bare origin: with the scope under `/app/`, the origin root is not
+    the app page, and would reach the same body through the
+    network-first-then-fallback route instead. The case asserts the
+    network was not asked, which tells the two routes apart.
+  - Case 4 is one `ok` whose name carries the ninth-audit #7 clause, so
+    the section has 11 cases plus the 2 mutation checks (13 `ok`s).
+  - Cases 7, 8 and 9 each assert what the fake network was asked, so an
+    origin/scope mix-up that skips the same-origin branches (the handler
+    never answering) fails them rather than passing vacuously.
+  - `loadWorker()` also returns `call` (as `bootApp` does), `url()` (the
+    scope-relative resolver), `version`, `SHELL`, `VENDOR` and the three
+    cache names, read off the loaded worker. `transform` edits are made
+    through a `mutate(from, to)` helper that throws unless its target
+    occurs exactly once.
+  - Every fetch whose answer a case compares goes through `answerOf()`,
+    which turns a rejection into text: an ad hoc mutation that made
+    `networkFirst` stop caching crashed the suite on an unhandled
+    rejection before this, instead of failing case 9.
+- Beyond the two mutation checks in the suite, each case was spot-checked
+  red against a temporary `sw.js` edit (restored byte for byte): no
+  `checkShell` → 3; activate keeps every cache → 4, 10; no `claim` → 4, 5;
+  no repair on activate → 5; navigate network-first → 6; `sameOrigin`
+  never true → 6, 7, 8, 9; `cacheFirst` keeps a non-ok → 8; `networkFirst`
+  stops caching, or blocks go `cacheFirst` → 9; no `skipWaiting` → 10;
+  wrong version posted → 11; install skips the shell → 1.
