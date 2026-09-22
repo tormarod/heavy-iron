@@ -4440,10 +4440,11 @@ console.log('\n== RECORD_PARTS: one table for the profile\'s record (plans/046) 
      use through the app's own writers, may carry nothing but the table's
      parts and the fields below, which are the profile's settings and plan,
      not its record. A new key on a profile fails here until it is either
-     declared in RECORD_PARTS or added to this list on purpose. A real
-     object, not the source text, so it cannot be fooled by how a write is
-     spelled. */
-  const NON_RECORD = ['label', 'theme', 'blocks', 'blockOrder', 'activeBlock', 'week', 'day'];
+     declared in RECORD_PARTS or added to NON_RECORD_FIELDS on purpose. It
+     is the app's own list, the one a restore keeps (plans/051), so the two
+     cannot drift apart. A real object, not the source text, so it cannot
+     be fooled by how a write is spelled. */
+  const NON_RECORD = call('NON_RECORD_FIELDS');
   const guard = call(`(function () {
     state = defaultState();
     migrate();
@@ -4619,6 +4620,77 @@ console.log('\n== RECORD_PARTS: one table for the profile\'s record (plans/046) 
       if (!p[part.name] || typeof p[part.name] !== 'object') bad.push(part.name + ' is ' + JSON.stringify(p[part.name]));
     });`);
   ok('ensureRecord gives every part an object, missing or malformed', ensured.length === 0, JSON.stringify(ensured));
+}
+
+console.log('\n== a restore keeps what the app reads, and nothing else (plans/051) ==');
+{
+  /* Nothing whitelisted the keys of a restored profile or of a backup's top
+     level, so whatever else a file carried went into storage untouched, and
+     out again in every backup after. Built as JSON text and parsed, not as
+     an object literal: a literal '__proto__' key sets the prototype instead
+     of making a property, which would test nothing, and JSON.parse is how
+     these keys really arrive. */
+  const EXTRA = '"__proto__":{"polluted":true},"constructor":"x","hasOwnProperty":1,"units":"lb","foo":[1,2],';
+  const profile = call(`(function () {
+    state = defaultState(); migrate();
+    const p = normalizeImportedProfile(JSON.parse('{' + ${JSON.stringify(EXTRA)} + JSON.stringify(state.profiles.hombre).slice(1)));
+    const allowed = RECORD_PARTS.map(part => part.name).concat(NON_RECORD_FIELDS);
+    return {
+      stray: Object.keys(p).filter(k => allowed.indexOf(k) < 0),
+      missing: allowed.filter(k => !Object.prototype.hasOwnProperty.call(p, k)),
+      proto: Object.getPrototypeOf(p) === Object.prototype && !('polluted' in p),
+    };
+  })()`);
+  ok('a restored profile keeps none of the extra keys a file carried, "__proto__" and "constructor" included',
+     profile.stray.length === 0, JSON.stringify(profile.stray));
+  ok('...and its prototype is still the plain one', profile.proto === true);
+  ok('...while every part of the record and every field beside it is still there',
+     profile.missing.length === 0, JSON.stringify(profile.missing));
+
+  const backup = call(`(function () {
+    state = defaultState(); migrate();
+    const data = normalizeImportedBackup(JSON.parse('{' + ${JSON.stringify(EXTRA + '"saved":"2026-01-01","app":"heavy-iron-v1",')} + JSON.stringify(state).slice(1)));
+    return {
+      stray: Object.keys(data).filter(k => BACKUP_FIELDS.indexOf(k) < 0),
+      missing: Object.keys(state).filter(k => !Object.prototype.hasOwnProperty.call(data, k)),
+      proto: Object.getPrototypeOf(data) === Object.prototype && !('polluted' in data),
+    };
+  })()`);
+  ok("a restored backup's top level keeps none of the extra keys a file carried", backup.stray.length === 0, JSON.stringify(backup.stray));
+  ok('...and its prototype is still the plain one', backup.proto === true);
+  ok('...and keeps every field of the state it was taken from', backup.missing.length === 0, JSON.stringify(backup.missing));
+
+  /* The other half, and the STOP condition plans/051 carried: nothing the
+     app itself writes may be dropped by that (plans/010). A state used
+     through the app's own writers, every key of it and of each profile
+     compared before and after a restore; and its top level holds nothing
+     BACKUP_FIELDS leaves out, so a new top-level field fails here, the way
+     a new profile field fails the guard above, instead of vanishing on the
+     next restore. */
+  const own = call(`(function () {
+    state = defaultState(); migrate();
+    state.mode = 'solo'; state.setupDone = true; state.prefs.units = 'lb';
+    const profile = state.profiles.hombre;
+    const block = profile.blocks[profile.blockOrder[0]];
+    const day = block.days[0], ex = day.ex[0];
+    const row = entry(profile, block.id, 1, day.id, ex.id, ex.sets)[0];
+    row.w = '40'; row.r = '10'; row.done = true; row.ts = Date.now(); row.rir = '2';
+    setNoteText(profile, block.id, 1, day.id, 'Bien');
+    setEnergy(profile, block.id, 1, day.id, 'alta');
+    setOrder(profile, block.id, 1, day.id, day.ex.map(e => e.id).reverse());
+    recordTarget(profile, block.id, 1, day.id, ex.id, { conf: 'alta', kind: 'objetivo', hold: true, brake: true, rirWeek: 2, sets: [{ w: 40, r: 10, move: '↑' }] });
+    recordVariant(profile, ex.id, ex.n, ex.n + ' en máquina', Date.now());
+    migrate();
+    const before = JSON.parse(JSON.stringify(state));
+    const after = normalizeImportedBackup(JSON.parse(JSON.stringify(state)));
+    const lost = Object.keys(before).filter(k => !Object.prototype.hasOwnProperty.call(after, k));
+    Object.keys(before.profiles).forEach(pk => Object.keys(before.profiles[pk]).forEach(k => {
+      if (!Object.prototype.hasOwnProperty.call(after.profiles[pk], k)) lost.push(pk + '.' + k);
+    }));
+    return { lost: lost, stray: Object.keys(before).filter(k => BACKUP_FIELDS.indexOf(k) < 0) };
+  })()`);
+  ok('a restore drops nothing the app itself writes, on a profile or at the top level', own.lost.length === 0, JSON.stringify(own.lost));
+  ok('the state the app writes holds nothing BACKUP_FIELDS leaves out', own.stray.length === 0, JSON.stringify(own.stray));
 }
 
 console.log('\n== sessionsOf: the one reading of the log (plans/038) ==');

@@ -528,6 +528,17 @@ const RECORD_PARTS = Object.freeze([
    part loops over the table instead. */
 const recordPart = name => RECORD_PARTS.find(part => part.name === name);
 
+/* Every key a profile carries beside the parts of its record: its name and
+   accent, its plan (the blocks, their order, the one being trained) and
+   where it stands in it. With RECORD_PARTS' names this is the whole of a
+   profile, and a restored or loaded one keeps nothing else (plans/051):
+   nothing reads another key, so one a file carried used to ride into
+   storage untouched and out again in every backup after. The guard in
+   test/unit.js reads this same list and fails when the app writes a key
+   onto a profile that is in neither, so a new field is added here on
+   purpose, or it would be dropped by the next restore. */
+const NON_RECORD_FIELDS = Object.freeze(['label', 'theme', 'blocks', 'blockOrder', 'activeBlock', 'week', 'day']);
+
 /* Clear part of the profile's record, the one way every "borrar" does it:
 
      purgeRecord(profile)                              whole profile (wipe)

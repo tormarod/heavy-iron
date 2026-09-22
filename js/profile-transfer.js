@@ -53,8 +53,9 @@ function describeProfileProblem(p, pk) {
    thousand exercises hangs the phone exactly like an oversized block does;
    it just arrives through a different door. This meets it with the same
    standard: reuse the audited block normalizer for every block, cap the one
-   thing it doesn't bound (how many blocks there are), and validate the two
-   fields (label, theme) that reach the screen unescaped otherwise.
+   thing it doesn't bound (how many blocks there are), validate the two
+   fields (label, theme) that reach the screen unescaped otherwise, and
+   keep no key a profile is not made of.
 
    Mutates and returns `p`. Throws only when a count is so far beyond a real
    training history that the data cannot be saved — never for anything the
@@ -108,7 +109,18 @@ function profileSlotFor(key) {
   return k && Object.prototype.hasOwnProperty.call(state.profiles, k) ? k : state.activeProfile;
 }
 
+/* Drops every own key of `o` that `keys` does not name. A file used to
+   carry any extra key it liked into storage, because nothing whitelisted
+   them, and every backup taken afterwards carried it out again; what the
+   app never reads is not the app's to keep (plans/051). `delete` on an own
+   '__proto__' removes that property and never touches the prototype. */
+function keepOnly(o, keys) {
+  Object.keys(o).forEach(k => { if (keys.indexOf(k) < 0) delete o[k]; });
+  return o;
+}
+
 function normalizeImportedProfile(p) {
+  keepOnly(p, RECORD_PARTS.map(part => part.name).concat(NON_RECORD_FIELDS));
   const rawIds = Object.keys(p.blocks);
   if (rawIds.length > OWN_LIMITS.blocks) {
     throw new Error('tiene ' + rawIds.length + ' bloques: el máximo es ' + OWN_LIMITS.blocks + '.');
@@ -248,6 +260,31 @@ function normalizeImportedProfile(p) {
   return p;
 }
 
+/* What a backup's top level keeps, which is what it becomes: the state.
+   These are the fields load() and migrate() read off it, and so the ones
+   the app writes (plans/051). `v` is not one of them: it is the version
+   stamp on the wrapper around the state, which the app never writes onto
+   the state itself. It is here because plans/051 lists it, and costs
+   nothing. The guard in test/unit.js fails when the app writes a top-level
+   key this list does not name, since a restore would then drop it. */
+const BACKUP_FIELDS = ['profiles', 'activeProfile', 'mode', 'prefs', 'setupDone', 'v'];
+
+/* A whole backup the way normalizeImportedProfile takes one profile: each
+   of them through it, then the top level cut down to BACKUP_FIELDS.
+   Mutates `data`; throws, naming the profile, when one cannot be restored.
+   Out of restoreFromText so what a restore keeps can be tested without a
+   dialog. */
+function normalizeImportedBackup(data) {
+  Object.keys(data.profiles).forEach(pk => {
+    try {
+      normalizeImportedProfile(data.profiles[pk]);
+    } catch (e) {
+      throw new Error('el perfil "' + pk + '" ' + e.message);
+    }
+  });
+  return keepOnly(data, BACKUP_FIELDS);
+}
+
 /* A profile's total, over every block it has. countSets (js/app.js) is the
    one counter that walks a single block's log; this sums it across
    whatever blocks a profile carries. */
@@ -282,13 +319,11 @@ async function restoreFromText(text) {
   const problem = describeBackupProblem(data);
   if (problem) { mark('Esa copia no se puede usar: ' + problem, true); return; }
 
-  for (const pk of Object.keys(data.profiles)) {
-    try {
-      normalizeImportedProfile(data.profiles[pk]);
-    } catch (e) {
-      mark('Esa copia no se puede usar: el perfil "' + pk + '" ' + e.message, true);
-      return;
-    }
+  try {
+    normalizeImportedBackup(data);
+  } catch (e) {
+    mark('Esa copia no se puede usar: ' + e.message, true);
+    return;
   }
 
   const mine = countBackupSets(state);
