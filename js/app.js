@@ -666,6 +666,20 @@ function ensureRecord(profile) {
        JSON.stringify drops: the session's sets were gone on the next
        reload (plans/067). */
     if (!profile[part.name] || typeof profile[part.name] !== 'object' || Array.isArray(profile[part.name])) profile[part.name] = {};
+    /* The same one level down, and two for a part filed by lift: a block's
+       map stored as a list, or one slot's, took every write the same way,
+       and `log: { b1: [] }` lost a tick on the same reload. Only the maps
+       are touched. A part keyed by exercise holds a list per lift by design
+       (the variants), and so does a slot of the session order, whose value
+       IS the list. */
+    if (part.keyedBy === 'exercise') return;
+    const map = profile[part.name];
+    Object.keys(map).forEach(bk => {
+      const blk = map[bk];
+      if (Array.isArray(blk)) { map[bk] = {}; return; }
+      if (part.keyedBy !== 'slot+exercise' || !blk || typeof blk !== 'object') return;
+      Object.keys(blk).forEach(k => { if (Array.isArray(blk[k])) blk[k] = {}; });
+    });
   });
   RECORD_PARTS.forEach(part => { if (part.repair) part.repair(profile); });
 }
@@ -837,12 +851,14 @@ function migrate() {
     }
     if (!profile.blocks || typeof profile.blocks !== 'object' || !Object.keys(profile.blocks).length) {
       /* A copy of the seed's blocks, never the seed's own object. The seed
-         chosen above is hombre's for more than one profile — the one named
-         hombre, and, under a name neither seed has, the first profile and
-         every one past the second — so two blockless profiles were handed
-         the SAME blocks, and editing one plan rewrote the other's. JSON
-         rather than the browser's structured clone, which is Safari 15.4,
-         above the floor.
+         is chosen above by name, then by place, so two profiles can land on
+         the same one. Hombre's goes to the profile named hombre, to one
+         under any other name in first place and to every one past the
+         second; mujer's goes to the one named mujer and to one under any
+         other name in second place. Two blockless profiles like that were
+         handed the SAME blocks, and editing one plan rewrote the other's.
+         JSON rather than the browser's structured clone, which is Safari
+         15.4, above the floor.
 
          The record is kept, not purged. From the first commit every profile
          has had blocks, with its log filed per block, so a profile with none
@@ -918,6 +934,14 @@ function migrate() {
          a map keyed by week, so a list is damage, and one kept as it was
          (`[]`) had no week in it: every week read no RIR (plans/067). */
       if (!block.phase || typeof block.phase !== 'object' || Array.isArray(block.phase)) block.phase = genericPhase(block.weeks, block.deload);
+      /* A week the table has no entry for read no RIR and showed no goal:
+         `phase: {}`, or a table that stops short of the block. It gets the
+         generic ramp's entry for that week, the way the plan editor fills a
+         block made longer (syncDraftFromForm), and an entry that is there
+         is never touched. Every writer's table already has every week, so
+         nothing a writer made changes (plans/067). */
+      const generic = genericPhase(block.weeks, block.deload);
+      for (let w = 1; w <= block.weeks; w++) if (!block.phase[w]) block.phase[w] = generic[w];
       /* Absent by default, like `share`/`ss`: a block nobody has marked
          priorities on carries no field at all rather than an empty list. */
       if (block.priority != null) {
@@ -925,7 +949,13 @@ function migrate() {
         if (pri.length) block.priority = pri; else delete block.priority;
       }
       if (!Array.isArray(block.days)) block.days = [];
-      block.days = block.days.filter(d => d && typeof d === 'object');
+      /* A list is no day either. The id and the exercises the repair below
+         writes onto one are properties JSON.stringify drops, so a day
+         stored as [] came back on every load with a fresh exercise id, and
+         whatever was logged against the last one was orphaned. Dropped like
+         null, and an exercise stored as a list the same way, below
+         (plans/067). */
+      block.days = block.days.filter(d => d && typeof d === 'object' && !Array.isArray(d));
       if (!block.days.length) block.days = [{ id: 'd0', name: 'Día 1', ex: [newExercise()] }];
 
       /* Log rows are filed under a day's *id*, so every day needs one and no
@@ -960,7 +990,7 @@ function migrate() {
         day.id = id;
         if (!day.name) day.name = 'Día ' + (i + 1);
         if (!Array.isArray(day.ex)) day.ex = [];
-        day.ex = day.ex.filter(e => e && typeof e === 'object');
+        day.ex = day.ex.filter(e => e && typeof e === 'object' && !Array.isArray(e));
         if (!day.ex.length) day.ex = [newExercise()];
         /* The same two passes for one day's exercises, for the same reason:
            an id-less lift took the slug of its name from a lift further

@@ -960,35 +960,40 @@ const fromStorage = (stored, then) => call('state = JSON.parse(' +
   JSON.stringify(typeof stored === 'string' ? stored : JSON.stringify(stored)) + '); migrate(); ' + then);
 
 /* 1. The "no blocks" branch handed out the seed's own blocks object, and the
-   seed chosen for a profile is hombre's for more than one of them: the one
-   named hombre, and one under any other name in first place. These two
-   held ONE plan between them, so editing either rewrote the other's. The
-   record under the seed's id is kept (decision 1): a blockless profile only
-   comes out of damaged storage, and the seed plan is the one its record
-   still matches. */
-const seedCopy = JSON.parse(fromStorage({
-  activeProfile: 'a',
-  profiles: {
-    a: { blocks: {}, log: { 'block-1': { 'w1-d0': { chestpress: [{ w: '50', r: '8', done: true }] } } } },
-    hombre: { blocks: {} },
-  },
-}, `(() => {
-  const a = state.profiles.a.blocks['block-1'], h = state.profiles.hombre.blocks['block-1'];
-  const before = h.name + ' | ' + h.days[0].ex[0].n;
-  a.name = 'Editado';
-  a.days[0].ex[0].n = 'Otro nombre';
-  return JSON.stringify({
-    both: !!a && !!h, same: a === h, sameDays: a.days === h.days,
-    before: before, after: h.name + ' | ' + h.days[0].ex[0].n,
-    record: sessionsOf(state.profiles.a, { weeks: 'logged' }).map(s => s.block + '/' + s.week + '/' + s.day + '/' + s.lift),
-  });
-})()`));
-ok('two blockless profiles each get a copy of the seed\'s blocks, not one object between them (plans/067)',
-   seedCopy.both && !seedCopy.same && !seedCopy.sameDays, JSON.stringify(seedCopy));
-ok('...so renaming one plan, or an exercise in it, leaves the other plan as it was',
-   seedCopy.after === seedCopy.before, JSON.stringify({ before: seedCopy.before, after: seedCopy.after }));
-ok('...and the record a blockless profile carried is kept, read against the seed plan it matches',
-   JSON.stringify(seedCopy.record) === '["block-1/1/d0/chestpress"]', JSON.stringify(seedCopy.record));
+   seed is chosen by name, then by place, so two profiles can land on the
+   same one: `a` in first place shares hombre's with hombre, and `b` in
+   second place shares mujer's with mujer. Each pair held ONE plan between
+   them, so editing either rewrote the other's. The record under the seed's
+   id is kept (decision 1): a blockless profile only comes out of damaged
+   storage, and the seed plan is the one its record still matches. */
+[['a', 'hombre'], ['mujer', 'b']].forEach(([first, second]) => {
+  const pair = first + ' and ' + second;
+  const seedCopy = JSON.parse(fromStorage({
+    activeProfile: first,
+    profiles: {
+      [first]: { blocks: {}, log: { 'block-1': { 'w1-d0': { chestpress: [{ w: '50', r: '8', done: true }] } } } },
+      [second]: { blocks: {} },
+    },
+  }, `(() => {
+    const a = state.profiles[${JSON.stringify(first)}].blocks['block-1'];
+    const h = state.profiles[${JSON.stringify(second)}].blocks['block-1'];
+    const before = h.name + ' | ' + h.days[0].ex[0].n;
+    a.name = 'Editado';
+    a.days[0].ex[0].n = 'Otro nombre';
+    return JSON.stringify({
+      both: !!a && !!h, same: a === h, sameDays: a.days === h.days,
+      before: before, after: h.name + ' | ' + h.days[0].ex[0].n,
+      record: sessionsOf(state.profiles[${JSON.stringify(first)}], { weeks: 'logged' })
+        .map(s => s.block + '/' + s.week + '/' + s.day + '/' + s.lift),
+    });
+  })()`));
+  ok('two blockless profiles on one seed (' + pair + ') each get a copy of its blocks, not one object between them (plans/067)',
+     seedCopy.both && !seedCopy.same && !seedCopy.sameDays, JSON.stringify(seedCopy));
+  ok('...so renaming one plan, or an exercise in it, leaves the other plan as it was (' + pair + ')',
+     seedCopy.after === seedCopy.before, JSON.stringify({ before: seedCopy.before, after: seedCopy.after }));
+  ok('...and the record a blockless profile carried is kept, read against the seed plan it matches (' + pair + ')',
+     JSON.stringify(seedCopy.record) === '["block-1/1/d0/chestpress"]', JSON.stringify(seedCopy.record));
+});
 
 /* 2. An id-less day ahead of the day that holds 'd0' used to be handed 'd0'
    itself, and the rows filed under it with it, while the day that had
@@ -1139,6 +1144,117 @@ ok('...strengthByExercise answers for the real lift only',
 ok('...and writes no index key onto Object.prototype or Object (the ninth audit\'s finding 12)',
    JSON.stringify(protoRead.indexKeys) === '[[],[]]' && protoRead.zero === false, JSON.stringify(protoRead.indexKeys));
 ok('...and nothing of this case is left on either after it', call('JSON.stringify(' + INDEX_KEYS_ON + ')') === '[[],[]]');
+
+/* 7. Case 5 one level down (decision 3, extended after review of #179): a
+   block's map stored as a list, in any part filed by block, or one slot's,
+   in a part filed by lift, took every write as a string key on the array
+   and lost it on the next reload. Two lists are kept by design and stay:
+   a slot of the session order, whose value IS the list, and an exercise's
+   variants. */
+const listDay = [{ id: 'd0', name: 'D', ex: [{ id: 'e1', n: 'Uno', sets: 3, reps: '10' }] }];
+const listBlocks = () => ({ b1: { name: 'B', weeks: 8, deload: 0, days: listDay } });
+const containerState = { activeProfile: 'hombre', profiles: {
+  hombre: { blocks: listBlocks(), blockOrder: ['b1'], activeBlock: 'b1' },
+  mujer: { blocks: listBlocks(), blockOrder: ['b1'], activeBlock: 'b1',
+    order: { b1: { 'w1-d0': ['e1'] } }, variants: { e1: [{ n: 'Uno', since: '2026-09-01' }] } },
+} };
+call('RECORD_PARTS.filter(part => part.keyedBy !== "exercise").map(part => part.name)')
+  .forEach(name => { containerState.profiles.hombre[name] = { b1: [] }; });
+call('RECORD_PARTS.filter(part => part.keyedBy === "slot+exercise").map(part => part.name)')
+  .forEach(name => { containerState.profiles.mujer[name] = { b1: { 'w1-d0': [] } }; });
+const containers = JSON.parse(fromStorage(containerState, `(() => {
+  const h = state.profiles.hombre, m = state.profiles.mujer;
+  const bySlot = RECORD_PARTS.filter(part => part.keyedBy !== 'exercise').map(part => part.name);
+  const byLift = RECORD_PARTS.filter(part => part.keyedBy === 'slot+exercise').map(part => part.name);
+  const blockLists = bySlot.filter(name => Array.isArray(h[name].b1));
+  const slotLists = byLift.filter(name => Array.isArray(m[name].b1 && m[name].b1['w1-d0']));
+  const tick = (p, w) => { const r = entry(p, 'b1', 1, 'd0', 'e1', 3)[0]; r.w = w; r.r = '8'; r.done = true; };
+  tick(h, '50');
+  tick(m, '60');
+  setNoteText(h, 'b1', 1, 'd0', 'Nota');
+  setEnergy(h, 'b1', 1, 'd0', 'alta');
+  const saved = JSON.parse(JSON.stringify(state)), sh = saved.profiles.hombre, sm = saved.profiles.mujer;
+  const ticked = p => (p.log.b1 && p.log.b1['w1-d0'] && p.log.b1['w1-d0'].e1 || []).filter(r => r.done).map(r => r.w).join();
+  return JSON.stringify({
+    blockLists: blockLists, slotLists: slotLists,
+    saved: { hombre: ticked(sh), mujer: ticked(sm),
+      note: sh.notes.b1 && sh.notes.b1['w1-d0'], energy: sh.energy.b1 && sh.energy.b1['w1-d0'] },
+    order: m.order.b1 && m.order.b1['w1-d0'], variants: Array.isArray(m.variants.e1) && m.variants.e1.length,
+  });
+})()`));
+ok('a block\'s map stored as a list comes back a map, in every part filed by block (plans/067)',
+   containers.blockLists.length === 0, 'still lists: ' + containers.blockLists.join());
+ok('...and so does a slot\'s, in every part filed by lift',
+   containers.slotLists.length === 0, 'still lists: ' + containers.slotLists.join());
+ok('...so a set ticked into either, and a note and an energy written into the first, survive being saved',
+   JSON.stringify(containers.saved) === '{"hombre":"50","mujer":"60","note":"Nota","energy":"alta"}',
+   JSON.stringify(containers.saved));
+ok('...while the lists kept by design stay lists: a slot of the session order, and an exercise\'s variants',
+   JSON.stringify(containers.order) === '["e1"]' && containers.variants === 1,
+   JSON.stringify({ order: containers.order, variants: containers.variants }));
+
+/* 8. A day stored as a list passed for one: the id and the exercises the
+   repair wrote onto it were properties JSON.stringify drops, so it came
+   back on every load with a fresh exercise id, and whatever was logged
+   against the last one was orphaned. An exercise stored as a list lost
+   what the repair gave it the same way. Both are dropped now, like null.
+   The second load is the one the bug showed on. */
+const listDays = JSON.parse(fromStorage({ activeProfile: 'hombre', profiles: { hombre: {
+  blocks: {
+    b1: { name: 'Solo listas', weeks: 8, deload: 0, days: [[]] },
+    b2: { name: 'Mixto', weeks: 8, deload: 0, days: [[], { id: 'd1', name: 'Real', ex: [[], { id: 'e1', n: 'Uno', sets: 3, reps: '10' }] }] },
+  },
+  blockOrder: ['b1', 'b2'], activeBlock: 'b2',
+} } }, `(() => {
+  const ids = days => days.map(d => d.id + ':' + (d.ex || []).map(e => e && e.id).join('+'));
+  const first = ids(state.profiles.hombre.blocks.b1.days);
+  const kept = ids(state.profiles.hombre.blocks.b2.days);
+  const saved = ids(JSON.parse(JSON.stringify(state.profiles.hombre.blocks.b2.days)).map(d => d || {}));
+  state = JSON.parse(JSON.stringify(state));
+  migrate();
+  return JSON.stringify({ first: first, second: ids(state.profiles.hombre.blocks.b1.days), kept: kept, saved: saved });
+})()`));
+ok('a day or an exercise stored as a list is dropped, and the real ones beside it keep their ids (plans/067)',
+   JSON.stringify(listDays.kept) === '["d1:e1"]', JSON.stringify(listDays.kept));
+ok('...so every day and exercise left in memory is one that survives being saved',
+   JSON.stringify(listDays.saved) === JSON.stringify(listDays.kept), JSON.stringify(listDays.saved));
+ok('...and a block whose only day was a list gets one real day, whose exercise keeps its id from one load to the next',
+   listDays.first.length === 1 && /^d0:ex-/.test(listDays.first[0]) && JSON.stringify(listDays.second) === JSON.stringify(listDays.first),
+   JSON.stringify({ first: listDays.first, second: listDays.second }));
+
+/* 9. A week the phase table has no entry for read no RIR and showed no
+   goal: `phase: {}`, or a table that stops short of the block. Each such
+   week gets the generic ramp's entry, the way the plan editor fills a
+   block made longer, and an entry that is there is never touched: not the
+   one written by hand, and not one past the block's length. */
+const phaseDays = [{ id: 'd0', name: 'D', ex: [{ id: 'e1', n: 'Uno', sets: 3, reps: '10' }] }];
+const phaseFill = JSON.parse(fromStorage({ activeProfile: 'hombre', profiles: { hombre: {
+  blocks: {
+    b1: { name: 'Mía', weeks: 6, deload: 4, days: phaseDays,
+      phase: { 2: { r: 'RIR 3', t: 'Mía' }, 9: { r: '1 RIR', t: 'Fuera' } } },
+    b2: { name: 'Vacía', weeks: 6, deload: 4, days: phaseDays, phase: {} },
+  },
+  blockOrder: ['b1', 'b2'], activeBlock: 'b1',
+} } }, `(() => {
+  const b1 = state.profiles.hombre.blocks.b1, b2 = state.profiles.hombre.blocks.b2;
+  const generic = genericPhase(6, 4), ramp = { weeks: 6, deload: 4, phase: generic };
+  const weeks = [1, 2, 3, 4, 5, 6];
+  return JSON.stringify({
+    keys: Object.keys(b1.phase), mine: b1.phase[2], beyond: b1.phase[9],
+    filled: weeks.filter(w => w !== 2).every(w => JSON.stringify(b1.phase[w]) === JSON.stringify(generic[w])),
+    rirs: weeks.map(w => phaseRir(b1, w)),
+    want: weeks.map(w => (w === 2 ? 3 : phaseRir(ramp, w))),
+    empty: JSON.stringify(b2.phase) === JSON.stringify(generic),
+  });
+})()`));
+ok('a phase table missing weeks gets the generic ramp\'s entry for each of them, and each reads the RIR it prescribes (plans/067)',
+   phaseFill.filled && phaseFill.want.some(v => v != null) && JSON.stringify(phaseFill.rirs) === JSON.stringify(phaseFill.want),
+   JSON.stringify({ rirs: phaseFill.rirs, want: phaseFill.want, filled: phaseFill.filled }));
+ok('...while an entry that is there is never touched, including one past the block\'s length',
+   JSON.stringify(phaseFill.mine) === '{"r":"RIR 3","t":"Mía"}' && JSON.stringify(phaseFill.beyond) === '{"r":"1 RIR","t":"Fuera"}'
+     && JSON.stringify(phaseFill.keys) === '["1","2","3","4","5","6","9"]',
+   JSON.stringify({ keys: phaseFill.keys, mine: phaseFill.mine, beyond: phaseFill.beyond }));
+ok('...and a phase stored as {} comes back as the whole generic ramp', phaseFill.empty);
 call('state = __before067; __before067 = null;');
 
 console.log('\n== normalizeImportedProfile ==');
