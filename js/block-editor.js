@@ -1392,13 +1392,20 @@ function wireBlockEditor() {
      select) and stays on every input; the exercise rows only need
      renderPlanEditor() once the field is committed — the weeks value is
      re-read and re-clamped from the input on save regardless, so the draft
-     cannot drift from skipping the per-keystroke rebuild. */
+     cannot drift from skipping the per-keystroke rebuild.
+     oninput must not write block.deload: typing "10" passes through "1" on
+     the way, and the deload-week list for a one-week block has no week 8,
+     so renderDeloadOptions() would fall to "Sin descarga" and this used to
+     write that 0 straight into the draft — the planned deload silently
+     vanished while the digits were still landing. The select keeps showing
+     the stored deload whenever the weeks typed so far reach it, and
+     syncDraftFromForm() reads the select on save, so leaving the draft's
+     deload untouched here is enough; it only changes once the person
+     actually picks a week (plans/062). */
   $('peWeeks').oninput = () => {
     const block = peDraft.block;
     block.weeks = clampInt($('peWeeks').value, 1, MAX_WEEKS, 8);
-    if (deloadWeek(block) > block.weeks) block.deload = 0;
     renderDeloadOptions();
-    block.deload = clampInt($('peDeload').value, 0, MAX_WEEKS, 0);
   };
   $('peWeeks').onchange = () => renderPlanEditor();
 
