@@ -618,6 +618,19 @@ function purgeRecord(profile, blockId, scope) {
    to compose: onto that day and then on to the destination has to end
    where the one call does. test/unit.js holds every part to it. */
 function moveExerciseRecord(profile, blockId, fromDayId, toDayId, exId) {
+  /* A day to itself is no move, and leaves the record as it was. The
+     loop below emptied it instead: the source slot is the destination
+     slot, so the log's rows were added to themselves and then deleted
+     with the source, every set of that lift on that day gone, and the
+     legacy chip and the objetivo record were deleted from the very slot
+     that was keeping them. The session order's own move is no safer,
+     which is why this comes before any part runs: it takes the id out of
+     the list and appends it to the same list, filing the lift as done
+     last, or drops a week's order that held that id alone. No caller
+     asks for it today (applyPlanDraft skips a lift still on the day it
+     started on), but the promise above is that nothing is destroyed by
+     calling this, and this was the one call that broke it. */
+  if (fromDayId === toDayId) return;
   RECORD_PARTS.forEach(part => {
     const map = profile[part.name];
     if (!map || !map[blockId]) return;
