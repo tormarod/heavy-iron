@@ -3456,6 +3456,17 @@ const ok = (name, cond, extra) => {
     ok('"Quedarme con lo mío" writes page1\'s state through on purpose',
        kept === 11, kept);
     ok('and clears the held flag', await page1.evaluate(() => held === false));
+
+    /* The other answer (plans/060). "Recargar" used to be a bare reload,
+       and the reload's own pagehide forced page1's held write through —
+       over the data the user had just chosen to keep. */
+    await page1.evaluate(() => { state.prefs.barWeight = 33; save(); });
+    await page2.evaluate(() => { state.prefs.barWeight = 44; writeState(true); });
+    await page1.waitForFunction(() => held === true);
+    await Promise.all([page1.waitForEvent('load'), page1.click('#toastAct2')]);
+    const reloaded = await page2.evaluate(() => JSON.parse(localStorage.getItem('heavy-iron-v1')).prefs.barWeight);
+    ok('"Recargar" keeps what the other tab saved: the reload writes nothing of page1\'s over it',
+       reloaded === 44, reloaded);
     await ctx.close();
   });
 
