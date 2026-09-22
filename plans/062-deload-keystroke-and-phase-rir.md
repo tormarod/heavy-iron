@@ -326,4 +326,21 @@ two mutations.
   added to it as a case before the rule changes.
 - `recordTarget` stores the value as `obj.rir`, which the record's own
   `accept` bounds at `RIR_MAX`; that stays true because rule 6 is kept.
-- *(Executor: record deviations here.)*
+- Step A (executor): drift check against `b15ae87..origin/main` was empty
+  — no adaptation needed, `renderDeloadOptions`/`syncDraftFromForm`
+  matched the plan's excerpts exactly. Removing the two lines from
+  `oninput` also removed one of block-editor.js's two `deloadWeek(` calls
+  (the dead `if (deloadWeek(block) > block.weeks) block.deload = 0;`
+  check), which dropped the pinned count in `test/unit.js`'s
+  `DELOAD_WEEK_ALLOWED` guardrail (≈ line 2496) from
+  `{ 'js/block-editor.js': 2, 'js/app.js': 1 }` to
+  `{ 'js/block-editor.js': 1, 'js/app.js': 1 }`; its comment was updated
+  to match. This wasn't named in the plan's steps but follows directly
+  from step 1's instruction to delete that line, so it was fixed rather
+  than reported as a STOP. Mutation check (plan's "restore the old
+  `block.deload = …` line"): re-inserted `block.deload = clampInt($('peDeload').value, 0, MAX_WEEKS, 0);`
+  at the end of `oninput` — the new "typing 10…" case FAILed
+  (`{"weeks":10,"deload":0,"deloadWeeks":"[]"}`); reverted, suite back to
+  green. `node test/unit.js`: 1204 passed/0 failed before, 1206
+  passed/0 failed after (two new cases). No CRLF introduced (checked with
+  `node -e` per AGENTS.md, not Python). Bumped `v126` → `v127`.
