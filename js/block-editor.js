@@ -494,6 +494,15 @@ function openImportSheet() {
 }
 
 
+/* "la semana 4" for one deload week, "las semanas 4 y 8" for two, "las
+   semanas 4, 6 y 8" for more — deloadWeeks (js/app.js) can now return more
+   than the field's single week, and the prompt has to name all of them or
+   the AI it is briefing writes the next block blind to the others. */
+function weeksPhrase(weeks) {
+  if (weeks.length === 1) return 'la semana ' + weeks[0];
+  return 'las semanas ' + weeks.slice(0, -1).join(', ') + ' y ' + weeks[weeks.length - 1];
+}
+
 /* Builds a self-contained prompt for a third party's AI agent, describing
    the block JSON shape from the same limits the importer itself enforces
    (IMPORT_LIMITS, MUSCLE_LIMIT, PATTERN_LIMIT, TYPE_LIMIT, MAX_WEEKS) so it can't quietly drift out of
@@ -566,14 +575,14 @@ async function buildAiPrompt(opts) {
   if (withBlock) {
     const block = getBlock();
     const days = dayList(block);
-    const dl = deloadWeek(block);
+    const dls = deloadWeeks(block);
     const priority = blockPriority(block);
     const p = state.prefs;
     const ctx = [
       'Entreno ' + (soloMode() ? 'solo' : 'en pareja') + '.',
       'Peso en ' + units() + '. Incremento por defecto: ' + p.inc + ' ' + units() + '. Barra: ' + p.barWeight + ' ' + units() + '. Discos por lado: ' + p.plates.join(', ') + '.',
       'Mi bloque actual, ' + reviewName(block.name) + ', tiene ' + days.length + (days.length === 1 ? ' día' : ' días') + ' por semana y ' +
-        blockWeeks(block) + ' semanas' + (dl ? ', con descarga en la semana ' + dl : ', sin descarga') + '.',
+        blockWeeks(block) + ' semanas' + (dls.length ? ', con descarga en ' + weeksPhrase(dls) : ', sin descarga') + '.',
       priority.length ? 'Músculos prioritarios: ' + priority.map(reviewName).join(', ') + '.' : '',
     ].filter(Boolean).join(' ');
     lines.push(

@@ -2204,6 +2204,91 @@ ok('a one-set exercise stays at one set on the deload week — the floor of two 
    call(`setsFor({ sets: 3 }, 8, { deload: 8, weeks: 8, phase: {} })`) === 2,
    [1, 2, 3].map(n => call(`setsFor({ sets: ${n} }, 8, { deload: 8, weeks: 8, phase: {} })`)).join(','));
 
+console.log('\n== deloadWeeks: the field union the phase text, one list every reader but the editor asks (plans/054) ==');
+ok('deloadWeeks: the field alone',
+   call(`deloadWeeks({ deload: 4, weeks: 8, phase: {} }).join(',')`) === '4');
+ok('deloadWeeks: the phase text alone',
+   call(`deloadWeeks({ deload: 0, weeks: 8, phase: { 3: { r: 'Descarga', t: '' } } }).join(',')`) === '3');
+ok('deloadWeeks: the field and a phase-text week both landing on the same week is one week, not two',
+   call(`deloadWeeks({ deload: 4, weeks: 8, phase: { 4: { r: 'Descarga', t: '' } } }).join(',')`) === '4');
+ok('deloadWeeks: the field and an adjacent phase-text week are two consecutive weeks, both listed',
+   call(`deloadWeeks({ deload: 4, weeks: 8, phase: { 5: { r: 'Descarga', t: '' } } }).join(',')`) === '4,5');
+ok('deloadWeeks: "Semana de descarga" and "descarga activa" both count, sorted by week',
+   call(`deloadWeeks({ deload: 0, weeks: 8, phase: { 5: { r: 'descarga activa' }, 2: { r: 'Semana de descarga' } } }).join(',')`) === '2,5');
+ok('deloadWeeks: a week beyond the block\'s current length is left out, field or phase text',
+   call(`deloadWeeks({ deload: 6, weeks: 4, phase: { 6: { r: 'Descarga' } } }).join(',')`) === '');
+
+/* Decision 3: "sin"/"no" right before "descarga" (whitespace in between,
+   case-insensitive) says there is no deload here, and must not flip the
+   week into one — but nothing short of that literal phrase may. */
+ok('deloadWeeks: "sin descarga" and "no descarga" do not count, whatever the case or the spacing',
+   call(`deloadWeeks({ deload: 0, weeks: 8, phase: {
+     2: { r: 'sin descarga' }, 3: { r: 'No Descarga' }, 4: { r: 'SIN   DESCARGA' }, 5: { r: 'Sin descarga, apretar' },
+   } }).join(',')`) === '');
+ok('...and the same two directions hold for deloadAt, which is deloadWeeks\' own membership test',
+   call(`deloadAt({ deload: 0, weeks: 8, phase: { 3: { r: 'Sin descarga, apretar' } } }, 3)`) === false &&
+   call(`deloadAt({ deload: 0, weeks: 8, phase: { 3: { r: 'Descarga activa' } } }, 3)`) === true);
+ok('the default phase texts (js/data.js) still resolve "Descarga" as a deload week, unchanged by the negation rule',
+   call(`deloadAt({ deload: 0, weeks: 8, phase: DEFAULT_PHASE_TU }, 8)`) === true &&
+   call(`deloadAt({ deload: 0, weeks: 8, phase: DEFAULT_PHASE_PAREJA }, 8)`) === true &&
+   call(`deloadWeeks({ deload: 0, weeks: 8, phase: DEFAULT_PHASE_TU }).join(',')`) === '8' &&
+   call(`deloadWeeks({ deload: 0, weeks: 8, phase: DEFAULT_PHASE_PAREJA }).join(',')`) === '8');
+
+/* deloadSpans is the grouping deloadCheck and drawDeloadCheck share —
+   tested directly so a failure below points at the grouping or at the
+   before/after arithmetic, not at both at once. */
+ok('deloadSpans groups consecutive deload weeks into one span; a week on its own is its own span',
+   call(`JSON.stringify(deloadSpans({ deload: 4, weeks: 10, phase: { 5: { r: 'Descarga' }, 8: { r: 'Descarga' } } }))`) ===
+   '[{"start":4,"end":5},{"start":8,"end":8}]');
+ok('deloadSpans on a block with no deload at all is empty',
+   call(`JSON.stringify(deloadSpans({ deload: 0, weeks: 8, phase: {} }))`) === '[]');
+
+console.log('\n== plans/054 decision 5, visible change 1: a phase-text deload reads as a deload everywhere the field did ==');
+ok('deloadAt: a phase-text-only deload (no field) is a deload on its own week and nowhere else — what feeds the DL chip and the banner',
+   call(`deloadAt({ deload: 0, weeks: 8, phase: { 5: { r: 'Descarga' } } }, 5)`) === true &&
+   call(`deloadAt({ deload: 0, weeks: 8, phase: { 5: { r: 'Descarga' } } }, 4)`) === false &&
+   call(`deloadAt({ deload: 0, weeks: 8, phase: { 5: { r: 'Descarga' } } }, 6)`) === false);
+ok('setsFor halves a phase-text-only deload week the same as a field one',
+   call(`setsFor({ sets: 4 }, 5, { deload: 0, weeks: 8, phase: { 5: { r: 'Descarga' } } })`) === 2);
+ok('volumeWeeksInPlay excludes a phase-text deload too, not only the field',
+   call(`volumeWeeksInPlay('plan', { deload: 0, weeks: 5, phase: { 3: { r: 'Descarga' } } }, [10, 10, 10, 10, 10]).join(',')`) === '0,1,3,4');
+
+console.log('\n== plans/054 decision 5, visible change 2: "sin descarga" no longer halves sets ==');
+ok('setsFor does not halve a week whose goal says "sin descarga"',
+   call(`setsFor({ sets: 4 }, 3, { deload: 0, weeks: 8, phase: { 3: { r: 'Sin descarga, apretar' } } })`) === 4);
+ok('...nor does volumeWeeksInPlay exclude it from the typical',
+   call(`volumeWeeksInPlay('plan', { deload: 0, weeks: 3, phase: { 2: { r: 'Sin descarga' } } }, [10, 10, 10]).join(',')`) === '0,1,2');
+
+console.log('\n== decision 1 (plans/054): deloadWeek is read nowhere but app.js\'s own deloadWeeks and the editor\'s field ==');
+{
+  /* The scanner on a case it exists to tell apart, so it cannot pass the
+     real check below by never having looked: a mention inside a comment or
+     a string is not a read, a local of the same name shadowing the global
+     is not scanned for by this narrow check (unlike rule 1/2's
+     guardedReads above, which decision 1 does not ask for), and two real
+     calls are counted as two. */
+  const fixture = codeOnly("/* deloadWeek(x) mentioned here */ const s = 'deloadWeek(nope)'; deloadWeek(1); if (x) deloadWeek(2);");
+  const seen = (fixture.match(/\bdeloadWeek\s*\(/g) || []).length;
+  ok('the deloadWeek( scanner ignores a comment and a string, and counts two real calls',
+     seen === 2, seen + ': ' + JSON.stringify(fixture));
+}
+/* deloadWeek(block) stays only as: app.js's own deloadWeeks (which folds
+   the field into the union), and the editor's field accessor —
+   renderDeloadOptions and peWeeks.oninput, both in js/block-editor.js. Any
+   other read is one of the seven that plans/054 moved onto deloadWeeks or
+   deloadAt, or a new one just like them. */
+/* In SHELL_SCRIPTS order (block-editor.js before app.js), so the two
+   JSON.stringify calls below agree on key order too. */
+const DELOAD_WEEK_ALLOWED = { 'js/block-editor.js': 2, 'js/app.js': 1 };
+const deloadWeekReads = {};
+SHELL_SCRIPTS.forEach(f => {
+  const n = (codeOnly(shellSrc[f]).match(/\bdeloadWeek\s*\(/g) || []).length;
+  if (n) deloadWeekReads[f] = n;
+});
+ok('deloadWeek( is called only in app.js\'s own deloadWeeks and the editor\'s two field reads — nowhere else in js/',
+   JSON.stringify(deloadWeekReads) === JSON.stringify(DELOAD_WEEK_ALLOWED),
+   JSON.stringify(deloadWeekReads));
+
 /* The objetivo that was shown is written once and never rewritten: the
    record is what was ASKED for, so a weight that came down mid-session has
    something to be compared against. */
@@ -5622,6 +5707,80 @@ console.log('\n== sessionsOf: the one reading of the log (plans/038) ==');
      })()`) === 0);
 }
 
+console.log('\n== deloadCheck: one comparison per deload span (plans/054 decision 2) ==');
+{
+  /* Every set logged at 1 rep: est1RM(w, 1) = w * 31/30 for any w, so the
+     ratio between two weeks' best e1RM is exactly the ratio of the raw
+     weights typed in — the arithmetic below can be checked by eye instead
+     of through Epley's constant. sessionFixture is the one defined inside
+     the sessionsOf section above; it is a global of the app's own vm
+     context by the time that section ran, not a Node-side local, so it is
+     still there to call. */
+  const spanSingle = JSON.parse(call(`(function () {
+    const p = sessionFixture({ blocks: [{ id: 'A', weeks: 8, deload: 4,
+                                          days: [{ id: 'd1', ex: [{ id: 'bp' }] }] }],
+      sessions: [
+        { block: 'A', week: 3, day: 'd1', lift: 'bp', sets: [[100, 1]] },
+        { block: 'A', week: 5, day: 'd1', lift: 'bp', sets: [[105, 1]] },
+      ] });
+    return JSON.stringify(deloadCheck(p, p.blocks.A));
+  })()`));
+  ok('a single field deload is one span, with today\'s own before/after/n/change',
+     spanSingle.length === 1 && spanSingle[0].before === 3 && spanSingle[0].after === 5 &&
+     spanSingle[0].deload === 4 && spanSingle[0].deloadEnd === 4 && spanSingle[0].n === 1 &&
+     Math.round(spanSingle[0].change * 100) / 100 === 5,
+     JSON.stringify(spanSingle));
+
+  const spanTwo = JSON.parse(call(`(function () {
+    const p = sessionFixture({ blocks: [{ id: 'A', weeks: 10, deload: 4, phase: { 8: { r: 'Descarga' } },
+                                          days: [{ id: 'd1', ex: [{ id: 'bp' }] }] }],
+      sessions: [
+        { block: 'A', week: 3, day: 'd1', lift: 'bp', sets: [[100, 1]] },
+        { block: 'A', week: 5, day: 'd1', lift: 'bp', sets: [[110, 1]] },
+        { block: 'A', week: 7, day: 'd1', lift: 'bp', sets: [[80, 1]] },
+        { block: 'A', week: 9, day: 'd1', lift: 'bp', sets: [[84, 1]] },
+      ] });
+    return JSON.stringify(deloadCheck(p, p.blocks.A));
+  })()`));
+  ok('two separate deload weeks (field at 4, phase text at 8) are two spans, each compared on its own',
+     spanTwo.length === 2 &&
+     spanTwo[0].deload === 4 && spanTwo[0].before === 3 && spanTwo[0].after === 5 && Math.round(spanTwo[0].change) === 10 &&
+     spanTwo[1].deload === 8 && spanTwo[1].before === 7 && spanTwo[1].after === 9 && Math.round(spanTwo[1].change) === 5,
+     JSON.stringify(spanTwo));
+
+  const spanRange = JSON.parse(call(`(function () {
+    const p = sessionFixture({ blocks: [{ id: 'A', weeks: 8, deload: 4, phase: { 5: { r: 'Descarga' } },
+                                          days: [{ id: 'd1', ex: [{ id: 'bp' }] }] }],
+      sessions: [
+        { block: 'A', week: 3, day: 'd1', lift: 'bp', sets: [[100, 1]] },
+        { block: 'A', week: 6, day: 'd1', lift: 'bp', sets: [[90, 1]] },
+      ] });
+    return JSON.stringify(deloadCheck(p, p.blocks.A));
+  })()`));
+  ok('a two-week span (field at 4, phase text at 5) compares the week before it with the week after it',
+     spanRange.length === 1 && spanRange[0].deload === 4 && spanRange[0].deloadEnd === 5 &&
+     spanRange[0].before === 3 && spanRange[0].after === 6 && Math.round(spanRange[0].change) === -10,
+     JSON.stringify(spanRange));
+
+  const spanStart = call(`(function () {
+    const p = sessionFixture({ blocks: [{ id: 'A', weeks: 8, deload: 1,
+                                          days: [{ id: 'd1', ex: [{ id: 'bp' }] }] }],
+      sessions: [{ block: 'A', week: 2, day: 'd1', lift: 'bp', sets: [[100, 1]] }] });
+    return deloadCheck(p, p.blocks.A).length;
+  })()`);
+  ok('a deload on the block\'s first week has no week before it — no check',
+     spanStart === 0, String(spanStart));
+
+  const spanEnd = call(`(function () {
+    const p = sessionFixture({ blocks: [{ id: 'A', weeks: 6, deload: 6,
+                                          days: [{ id: 'd1', ex: [{ id: 'bp' }] }] }],
+      sessions: [{ block: 'A', week: 5, day: 'd1', lift: 'bp', sets: [[100, 1]] }] });
+    return deloadCheck(p, p.blocks.A).length;
+  })()`);
+  ok('a deload on the block\'s last week has no week after it — no check',
+     spanEnd === 0, String(spanEnd));
+}
+
 console.log('\n== the history cache: one read per question, dropped by the write (plans/045) ==');
 {
   /* Every case builds its own profile and files it as the active one, so
@@ -6778,6 +6937,63 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
   ok('...and the review\'s own row, and a diagRows call that names no scope, count the block\'s whatever the sheet was left on',
      reviewed === scoped && unsaid === scoped, JSON.stringify({ reviewed: reviewed, unsaid: unsaid }));
   call('diagScope = "block"');
+
+  console.log('\n== plans/054 decision 5, visible change 3: the prompt names every deload week ==');
+  {
+    /* Fresh state, so this cannot inherit whatever the block above left the
+       shared profile in — this only cares about the deload clause at the
+       end of the block-context sentence. */
+    call('state = defaultState(); migrate(); state.setupDone = true;');
+    call('getBlock().deload = 0; getBlock().phase = {};');
+    const noDeloadPrompt = await call('buildAiPrompt({ withBlock: true })');
+    ok('the prompt says "sin descarga" when the block has none',
+       noDeloadPrompt.indexOf(', sin descarga.') >= 0, noDeloadPrompt.slice(0, 400));
+
+    call('getBlock().deload = 4;');
+    const oneDeloadPrompt = await call('buildAiPrompt({ withBlock: true })');
+    ok('...and names the single deload week, singular',
+       oneDeloadPrompt.indexOf(', con descarga en la semana 4.') >= 0, oneDeloadPrompt.slice(0, 400));
+
+    call('getBlock().phase[8] = { r: "Descarga", t: "" };');
+    const twoDeloadPrompt = await call('buildAiPrompt({ withBlock: true })');
+    ok('...and every deload week once a phase-text one joins the field, "las semanas 4 y 8"',
+       twoDeloadPrompt.indexOf(', con descarga en las semanas 4 y 8.') >= 0, twoDeloadPrompt.slice(0, 400));
+  }
+
+  console.log('\n== plans/054 decision 2: the review carries every span, one bullet each ==');
+  {
+    call('state = defaultState(); migrate();');
+    call(`
+      (function () {
+        const pr = state.profiles.hombre;
+        const b = pr.blocks[pr.blockOrder[0]];
+        /* A two-week span (field at 4, phase text at 5) and a one-week span
+           (phase text at 9), each with a logged week on both sides. A fresh
+           phase object, not merged onto the shipped default's own — that
+           default already says "Descarga" at week 8, which would fuse into
+           the week-9 span and eat the very case this is testing. */
+        b.weeks = 12; b.deload = 4;
+        b.phase = { 5: { r: 'Descarga', t: '' }, 9: { r: 'Descarga', t: '' } };
+        const day = b.days[0], exId = day.ex[0].id;
+        pr.log[b.id] = {};
+        const one = (w, wt) => { pr.log[b.id][slot(w, day.id)] = { [exId]: [{ w: String(wt), r: '1', done: true }] }; };
+        one(3, 100); one(6, 90);    /* span 4-5: 100 -> 90 kg, -10 % */
+        one(8, 80); one(10, 88);    /* span 9: 80 -> 88 kg, +10 % */
+        pr.week = 12;
+      })()
+    `);
+    const spanReview = JSON.parse(call('JSON.stringify(buildBlockReview(getProfile(), getBlock()).deloads)'));
+    ok('buildBlockReview carries one entry per span, in week order, each with its own before/after',
+       spanReview.length === 2 &&
+       spanReview[0].deload === 4 && spanReview[0].deloadEnd === 5 && spanReview[0].before === 3 && spanReview[0].after === 6 &&
+       spanReview[1].deload === 9 && spanReview[1].deloadEnd === 9 && spanReview[1].before === 8 && spanReview[1].after === 10,
+       JSON.stringify(spanReview));
+    const spanReviewText = call('reviewText(buildBlockReview(getProfile(), getBlock()))');
+    ok('reviewText lists a multi-week span as "las semanas N–M" and a one-week one as "la semana N", one bullet each',
+       spanReviewText.indexOf('- Descarga en las semanas 4–5: la semana 6 quedó') >= 0 &&
+       spanReviewText.indexOf('- Descarga en la semana 9: la semana 10 quedó') >= 0,
+       (spanReviewText.match(/- Descarga.*/g) || []).join(' | '));
+  }
 
   console.log('\n== priorBlockSets: the block before this one, last logged week, deload skipped (plans/018) ==');
   const priorProbe = call(`
