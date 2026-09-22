@@ -302,4 +302,26 @@ restore and editor case stays green unchanged.
   helper — and remember that `migrate()` de-duplicates within a day only.
 - `variants` stays keyed by exercise id: a shared-id pair shares one
   rename history by design.
-- *(Executor: record deviations here.)*
+- Executed A, B and C as one PR on `claude/063-exercise-ids`. Before
+  Step A, no test in `test/unit.js` pinned a 60-character cut of an
+  *exercise* id on the own path; the one 70-character case
+  (`renamedDayProbe`) is a *day* id, which this plan leaves alone.
+- A: `capSlug` is a local arrow beside `baseId`, not a shared helper; if
+  `migrate()`'s slug is ever capped (above), lift it into `js/app.js`
+  beside `slugify`. The seven cases are eleven assertions: case 2 is
+  split into "the ids come back whole" and "each day's set is under its
+  own lift".
+- B: the booted cases read the status line straight after
+  "Guardar cambios" and before the clock moves — save()'s debounced write
+  replaces it with "Guardado hh:mm" — and fail if the line read is not the
+  save's own ("Plan actualizado…"), so an assertion of "no renombrado"
+  cannot pass on the wrong line. The "Enviar a…" case calls
+  `moveExToDay` directly (the handler's refusal check does not apply to a
+  day without that id). It guards the start-day lookup; it does not fail
+  under the id-only mutation on its own, since that mutation already fails
+  case 1.
+- C: the two passes also change the insertion order of each day's map,
+  which `normalizeImportedProfile` (`js/profile-transfer.js`, the
+  `exIdMap` it builds for the `variants` part) walks first-wins across
+  days. Raw ids now come first there too, the same rule; every existing
+  restore case is unchanged.
