@@ -1591,6 +1591,64 @@ ok('an ordinary objetivo target that comes down still reads as a mis-chosen weig
    objetivoDownVerdict.lectura && objetivoDownVerdict.lectura.indexOf('Peso mal elegido') === 0,
    JSON.stringify(objetivoDownVerdict));
 
+console.log('\n== the history fixture (plans/052) ==');
+/* The one fixture builder for a training history: sessions in, a profile
+   out. Everything below that used to hand-roll its own bare profile —
+   the objetivo cases, the brake, the two-day split, the Diagnóstico, the
+   session reader and the history cache — builds on this instead, so a
+   fixture bug is one fix rather than six, and the shape of "a session"
+   is written down once (plans/052).
+
+   A block is { id, weeks, deload, phase, days: [{ id, ex: [{ id, n,
+   sets, reps, … }] }] } — an exercise's other fields (inc, add, minRir)
+   ride along unchanged, since the rule reads those straight off it. A
+   session is { block, week, day, lift, sets, rir } where each set is
+   [w, r] (ticked), [w, r, { …row fields }] — a per-set rir, a ts, a lb
+   unit, anything a row can carry — or a raw row object, and `rir` is the
+   legacy one-chip value, filed in the old parallel map. `profile` merges
+   extra fields onto the profile itself once it is built (week, day, a
+   label, the active block — whatever a case needs on file already);
+   `install` also files it as state.profiles.hombre, the active one, for
+   the cases that read it back through getProfile() rather than holding
+   onto what this returns — which is also what would hand a spec-built
+   history to bootApp's `state`, JSON-stringified, though nothing below
+   needs to.
+
+   Units are always spec.units || 'kg', and state is reset first — a
+   profile of this call's own, not read back from whatever an earlier
+   case left in state.prefs.units (plans/047). Defined in the app's own
+   scope so every case below can call it. */
+call(`
+  function sessionFixture(spec) {
+    state = defaultState(); migrate();
+    state.prefs.units = spec.units || 'kg';
+    const p = { blocks: {}, blockOrder: [], log: {}, rir: {}, obj: {}, variants: {} };
+    (spec.blocks || []).forEach(b => {
+      p.blocks[b.id] = { id: b.id, name: b.name || b.id, weeks: b.weeks || 8, deload: b.deload || 0,
+                         phase: b.phase || {}, priority: [],
+                         days: (b.days || []).map(d => ({ id: d.id, name: d.id,
+                           ex: (d.ex || []).map(e => Object.assign(
+                             { id: e.id, n: e.n || e.id, sets: e.sets || 3, reps: e.reps || '8-12' }, e)) })) };
+      p.blockOrder.push(b.id);
+    });
+    (spec.sessions || []).forEach(s => {
+      const k = slot(s.week, s.day);
+      const blk = p.log[s.block] = p.log[s.block] || {};
+      const bucket = blk[k] = blk[k] || {};
+      bucket[s.lift] = s.sets.map(x => Array.isArray(x)
+        ? Object.assign({ w: String(x[0]), r: String(x[1]), done: true }, x[2] || {})
+        : x);
+      if (s.rir != null) {
+        const rb = p.rir[s.block] = p.rir[s.block] || {};
+        (rb[k] = rb[k] || {})[s.lift] = s.rir;
+      }
+    });
+    if (spec.profile) Object.assign(p, spec.profile);
+    if (spec.install) { state.profiles.hombre = p; state.activeProfile = 'hombre'; }
+    return p;
+  }
+`);
+
 console.log('\n== objetivo: los quince casos de la v3 ==');
 /* The fifteen cases the rule was specified against, in the order the spec
    lists them. Every one of them reads MORE than one session — which is the
@@ -1612,11 +1670,6 @@ console.log('\n== objetivo: los quince casos de la v3 ==');
 const targetProbe = `
   (function (sessions, opts) {
     opts = opts || {};
-    /* units() reads the global state.prefs.units, and this profile is a
-       bare object of its own rather than one of state.profiles — so it is
-       set here rather than inherited from whichever earlier test last
-       touched the setup sheet (plans/047). */
-    state.prefs.units = 'kg';
     const DAY = 86400000, T0 = Date.UTC(2026, 0, 5);
     const week = opts.week || sessions.length + 1;
     const phase = {};
@@ -1628,32 +1681,36 @@ const targetProbe = `
     const ex = { id: 'E', n: 'x', sets: opts.sets || 3, reps: opts.range || '10–15', inc: opts.inc || 2.5 };
     if (opts.add) ex.add = opts.add;
     if (opts.minRir) ex.minRir = opts.minRir;
-    const block = { id: 'B', name: 'B', weeks: 16, deload: opts.deload || 0, phase: phase,
-                    days: [{ id: 'D', name: 'D', ex: [ex] }] };
-    const profile = { log: { B: {} }, rir: { B: {} }, obj: {}, variants: {},
-                      blocks: { B: block }, blockOrder: ['B'] };
     let lastDay = 0;
-    sessions.forEach(function (s, i) {
+    const sess = sessions.map(function (s, i) {
       const d = s.day != null ? s.day : i * 7;
       lastDay = d;
-      profile.log.B['w' + (i + 1) + '-D'] = { E: s.sets.map(function (p, k) {
-        const row = { w: String(p[0]), r: String(p[1]), done: true, ts: T0 + d * DAY };
-        /* A third element is the unit the row was written in. The key is
-           added only when there is one, because that is what the app writes:
-           a row logged in the profile's own unit carries no u at all, and a
-           literal u: undefined is a shape no restore ever produces. */
-        if (p[2] === 'lb') row.u = 'lb';
-        if (s.rirs && s.rirs[k] != null) row.rir = String(s.rirs[k]);
-        return row;
-      }) };
-      if (s.rir) profile.rir.B['w' + (i + 1) + '-D'] = { E: s.rir };
+      return { block: 'B', week: i + 1, day: 'D', lift: 'E', rir: s.rir,
+        sets: s.sets.map(function (p, k) {
+          const fields = { ts: T0 + d * DAY };
+          /* A third element is the unit the row was written in. The key is
+             added only when there is one, because that is what the app writes:
+             a row logged in the profile's own unit carries no u at all, and a
+             literal u: undefined is a shape no restore ever produces. */
+          if (p[2] === 'lb') fields.u = 'lb';
+          if (s.rirs && s.rirs[k] != null) fields.rir = String(s.rirs[k]);
+          return [p[0], p[1], fields];
+        }) };
     });
+    /* sessionFixture resets state and sets state.prefs.units itself
+       (plans/047 and plans/052) — this profile never reads it any other
+       way, so there is nothing to inherit from whichever earlier test
+       last touched the setup sheet. */
+    const profile = sessionFixture({ units: 'kg',
+      blocks: [{ id: 'B', weeks: 16, deload: opts.deload || 0, phase: phase, days: [{ id: 'D', ex: [ex] }] }],
+      sessions: sess });
+    const block = profile.blocks.B, day = block.days[0], liveEx = day.ex[0];
     const now = T0 + (opts.now != null ? opts.now : lastDay + 7) * DAY;
     /* Calls targetFor directly, not targetNow, so this never touches
        renderCache at all — and the history cache below it needs no help
-       either, because profile is a fresh object literal every call and
-       the history cache keys on profile identity (plans/045). */
-    const t = targetFor(profile, block, block.days[0], ex, week, now, !!opts.brake);
+       either, because sessionFixture hands back a fresh profile every call
+       and the history cache keys on profile identity (plans/045). */
+    const t = targetFor(profile, block, day, liveEx, week, now, !!opts.brake);
     if (!t) return null;
     return {
       kind: t.kind, conf: t.conf, dir: t.dir, notes: t.notes.join(','),
@@ -1819,29 +1876,25 @@ ok('T14 no history at all is no line, not a guess',
    decline inside the last seven days; two is not enough. */
 const brakeProbe = `
   (function (caps, nEx) {
-    /* Same reason as targetProbe above: a bare profile object, not one of
-       state.profiles, so the unit it reads has to be set here rather than
-       inherited (plans/047). */
-    state.prefs.units = 'kg';
     const DAY = 86400000, T0 = Date.UTC(2026, 0, 5);
     const phase = {}; for (let i = 1; i <= 8; i++) phase[i] = { r: '2 RIR' };
     const ex = [];
     for (let e = 0; e < nEx; e++) ex.push({ id: 'E' + e, n: 'x' + e, sets: 3, reps: '8–20', inc: 2.5 });
-    const block = { id: 'B', name: 'B', weeks: 8, deload: 0, phase: phase, days: [{ id: 'D', name: 'D', ex: ex }] };
-    const profile = { log: { B: {} }, rir: { B: {} }, obj: {}, variants: {}, blocks: { B: block }, blockOrder: ['B'] };
+    const sess = [];
     caps.forEach(function (C, i) {
-      const rows = {};
       /* 10 reps at 1 RIR, so the set is neither past CENSOR_REPS nor at the
          top of the range: the weight is whatever makes the capacity C. */
       ex.forEach(function (e) {
-        rows[e.id] = [{ w: String(C * 30 / 41), r: '10', done: true, ts: T0 + i * 3 * DAY }];
+        sess.push({ block: 'B', week: i + 1, day: 'D', lift: e.id, rir: '1',
+                    sets: [[C * 30 / 41, 10, { ts: T0 + i * 3 * DAY }]] });
       });
-      profile.log.B['w' + (i + 1) + '-D'] = rows;
-      profile.rir.B['w' + (i + 1) + '-D'] = ex.reduce(function (o, e) { o[e.id] = '1'; return o; }, {});
     });
+    const profile = sessionFixture({ units: 'kg',
+      blocks: [{ id: 'B', weeks: 8, deload: 0, phase: phase, days: [{ id: 'D', ex: ex }] }],
+      sessions: sess });
     /* Calls brakeOn directly, not brakeCached, so renderCache is never in
        the loop here. */
-    return brakeOn(profile, block, caps.length + 1, T0 + (caps.length * 3 + 2) * DAY);
+    return brakeOn(profile, profile.blocks.B, caps.length + 1, T0 + (caps.length * 3 + 2) * DAY);
   })
 `;
 ok('T15 three exercises declining inside a week turn the brake on',
@@ -2077,35 +2130,37 @@ console.log('\n== el mismo ejercicio en dos días del mismo bloque (plans/026) =
 const twoDayProbe = call(`
   (function () {
     const T0 = Date.UTC(2026, 0, 5), DAY = 86400000;
-    const mk = function () { return { id: 'E', n: 'x', sets: 2, reps: '8–12', inc: 2.5 }; };
-    const ex = mk();
-    const row = function (w, d) { return [{ w: String(w), r: '10', done: true, ts: T0 + d * DAY }]; };
-    const blockB = { id: 'B', name: 'B', weeks: 8, deload: 0, phase: {},
-                     days: [{ id: 'D1', name: 'D1', ex: [mk()] }, { id: 'D2', name: 'D2', ex: [mk()] }] };
-    const logB = function () {
-      return { 'w1-D1': { E: row(40, 0) }, 'w1-D2': { E: row(41, 3) },
-               'w2-D1': { E: row(42, 7) }, 'w2-D2': { E: row(43, 10) } };
-    };
+    const exSpec = { id: 'E', n: 'x', sets: 2, reps: '8–12', inc: 2.5 };
+    const row = function (w, d) { return [w, 10, { ts: T0 + d * DAY }]; };
+    const sessB = [
+      { block: 'B', week: 1, day: 'D1', lift: 'E', sets: [row(40, 0)] },
+      { block: 'B', week: 1, day: 'D2', lift: 'E', sets: [row(41, 3)] },
+      { block: 'B', week: 2, day: 'D1', lift: 'E', sets: [row(42, 7)] },
+      { block: 'B', week: 2, day: 'D2', lift: 'E', sets: [row(43, 10)] },
+    ];
     const show = function (list) {
       return list.map(function (s) { return s.blockId + '/' + s.dayId + ':' + s.sets[0].w; }).join(' ');
     };
 
-    const one = { log: { B: logB() }, rir: { B: {} }, obj: {}, variants: {},
-                  blocks: { B: blockB }, blockOrder: ['B'] };
-    const d1 = show(exHistory(one, blockB, ex, 'D1', 3));
-    const d2 = show(exHistory(one, blockB, ex, 'D2', 3));
+    const one = sessionFixture({ blocks: [{ id: 'B', weeks: 8, deload: 0, phase: {},
+                                            days: [{ id: 'D1', ex: [exSpec] }, { id: 'D2', ex: [exSpec] }] }],
+                                 sessions: sessB });
+    const ex = one.blocks.B.days[0].ex[0];
+    const d1 = show(exHistory(one, one.blocks.B, ex, 'D1', 3));
+    const d2 = show(exHistory(one, one.blocks.B, ex, 'D2', 3));
 
     /* The block before this one had the lift on a single day, and that
        day's number means nothing here: whoever wrote that plan numbered
        its days for themselves. Matching on it would throw the history
        away rather than separate it. */
-    const blockA = { id: 'A', name: 'A', weeks: 8, deload: 0, phase: {},
-                     days: [{ id: 'DA', name: 'DA', ex: [mk()] }] };
-    const two = { log: { A: { 'w1-DA': { E: row(30, -30) } }, B: logB() },
-                  rir: { A: {}, B: {} }, obj: {}, variants: {},
-                  blocks: { A: blockA, B: blockB }, blockOrder: ['A', 'B'] };
-    const priorD1 = show(exHistory(two, blockB, ex, 'D1', 3));
-    const priorD2 = show(exHistory(two, blockB, ex, 'D2', 3));
+    const blockA = { id: 'A', weeks: 8, deload: 0, phase: {}, days: [{ id: 'DA', ex: [exSpec] }] };
+    const blockB = { id: 'B', weeks: 8, deload: 0, phase: {},
+                     days: [{ id: 'D1', ex: [exSpec] }, { id: 'D2', ex: [exSpec] }] };
+    const two = sessionFixture({ blocks: [blockA, blockB],
+      sessions: [{ block: 'A', week: 1, day: 'DA', lift: 'E', sets: [row(30, -30)] }].concat(sessB) });
+    const exTwo = two.blocks.B.days[0].ex[0];
+    const priorD1 = show(exHistory(two, two.blocks.B, exTwo, 'D1', 3));
+    const priorD2 = show(exHistory(two, two.blocks.B, exTwo, 'D2', 3));
     return { d1: d1, d2: d2, priorD1: priorD1, priorD2: priorD2 };
   })()
 `);
@@ -2803,30 +2858,27 @@ ok('the decay line quotes the RIR of the set the drop was measured FROM — the 
    three flat sessions of one exercise, and the verdict the signals pick. */
 const diagProbe = call(`
   (function (sessions, useMap) {
-    state = defaultState(); migrate();
-    const p = state.profiles.hombre;
-    const block = p.blocks['block-1'];
-    const day = block.days[0];
-    const ex = day.ex[0];
-    ex.reps = '8-12'; ex.sets = 3; delete ex.add;
     const DAY = 86400000, start = Date.now() - 28 * DAY;
-    p.log['block-1'] = {}; p.rir['block-1'] = {};
-    sessions.forEach(function (rows, i) {
-      const bucket = {};
-      bucket[ex.id] = rows.map(function (x) {
-        const row = { w: '40', r: String(x[0]), done: true, ts: start + i * 7 * DAY };
-        if (!useMap && x[1] != null) row.rir = String(x[1]);
-        return row;
-      });
-      p.log['block-1'][slot(i + 1, day.id)] = bucket;
+    /* A flat '2 RIR' every week, same as brakeProbe above: the weight
+       never moves and every logged rep count sits inside the 8-12 range,
+       so which reserve the week nominally asks for cannot tip est.dir to
+       'down' and steal the verdict from the signal each case is pinning. */
+    const phase = {}; for (let i = 1; i <= sessions.length + 4; i++) phase[i] = { r: '2 RIR' };
+    const sess = sessions.map(function (rows, i) {
       const last = rows[rows.length - 1][1];
-      if (useMap && last != null) {
-        const m = {}; m[ex.id] = String(last);
-        p.rir['block-1'][slot(i + 1, day.id)] = m;
-      }
+      return { block: 'block-1', week: i + 1, day: 'd0', lift: 'e0',
+        rir: (useMap && last != null) ? String(last) : undefined,
+        sets: rows.map(function (x) {
+          const fields = { ts: start + i * 7 * DAY };
+          if (!useMap && x[1] != null) fields.rir = String(x[1]);
+          return [40, x[0], fields];
+        }) };
     });
-    p.week = sessions.length + 1; p.day = 0;
-    const row = diagRows(p, block, 'block').find(function (r) { return r.id === ex.id; });
+    const p = sessionFixture({
+      blocks: [{ id: 'block-1', phase: phase, days: [{ id: 'd0', ex: [{ id: 'e0', sets: 3, reps: '8-12' }] }] }],
+      sessions: sess, profile: { week: sessions.length + 1, day: 0 } });
+    const block = p.blocks['block-1'];
+    const row = diagRows(p, block, 'block').find(function (r) { return r.id === 'e0'; });
     return row.trend + ' | ' + row.lectura;
   })
 `);
@@ -5358,43 +5410,10 @@ console.log('\n== RECORD_PARTS: each part says how it is accepted (plans/051) ==
 
 console.log('\n== sessionsOf: the one reading of the log (plans/038) ==');
 {
-  /* The fixture builder: sessions in, a profile out, so these cases say
-     what was lifted instead of spelling the storage shape. A block is
-     { id, weeks, deload, phase, days: [{ id, ex: [{ id, n, sets }] }] };
-     a session is { block, week, day, lift, sets, rir } where each set is
-     [w, r] (ticked), [w, r, { …row fields }] or a raw row object, and
-     `rir` is the legacy one-chip value, filed in the old map. Defined in
-     the app's own scope so every case below can call it. */
-  call(`
-    function sessionFixture(spec) {
-      state = defaultState(); migrate();
-      state.prefs.units = spec.units || 'kg';
-      const p = { blocks: {}, blockOrder: [], log: {}, rir: {}, obj: {}, variants: {} };
-      (spec.blocks || []).forEach(b => {
-        p.blocks[b.id] = { id: b.id, name: b.name || b.id, weeks: b.weeks || 8, deload: b.deload || 0,
-                           phase: b.phase || {}, priority: [],
-                           days: (b.days || []).map(d => ({ id: d.id, name: d.id,
-                             ex: (d.ex || []).map(e => ({ id: e.id, n: e.n || e.id, sets: e.sets || 3, reps: e.reps || '8-12' })) })) };
-        p.blockOrder.push(b.id);
-      });
-      (spec.sessions || []).forEach(s => {
-        const k = slot(s.week, s.day);
-        const blk = p.log[s.block] = p.log[s.block] || {};
-        const bucket = blk[k] = blk[k] || {};
-        bucket[s.lift] = s.sets.map(x => Array.isArray(x)
-          ? Object.assign({ w: String(x[0]), r: String(x[1]), done: true }, x[2] || {})
-          : x);
-        if (s.rir != null) {
-          const rb = p.rir[s.block] = p.rir[s.block] || {};
-          (rb[k] = rb[k] || {})[s.lift] = s.rir;
-        }
-      });
-      return p;
-    }
-  `);
-  /* The plan every case below shares unless it says otherwise: two blocks,
-     two days each, a press on both days of A (so day position matters)
-     and the same press under a different id, by name, in B. */
+  /* sessionFixture (above, "the history fixture") builds the plan every
+     case below shares unless it says otherwise: two blocks, two days
+     each, a press on both days of A (so day position matters) and the
+     same press under a different id, by name, in B. */
   const PLAN = `[
     { id: 'A', weeks: 4, days: [
       { id: 'd1', ex: [{ id: 'sq', n: 'Sentadilla' }, { id: 'bp', n: 'Press banca' }] },
@@ -5619,16 +5638,14 @@ console.log('\n== the history cache: one read per question, dropped by the write
         sessions.push({ block: 'A', week: w, day: 'd1', lift: 'sq', sets: sets(100, w) });
         sessions.push({ block: 'A', week: w, day: 'd1', lift: 'bp', sets: sets(60, w) });
       });
-      const p = sessionFixture({ blocks: [
+      return sessionFixture({ blocks: [
         { id: 'A', weeks: 8, days: [
           { id: 'd1', ex: [{ id: 'sq', n: 'Sentadilla' }, { id: 'bp', n: 'Press banca', sets: 2 }] },
           { id: 'd2', ex: [{ id: 'row', n: 'Remo' }] } ] },
-      ], sessions: sessions });
-      Object.assign(p, { label: 'Él', theme: 'azul', notes: {}, energy: {}, order: {},
-                         activeBlock: 'A', week: 4, day: 0 });
-      state.profiles.hombre = p;
-      state.activeProfile = 'hombre';
-      return p;
+      ], sessions: sessions,
+         profile: { label: 'Él', theme: 'azul', notes: {}, energy: {}, order: {},
+                    activeBlock: 'A', week: 4, day: 0 },
+         install: true });
     }
     /* What the card's own boxes hand to save(): this lift, this slot. */
     function cardScope(p, week, day, lift) { return { profile: p, block: 'A', week: week, day: day, lift: lift }; }
@@ -6081,7 +6098,18 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
      every exercise, every planned set, ticked a week before the boot — and
      the profile moved to `at`. One session behind it is all the objetivo
      needs to answer for week 2. `edit` is handed the profile and the block
-     for anything else a test wants on file before the boot. */
+     for anything else a test wants on file before the boot.
+
+     A seventh history builder, and deliberately not sessionFixture
+     (plans/052): this section's whole point is a fresh boot's migrate()
+     seeing exactly what a real save() writes, so the seed has to be one —
+     firstRun's own, not a hand-assembled guess at the shape — and it reads
+     the active block's days and exercises off SEED itself rather than
+     declaring them, so it stays true to defaultState() instead of a
+     second, hand-copied plan that could quietly drift from it.
+     sessionFixture's `install` does leave state in a shape bootApp()
+     could seed, for a case that wants a synthetic history rather than the
+     real default block; nothing below needs that. */
   const seeded = (at, edit) => {
     const s = JSON.parse(SEED), p = s.profiles[s.activeProfile], b = p.blocks[p.activeBlock];
     const day = b.days[0], filed = {};

@@ -252,3 +252,102 @@ passes 1033/0.
 - PR 2: `SEED` and `seeded()` in the `bootApp()` section are a seventh
   history builder (week 1 of the seed's first day). They belong in the
   one fixture, which should also be able to feed `bootApp`'s `state`.
+
+### PR 2 — one history fixture (branch `claude/052-pr2`)
+
+**Drift.** Clean at the start: main had not moved from `74a657c` (PR 1's
+merge), so "Current state" above is what this PR read. Main moved again
+before this PR committed — see the PASS-list diff below — and a second
+drift check (`git diff --stat 8142e33..90140b3 -- test/unit.js
+test/smoke.js js/ AGENTS.md`) after rebasing onto it showed only that
+PR's own known change (`js/diagnostics.js`'s rows into `js/app.js`,
+`RULE2_STANDING` retired with the breach it tracked) plus PR 1's; no
+further, unaccounted drift.
+
+**Step G, decision 5: done.** `targetProbe`, `brakeProbe`, `twoDayProbe`
+and `diagProbe` — the four that built a bare profile by hand — now build
+it by calling `sessionFixture` with a spec, the same one the `sessionsOf`
+and history-cache sections already wrote sessions against. `cacheFixture`
+now calls it too instead of assembling `state.profiles.hombre` itself.
+Two small, additive extensions to the spec carried every case that the
+four probes needed and `sessionsOf`'s cases did not:
+- an exercise's extra fields (`inc`, `add`, `minRir`) now ride through
+  the day/ex builder (`Object.assign` over the defaults, so `id`/`n`/
+  `sets`/`reps` still fall back the way they always did) — `targetProbe`
+  and `brakeProbe` need `inc`, `targetProbe` alone needs `add`/`minRir`;
+- `spec.profile` merges extra fields onto the built profile (`week`,
+  `day`, the active block, a label — `cacheFixture`'s own
+  `Object.assign` and `diagProbe`'s `p.week`/`p.day`), and `spec.install`
+  files it as `state.profiles.hombre`/`state.activeProfile` the way
+  `cacheFixture` needs and the other three do not.
+
+`sessionFixture` moved from beside `sessionsOf` (where PR 1 found it) up
+to a new, early section, "the history fixture", right before its first
+consumer (the objetivo cases) rather than at its old spot or in
+`test/harness.js`: it is test data, not shell-loading infrastructure —
+the thing decision 4 scoped `test/harness.js` to — and every section
+from the objetivo cases onward now shares this one definition, so it
+reads better named and explained once, early, than duplicated at its
+former home. The `sessionsOf` section's own copy of both the function
+and its describing comment is gone; a one-line pointer stands in its
+place.
+
+**The PASS-list diff.** Run twice against the branch's own base
+(`74a657c`, PR 1's merge): 1063 before, 1063 after, 0 failed either run.
+Main then moved out from under the branch mid-task — PR #153 landed
+"Move the Diagnóstico's rows into app.js" (10 new tests, `diagRows` and
+friends now in `js/app.js`) — so the branch was rebased onto the new tip
+(`90140b3`, clean, no conflicts) and re-verified there: 1073 before,
+1073 after, 0 failed either run, run twice more after the last edit for
+stability. `diff` of the full `PASS`/`FAIL` line list, before against
+after, both times: empty — the same names, in the same order, all
+`PASS`. No STOP condition fired. (`diagRows` moving files between the
+two runs is why the count itself differs from the branch's first
+verification; the diff each time was against that run's own before, not
+across the rebase.)
+
+**diagProbe's phase, and why it is not empty.** The other three probes
+carry no risk in translation: their bare profile's fields map onto the
+spec directly. `diagProbe` is different — it used to mutate the *real*
+`block-1` from `defaultState()`, phase text and all, rather than declare
+one, and that phase text feeds `weekRir` (`js/app.js`), which a fully
+empty `phase` would instead resolve through the "last session's own
+reserve" fallback — a real behaviour risk, not a cosmetic one, since a
+different resolved RIR could in principle tip `est.dir` to `'down'` and
+swap the pinned verdict for "Peso mal elegido". Given every session
+`diagProbe` logs holds its weight flat and its reps inside the 8-12
+range it declares, a constant reserve can't manufacture that swap
+regardless of its exact number, so the fixture's block carries a flat
+`'2 RIR'` every week (the same constant `brakeProbe` already used) —
+deterministic, and verified against the frozen PASS list rather than
+argued from the arithmetic alone.
+
+**SEED / seeded(): kept hand-built, not folded in.** This is the
+"seventh builder" PR 1 flagged. It stays separate from `sessionFixture`,
+with a comment at its definition saying why: it has to be the exact
+shape a real `save()` writes — `SEED` is `firstRun.saved()`, not a
+hand-assembled guess — because that fidelity is the one thing its
+section is checking a fresh boot against, and it reads the active
+block's days and exercises off `SEED` itself rather than declaring them,
+so it tracks `defaultState()` instead of a second, hand-copied plan that
+could drift from it. `sessionFixture`'s new `install` option does leave
+`state` in a shape `bootApp()` could seed with a synthetic history —
+satisfying "usable with bootApp's seeded state" as a capability — but
+no case needs that today, so `seeded()` was left as it was rather than
+bent to prove it.
+
+**Deletions.** The old `sessionFixture` (bare, no `profile`/`install`,
+no exercise passthrough) is gone, replaced by the one at its new
+location. No other builder was deletable outright: every one of the six
+kept a thin, probe-specific wrapper — `target()`'s and `brakeProbe`'s
+session/phase assembly, `twoDayProbe`'s two-profile setup, `diagProbe`'s
+row shape, `cacheFixture`'s fixed plan — because each is still the only
+place that shapes its probe's own call into the shared spec.
+
+**Deviations.**
+- Comment-only: a short addition at `seeded()` explaining why it is not
+  built on `sessionFixture` (above).
+- No `js/` edit, so no `CACHE_VERSION` bump.
+
+**Left for others.** None found; decision 5 is fully done and PR 1's
+"seventh builder" note is addressed (kept separate, justified above).
