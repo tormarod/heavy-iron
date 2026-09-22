@@ -5360,6 +5360,47 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
      qrPayload.kind === 'profile' && !!qrPayload.profile && qrPayload.key === call('state.activeProfile'),
      JSON.stringify({ kind: qrPayload.kind, key: qrPayload.key, hasProfile: !!qrPayload.profile }));
 
+  /* The bug the stock-take found: blockLoggedSets/blockDoneSets walk every
+     stored set, retired or not, but blockShareLog — what the send sheet is
+     actually about to hand over — leaves a retired day or exercise out
+     (plans/025). A block with sets parked under either used to show more
+     on the sender than the payload, or the receiver, ever had. One set
+     stays live; one is under a retired exercise on the same day, one under
+     a whole retired day — both logged and done, so a fix that merely
+     swapped rowUsed for done would not have caught this. */
+  console.log('\n== the send sheet counts what the payload carries, not the raw storage (plans/050) ==');
+  const shareCountProbe = call(`
+    (function() {
+      state = defaultState(); migrate();
+      const pr = state.profiles.hombre;
+      const block = pr.blocks['block-1'];
+      const liveDay = block.days[0], retiredDay = block.days[1];
+      const liveEx = liveDay.ex[0], retiredEx = liveDay.ex[1];
+      pr.log['block-1'] = {};
+      pr.log['block-1'][slot(1, liveDay.id)] = {
+        [liveEx.id]: [{ w: '60', r: '8', done: true }],
+        [retiredEx.id]: [{ w: '20', r: '10', done: true }],
+      };
+      pr.log['block-1'][slot(1, retiredDay.id)] = {
+        [retiredDay.ex[0].id]: [{ w: '40', r: '6', done: true }],
+      };
+      retiredEx.off = 1;
+      retiredDay.off = 1;
+      const payload = blockShareLog(pr, block);
+      const result = {
+        payloadUsed: countSets(payload), payloadDone: countSets(payload, true),
+        rawUsed: blockLoggedSets(pr, block.id), rawDone: blockDoneSets(pr, block.id),
+      };
+      retiredEx.off = 0;
+      retiredDay.off = 0;
+      return result;
+    })()
+  `);
+  ok('the payload leaves out sets under a retired day and a retired exercise, unlike the raw block counters',
+     shareCountProbe.payloadUsed === 1 && shareCountProbe.payloadDone === 1 &&
+     shareCountProbe.rawUsed === 3 && shareCountProbe.rawDone === 3,
+     JSON.stringify(shareCountProbe));
+
   console.log('\n== the round-trip text carries the app\'s own context (plans/016) ==');
   call('state = defaultState(); migrate(); state.setupDone = true; state.prefs.units = "kg";');
   call('getBlock().name = "Bloque «raro» 2"; getBlock().priority = ["Pecho «x»", "Espalda"];');
