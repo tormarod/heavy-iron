@@ -8070,7 +8070,12 @@ function buildCsv() {
          plan only decides the order: its own days, its own exercises and
          the block's own weeks come out exactly where they always did, and
          what the plan no longer has comes after them. */
-      const byDay = {};
+      /* dayId comes straight off a stored slot key (forEachSlot/parseSlot),
+         not from the plan, so a damaged profile can hand it '__proto__' or
+         'constructor'; a plain {} would hand `.push` back Object.prototype
+         or the Object function instead of undefined, and "Exportar CSV"
+         throws (plans/067 step A's PR, found outside that step's scope). */
+      const byDay = Object.create(null);
       forEachSlot(profile.log, bId, (k, w, dayId, s) => {
         if (!s || typeof s !== 'object') return;
         (byDay[dayId] = byDay[dayId] || []).push({ w: w, s: s });

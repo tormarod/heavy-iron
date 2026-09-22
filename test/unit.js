@@ -7840,6 +7840,35 @@ console.log('\n== the CSV separator follows the language preference, not a fixed
      enRow.indexOf(',"22,5",') >= 0, enRow);
 }
 
+console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/067, out of that step\'s scope; picked up here) ==');
+{
+  /* dayId is parsed off a stored slot key (forEachSlot), never validated
+     against the plan, so damaged storage can hand buildCsv's byDay map
+     either name. Plain string keys — 'w1-__proto__' is not the bare
+     '__proto__' — so no JSON.parse trick is needed to get them onto the
+     slot map; what matters is what parseSlot extracts as dayId, which
+     lands on byDay unguarded either way. */
+  const protoCsvProbe = call(`
+    (function () {
+      state = defaultState(); migrate();
+      const profile = state.profiles.hombre;
+      const blockId = profile.blockOrder[0];
+      const day = profile.blocks[blockId].days[0];
+      const exId = day.ex[0].id;
+      profile.log[blockId] = {};
+      profile.log[blockId][slot(1, '__proto__')] = { [exId]: [{ w: '40', r: '10', done: true }] };
+      profile.log[blockId][slot(1, 'constructor')] = { [exId]: [{ w: '40', r: '10', done: true }] };
+      let threw = null, csv = '';
+      try { csv = buildCsv(); } catch (e) { threw = e.message; }
+      return { threw: threw, hasHeader: csv.indexOf('perfil') >= 0 };
+    })()
+  `);
+  ok('a stored slot keyed __proto__ or constructor (damaged storage) does not make "Exportar CSV" throw',
+     protoCsvProbe.threw === null, JSON.stringify(protoCsvProbe));
+  ok('...and the export still runs to completion, header and all',
+     protoCsvProbe.hasHeader, JSON.stringify(protoCsvProbe));
+}
+
 (async () => {
   /* One turn of the event loop: every promise the app has settled by now
      has run what it was waiting on. */
