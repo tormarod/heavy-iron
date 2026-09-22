@@ -18,7 +18,7 @@ function describeBackupProblem(data) {
   if (!keys.length) return 'no tiene ningún perfil';
   /* Counted before any of them is read: the walk below, and the
      normalizeImportedProfile each one then goes through, are bounded per
-     profile (PROFILE_LIMITS.blocks, and the block limits under it) but
+     profile (OWN_LIMITS.blocks, and the block limits under it) but
      nothing bounded how many profiles there were, which is the same
      unbounded loop one level up. */
   if (keys.length > PROFILE_LIMITS.profiles) return 'tiene ' + keys.length + ' perfiles: el máximo es ' + PROFILE_LIMITS.profiles;
@@ -59,6 +59,14 @@ function describeProfileProblem(p, pk) {
    Mutates and returns `p`. Throws only when a count is so far beyond a real
    training history that the data cannot be saved — never for anything the
    app itself could have written.
+
+   `blocks` is how many blocks a profile holds, and it is the app's writers
+   that stop there: "+ Nuevo bloque" and every import (blocksFullNote,
+   js/block-editor.js). The count below is OWN_LIMITS.blocks (js/app.js),
+   twice that, because the writers did not always stop, and a profile that
+   passed forty before they did still has to come back from its own
+   backup. Held to `blocks` itself, the 41st block the app let somebody
+   paste made the next backup it wrote refuse to restore (plans/010).
 
    `profiles` is read by describeBackupProblem, above, for a whole backup.
    The app keeps two and has no way to make a third (AGENTS.md), but a
@@ -102,8 +110,8 @@ function profileSlotFor(key) {
 
 function normalizeImportedProfile(p) {
   const rawIds = Object.keys(p.blocks);
-  if (rawIds.length > PROFILE_LIMITS.blocks) {
-    throw new Error('tiene ' + rawIds.length + ' bloques: el máximo es ' + PROFILE_LIMITS.blocks + '.');
+  if (rawIds.length > OWN_LIMITS.blocks) {
+    throw new Error('tiene ' + rawIds.length + ' bloques: el máximo es ' + OWN_LIMITS.blocks + '.');
   }
 
   const blocks = {};

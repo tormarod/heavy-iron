@@ -403,6 +403,10 @@ function wireReview() {
     setNote($('reviewStatus'), '', false);
     let raw;
     try { raw = JSON.parse($('reviewBlob').value); } catch (e) { setNote($('reviewStatus'), 'Eso no es JSON válido.', true); return; }
+    /* The same ceiling as "Importar JSON", checked at the same point and
+       said in the same words (blocksFullNote, js/block-editor.js). */
+    const full = blocksFullNote(getProfile());
+    if (full) { setNote($('reviewStatus'), full, true); return; }
     let normalized;
     try { normalized = normalizeImportedBlock(raw); } catch (e) { setNote($('reviewStatus'), e.message, true); return; }
     /* Opened from "+ Nuevo bloque", closing this sheet resumes creating a

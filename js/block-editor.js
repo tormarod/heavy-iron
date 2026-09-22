@@ -148,11 +148,41 @@ function renderBlockManager() {
   });
 }
 
+/* The ceiling every road that adds a block stops at: "+ Nuevo bloque",
+   an "Importar JSON" paste or a blocks/ pick (applyImportedBlock), a QR
+   block (applyQrPayload), the review's JSON take-back (wireReview), and
+   installImportedBlock under the last three. It is PROFILE_LIMITS.blocks,
+   counted the way normalizeImportedProfile counts: every block the
+   profile has. None of these used to stop. Each pasted attempt at an
+   AI-written block is a block of its own, so iterating on one could take a
+   profile past forty quickly, and its own backup then answered "tiene 41
+   bloques: el máximo es 40" — plans/010's promise broken. Stopping here
+   keeps every profile the app grows inside what a restore takes back; one
+   that grew past it before this existed still trains and still restores
+   (OWN_LIMITS, js/app.js), it just cannot grow until some go.
 
+   Returns the reason, in the words each of those screens shows, or ''
+   while there is room. It sends people to "Gestionar bloques" because that
+   is where room is made, and the attempts that never became the plan are
+   listed there as "sin registro": deleting one costs no set. */
+function blocksFullNote(profile) {
+  const n = Object.keys(profile.blocks).length;
+  if (n < PROFILE_LIMITS.blocks) return '';
+  return profile.label + ' ya tiene ' + n + ' bloques; el máximo es ' + PROFILE_LIMITS.blocks +
+    '. Para añadir otro, entra en "Gestionar bloques" (en Plan) y borra alguno que ya no uses.';
+}
 
 async function newBlock(skipReview) {
   const profile = getProfile();
   const current = getBlock();
+  /* First, before the review is offered or a name asked for: neither is
+     worth anybody's time when the block cannot be made. The button goes
+     where room is made. */
+  const full = blocksFullNote(profile);
+  if (full) {
+    if (await ask({ title: 'No caben más bloques', body: full, okLabel: 'Gestionar bloques', cancelLabel: 'Cerrar' })) openBlockManager();
+    return;
+  }
   /* The moment the last block is worth reading is the moment you start the
      next one — which is exactly when the app used to say nothing at all.
      Asked before the name, so choosing to read it costs nothing you have
@@ -379,6 +409,12 @@ function blockFromNormalized(normalized) {
    own ids. */
 function installImportedBlock(normalized, log, rir, order) {
   const profile = getProfile();
+  /* Every caller turns a full profile away first, where its own screen can
+     say so (blocksFullNote). This is the ceiling itself: a road added later
+     that forgets to ask fails loudly here, rather than growing a profile
+     past what its own backup restores. */
+  const full = blocksFullNote(profile);
+  if (full) throw new Error(full);
   const block = blockFromNormalized(normalized);
   profile.blocks[block.id] = block;
   profile.blockOrder.push(block.id);
@@ -390,6 +426,9 @@ function installImportedBlock(normalized, log, rir, order) {
 }
 
 function applyImportedBlock(raw, sourceLabel) {
+  /* Before the block is read at all: no fix to it would make room. */
+  const full = blocksFullNote(getProfile());
+  if (full) { setNote($('importError'), full, true); return; }
   let normalized;
   try {
     normalized = normalizeImportedBlock(raw);

@@ -1341,13 +1341,16 @@ const ok = (name, cond, extra) => {
     await page.click('#backup');
     const goodBlob = await page.evaluate(() => document.getElementById('blob').value);
 
-    // an oversized profile: more blocks than PROFILE_LIMITS.blocks allows
+    // an oversized profile: more blocks than a restore takes back. That is
+    // OWN_LIMITS.blocks, twice the PROFILE_LIMITS.blocks the app's own
+    // writers stop at, because a profile that grew past those before they
+    // stopped still has to restore (plans/010)
     const oversized = await page.evaluate(() => JSON.stringify({
       app: STORAGE_KEY, v: 1, saved: new Date().toISOString(),
       data: { activeProfile: 'hombre', profiles: { hombre: (() => {
         const validBlock = { name: 'B', weeks: 8, deload: 8, days: [{ name: 'D', ex: [{ n: 'Ex', sets: 3, reps: '10-15' }] }] };
         const blocks = {}, blockOrder = [];
-        for (let i = 0; i < 41; i++) { blocks['b' + i] = validBlock; blockOrder.push('b' + i); }
+        for (let i = 0; i <= OWN_LIMITS.blocks; i++) { blocks['b' + i] = validBlock; blockOrder.push('b' + i); }
         return { label: 'Hombre', theme: 'azul', blocks, blockOrder, log: {} };
       })() } },
     }));

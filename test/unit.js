@@ -30,7 +30,7 @@ const inert = () => ({
   appendChild() {}, replaceChildren() {}, remove() {},
   addEventListener() {}, removeEventListener() {}, insertAdjacentHTML() {},
   querySelector() { return inert(); }, querySelectorAll() { return []; },
-  focus() {},
+  focus() {}, select() {},
   get innerHTML() { return ''; }, set innerHTML(v) {},
   get textContent() { return ''; }, set textContent(v) {},
   get value() { return ''; }, set value(v) {},
@@ -549,10 +549,22 @@ Object.keys(populatedRoundTrip.same).filter(name => name !== 'log').forEach(name
 });
 
 const validBlock = { name: 'B', weeks: 8, deload: 8, days: [{ name: 'D', ex: [{ n: 'Ex', sets: 3, reps: '10-15' }] }] };
-const tooManyBlocksProfile = { blocks: {}, blockOrder: [], log: {} };
-for (let i = 0; i < 41; i++) { tooManyBlocksProfile.blocks['b' + i] = validBlock; tooManyBlocksProfile.blockOrder.push('b' + i); }
-ok('a profile with more than PROFILE_LIMITS.blocks blocks throws',
-   throws('normalizeImportedProfile(' + JSON.stringify(tooManyBlocksProfile) + ')'));
+/* PROFILE_LIMITS.blocks is where the app's writers stop; a restore allows
+   OWN_LIMITS.blocks, twice that, for a profile that got past it before they
+   stopped (plans/010). Headroom, not an open door: one block past it still
+   throws. */
+const profileRefusal = n => {
+  const p = { blocks: {}, blockOrder: [], log: {} };
+  for (let i = 0; i < n; i++) { p.blocks['b' + i] = validBlock; p.blockOrder.push('b' + i); }
+  try { call('normalizeImportedProfile(' + JSON.stringify(p) + ')'); return ''; } catch (e) { return e.message; }
+};
+const heldTo = call('PROFILE_LIMITS.blocks'), ownBlocks = call('OWN_LIMITS.blocks');
+ok('a profile past PROFILE_LIMITS.blocks restores, up to OWN_LIMITS.blocks',
+   ownBlocks > heldTo && profileRefusal(heldTo + 1) === '' && profileRefusal(ownBlocks) === '',
+   heldTo + '/' + ownBlocks + ': ' + profileRefusal(heldTo + 1) + ' | ' + profileRefusal(ownBlocks));
+ok('a profile with more than OWN_LIMITS.blocks blocks throws, naming the ceiling',
+   profileRefusal(ownBlocks + 1).indexOf((ownBlocks + 1) + ' bloques: el máximo es ' + ownBlocks) >= 0,
+   profileRefusal(ownBlocks + 1));
 
 const badBlockProfile = { blocks: { orphan: { name: 'Bloque roto', weeks: 8, deload: 8, days: [] } }, blockOrder: ['orphan'], log: {} };
 const badBlockMessage = (() => {
@@ -5818,6 +5830,266 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
 
     app.document.createElement = realCreate;
     call('peDraftBlock = null; peDraftPurge = []; peDraftOriginalDay = new Map();');
+  }
+
+  /* plans/010's promise, one level up from the block. A restore reads every
+     profile back through normalizeImportedProfile, which refused a profile
+     of more than PROFILE_LIMITS.blocks blocks, and nothing the app did to
+     add a block ever stopped there: "+ Nuevo bloque" and every import (an
+     "Importar JSON" paste, a blocks/ pick, a QR block, the review's JSON
+     take-back) filed one more with no ceiling. Somebody iterating on an
+     AI-written plan, pasting each attempt, could reach a 41st block, and
+     then "Cargar copia" answered the app's own download with 'el perfil
+     "hombre" tiene 41 bloques: el máximo es 40'.
+
+     Built through those writers themselves, "+ Nuevo bloque" once and then
+     one paste per attempt through applyImportedBlock, with the ceiling they
+     stop at now lifted for the build. That is the app as it was, and a
+     profile it grew that way has to come back all the same; the next
+     section is the ceiling. A new block's id is 'block-' + Date.now(),
+     which a loop this tight repeats, so the clock moves a millisecond per
+     read while the fixture is built. Then it is backed up the way
+     "Descargar copia" and "Exportar" write it and read back through
+     restoreFromText and loadProfileFromText, their confirmation answered
+     yes, since the refusal is the whole bug. */
+  const settle = () => new Promise(r => setImmediate(r));
+  console.log('\n== a profile the app grew past PROFILE_LIMITS.blocks comes back from its own backup (plans/010) ==');
+  {
+    const marks = [];
+    const realMark = app.mark;
+    app.mark = (msg, err) => { marks.push({ msg: String(msg), err: !!err }); };
+
+    call(`state = defaultState(); migrate();
+      __cap = PROFILE_LIMITS.blocks; PROFILE_LIMITS.blocks = Infinity;
+      __now = Date.now; __tick = __now.call(Date); Date.now = () => ++__tick;
+      true;`);
+    const creating = call('newBlock()');
+    await settle();
+    call('closeAsk("Bloque 2")');
+    await creating;
+    call(`(function () {
+      const attempt = i => ({ name: 'Intento ' + i, weeks: 6, deload: 6, days: [
+        { name: 'Torso', ex: [{ n: 'Press banca', reps: '6-8', sets: 4, muscle: 'pecho' }, { n: 'Remo con barra', reps: '8-10' }] },
+        { name: 'Pierna', ex: [{ n: 'Sentadilla', reps: '5', sets: 5, rest: 180 }] },
+      ] });
+      for (let i = 1; getProfile().blockOrder.length <= __cap && i <= __cap + 5; i++) applyImportedBlock(attempt(i), 'texto pegado');
+      /* History at both ends: the block the profile started with, and the
+         attempt the last paste made active. */
+      const profile = getProfile();
+      const logOne = (blockId, w, weight) => {
+        const block = profile.blocks[blockId], day = block.days[0], ex = day.ex[0];
+        const row = entry(profile, blockId, w, day.id, ex.id, ex.sets)[0];
+        row.w = weight; row.r = '8'; row.done = true;
+      };
+      logOne(profile.blockOrder[0], 1, '60');
+      logOne(profile.activeBlock, 1, '80');
+      logOne(profile.activeBlock, 2, '82.5');
+      commit();
+    })();
+      PROFILE_LIMITS.blocks = __cap; Date.now = __now;
+      __grown = JSON.parse(JSON.stringify(getProfile()));
+      __grownBackup = JSON.stringify({ app: STORAGE_KEY, v: 1, saved: new Date().toISOString(), data: state }, null, 2);
+      __grownFile = profileExportPayload(state.activeProfile);
+      true;`);
+    const grown = call(`({ blocks: __grown.blockOrder.length, distinct: new Set(__grown.blockOrder).size,
+      filed: Object.keys(__grown.blocks).length, cap: PROFILE_LIMITS.blocks,
+      copied: __grown.blockOrder.filter(id => __grown.blocks[id].name === 'Bloque 2').length,
+      pasted: __grown.blockOrder.filter(id => /^Intento /.test(__grown.blocks[id].name)).length })`);
+    ok('the fixture really is one block past PROFILE_LIMITS.blocks, made by "+ Nuevo bloque" and by pasting',
+       grown.blocks === grown.cap + 1 && grown.distinct === grown.blocks && grown.filed === grown.blocks &&
+       grown.copied === 1 && grown.pasted === grown.cap - 1, JSON.stringify(grown));
+
+    /* Back to a different state first, so nothing below can pass by reading
+       the one the fixture was built in. The blocks are compared by
+       containment (restoreGaps), since a restore drops the blank optionals
+       a block can carry; the order, the active block and every part of the
+       record exactly. */
+    const comeBack = () => call(`(function () {
+      const before = __grown, after = getProfile();
+      return {
+        blocks: Object.keys(after.blocks).length,
+        order: JSON.stringify(after.blockOrder) === JSON.stringify(before.blockOrder),
+        active: after.activeBlock === before.activeBlock,
+        gaps: before.blockOrder.reduce((out, id) => restoreGaps(before.blocks[id], after.blocks[id], id, out), []).slice(0, 6),
+        parts: RECORD_PARTS.map(part => part.name)
+          .filter(name => JSON.stringify(after[name]) !== JSON.stringify(before[name])),
+      };
+    })()`);
+
+    call('state = defaultState(); migrate();');
+    marks.length = 0;
+    const restoring = call('restoreFromText(__grownBackup)');
+    call('closeAsk(true)');
+    await restoring;
+    const refusedBackup = marks.filter(m => m.err).map(m => m.msg);
+    ok('"Cargar copia" takes back the app\'s own backup of that profile', refusedBackup.length === 0, refusedBackup.join(' | '));
+    const fromBackup = comeBack();
+    ok('...with every block, in the same order and the same one active',
+       fromBackup.blocks === grown.blocks && fromBackup.order && fromBackup.active && fromBackup.gaps.length === 0,
+       JSON.stringify(fromBackup));
+    ok('...and every part of the record unchanged', fromBackup.parts.length === 0, JSON.stringify(fromBackup.parts));
+
+    call('state = defaultState(); migrate();');
+    marks.length = 0;
+    const loading = call('loadProfileFromText(__grownFile)');
+    call('closeAsk(true)');
+    await loading;
+    const refusedFile = marks.filter(m => m.err).map(m => m.msg);
+    ok('"Cargar un perfil" takes back the same profile\'s own file', refusedFile.length === 0, refusedFile.join(' | '));
+    const fromFile = comeBack();
+    ok('...exactly as it was', fromFile.blocks === grown.blocks && fromFile.order && fromFile.active &&
+       fromFile.gaps.length === 0 && fromFile.parts.length === 0, JSON.stringify(fromFile));
+
+    app.mark = realMark;
+    call('__grown = __grownBackup = __grownFile = null;');
+  }
+
+  /* The other half, and the reason the profile above is old data rather
+     than new: every road that adds a block stops at PROFILE_LIMITS.blocks,
+     counted the way normalizeImportedProfile counts, and says where room is
+     made. Driven through the writers themselves: newBlock, applyImportedBlock
+     (a paste and a blocks/ pick both go through it), applyQrPayload and the
+     review's own "Importar" handler, each answered the way a user who wants
+     the block would answer it. Their messages are recorded off mark,
+     setNote and openAsk, so what is under test is the refusal each screen
+     shows, not a copy of the rule. */
+  console.log('\n== "+ Nuevo bloque" and every import stop at PROFILE_LIMITS.blocks (plans/010) ==');
+  {
+    const marks = [], notes = [], asked = [];
+    let managed = 0;
+    const real = { mark: app.mark, setNote: app.setNote, openAsk: app.openAsk, openBlockManager: app.openBlockManager };
+    app.mark = (msg, err) => { marks.push({ msg: String(msg), err: !!err }); };
+    app.setNote = (el, text, err) => { notes.push({ text: String(text), err: !!err }); };
+    app.openAsk = opts => {
+      asked.push({ title: opts.title, body: opts.body || '', okLabel: opts.okLabel, text: !!opts.textInput });
+      return real.openAsk(opts);
+    };
+    app.openBlockManager = () => { managed++; };
+    const count = () => call('Object.keys(getProfile().blocks).length');
+    const cap = call('PROFILE_LIMITS.blocks');
+    const attempt = JSON.stringify({ name: 'Intento', days: [{ name: 'D', ex: [{ n: 'Press banca', reps: '8' }] }] });
+    const reason = n => n + ' bloques; el máximo es ' + cap;
+    /* Whatever dialog is up, answered the way someone who wants the block
+       answers it: a name for the name prompt, yes to anything else. */
+    const answerYes = () => {
+      const last = asked[asked.length - 1];
+      call(last && last.text ? 'closeAsk("Otro bloque")' : 'closeAsk(true)');
+    };
+
+    call(`state = defaultState(); migrate();
+      __now = Date.now; __tick = __now.call(Date); Date.now = () => ++__tick;
+      for (let i = 0; getProfile().blockOrder.length < PROFILE_LIMITS.blocks - 1 && i < PROFILE_LIMITS.blocks; i++) {
+        applyImportedBlock(${attempt}, 'texto pegado');
+      }
+      true;`);
+    ok('the fixture sits one block under the limit', count() === cap - 1, String(count()));
+
+    asked.length = 0;
+    const filling = call('newBlock()');
+    await settle();
+    answerYes();
+    await filling;
+    ok('"+ Nuevo bloque" still makes the block that reaches it', count() === cap && asked.length === 1 && asked[0].text,
+       count() + ' ' + JSON.stringify(asked));
+
+    asked.length = 0; managed = 0;
+    const refusing = call('newBlock()');
+    await settle();
+    const told = asked.slice();
+    answerYes();
+    await refusing;
+    ok('"+ Nuevo bloque" at the limit makes nothing', count() === cap, String(count()));
+    ok('...asks for no name, and says why instead',
+       told.length === 1 && !told[0].text && told[0].body.indexOf(reason(cap)) >= 0, JSON.stringify(told));
+    ok('...pointing at "Gestionar bloques", which its button opens',
+       told.length === 1 && told[0].body.indexOf('"Gestionar bloques"') >= 0 && told[0].okLabel === 'Gestionar bloques' && managed === 1,
+       JSON.stringify(told) + ' · opened ' + managed);
+
+    /* The three roads below are each run inside a try. Were one of them
+       missing its own check, installImportedBlock would still refuse, by
+       throwing: that has to read as the screen saying nothing, a failed
+       assertion here, not an exception that takes the rest of the suite
+       down with it. */
+    notes.length = 0;
+    const pasteThrew = call(`(function () {
+      try { applyImportedBlock(${attempt}, 'texto pegado'); return ''; } catch (e) { return e.message; }
+    })()`);
+    const pasted = notes.filter(n => n.err).map(n => n.text);
+    ok('a paste in "Importar JSON" adds nothing at the limit, nor does a blocks/ pick (the same function)',
+       count() === cap, String(count()));
+    ok('...and the sheet says why, pointing at "Gestionar bloques"',
+       !pasteThrew && pasted.length === 1 && pasted[0].indexOf(reason(cap)) >= 0 && pasted[0].indexOf('"Gestionar bloques"') >= 0,
+       JSON.stringify({ notes, threw: pasteThrew }));
+
+    marks.length = 0; asked.length = 0;
+    const scanned = call(`applyQrPayload({ kind: 'block', block: ${attempt} })`);
+    await settle();
+    const confirmed = asked.length;
+    if (confirmed) answerYes();
+    let scanThrew = '';
+    try { await scanned; } catch (e) { scanThrew = String(e && e.message); }
+    const scannedWhy = marks.filter(m => m.err).map(m => m.msg);
+    ok('a block scanned by QR adds nothing at the limit', count() === cap, String(count()));
+    ok('...turned away before "¿Añadir…?" is asked, with the same reason',
+       !scanThrew && confirmed === 0 && scannedWhy.length === 1 && scannedWhy[0].indexOf(reason(cap)) >= 0 &&
+       scannedWhy[0].indexOf('"Gestionar bloques"') >= 0, JSON.stringify({ confirmed, scannedWhy, threw: scanThrew }));
+
+    /* The review's "Importar" is an onclick wired once, at load, onto an
+       element this harness hands out fresh on every lookup — so it is wired
+       again onto elements that keep what is written to them, and those stay
+       in place while it runs, since it looks its box up again on the click. */
+    const els = {};
+    const realGet = app.document.getElementById;
+    app.document.getElementById = id => els[id] || (els[id] = Object.assign({ id }, inert()));
+    call('wireReview()');
+    notes.length = 0;
+    app.document.getElementById('reviewBlob').value = attempt;
+    let reviewThrew = '';
+    try { els.reviewImport.onclick(); } catch (e) { reviewThrew = String(e && e.message); }
+    app.document.getElementById = realGet;
+    const reviewed = notes.filter(n => n.err).map(n => n.text);
+    ok('the JSON pasted back into the block review adds nothing at the limit', count() === cap, String(count()));
+    ok('...and the review says why, pointing at "Gestionar bloques"',
+       !reviewThrew && reviewed.length === 1 && reviewed[0].indexOf(reason(cap)) >= 0 && reviewed[0].indexOf('"Gestionar bloques"') >= 0,
+       JSON.stringify({ notes, threw: reviewThrew }));
+
+    const direct = call(`(function () {
+      try { installImportedBlock(normalizeImportedBlock(${attempt})); return ''; } catch (e) { return e.message; }
+    })()`);
+    ok('installImportedBlock refuses too, should a new road to it forget to ask first',
+       count() === cap && direct.indexOf(reason(cap)) >= 0, count() + ' ' + JSON.stringify(direct));
+
+    call(`__full = JSON.stringify({ app: STORAGE_KEY, v: 1, saved: new Date().toISOString(), data: state }, null, 2);
+      state = defaultState(); migrate(); true;`);
+    marks.length = 0;
+    const restoring = call('restoreFromText(__full)');
+    call('closeAsk(true)');
+    await restoring;
+    const refused = marks.filter(m => m.err).map(m => m.msg);
+    ok('the profile the writers filled to the limit restores from its own backup',
+       refused.length === 0 && count() === cap, count() + ' ' + refused.join(' | '));
+
+    /* One saved past the limit before any of this: it trains and restores
+       (the section above), it cannot grow, and the reason counts what it
+       really has rather than claiming it is at the limit. */
+    call(`(function () {
+      const profile = getProfile(), clone = JSON.parse(JSON.stringify(getBlock()));
+      clone.id = 'block-antes'; clone.name = 'De antes';
+      profile.blocks[clone.id] = clone; profile.blockOrder.push(clone.id);
+      commit();
+    })()`);
+    asked.length = 0;
+    const past = call('newBlock()');
+    await settle();
+    const pastTold = asked.slice();
+    answerYes();
+    await past;
+    ok('a profile already past the limit does not grow either, and says how far past it is',
+       count() === cap + 1 && pastTold.length === 1 && pastTold[0].body.indexOf(reason(cap + 1)) >= 0,
+       count() + ' ' + JSON.stringify(pastTold));
+
+    Object.assign(app, real);
+    call('Date.now = __now; __full = null; if (askResolve) closeAsk(false);');
   }
 
   /* blockDoneSets, a raw storage count, used to answer buildBlockReview's

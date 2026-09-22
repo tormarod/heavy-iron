@@ -547,6 +547,12 @@ async function applyQrPayload(payload) {
   }
 
   if (payload.kind === 'block' || payload.kind === 'blocklog') {
+    /* A full profile takes no block from the camera either, and is told so
+       before "¿Añadir…?" asks for a yes it could not honour
+       (blocksFullNote, js/block-editor.js). A "perfil" above replaces a
+       profile rather than adding a block, so it is not held to this. */
+    const full = blocksFullNote(getProfile());
+    if (full) { mark(full, true); return; }
     /* The log is inside the try too: normalizeImportedLog rejects a row
        array too long to be a real session, and that reason belongs under
        the same "no se puede usar" as a bad block, not bare in the footer. */

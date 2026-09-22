@@ -214,9 +214,11 @@ rather than silently coercing it. A backup or profile file is the app's
 own data coming back and has its own ceilings (`OWN_LIMITS`,
 `PROFILE_LIMITS`), and every limit that path enforces has to be one the
 app's own writers cannot exceed — which is why the plan editor stops at
-`IMPORT_LIMITS` — or the app's own backup stops restoring (plans/010's
-promise, broken once by a 15th day). A key that will be used to *index*
-`state.profiles` — a backup's `activeProfile`, a profile file's `key` — is
+`IMPORT_LIMITS`, and "+ Nuevo bloque" and every import at
+`PROFILE_LIMITS.blocks` — or the app's own backup stops restoring
+(plans/010's promise, broken by a 15th day and then by a 41st block). A
+key that will be used to *index* `state.profiles` — a backup's
+`activeProfile`, a profile file's `key` — is
 checked as an own property first (`migrate()`, `profileSlotFor` in
 `js/profile-transfer.js`), because a plain object answers
 `obj['constructor']` truthily and `obj['__proto__'] = x` re-points its
