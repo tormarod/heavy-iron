@@ -8191,6 +8191,30 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
       ok('...and "Quedarme con lo mío" writes that change once the window is up', !err && kept === 66, err || 'barWeight on disk: ' + kept);
     }
 
+    /* The same question answered inside the window: "Quedarme con lo mío"
+       is the user choosing this tab's data, so it is on disk at once — no
+       clock advanced. Refused like any write while `discarding`, it used
+       to wait for the window to end, and a tab closed first lost it. */
+    {
+      const boot = settled(seeded({ week: 1, day: 0 }));
+      const key = boot.call('STORAGE_KEY');
+      let err = '', asking = null, now = null;
+      try {
+        conflict(boot);
+        boot.$('toastAct2').onclick();
+        boot.call('state.prefs.barWeight = 66, save()');
+        boot.clock.advance(1000);
+        const raw99 = theirsFrom(boot, s => { s.prefs.barWeight = 99; });
+        boot.store[key] = raw99;
+        boot.fire(boot.ctx.window, 'storage', { key: key, newValue: raw99 });
+        asking = showing(boot);
+        boot.$('toastAct').onclick();
+        now = boot.saved().prefs.barWeight;
+      } catch (e) { err = e.message; }
+      ok('"Quedarme con lo mío" answered inside a stopped "Recargar"\'s window writes this tab\'s change at once, not when the window ends',
+         !err && !!asking && asking.act === 'Quedarme con lo mío' && now === 66, err || JSON.stringify({ asking, now }));
+    }
+
     /* "Recargar" drops the change here, a refused one included: pressed a
        second time, it must not leave the next write from the other tab
        asking about a change that is gone. */

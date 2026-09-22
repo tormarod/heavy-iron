@@ -1262,7 +1262,16 @@ window.addEventListener('storage', e => {
     held = true;
     toast(
       'Otra pestaña ha guardado cambios. Aquí tienes cambios sin guardar.',
-      'Quedarme con lo mío', () => { held = false; writeState(true); },
+      /* Inside a stopped "Recargar"'s window this write used to be refused
+         like any other and land only when the window ended — lost if the
+         tab was closed first. The user has just chosen this tab's data, so
+         it is written now. */
+      'Quedarme con lo mío', () => {
+        discarding = false;
+        refusedWhileDiscarding = false;
+        held = false;
+        writeState(true);
+      },
       /* "Recargar" used to be a bare reload, and the reload's own
          beforeunload/pagehide ran flushSave, which forces through a held
          write — so it overwrote the very data the user had just chosen to

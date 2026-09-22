@@ -567,9 +567,17 @@ two-tab cases stay green unchanged; optionally Step 5's smoke step.
       (2) The `'storage'` handler asks when `refusedWhileDiscarding` is set,
       as it does for a pending timer: it used to adopt the other tab's write
       over the refused change without a word. "Recargar" clears that flag
-      as it sets `discarding`, since it drops the change here. Note that
-      "Quedarme con lo mío" answered *inside* the window is itself refused
-      by `discarding`, remembered, and written when the window ends.
+      as it sets `discarding`, since it drops the change here. And
+      "Quedarme con lo mío" answered *inside* the window clears
+      `discarding` and the flag before its forced write: it used to be
+      refused too, landing only when the window ended — lost if the tab
+      was closed first — although the user had just chosen this tab's
+      data.
+    - Recorded, not changed (the tech lead is filing it as a follow-up):
+      `adoptStored` assigns `state = next` before `migrate()`, so a throw
+      mid-migrate leaves `state` half-migrated — the `'storage'` adopt has
+      always done this. With the guard in "Recargar", a page whose reload
+      was stopped keeps that state, and a later change writes it back.
     - Tests: eight more booted cases (12 more assertions) — Actualizar up
       then Deshacer at once and back after ✕; Actualizar arriving over the
       undo toast waits; Actualizar back after the question is answered;
