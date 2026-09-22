@@ -5724,8 +5724,32 @@ console.log('\n== docs cross-links resolve (README.md, docs/guide.md, AGENTS.md,
   // collapsing what is left, so "Data & privacy" loses only the "&" and keeps
   // both spaces around where it was — "data--privacy", not "data-privacy".
   // A `\s+` here would collapse that back down to one hyphen and fail a link
-  // that resolves on GitHub today.
-  const slug = h => h.toLowerCase().replace(/[`*_~]/g, '').replace(/[^\p{L}\p{N}\s-]/gu, '').trim().replace(/\s/g, '-');
+  // that resolves on GitHub today. A code span is never emphasis, so only its
+  // backticks come off before the rule above runs — any `_` inside one
+  // survives with everything else in it.
+  const isWordChar = c => !!c && /[\p{L}\p{N}]/u.test(c);
+  const slug = h => h
+    .split(/(`[^`]*`)/g)
+    .map((part, i) => i % 2
+      ? part.slice(1, -1)
+      : part.replace(/_/g, (m, at, s) => (isWordChar(s[at - 1]) && isWordChar(s[at + 1])) ? '_' : ''))
+    .join('')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s_-]/gu, '')
+    .trim()
+    .replace(/\s/g, '-');
+  /* Pinned so the next edit to slug() cannot drift silently: these are what
+     GitHub itself produces for the heading text on the left, not just what
+     the regex above happens to give back. */
+  [
+    ['Data & privacy', 'data--privacy'],
+    ['`wire*()` and the split recipe', 'wire-and-the-split-recipe'],
+    ["The profile's record, in one table", 'the-profiles-record-in-one-table'],
+    ["`RECORD_PARTS`: one table for the profile's record", 'record_parts-one-table-for-the-profiles-record'],
+    ['snake_case in words', 'snake_case-in-words'],
+    ['_Nota_ importante', 'nota-importante'],
+    ['Diagnóstico, *la* pantalla', 'diagnóstico-la-pantalla'],
+  ].forEach(([text, anchor]) => ok('slug: "' + text + '" → #' + anchor, slug(text) === anchor, slug(text)));
   const headings = file => (fs.readFileSync(path.join(ROOT, file), 'utf8').match(/^#{1,6} .+$/gm) || [])
     .map(h => slug(h.replace(/^#+ /, '')));
   const docs = ['README.md', 'docs/guide.md', 'AGENTS.md', 'plans/README.md'];
@@ -6388,14 +6412,14 @@ console.log('\n== Escape reaches every sheet (plans/013, plans/009 item 1) ==');
      ['planSheet', 'setupSheet', 'qrSheet', 'reviewSheet']
        .every(id => call(`typeof sheets['${id}'].onClose`) === 'function'),
      JSON.stringify(registered.map(id => id + ':' + call(`typeof sheets['${id}'].onClose`))));
-  /* AGENTS.md rule (a): a symbol app.js reads stays in app.js or is stubbed
-     there. plans/013 added `else if (top === 'reviewSheet') closeReview()`,
+  /* AGENTS.md's split rule 1: a symbol app.js reads stays in app.js or is
+     stubbed there. plans/013 added `else if (top === 'reviewSheet') closeReview()`,
      which read js/review.js with no stub — a precache hole away from the
      stuck-loading screen. Registration is what removed the read. */
   /* Block comments stripped first: both names are still discussed there,
      and what must be gone is a reference the engine would evaluate. */
   const appCode = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-  ok('app.js reads neither closeReview nor closeQr any more (AGENTS.md rule (a))',
+  ok('app.js reads neither closeReview nor closeQr any more (AGENTS.md\'s split rule 1)',
      !/\bcloseReview\b/.test(appCode) && !/\bcloseQr\b/.test(appCode));
 }
 
@@ -6453,8 +6477,15 @@ console.log('\n== the log key has one reader as well as one builder (plans/009 i
   /* The whole point of the pair is that the shape is written down once. A
      reader that goes back to running the regex by hand is the drift this
      catches — there were eleven of them across four files. Comments are
-     stripped first, because they still quote the regex to explain it. */
-  const handRolled = ['js/app.js', 'js/chart.js', 'js/diagnostics.js', 'js/review.js']
+     stripped first, because they still quote the regex to explain it.
+     Every file in js/ is scanned, not a named handful, so a new split file
+     that reaches for the regex by hand is caught without adding it to a
+     list here. */
+  const jsDir = fs.readdirSync(path.join(ROOT, 'js')).filter(f => f.endsWith('.js')).map(f => 'js/' + f);
+  // A floor under the scan below: if readdirSync ever came back empty, the
+  // filter after it would pass having scanned nothing.
+  ok('the slot-regex scan covers every file in js/', jsDir.length >= 13, String(jsDir.length));
+  const handRolled = jsDir
     .map(rel => [rel, (fs.readFileSync(path.join(ROOT, rel), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '').match(/\/\^w\(/g) || []).length])
     .filter(([rel, n]) => n > (rel === 'js/app.js' ? 1 : 0));

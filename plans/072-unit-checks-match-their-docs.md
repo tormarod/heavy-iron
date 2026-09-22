@@ -303,4 +303,15 @@ the mutation check of Step 2. No harness changes.
 
 - Linking to a heading that names a constant is now safe:
   `#record_parts-…` resolves in the test as it does on GitHub.
-- *(Executor: record deviations here.)*
+- Executed as written, no deviations. All 7 rows of decision 2's table
+  passed against the code-span-aware slugger on the first run (no STOP);
+  the cross-link loop's " is a heading" count held at 109 before and
+  after Step 1. `js/*.js` is 13 files today, so the floor assertion in
+  Step 2 (`>= 13`) is exact, not loose. The Step 2 mutation check (adding
+  `const x = /^w(\d+)-(.+)$/;` inside `blockDate()` in
+  `js/block-editor.js`) FAILed naming `["js/block-editor.js",1]`, then
+  PASSed clean after the one-line revert (`git diff --stat
+  js/block-editor.js` empty). `node test/unit.js` held at `0 failed`
+  throughout: 1441 (baseline) → 1448 (Step 1, +7) → 1449 (Step 2, +1
+  floor assertion) → 1449 (Step 3) → 1449 (final, Step 4 touches only
+  AGENTS.md prose).
