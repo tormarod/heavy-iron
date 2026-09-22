@@ -200,10 +200,13 @@ function under "Current state". Two conflicts were resolved by hand: the
 orphan-pass comment in `normalizeImportedProfile` (main's sentence on
 falsy entries was kept) and a new unit test next to the move header. #137's
 new `loggedSets` comment named `purgeExLog`/`purgeDayLog`, so it now names
-`purgeRecord`.
+`purgeRecord`. #139 (unit conversion on a re-stamped set) landed after
+that. It touches nothing in scope, and a second rebase over it was clean.
 
 **Equivalence (Step E).** This was run against `origin/main` at `e9e8e7a`,
-after the rebase, in two vm contexts built the way `loadApp` builds one.
+after the first rebase, and again at `5e1f246`, after the second, with
+identical results both times. Each run used two vm contexts built the way
+`loadApp` builds one.
 There were **10,000 comparisons: 1,000 random profiles for each of ten
 operations, with 0 differences.** The ten operations were: purge one lift,
 purge one day, clearDay (main's handler body verbatim), wipe, the real
