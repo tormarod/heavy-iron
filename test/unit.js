@@ -8093,6 +8093,11 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
       boot.fire(boot.ctx.window, 'storage', { key: key, newValue: raw });
       return { key, raw };
     };
+    /* What is on screen: its message and its action's label, or null. */
+    const showing = booted => (booted.$('toast').hidden ? null : {
+      msg: booted.$('toastMsg').textContent,
+      act: booted.$('toastAct').hidden ? '' : booted.$('toastAct').textContent,
+    });
 
     {
       const boot = settled(seeded({ week: 1, day: 0 }));
@@ -8157,6 +8162,82 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
          !err && !!got && got.bar === 22 && got.note === 'tras recargar', err || JSON.stringify(got));
     }
 
+    /* That refused change is unsaved here until the window ends, so a write
+       from the other tab inside it has to raise the question: taken in, it
+       was lost without a word (66 refused, the other tab's 99 adopted over
+       it). "Quedarme con lo mío" then keeps it. */
+    {
+      const boot = settled(seeded({ week: 1, day: 0 }));
+      const key = boot.call('STORAGE_KEY');
+      let err = '', asking = null, mine = null, untouched = false, kept = null;
+      try {
+        conflict(boot);
+        boot.$('toastAct2').onclick();
+        boot.call('state.prefs.barWeight = 66, save()');
+        boot.clock.advance(1000);
+        const raw99 = theirsFrom(boot, s => { s.prefs.barWeight = 99; });
+        boot.store[key] = raw99;
+        boot.fire(boot.ctx.window, 'storage', { key: key, newValue: raw99 });
+        asking = showing(boot);
+        mine = boot.call('state.prefs.barWeight');
+        untouched = boot.store[key] === raw99;
+        boot.$('toastAct').onclick();
+        boot.clock.advance(3000);
+        kept = boot.saved().prefs.barWeight;
+      } catch (e) { err = e.message; }
+      ok('another tab\'s write inside a stopped "Recargar"\'s window asks, over a change refused there, instead of taking it in',
+         !err && !!asking && asking.act === 'Quedarme con lo mío' && mine === 66 && untouched,
+         err || JSON.stringify({ asking, mine, untouched }));
+      ok('...and "Quedarme con lo mío" writes that change once the window is up', !err && kept === 66, err || 'barWeight on disk: ' + kept);
+    }
+
+    /* "Recargar" drops the change here, a refused one included: pressed a
+       second time, it must not leave the next write from the other tab
+       asking about a change that is gone. */
+    {
+      const boot = settled(seeded({ week: 1, day: 0 }));
+      const key = boot.call('STORAGE_KEY');
+      let err = '', asking = null, adopted = null;
+      try {
+        conflict(boot);
+        boot.$('toastAct2').onclick();
+        boot.call('state.prefs.barWeight = 66, save()');
+        boot.clock.advance(1000);
+        const raw99 = theirsFrom(boot, s => { s.prefs.barWeight = 99; });
+        boot.store[key] = raw99;
+        boot.fire(boot.ctx.window, 'storage', { key: key, newValue: raw99 });
+        boot.$('toastAct2').onclick();
+        const raw111 = theirsFrom(boot, s => { s.prefs.barWeight = 111; });
+        boot.store[key] = raw111;
+        boot.fire(boot.ctx.window, 'storage', { key: key, newValue: raw111 });
+        asking = showing(boot);
+        adopted = boot.call('state.prefs.barWeight');
+      } catch (e) { err = e.message; }
+      ok('a second "Recargar" drops the change the window refused: the other tab\'s next write is taken in, with no question left to ask',
+         !err && asking === null && adopted === 111, err || JSON.stringify({ asking, adopted }));
+    }
+
+    /* The other tab's bytes can be ones this release cannot take in — a
+       newer release wrote them, and migrate() throws. Stubbed here as
+       adoptStored throwing, which is where that throw lands. */
+    {
+      const boot = settled(seeded({ week: 1, day: 0 }));
+      let err = '', held = null, written = null;
+      try {
+        conflict(boot);
+        boot.call("adoptStored = () => { throw new Error('datos de una versión más nueva'); }");
+        boot.$('toastAct2').onclick();
+        held = boot.call('held');
+        boot.clock.advance(3000);
+        boot.call('state.prefs.barWeight = 55, save()');
+        boot.clock.advance(1000);
+        written = boot.saved().prefs.barWeight;
+      } catch (e) { err = e.message; }
+      ok('"Recargar" on bytes this release cannot take in still clears "held" and reloads, and a page left standing saves again once the window is up',
+         !err && held === false && boot.ctx.location.reloads === 1 && written === 55,
+         err || JSON.stringify({ held, reloads: boot.ctx.location.reloads, written }));
+    }
+
     /* Hiding or closing the tab while the question is up forces this tab's
        write (flushSave's own choice: a set logged just before the phone is
        pocketed is never lost), which is "Quedarme con lo mío" answered. */
@@ -8173,11 +8254,6 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
          !err && asking && after.hidden && after.held === false && after.bar === 11, err || JSON.stringify({ asking, after }));
     }
 
-    /* What is on screen: its message and its action's label, or null. */
-    const showing = booted => (booted.$('toast').hidden ? null : {
-      msg: booted.$('toastMsg').textContent,
-      act: booted.$('toastAct').hidden ? '' : booted.$('toastAct').textContent,
-    });
     const offerUpdate = booted => booted.call("toast('Hay una versión nueva de la app.', 'Actualizar', () => {}, null, null, 'update')");
 
     {

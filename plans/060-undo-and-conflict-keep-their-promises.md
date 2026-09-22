@@ -558,6 +558,18 @@ two-tab cases stay green unchanged; optionally Step 5's smoke step.
       lead's go-ahead, `writeState` now remembers a refusal
       (`refusedWhileDiscarding`) and the 3 s timer calls `save()` when
       there was one, writing the change on top of the adopted data.
+    - Two last review nits, both about not losing data. (1) "Recargar"
+      clears `held` and the timer *before* taking the other tab's data in,
+      and guards that adopt: bytes this release's `migrate()` or
+      `applyTheme()` throws on (a newer release wrote them) used to end the
+      handler with the question already hidden by the button and `held`
+      still set — every later change refused, nothing on screen to answer.
+      (2) The `'storage'` handler asks when `refusedWhileDiscarding` is set,
+      as it does for a pending timer: it used to adopt the other tab's write
+      over the refused change without a word. "Recargar" clears that flag
+      as it sets `discarding`, since it drops the change here. Note that
+      "Quedarme con lo mío" answered *inside* the window is itself refused
+      by `discarding`, remembered, and written when the window ends.
     - Tests: eight more booted cases (12 more assertions) — Actualizar up
       then Deshacer at once and back after ✕; Actualizar arriving over the
       undo toast waits; Actualizar back after the question is answered;
@@ -567,7 +579,10 @@ two-tab cases stay green unchanged; optionally Step 5's smoke step.
       Deshacer); a forced write hides the question; a stopped "Recargar"
       is on the other tab's data and saves again after 3 s; and (the
       follow-up) a note typed inside those 3 s is on disk once they are
-      up, on top of the other tab's data. Case 5 now
+      up, on top of the other tab's data; (the nits) another tab's write
+      inside the window asks over a refused change and "Quedarme" keeps
+      it, a second "Recargar" drops it, and a "Recargar" whose adopt
+      throws still clears `held`, reloads and saves again. Case 5 now
       makes a late *change* (barWeight 33) rather than a bare `save()`,
       because after the adopt a bare save would write the other tab's own
       data back and prove nothing. Case 6's order is note first, then

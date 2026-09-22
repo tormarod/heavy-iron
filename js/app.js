@@ -1146,7 +1146,8 @@ let discarding = false;
    was stopped, that write was a change made on the page left standing, and
    clearing `discarding` alone did not bring it back: the save() carrying it
    had already been refused, so a tab closed before the next save() found
-   nothing pending and the change was lost. The handler's timer replays it. */
+   nothing pending and the change was lost. The handler's timer replays it,
+   and until then the 'storage' handler counts it as a change pending here. */
 let refusedWhileDiscarding = false;
 
 /* A failed setItem (quota, private-mode limits) used to be reported only in
@@ -1252,7 +1253,10 @@ document.addEventListener('visibilitychange', () => {
    arrived after the fact. */
 window.addEventListener('storage', e => {
   if (e.key !== STORAGE_KEY || frozen || !ready) return;
-  if (saveT || held) {
+  /* A change writeState refused while a stopped "Recargar" was still
+     discarding is as unsaved as one waiting on the timer: with no timer
+     left to show for it, it used to be adopted over without a word. */
+  if (saveT || held || refusedWhileDiscarding) {
     clearTimeout(saveT);
     saveT = null;
     held = true;
@@ -1265,7 +1269,7 @@ window.addEventListener('storage', e => {
          keep. `discarding` stops every write from here to the unload,
          including a save() that lands in between (a box losing focus).
 
-         The other tab's data is taken in first, the way a write with
+         The other tab's data is then taken in, the way a write with
          nothing pending here is, because the reload can be stopped (Esc,
          the browser's ✕). Without that, a page still standing kept the
          change it was told to drop, and `discarding` refused every write
@@ -1275,11 +1279,20 @@ window.addEventListener('storage', e => {
          other tab's data, which is what "Recargar" chose — a change made
          on it in the meantime included, which is saved then. */
       'Recargar', () => {
-        adoptStored(readRaw());
         discarding = true;
+        refusedWhileDiscarding = false;
         held = false;
         clearTimeout(saveT);
         saveT = null;
+        /* After `held` is cleared, and guarded: the other tab's bytes can
+           be ones this release's migrate() or applyTheme() throws on — a
+           newer release wrote them, say. A throw used to end the handler
+           right here, with the question already hidden by the button,
+           `held` still set and every later change refused: held back, with
+           nothing on screen to answer. The reload goes ahead regardless;
+           the page it brings up meets the same bytes in load(), whose
+           recovery screen is the place for them. */
+        try { adoptStored(readRaw()); } catch (err) { /* see above */ }
         setTimeout(() => {
           discarding = false;
           if (refusedWhileDiscarding) {
