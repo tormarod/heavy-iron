@@ -10,7 +10,7 @@
 > `js/diagnostics.js`'s rows, next to `trainedDays`.
 >
 > **Drift check (run first)**:
-> `git diff --stat 3cc15c3..HEAD -- js/app.js js/diagnostics.js js/review.js js/chart.js js/volume-sheet.js test/unit.js test/smoke.js docs/guide.md`
+> `git diff --stat 8142e33..HEAD -- js/app.js js/diagnostics.js js/review.js js/chart.js js/volume-sheet.js test/unit.js test/smoke.js docs/guide.md`
 > Expect 054's and 056's changes. Re-locate every function below by grep.
 > A walk that 054 or 056 already moved is skipped, and the skip recorded.
 
@@ -21,8 +21,7 @@
 - **Risk**: LOW. There are two small intended visible fixes (decision 3).
 - **Category**: architecture — candidate 6 of the second architecture
   review (2026-09-22), settled with the maintainer the same day.
-- **Planned at**: commit `3cc15c3` (main at the time; the functions below
-  are unchanged since `8142e33`), 2026-09-22
+- **Planned at**: commit `8142e33`, 2026-09-22
 - **Glossary**: `CONTEXT.md` — **stranded week**, **session**, **working
   set**, **extra set**.
 
