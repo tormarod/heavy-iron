@@ -923,7 +923,9 @@ the same thing — so ticking a set without typing takes the objetivo, which
 is the contract that box has always had with a better number inside it. The
 `Diagnóstico` reads this rule's own `level` rather than fitting a second
 line through the same log with a different definition of "how strong is this
-today". Two screens that disagree in public are two screens nobody trusts.
+today" — and everything else on its row, from the session count to the
+signals, reads the very sessions this rule reads. Two screens that disagree
+in public are two screens nobody trusts.
 
 **What it still does not do.** It never logs anything for you. The line is
 something you read and the placeholder is something you can overwrite; the
@@ -1161,10 +1163,14 @@ the weights, reps, RIR and timestamps you are already recording.
   [the work axis](#the-work-axis) below.
 - **Fewer than 3 sessions gets no verdict at all** — two flat weeks is
   noise, not a stall.
-- **Sets above 15 reps are dropped**, not plotted: Epley drifts up there,
-  and one 20-rep back-off set would fake a trend that never happened.
+- **Sessions past 15 reps count like any other.** The line is the
+  `level`, which reads the first set of each session and a set past twelve
+  reps only as a floor under what it could do (see
+  [What a set is worth](#what-a-set-is-worth--and-when-it-is-only-a-floor)):
+  a 20-rep back-off set never reaches it, and a lift trained at 15–20 reps
+  is judged on its sessions like any other.
 - **Este bloque / Todos los bloques** switches between the current block's
-  history and everything you have ever logged for those exercises.
+  history and everything you have logged for those exercises up to it.
 
 The ranking on its own would still just be a list. What makes it a
 diagnosis is the second half: each trend is crossed with what the log says
@@ -1214,6 +1220,29 @@ doesn't relabel a perfectly attended exercise as an attendance problem.
 
 Two exercises can share a name — the same lateral raise on two different
 days — and they get one row each, computed separately.
+
+**A row reads exactly the sessions the objetivo reads**, for every number
+on it: the session count, the three-session minimum, the gap, the signals,
+the work axis and the line itself. The count used to come from a reading
+of its own, and a row could say *Funciona* over six sessions when its line
+had been fitted on four. Three things follow from the one history:
+
+- **A lift the plan puts on two days is two rows**, one per day, each
+  tagged with it (`Press banca · Empuje`). The objetivo keeps
+  [the two days apart](#the-same-lift-on-two-days), so each has its own
+  count, signals and line, and a lift climbing on Monday and falling on
+  Thursday says so twice instead of averaging to a verdict neither day
+  earned. The block review lists both.
+- **A renamed exercise counts from the rename.** The sessions before it
+  were another lift, and stopped feeding the objetivo on the day it
+  changed (`variants`, in [What it writes down](#what-it-writes-down)).
+- **A week stranded above a shortened block counts.** Its sets still feed
+  the objetivo, so they count here — Frecuencia and Fuerza measure the
+  block against its plan and still leave them out.
+
+Two readings the old count had of its own went with it: a session done
+entirely past 15 reps counts like any other, and **Todos los bloques** on
+an earlier block stops at that block, where its line always stopped.
 
 ### The work axis
 
@@ -1333,9 +1362,9 @@ Two decisions are what make it survive a swap:
 
 The average is of each exercise's *own ratio*, not a ratio of averages: an
 exercise counts once regardless of what it loads, for the same reason the
-index is a ratio in the first place. Sets past 15 reps are excluded exactly
-as they are on the trend tab, so one 20-rep back-off set cannot move a
-muscle's whole index on an estimate Epley cannot support.
+index is a ratio in the first place. Sets past 15 reps are excluded, so
+one 20-rep back-off set cannot move a muscle's whole index on an estimate
+Epley cannot support.
 
 A week with no matched pair breaks the line rather than being interpolated
 through — pretending to know is the one thing this view is for not doing —
@@ -1358,8 +1387,9 @@ done against sets prescribed from
 session notes. Priority muscles come first. It invents nothing; it gathers.
 
 Under the muscle rows, the exported text lists every exercise of the plan
-with its trend, the RIR you typed on each set — counted as sets, against
-the block's own total — and the reading Diagnóstico gives it, so whatever
+— a lift on two days once per day, as the Diagnóstico shows it — with its
+trend, the RIR you typed on each set, counted as sets against that day's
+total in the block, and the reading Diagnóstico gives it, so whatever
 writes the next block knows which press stalled, not only that chest went
 nowhere.
 

@@ -119,6 +119,6 @@ _Avoid_: deload block, double deload
 A week logged in a block that has since been shortened below it. Its sets
 are kept, not deleted, and come back if the block is lengthened again.
 Screens about the block hide them; screens about the lifter over time
-(the objetivo, the Diagnóstico, records, the all-blocks chart) and the CSV
-export count them.
+(the objetivo, the Diagnóstico's rows per exercise, records, the
+all-blocks chart) and the CSV export count them.
 _Avoid_: orphaned week, beyond-end week
