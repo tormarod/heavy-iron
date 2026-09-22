@@ -121,8 +121,9 @@ objetivo, built on the block before it.
 - **A warm-up and plate calculator**: a ramp up to your working weight and,
   on a barbell, which plates go on each side. See
   [Warm-ups](#warm-ups-and-plate-maths).
-- **Undo** on the three things that destroy data: clearing a day, wiping a
-  profile, deleting a block.
+- **Undo** on the six things that replace or destroy data: clearing a day,
+  wiping a profile, deleting a block, saving the plan, restoring a backup
+  and loading a profile.
 - **Works offline, installs like an app** — see [Offline](#offline-and-installing).
 - **Session feedback while you train**: last week's weight waiting in the
   box, a **RÉCORD** badge when a set beats everything you have ever logged
@@ -262,7 +263,7 @@ counts before anything is overwritten:
 Entra "Ana" del 14 ago 2026: 184 series registradas.
 Se reemplaza Ana, que tiene ahora 12 series registradas.
 
-Bruno no se toca. No se puede deshacer.
+Bruno no se toca. Podrás deshacerlo justo después, mientras no hagas otra cosa.
 ```
 
 A profile file is not a backup and won't load as one — **Cargar copia**
@@ -336,8 +337,9 @@ never becomes the only way to do something.
 
 ## Undo
 
-Clearing a day, wiping a profile and deleting a block each take a
-snapshot first, and offer **Deshacer** in a bar at the bottom of the
+Clearing a day, wiping a profile, deleting a block, saving the plan,
+restoring a backup and loading a profile each take a snapshot first, and
+offer **Deshacer** in a bar at the bottom of the
 screen. It lasts until the next thing you do — a set ticked, a box
 typed, a note, a plan edit, moving to another week, day or profile — or
 until a change arrives from another tab; then the bar goes and there is
