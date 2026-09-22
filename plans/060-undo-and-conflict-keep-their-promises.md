@@ -235,18 +235,38 @@ All in `js/app.js` unless noted.
    `flushSave`: hiding the tab mid-conflict still forces this tab's write
    (its comment explains why — a set logged right before the phone is
    pocketed must not be lost); that trade-off is out of scope here.
-4. **Two toasts are pinned**: the conflict and "Actualizar", and the
-   conflict outranks the update. While a pinned toast is showing:
-   - a non-pinned `toast()` call is queued in a `note` slot (the latest
-     wins);
-   - a pinned call of *higher or equal* rank replaces the one showing, and
-     the displaced pinned toast goes to a `pinned` queue slot; a pinned
-     call of *lower* rank (an update while the conflict shows) goes
-     straight to the `pinned` slot.
-   When the showing toast is answered or dismissed, the `pinned` slot is
-   shown first, then the `note` slot. A queued undo toast whose snapshot
-   has since expired is dropped, not shown. A non-pinned toast replaces
-   another non-pinned one as today.
+   *Revised after the review of #170:* "Recargar" first adopts what
+   storage holds into `state` (the `'storage'` listener's own adopt, one
+   shared function), then sets `discarding`, clears `held`/`saveT` and
+   reloads; `discarding` is cleared again 3 s later if the page is still
+   alive (the reload can be stopped). And a forced write that clears
+   `held` also hides the conflict toast if it is showing — the question
+   it asks no longer exists.
+4. **Only the conflict holds other toasts back. "Actualizar" is never
+   lost but never blocks: it yields to everything and comes back after.**
+   *(Revised after the review of #170; the first version pinned both, the
+   conflict outranking the update — see Maintenance notes.)* One waiting
+   slot each for `note` (every other toast, the undo toast included) and
+   `update`, the latest of each winning; the conflict never waits, it
+   always takes the box.
+   - Conflict showing: a note → `queuedToast.note`; an update →
+     `queuedToast.update`; a second conflict replaces the first.
+   - Update showing: a note or a conflict takes the box at once, and the
+     displaced update goes to `queuedToast.update`; a second update
+     replaces it.
+   - Note showing: a conflict takes the box and the displaced note waits
+     in `queuedToast.note`; an update does **not** take the box — it
+     waits in `queuedToast.update`; a note replaces a note, as before.
+   - `hideToast()`: show `queuedToast.note` first (unless it is an
+     `'undo'` whose snapshot has expired — drop it), else
+     `queuedToast.update`.
+   Why: the update toast is offered on every load while a new worker
+   waits and can sit on screen for a whole session after each deploy.
+   Ranked above the rest, it held Deshacer and the quota warning behind
+   it: "Borrar este día" with Actualizar up never showed its Deshacer and
+   the next tick expired it; a quota warning queued behind it was
+   overwritten by the next undo and, with `quotaToastShown`, never came
+   back.
 5. **The conflict toast has no ✕.** It is a question that holds every
    save until it is answered, so `#toastDismiss` is hidden while it shows
    (and shown again for every other toast). "Actualizar" keeps its ✕ —
@@ -293,6 +313,10 @@ undoable (plan 065 fixes that list).
 ## Steps
 
 ### Step 1: Pinned toasts and a queue
+
+> Superseded in part by revised decision 4: there is no `TOAST_RANK` and
+> no `pinned` slot any more — the slots are `note` and `update`, and only
+> the conflict holds other toasts back. The rest of this step stands.
 
 In `js/app.js`:
 
@@ -404,8 +428,9 @@ on screen; the existing clearDay case (search `"Borrar este día" (#clearDay) on
    then trigger a note toast (`boot.call("toast('x')")`) and an update
    toast (`boot.call("toast('y', 'Actualizar', () => {}, null, null, 'update')")`).
    Assert the message is still the conflict's and `held === true`. Press
-   "Quedarme con lo mío" → the toast shows `'y'` (the pinned slot first);
-   press its ✕ (`boot.$('toastDismiss').onclick()`) → it shows `'x'`.
+   "Quedarme con lo mío" → the toast shows `'x'` (the note first, under
+   revised decision 4); press its ✕ (`boot.$('toastDismiss').onclick()`)
+   → it shows `'y'`.
 
 Mutation checks (run, then revert; say in the PR that you did): remove
 the `dropUndo()` from `save` → case 1 fails; remove `|| discarding` from
@@ -492,4 +517,96 @@ two-tab cases stay green unchanged; optionally Step 5's smoke step.
   unanswered forces this tab's write (`flushSave`'s deliberate choice).
   Switching to the *other* tab is a hide. Whether that should instead
   keep the other tab's data is a maintainer call.
-- *(Executor: record deviations here.)*
+- Executor, 2026-09-22 (branch `claude/060-undo-conflict`):
+  - Decision 2's premise was checked before coding: all six callers run
+    their writes and `commit()` synchronously after `snapshotForUndo`
+    (the three `deleteBlocks` callers call it after their `await ask`, not
+    between the snapshot and the commit). `restoreFromText` and
+    `loadProfileFromText` also call `flushSave()` → `writeState(true)`
+    after the commit; that bypasses `save()` but is the action's own write,
+    so it needs no expiry. No `setTimeout`/`requestAnimationFrame` in
+    `js/` other than `save()`'s own debounce and `js/boot-guard.js`, so no
+    deferred save can expire undo on its own; the existing clearDay case
+    (advance 1000, then Deshacer) still restores. No STOP condition fired.
+  - First version, refinements of the original decision 4 (both kept by
+    the revision below): a toast displaced by one of the **same kind** is
+    superseded, not queued (a second conflict event would otherwise queue a
+    stale copy of the same question); and an ordinary toast the conflict
+    pushes aside waits in the `note` slot rather than being lost (the undo
+    toast, when the conflict arrives inside its action's 400 ms save
+    delay, is still good once the question is answered).
+  - **Revised after the review of #170** (tech lead's changes, applied on
+    the same branch):
+    - Decision 4 replaced (text above): the original pinned "Actualizar"
+      too, ranked below the conflict and above everything else. Because it
+      is offered on every load while a worker waits, it could sit on
+      screen all session and hold back the toasts that cannot wait — the
+      reviewer reproduced a Deshacer that never showed and a quota warning
+      that was overwritten and, fired once per load, never came back.
+      `TOAST_RANK` and the `pinned` slot are gone; `toastPlace()` maps a
+      kind to `note`/`update`/`conflict`.
+    - A forced write that clears `held` (`flushSave` on hide/close, and so
+      every import, restore and profile load, and the worker swap) hides
+      the conflict toast if it is showing: that write is "Quedarme con lo
+      mío" answered.
+    - "Recargar" adopts what storage holds first (`adoptStored`, shared
+      with the `'storage'` listener), then discards and reloads, and
+      clears `discarding` 3 s later if the page is still alive. A change
+      made inside those 3 s is refused by `writeState` like any other
+      write, and its `save()` does not come round again — so, as first
+      pushed, a tab closed before the next `save()` lost it. At the tech
+      lead's go-ahead, `writeState` now remembers a refusal
+      (`refusedWhileDiscarding`) and the 3 s timer calls `save()` when
+      there was one, writing the change on top of the adopted data.
+    - Two last review nits, both about not losing data. (1) "Recargar"
+      clears `held` and the timer *before* taking the other tab's data in,
+      and guards that adopt: bytes this release's `migrate()` or
+      `applyTheme()` throws on (a newer release wrote them) used to end the
+      handler with the question already hidden by the button and `held`
+      still set — every later change refused, nothing on screen to answer.
+      (2) The `'storage'` handler asks when `refusedWhileDiscarding` is set,
+      as it does for a pending timer: it used to adopt the other tab's write
+      over the refused change without a word. "Recargar" clears that flag
+      as it sets `discarding`, since it drops the change here. And
+      "Quedarme con lo mío" answered *inside* the window clears
+      `discarding` and the flag before its forced write: it used to be
+      refused too, landing only when the window ended — lost if the tab
+      was closed first — although the user had just chosen this tab's
+      data.
+    - Recorded, not changed (the tech lead is filing it as a follow-up):
+      `adoptStored` assigns `state = next` before `migrate()`, so a throw
+      mid-migrate leaves `state` half-migrated — the `'storage'` adopt has
+      always done this. With the guard in "Recargar", a page whose reload
+      was stopped keeps that state, and a later change writes it back.
+    - Tests: eight more booted cases (12 more assertions) — Actualizar up
+      then Deshacer at once and back after ✕; Actualizar arriving over the
+      undo toast waits; Actualizar back after the question is answered;
+      the quota warning over Actualizar; the question inside
+      "Borrar este día"'s save delay, Deshacer back after "Quedarme" and
+      still restoring; the same with a tick in between (no expired
+      Deshacer); a forced write hides the question; a stopped "Recargar"
+      is on the other tab's data and saves again after 3 s; and (the
+      follow-up) a note typed inside those 3 s is on disk once they are
+      up, on top of the other tab's data; (the nits) another tab's write
+      inside the window asks over a refused change and "Quedarme" keeps
+      it, a second "Recargar" drops it, and a "Recargar" whose adopt
+      throws still clears `held`, reloads and saves again. Case 5 now
+      makes a late *change* (barWeight 33) rather than a bare `save()`,
+      because after the adopt a bare save would write the other tab's own
+      data back and prove nothing. Case 6's order is note first, then
+      update.
+    - The guide's § Undo says what happens when the other tab's change
+      lands inside the action's own save delay.
+  - Steps 1–3 landed as one commit (they are interleaved in the same few
+    functions of `js/app.js`), not one per step.
+  - Step 5 done: 8 lines in the `dos pestañas` section, no new
+    `waitForTimeout` (`waitForFunction(() => held === true)` and
+    `waitForEvent('load')`). Note that removing only `|| discarding` from
+    `writeState` does not fail the smoke step (nothing calls `save()`
+    between the click and the unload there); reverting the handler to the
+    bare `location.reload()` does. The unit case 5 covers the late save.
+  - The guide's "Two tabs" bullet also says that hiding or closing the tab
+    (or loading a backup, profile or block) before answering saves this
+    tab's change and counts as the answer (`flushSave`'s kept trade-off),
+    so "stays on screen until answered" is not read as "nothing is written
+    until answered".

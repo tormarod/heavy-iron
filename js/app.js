@@ -1131,12 +1131,24 @@ function pruneLog() {
   });
 }
 /* Set while a two-tab conflict toast is up (see the 'storage' handler below)
-   and cleared by whichever of its two actions the user picks. The debounced
-   path respects it so the write that caused the conflict cannot land behind
-   the user's back while the toast is still asking; flushSave always passes
-   force so closing the tab never silently drops a logged set — see its own
-   comment below. */
+   and cleared by whichever of its two actions the user picks, or by a forced
+   write. The debounced path respects it so the write that caused the
+   conflict cannot land behind the user's back while the toast is still
+   asking; flushSave always passes force so closing the tab never silently
+   drops a logged set — see its own comment below. */
 let held = false;
+/* Set by the conflict's "Recargar" for the moment before the page goes:
+   the change here is being thrown away, so nothing may write it — not the
+   unload's forced flush, not a save() that sneaks in first. Cleared again if
+   the page is still there a few seconds later (see the handler). */
+let discarding = false;
+/* Whether writeState turned a write away while `discarding`. If the reload
+   was stopped, that write was a change made on the page left standing, and
+   clearing `discarding` alone did not bring it back: the save() carrying it
+   had already been refused, so a tab closed before the next save() found
+   nothing pending and the change was lost. The handler's timer replays it,
+   and until then the 'storage' handler counts it as a change pending here. */
+let refusedWhileDiscarding = false;
 
 /* A failed setItem (quota, private-mode limits) used to be reported only in
    the footer #status line — easy to miss, and every later keystroke retries
@@ -1147,8 +1159,17 @@ let quotaToastShown = false;
 
 function writeState(force) {
   if (frozen) return;
+  if (discarding) { refusedWhileDiscarding = true; return; }
   if (held && !force) return;
-  held = false;
+  if (held) {
+    held = false;
+    /* A forced write while the conflict is asking — the tab being hidden or
+       closed, a backup, profile or block loaded — keeps this tab's change,
+       which is "Quedarme con lo mío" answered. Left on screen, the toast
+       would go on asking a question that no longer exists: the other tab's
+       write it offers to reload into has just been overwritten. */
+    if (toastKind === 'conflict') hideToast();
+  }
   try {
     pruneLog();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -1164,6 +1185,12 @@ function writeState(force) {
 }
 
 function save(scope) {
+  /* Any change after the action that took the snapshot ends its undo,
+     whatever the scope claims: 'view' also carries the session note, the
+     energy and the machine settings, and an undo that outlived a typed note
+     would erase it. See snapshotForUndo for how the action's own saves are
+     told apart. */
+  if (undoSnapshot && undoArmed) dropUndo();
   /* Before the timer, not inside it: the next draw can be this same tick
      (a set ticked and its card redrawn), and it must not read the history
      from before the write. See logChanged for what `scope` may claim. */
@@ -1176,7 +1203,11 @@ function save(scope) {
    must never be the reason a set logged right before closing the tab is
    lost. The conflict itself was never about *whether* to keep local
    changes — only about not overwriting the other tab's newer ones out from
-   under the user without asking first. */
+   under the user without asking first. So a flush mid-conflict is taken as
+   "Quedarme con lo mío", and writeState takes the question off the screen
+   with it. The one exception is the answer that says the opposite: after
+   "Recargar", writeState refuses everything (`discarding`), this forced
+   write included. */
 function flushSave() {
   if (!saveT && !held) return;
   clearTimeout(saveT);
@@ -1222,26 +1253,88 @@ document.addEventListener('visibilitychange', () => {
    arrived after the fact. */
 window.addEventListener('storage', e => {
   if (e.key !== STORAGE_KEY || frozen || !ready) return;
-  if (saveT || held) {
+  /* A change writeState refused while a stopped "Recargar" was still
+     discarding is as unsaved as one waiting on the timer: with no timer
+     left to show for it, it used to be adopted over without a word. */
+  if (saveT || held || refusedWhileDiscarding) {
     clearTimeout(saveT);
     saveT = null;
     held = true;
     toast(
       'Otra pestaña ha guardado cambios. Aquí tienes cambios sin guardar.',
-      'Quedarme con lo mío', () => { held = false; writeState(true); },
-      'Recargar', () => location.reload()
+      /* Inside a stopped "Recargar"'s window this write used to be refused
+         like any other and land only when the window ended — lost if the
+         tab was closed first. The user has just chosen this tab's data, so
+         it is written now. */
+      'Quedarme con lo mío', () => {
+        discarding = false;
+        refusedWhileDiscarding = false;
+        held = false;
+        writeState(true);
+      },
+      /* "Recargar" used to be a bare reload, and the reload's own
+         beforeunload/pagehide ran flushSave, which forces through a held
+         write — so it overwrote the very data the user had just chosen to
+         keep. `discarding` stops every write from here to the unload,
+         including a save() that lands in between (a box losing focus).
+
+         The other tab's data is then taken in, the way a write with
+         nothing pending here is, because the reload can be stopped (Esc,
+         the browser's ✕). Without that, a page still standing kept the
+         change it was told to drop, and `discarding` refused every write
+         it would ever make — a session logged into a tab that silently
+         saved nothing. So it is cleared again once the page has plainly
+         not gone, and whatever is written from then on starts from the
+         other tab's data, which is what "Recargar" chose — a change made
+         on it in the meantime included, which is saved then. */
+      'Recargar', () => {
+        discarding = true;
+        refusedWhileDiscarding = false;
+        held = false;
+        clearTimeout(saveT);
+        saveT = null;
+        /* After `held` is cleared, and guarded: the other tab's bytes can
+           be ones this release's migrate() or applyTheme() throws on — a
+           newer release wrote them, say. A throw used to end the handler
+           right here, with the question already hidden by the button,
+           `held` still set and every later change refused: held back, with
+           nothing on screen to answer. The reload goes ahead regardless;
+           the page it brings up meets the same bytes in load(), whose
+           recovery screen is the place for them. */
+        try { adoptStored(readRaw()); } catch (err) { /* see above */ }
+        setTimeout(() => {
+          discarding = false;
+          if (refusedWhileDiscarding) {
+            refusedWhileDiscarding = false;
+            save();
+          }
+        }, 3000);
+        location.reload();
+      },
+      'conflict'
     );
     return;
   }
+  adoptStored(e.newValue);
+});
+
+/* Another tab's write, taken in as this tab's state: the 'storage' event's
+   answer when nothing is pending here, and "Recargar"'s when something was.
+   Bytes that do not parse, or that are not the app's, are left where they
+   are — this tab carries on with what it has. */
+function adoptStored(raw) {
   let next;
-  try { next = JSON.parse(e.newValue); } catch (err) { return; }
+  try { next = JSON.parse(raw); } catch (err) { return; }
   if (!next || !next.profiles) return;
   state = next;
+  /* A snapshot taken before this would put back the other tab's sets as
+     well as ours: undo ends at a change arriving from outside, too. */
+  dropUndo();
   migrate();
   applyTheme();
   render();
   mark('Actualizado desde otra pestaña');
-});
+}
 
 /* ---------- keeping the log ----------
    There is no server: the only copy of a year of training is the string in
@@ -1322,7 +1415,51 @@ function setNote(el, text, err) {
 /* A second action (actionLabel2/fn2) is for the rare toast offering two real
    choices rather than one action and a dismiss — today only the two-tab
    conflict, above. Omit them for the common one-action-or-none toast. */
-function toast(msg, actionLabel, fn, actionLabel2, fn2) {
+/* There is one toast box, and any later toast() used to take it over. Two
+   toasts cannot simply be replaced. The two-tab conflict leaves `held` set
+   — every save waiting — until one of its buttons is pressed, so the undo
+   toast, the backup nag on the tick that finishes a day or the quota
+   warning taking its place left the app holding with no way to answer. And
+   "Actualizar" is never offered again in this session once it is gone
+   (updatefound does not re-fire for a worker that is already waiting).
+
+   Only the conflict holds other toasts back. "Actualizar" is never lost
+   but never blocks: it yields to everything and comes back after. It is
+   offered on every load while a new worker waits, so it can sit on screen
+   for a whole session after each deploy — and when it outranked the rest,
+   it held back exactly the ones that cannot wait: "Borrar este día" with
+   "Actualizar" up never showed its Deshacer, and the next tick expired it
+   unseen; a quota warning queued behind it was overwritten by the next
+   undo and, fired once per load (quotaToastShown), never came back.
+
+   So there is one waiting place for each of `note` (every toast that is
+   neither — the undo toast among them) and `update`, the latest of each
+   winning. The conflict never waits: it always takes the box, and a note
+   takes it from the update. Whatever either pushes aside waits in its own
+   place, the undo toast included: an undo shown inside the 400 ms before
+   its own action's save lands, when another tab's write arrives, is still
+   good once the conflict is answered. hideToast shows a waiting note
+   first, then the update. A second toast of the kind already showing
+   replaces it, as every toast used to. */
+const queuedToast = { note: null, update: null };
+let toastKind = null;
+let toastArgs = null;
+const toastPlace = kind => (kind === 'conflict' || kind === 'update' ? kind : 'note');
+
+function toast(msg, actionLabel, fn, actionLabel2, fn2, kind) {
+  kind = kind || 'note';
+  const args = [msg, actionLabel, fn, actionLabel2, fn2, kind];
+  const incoming = toastPlace(kind);
+  const shown = !$('toast').hidden && toastArgs ? toastPlace(toastKind) : null;
+  if (shown && shown !== incoming) {
+    if (shown === 'conflict' || incoming === 'update') {
+      queuedToast[incoming] = args;
+      return;
+    }
+    queuedToast[shown] = toastArgs;
+  }
+  toastKind = kind;
+  toastArgs = args;
   $('toastMsg').textContent = msg;
   const act = $('toastAct');
   if (actionLabel) {
@@ -1340,18 +1477,50 @@ function toast(msg, actionLabel, fn, actionLabel2, fn2) {
   } else {
     act2.hidden = true;
   }
+  /* The conflict is a question that holds every save until it is answered,
+     so it has no ✕: dismissing it would leave `held` set with nothing on
+     screen to clear it. "Actualizar" keeps its ✕ — declining is a choice. */
+  $('toastDismiss').hidden = kind === 'conflict';
   $('toast').hidden = false;
 }
-function hideToast() { $('toast').hidden = true; }
+function hideToast() {
+  $('toast').hidden = true;
+  toastKind = null;
+  toastArgs = null;
+  let next = queuedToast.note;
+  queuedToast.note = null;
+  /* An undo that expired while it waited has nothing left to offer. */
+  if (next && next[5] === 'undo' && !undoSnapshot) next = null;
+  if (!next) {
+    next = queuedToast.update;
+    queuedToast.update = null;
+  }
+  if (next) toast.apply(null, next);
+}
 $('toastDismiss').onclick = hideToast;
 
 /* ---------- undo ----------
    Every destructive action asks first, but "yes" used to be the end of it.
    One snapshot of the whole state costs a stringify of something already
    small, and covers the misfire that actually happens: the wrong day, the
-   wrong profile, the wrong block. Offered through the toast, and dropped as
-   soon as the next one replaces it. */
+   wrong profile, the wrong block. Offered through the toast, and ended by
+   the next change of any kind — a set ticked, a box typed, a note, moving
+   to another week — or by a write adopted from another tab. It used to end
+   only when another snapshot replaced it, and the toast never went away by
+   itself: a plan edit's "Deshacer" was still sitting there an hour of
+   training later, and pressing it put back the state from before the edit,
+   every set logged since included, with no second undo (the 2026-09-22
+   audit, plans/060). Ending it early loses nothing; ending it late loses
+   sets. That is also what UNDO_PROMISE, below, has always said. */
 let undoSnapshot = null;
+/* False for the rest of the task that took the snapshot. The action's own
+   writes (purgeRecord / applyPlanDraft / state = …, then commit()) all run
+   synchronously right after snapshotForUndo, so they land while it is
+   unarmed; the first save() after the timer arms it is the next change.
+   Counting saves instead would tie undo to how many a render() issues. A
+   new destructive action has to keep that shape — snapshot, then its
+   writes with no await between — or arm the snapshot itself. */
+let undoArmed = false;
 
 /* What the confirm dialog in front of a snapshot is allowed to promise,
    kept next to the snapshot so the two cannot drift apart. Five dialogs
@@ -1372,14 +1541,25 @@ function snapshotForUndo(what) {
     undoSnapshot = null;
     return;
   }
-  toast(what, 'Deshacer', undoLast);
+  undoArmed = false;
+  setTimeout(() => { if (undoSnapshot) undoArmed = true; }, 0);
+  toast(what, 'Deshacer', undoLast, null, null, 'undo');
+}
+
+function dropUndo() {
+  undoSnapshot = null;
+  undoArmed = false;
+  if (toastKind === 'undo') hideToast();
 }
 
 function undoLast() {
   if (!undoSnapshot) return;
   let restored;
   try { restored = JSON.parse(undoSnapshot); } catch (e) { return; }
+  /* Before the save() below, which would otherwise take it for the next
+     change and try to drop it. */
   undoSnapshot = null;
+  undoArmed = false;
   state = restored;
   migrate();
   applyTheme();
@@ -7216,7 +7396,7 @@ function registerServiceWorker() {
   if (!('serviceWorker' in navigator) || location.protocol.indexOf('http') !== 0) return;
 
   const offerUpdate = sw => {
-    toast('Hay una versión nueva de la app.', 'Actualizar', () => sw.postMessage('skipWaiting'));
+    toast('Hay una versión nueva de la app.', 'Actualizar', () => sw.postMessage('skipWaiting'), null, null, 'update');
   };
 
   navigator.serviceWorker.register('sw.js').then(reg => {
