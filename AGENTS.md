@@ -17,6 +17,12 @@ identical to an oversight unless someone writes down which it is:
 
 - **No build step, no bundler, no `package.json`, no TypeScript.** Plain
   HTML/CSS/JS, served by any static server. Do not add a build step.
+- **Safari 15 is the floor.** No regex lookbehind, `.at()`,
+  `Object.hasOwn`, `structuredClone`, `findLast`, … in `js/*.js` or
+  `sw.js`; the list and the check live in `test/unit.js` ("shipped
+  scripts parse on Safari 15"). A regex literal the browser cannot parse
+  is a SyntaxError for the whole file, which is the stuck loading screen
+  (plans/059).
 - **No modules.** Thirteen `<script>` tags share one global scope — twelve
   of them in a fixed order at the foot of `<body>` (`index.html`):
 

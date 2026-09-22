@@ -69,6 +69,11 @@ are vendored in `js/vendor/`. Anything that arrives from a file, a paste,
 `normalizeImported*` validators and the limits under
 [Block JSON shape](#block-json-shape), and is escaped on the way out.
 
+The app targets **Safari 15 / iOS 15** and current Chrome/Firefox, and is
+written without syntax newer than that — there is no build step to
+transpile it down. `node test/unit.js` fails on a known feature newer than
+that floor anywhere in `js/` or `sw.js`.
+
 `AGENTS.md` records the invariants that are easy to break and hard to see
 — the script load order, the `CACHE_VERSION` rule, which absences are
 deliberate. `plans/` holds the implementation plans behind recent changes,
