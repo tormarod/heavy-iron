@@ -193,4 +193,85 @@ pushing and the PR are the orchestrator's job.
 
 ## Maintenance notes
 
-(Filled in when the PR lands.)
+**Drift.** Clean at the start. Both sessions named in the drift check
+landed while this was in progress (#137 `loggedSets`, #138 notes/energy
+re-keyed on restore). The branch was rebased over them. Neither touched a
+function under "Current state". Two conflicts were resolved by hand: the
+orphan-pass comment in `normalizeImportedProfile` (main's sentence on
+falsy entries was kept) and a new unit test next to the move header. #137's
+new `loggedSets` comment named `purgeExLog`/`purgeDayLog`, so it now names
+`purgeRecord`.
+
+**Equivalence (Step E).** This was run against `origin/main` at `e9e8e7a`,
+after the rebase, in two vm contexts built the way `loadApp` builds one.
+There were **10,000 comparisons: 1,000 random profiles for each of ten
+operations, with 0 differences.** The ten operations were: purge one lift,
+purge one day, clearDay (main's handler body verbatim), wipe, the real
+`deleteBlocks` in each tree, a move, peSave's moves-then-purges sequence,
+`installBlockData` with what its callers pass, `migrate` on damaged
+profiles, and `normalizeImportedProfile`. The profiles covered everything
+the plan asked for: three blocks, three days, e1 on two days, weeks 1, 2,
+3, 8, 16, 17 and 20, every part present or every part missing, parts
+missing per block, orders with and without the id, obj and rir on both
+days, and empty slots.
+
+Ten deliberate breaks were then made to the branch. Seven were caught:
+
+| Break | Differences |
+|---|---|
+| order skipped by a day purge | 537 |
+| wipe reaches variants | 328 |
+| week ignored by clearDay | 351 |
+| no lateral seed | 400 |
+| order's move walks only the source day | 124 |
+| order does not travel with a block | 99 |
+| log merged keep-destination | 88 |
+
+Three found no difference, and each is inert on every input a caller
+produces:
+
+- **obj travelling with a block.** No caller passes obj.
+- **rir merge set to 'concat'.** rir values are never arrays.
+- **Deleting order's no-op `purgeExercise` hook.** The general rule already
+  leaves slot-keyed parts alone, so the hook documents decision 6 rather
+  than enforcing it.
+
+**Outside that domain** (shapes no write path and no import normaliser
+produces), three differences exist, and they were probed deliberately:
+
+1. A day purge now deletes a rir slot whose value is falsy (`null`).
+   purgeRir used to skip it.
+2. clearDay now deletes a non-canonical log/rir key such as `w01-d1`.
+   It used to delete only `slot(week, day)` directly. For notes, energy,
+   order and obj it always walked with forEachSlot.
+3. The new functions tolerate a missing top-level map. moveEx*,
+   purgeDayLog and clearDay used to throw a TypeError on one. migrate
+   always creates these maps.
+
+`installBlockData` no longer files notes/energy if handed them (decision
+5; no caller does).
+
+**Deviations.**
+
+- `ensureRecord` runs at the end of migrate's per-profile repair, not
+  where the maps used to be created. The variants seed needs the repaired
+  blocks, and nothing between the two reads the record.
+- rir has a `repair` hook as well as `install`: the fold on every load.
+- `normalizeImportedProfile`'s orphan pass reads its list from the table.
+  Import is otherwise untouched, but the done-criteria grep covers `js/`.
+
+**Tests.**
+
+- **Added:** eleven tests under "RECORD_PARTS: one table for the
+  profile's record": the guard, the table's shape, and one test for each
+  of wipe, block, day, day+week, lift, move, install and ensureRecord.
+- **Re-pointed (none deleted):**
+  - the old helpers' behaviour tests, now calling
+    `purgeRecord`/`moveExerciseRecord`;
+  - the created-when-absent checks, the restore round trip, the empty-plan
+    restore and the w17 day purge, which now loop over the table;
+  - the smoke checks for deleting a block and for the wipe, which gain an
+    obj fixture. The wipe check reads `log` for sets rather than keys,
+    because the redrawn session files its empty rows back.
+- **Left alone:** the unit.js fixtures at ~981 and ~4461 that set
+  notes/energy/order as filler. They do not test the record.
