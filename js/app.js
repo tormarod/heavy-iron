@@ -2930,10 +2930,11 @@ function freezeHistory(list) {
 }
 
 /* ---------- the rest timer lives in js/rest-timer.js ----------
-   These five are everything the rest of the app asks of it: startRest and
-   stopRest from the tick handler and from every profile/week/day button,
-   renderSoundBtn from drawApp, askForNotifications and keepAliveStop from
-   Ajustes. They are stubbed to no-ops when that file is not on the page,
+   These five are everything the rest of the app asks of it: startRest from
+   the tick handler; stopRest from there and from drawApp, which stops a
+   running rest whenever the session on screen changes (plans/049);
+   renderSoundBtn from drawApp too; askForNotifications and keepAliveStop
+   from Ajustes. They are stubbed to no-ops when that file is not on the page,
    because a returning user's service worker can still be serving an
    index.html with no script tag for it — and unlike a split-out button,
    these are not things you can afford to lose loudly: renderSoundBtn would
@@ -3542,6 +3543,28 @@ function slugifyCached(s) {
   return renderCache.slug[k];
 }
 
+/* The session drawApp drew last time, as the string sessionOnScreen(state)
+   below returns — null before the first draw, so there is nothing to
+   compare against yet and nothing is stopped then. */
+let lastSessionOnScreen = null;
+
+/* The profile, block and slot on screen, joined into one key so two draws'
+   answers can be compared with !==. Takes `state` rather than reading the
+   global so a test can hand it a bare one (defaultState() plus a mutation)
+   without going through a draw. drawApp calls this every draw and stops the
+   rest timer when the answer changed since the last one (plans/049): eight
+   navigation controls used to call stopRest() by hand, one per button, and
+   undo and adopting another tab's write changed the session without either
+   having a call of its own. The draw is the one place that sees every way
+   of leaving a session, this one included. */
+function sessionOnScreen(state) {
+  const profile = state.profiles[state.activeProfile];
+  const block = profile.blocks[profile.activeBlock];
+  const days = dayList(block);
+  const day = days[profile.day] || days[0];
+  return state.activeProfile + '|' + block.id + '|' + slot(profile.week, day.id);
+}
+
 function drawApp() {
   resetRenderCache();
   const profile = getProfile();
@@ -3579,6 +3602,12 @@ function drawApp() {
   /* Before anything is drawn from it: pruneLog reads this to know which row
      arrays are the live ones. */
   drawnSlot = { profile: state.activeProfile, block: block.id, key: slot(profile.week, day.id) };
+  /* Stop a running rest the moment the session it belongs to leaves the
+     screen — see sessionOnScreen above. A redraw of the same session (a
+     tick's commit(), a sheet closing) compares equal and stops nothing. */
+  const onScreen = sessionOnScreen(state);
+  if (lastSessionOnScreen !== null && onScreen !== lastSessionOnScreen) stopRest();
+  lastSessionOnScreen = onScreen;
   drawEnergy(profile, block, day);
   drawDeloadCheck(profile, block);
   drawBrakeNote(profile, block);
