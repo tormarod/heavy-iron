@@ -85,10 +85,12 @@ const clampNum = (v, lo, hi, dflt, step) => {
   return Math.round(clamped * 100) / 100;
 };
 
-/* `ex.inc` — the weight step double progression adds once every set hit the
-   top of the rep range last week (see copyPrev). Bounded to something a
-   plate stack could actually add: quarter-unit granularity, nothing under
-   a plate change and nothing past a round-trip's worth of iron. */
+/* `ex.inc` — one step of weight for the objetivo rule (targetFor): how far
+   a set moves up or down a rung when the weights already logged against
+   the lift have none within a step and a half (nextLoad, prevLoad). Bounded
+   to something a plate stack could actually add: quarter-unit granularity,
+   nothing under a plate change and nothing past a round-trip's worth of
+   iron. */
 const INC_MIN = 0.25, INC_MAX = 50, INC_STEP = 0.25;
 
 /* Plate bounds. The only filter used to be `p > 0`, so a near-zero plate
@@ -104,18 +106,21 @@ const PLATE_MIN = { kg: 0.25, lb: 0.5 }, PLATE_MAX = { kg: 50, lb: 100 };
 const PLATES_MAX = 24;
 
 /* The step to fall back on when an exercise declares no `inc` of its own —
-   and most don't, since it is an optional field. Something has to round the
-   target weight below to a number you can actually load, so the chain runs
-   exercise → your own default (Ajustes) → this. Deliberately the smallest
+   and most don't, since it is an optional field. Something has to size the
+   rule's step for every lift, so the chain runs exercise → your own
+   default (Ajustes, seeded from this) → this. Deliberately the smallest
    plate/stack step that exists on most equipment rather than a typical one:
-   rounding to a step finer than the machine has only ever costs you the
-   difference between two real notches, while rounding to a coarser one
-   invents jumps the stack cannot make.
+   a step finer than the machine has only ever costs you the difference
+   between two real notches, while a coarser one invents jumps the stack
+   cannot make.
 
-   Only ever used for ROUNDING a number the app shows you. copyPrev stays
-   keyed on an explicit `ex.inc`: it writes weights into the log, and
-   defaulting a step for an exercise nobody declared one for would quietly
-   put +2,5 kg on a 12 kg lateral raise. */
+   It does reach the log. copyPrev ("Rellenar con el objetivo") writes the
+   objetivo into the boxes, and the objetivo is priced with this — which is
+   why copyPrev used to move only an exercise with an explicit `ex.inc`, so
+   a default could not quietly put +2,5 kg on a 12 kg lateral raise. The
+   ladder is what stops that now: the weights already logged are the
+   lift's rungs, and the step only invents one when none is near (see "the
+   rungs this machine actually has"). */
 const DEFAULT_INC = { kg: 2.5, lb: 5 };
 
 /* Never call this before migrate() has run — it reads state.prefs. */
@@ -802,20 +807,59 @@ function migrate() {
       profile.blockOrder = seed.blockOrder.slice();
     }
 
+    /* "Exists" is an own key, the same test plans/040 put on activeProfile
+       below: a plain object answers profile.blocks['toString'] with a
+       function and ['__proto__'] with Object.prototype. An import never
+       reaches here with a name like that (normalizeImportedProfile re-keys
+       every block), but localStorage itself is not an import. */
+    const ownBlock = id => Object.prototype.hasOwnProperty.call(profile.blocks, id) ? profile.blocks[id] : undefined;
+
+    /* A block filed under a name safeKey refuses moves to a fresh key, and
+       everything that names it follows — the rename normalizeImportedProfile
+       gives an import. Owning the key is not enough: the key is the block's
+       id (below), and the id indexes every other part of the record, where
+       it is not an own key yet. A block owning '__proto__' filed its first
+       logged set onto Object.prototype itself, and nothing was saved. */
+    Object.keys(profile.blocks).forEach(bk => {
+      if (safeKey(bk)) return;
+      let id = uid('block');
+      while (ownBlock(id)) id = uid('block');
+      profile.blocks[id] = profile.blocks[bk];
+      delete profile.blocks[bk];
+      RECORD_PARTS.forEach(part => {
+        const map = profile[part.name];
+        if (part.keyedBy === 'exercise' || !map || typeof map !== 'object') return;
+        if (Object.prototype.hasOwnProperty.call(map, bk)) { map[id] = map[bk]; delete map[bk]; }
+      });
+      if (Array.isArray(profile.blockOrder)) profile.blockOrder = profile.blockOrder.map(x => (x === bk ? id : x));
+      if (profile.activeBlock === bk) profile.activeBlock = id;
+    });
+
     /* The picker is driven off blockOrder, so it has to list every block
-       that exists, exactly once, and nothing that doesn't. */
+       that exists, exactly once, and nothing that doesn't. A hand-edited
+       blockOrder or activeBlock naming 'toString' or 'constructor' used to
+       pass a truthy read here, and getBlock() then handed the first draw a
+       function instead of a block. */
     const order = (Array.isArray(profile.blockOrder) ? profile.blockOrder : [])
-      .filter((id, i, a) => profile.blocks[id] && a.indexOf(id) === i);
+      .filter((id, i, a) => ownBlock(id) && a.indexOf(id) === i);
     Object.keys(profile.blocks).forEach(id => { if (order.indexOf(id) < 0) order.push(id); });
     profile.blockOrder = order;
-    if (!profile.blocks[profile.activeBlock]) profile.activeBlock = order[order.length - 1];
+    if (!ownBlock(profile.activeBlock)) profile.activeBlock = order[order.length - 1];
 
     profile.week = clampInt(profile.week, 1, MAX_WEEKS, 1);
     profile.day = clampInt(profile.day, 0, 99, 0);
 
     Object.keys(profile.blocks).forEach(bk => {
       const block = profile.blocks[bk];
-      if (!block.id) block.id = bk;
+      /* Always the key, never a stored id that disagrees with it. Every
+         write to the record is filed under block.id (entry, setOrder, the
+         plan editor's save into profile.blocks), while blockOrder and every
+         reader go by the key, so a block whose id said 'constructor' filed
+         its sets onto the global Object function, where no save finds them,
+         and one whose id named another block wrote into that block's
+         history. The app's own writers always keep the two equal;
+         normalizeImportedProfile makes the same call for the same reason. */
+      block.id = bk;
       if (!block.name) block.name = 'Bloque';
       /* Blocks saved before length was configurable are exactly what the app
          used to assume: eight weeks, the eighth halved. */
@@ -2111,9 +2155,12 @@ function decayLine(rows) {
 }
 
 /* The top of a rep range like "8–12" or "8-12" — the last number in the
-   string, so it also copes with a plain "12" (no range at all). Used by
-   copyPrev to decide whether double progression's condition ("top of range
-   on every set") was actually met last week. */
+   string, so it also copes with a plain "12" (no range at all). Read by the
+   objetivo rule (targetFor, and ruleSession through exHistory), set by
+   set: a set that reached it is the one that moves up a rung, and is read
+   as a floor under what the set could do rather than a measurement of it.
+   copyPrev ("Rellenar con el objetivo") no longer asks it anything; it
+   writes whatever weights the rule priced. */
 function repRangeTop(reps) {
   const nums = String(reps || '').match(/\d+(?:[.,]\d+)?/g);
   return nums && nums.length ? num(nums[nums.length - 1]) : null;
@@ -2622,9 +2669,12 @@ function setSummary(x) {
 }
 
 /* A set the weight had to come off to finish is the plainest statement there
-   is that the weight was too heavy — so it joins RIR-0 and rep decay as a
-   reason for copyPrev to withhold next week's automatic increase. A planned
-   dropset says nothing of the sort and is deliberately not counted here. */
+   is that the weight was too heavy — so it joins RIR 0 as what makes the
+   Diagnóstico read a session as run at failure. It used to veto next
+   week's increase in copyPrev as well, and no longer does: copyPrev writes
+   the objetivo, and the rule reads the level off the reps done at the
+   working weight, which the stripped ones never were. A planned dropset
+   says nothing of the sort and is deliberately not counted here. */
 function forcedDrop(rows) {
   return (rows || []).some(r => r && r.done && dropKind(r) === 'forced' && dropsOf(r).some(dropUsed));
 }
@@ -3878,7 +3928,7 @@ function drawApp() {
      on screen (plans/041). */
   $('beyond').hidden = !stranded;
 
-  drawSessionFoot(profile, days);
+  drawSessionFoot(profile, block, days);
 }
 
 /* ---------- what a card decides ----------
@@ -4564,7 +4614,7 @@ function drawCard(exId) {
        was — creating it is what the press was for. */
     if (focusDrop || focusSetup) takeFocusMark(fresh);
     else if (at) applyFocusPath(fresh, at);
-    drawSessionFoot(profile, days);
+    drawSessionFoot(profile, block, days);
     refreshWeekDot(profile, block);
     drawDeloadCheck(profile, block);
   } catch (e) {
@@ -4572,11 +4622,33 @@ function drawCard(exId) {
   }
 }
 
+/* Where the session after this one is, said once every set is ticked. The
+   last day of a week wraps to the first day of the next — and used to wrap
+   past the last week too, so the final session of an eight-week block
+   promised a "semana 9" the week bar has no button for. Past the block's
+   end there is no week to name: the next block in blockOrder, which is the
+   picker's order and the order "+ Nuevo bloque" appends in, or the button
+   that makes one when there is none. Takes the week being drawn, which
+   drawApp has already pulled back inside the block. */
+function nextSessionLine(profile, block, days) {
+  if (profile.day < days.length - 1) return 'Siguiente: ' + days[profile.day + 1].name + '.';
+  if (profile.week < blockWeeks(block)) return 'Siguiente: ' + days[0].name + ', semana ' + (profile.week + 1) + '.';
+  const order = profile.blockOrder || [];
+  const at = order.indexOf(block.id);
+  const nextId = at >= 0 ? order[at + 1] : undefined;
+  if (!nextId || !profile.blocks[nextId]) return 'Fin del bloque: crea el siguiente con "+ Nuevo bloque", en Plan.';
+  /* A block with every day retired has no first day to name; drawApp
+     brings one back when it is opened, so the block alone is enough. */
+  const first = dayList(profile.blocks[nextId])[0];
+  return 'Fin del bloque. Siguiente: ' + (first ? first.name + ', ' : '') +
+    'semana 1 de "' + blockPickerLabel(profile, nextId) + '".';
+}
+
 /* The progress bar and the line under the session are sums over the cards,
    not over the log: each card recorded its own contribution as it was built,
    so this costs one pass over dayCards whether it follows a full draw or a
    single card being swapped. */
-function drawSessionFoot(profile, days) {
+function drawSessionFoot(profile, block, days) {
   let total = 0, doneN = 0, tonnage = 0, prs = 0, lastTs = 0;
   dayCards.forEach(c => {
     total += c.n;
@@ -4593,7 +4665,7 @@ function drawSessionFoot(profile, days) {
   if (prs) extra.push(prs === 1 ? '1 récord personal' : prs + ' récords personales');
   if (lastTs) extra.push('último registro ' + new Date(lastTs).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }));
   const head = doneN === total
-    ? 'Sesión completa — ' + total + ' series registradas. Siguiente: ' + days[(profile.day + 1) % days.length].name + (profile.day === days.length - 1 ? ', semana ' + (profile.week + 1) : '') + '.'
+    ? 'Sesión completa — ' + total + ' series registradas. ' + nextSessionLine(profile, block, days)
     : doneN + ' de ' + total + ' series hechas. Llega al tope del rango en todas las series y sube el peso el próximo día.';
   $('note').textContent = head + (extra.length ? ' · ' + extra.join(' · ') + '.' : '');
 }
@@ -4693,6 +4765,60 @@ function drawSessionNote(profile, block, day) {
     }
     prevEl.hidden = !last;
   }
+}
+
+/* ---------- best e1RM per exercise per week ----------
+   Both of these are the Diagnóstico's (its strength index and frequency
+   view read them) and lived in js/diagnostics.js, but deloadCheck below
+   reads strengthByExercise on every draw, and a symbol app.js reads stays
+   in app.js (AGENTS.md rule 1). Loaded without that file — a precache
+   hole — the week after a mid-block deload threw a ReferenceError inside
+   the draw and landed on the recovery screen. Not stubbed: an empty answer
+   here would draw no deload check at all and look like there was nothing
+   to compare. */
+
+/* Every exercise the block has ever carried, retired ones included, mapped
+   to its muscle. Retired exercises are excluded from the *plan* side of the
+   frequency view (plannedMuscleDays, js/diagnostics.js) — they are not
+   scheduled any more — but the sessions they were logged in still
+   happened, and dropping them would invent gaps that were not there. */
+function muscleOfBlock(block) {
+  const map = {};
+  (block.days || []).forEach(day => {
+    (day.ex || []).forEach(ex => { map[ex.id] = muscleTag(ex); });
+  });
+  return map;
+}
+
+/* Best estimated 1RM per exercise per week of this block, as
+   { exId: [w1, w2, …] } with null for a week it was not logged. A muscle
+   trained on two days in the same week keeps the better of the two — the
+   week's best, same rule the progress chart uses within a session. */
+function strengthByExercise(profile, block) {
+  const muscleOf = muscleOfBlock(block);
+  const weeks = blockWeeks(block);
+  const out = {};
+  /* The block's own weeks, and the deload week KEPT: this is the series
+     the chart draws, and those sets happened. It is strengthRows, in
+     js/diagnostics.js, that refuses to measure to or from it — and
+     deloadCheck, below, reads the weeks either side of it straight out of
+     this. */
+  sessionsOf(profile, { weeks: 'plan', blocks: [block.id] }).forEach(sess => {
+    const exId = sess.lift, w = sess.week;
+    if (!muscleOf[exId]) return;
+    /* Same rep ceiling as the trend: past it Epley is inventing a number
+       rather than reading one, and one 20-rep back-off set would move a
+       muscle's whole index. Each set's weight is already converted to the
+       unit on screen, so a row logged in the other unit is not blended in
+       raw — see rowWeight(). */
+    const done = sess.sets.filter(x => x.worked && x.r <= EST_MAX_REPS);
+    if (!done.length) return;
+    let best = 0;
+    done.forEach(x => { const v = est1RM(x.w, x.r); if (v > best) best = v; });
+    if (!out[exId]) out[exId] = new Array(weeks).fill(null);
+    if (out[exId][w - 1] == null || best > out[exId][w - 1]) out[exId][w - 1] = best;
+  });
+  return out;
 }
 
 /* ---------- did the deload work? ----------
@@ -4902,9 +5028,13 @@ const hasReps = r => r.r !== '' && r.r != null && !isNaN(num(r.r)) && num(r.r) >
 const EPLEY_A = 30;
 
 /* Above this Epley drifts far enough that the estimate would be inventing
-   a number rather than reading one. Still the ceiling the chart and the
-   Diagnóstico plot to; the rule below does not refuse past it, it reads
-   the set as a MINIMUM instead (see the censoring note). */
+   a number rather than reading one. Still the ceiling the Diagnóstico
+   plots to and the RÉCORD 1RM badge is judged under; the rule below does
+   not refuse past it, it reads the set as a MINIMUM instead (see the
+   censoring note). The progress chart is not on it: its 1RM view keeps a
+   stricter cut of its own, at twelve (isHighRep, js/chart.js), and past
+   that it leaves the point off the line and marks it rather than
+   dropping it. */
 const EST_MAX_REPS = 15;
 
 /* ---- censoring ----

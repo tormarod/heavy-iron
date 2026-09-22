@@ -352,7 +352,11 @@ async function restoreFromText(text) {
      file. */
   snapshotForUndo('Registro restaurado desde una copia.');
   state = data;
-  if (!state.activeProfile) state.activeProfile = 'hombre';
+  /* No default for activeProfile here: migrate() hands a missing or
+     foreign one the file's first profile, which is the answer a load from
+     storage gets for the same data. A 'hombre' default here was redundant
+     with that, and where the file did not list 'hombre' first it picked a
+     different profile than a reload of the same data would. */
   migrate();
   applyTheme();
   commit();

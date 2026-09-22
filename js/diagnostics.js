@@ -155,17 +155,9 @@ function dayKey(ts) {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
-/* Every exercise the block has ever carried, retired ones included, mapped
-   to its muscle. Retired exercises are excluded from the *plan* side below
-   — they are not scheduled any more — but the sessions they were logged in
-   still happened, and dropping them would invent gaps that were not there. */
-function muscleOfBlock(block) {
-  const map = {};
-  (block.days || []).forEach(day => {
-    (day.ex || []).forEach(ex => { map[ex.id] = muscleTag(ex); });
-  });
-  return map;
-}
+/* muscleOfBlock, the exercise → muscle map every view below starts from,
+   lives in js/app.js: strengthByExercise reads it, and app.js's own
+   deloadCheck reads that on every draw (AGENTS.md rule 1). */
 
 /* The sessions in which a muscle was actually trained, as one local day
    each, oldest first. A session is a logged day-slot with at least one
@@ -358,35 +350,9 @@ function buildHeatmapSVG(days) {
    exercise counts once regardless of what it loads, which is the same
    reason the index is a ratio in the first place. */
 
-/* Best estimated 1RM per exercise per week of this block, as
-   { exId: [w1, w2, …] } with null for a week it was not logged. A muscle
-   trained on two days in the same week keeps the better of the two — the
-   week's best, same rule the progress chart uses within a session. */
-function strengthByExercise(profile, block) {
-  const muscleOf = muscleOfBlock(block);
-  const weeks = blockWeeks(block);
-  const out = {};
-  /* The block's own weeks, and the deload week KEPT: this is the series
-     the chart draws, and those sets happened. It is strengthRows, below,
-     that refuses to measure to or from it — and deloadCheck in app.js
-     reads the weeks either side of it straight out of this. */
-  sessionsOf(profile, { weeks: 'plan', blocks: [block.id] }).forEach(sess => {
-    const exId = sess.lift, w = sess.week;
-    if (!muscleOf[exId]) return;
-    /* Same rep ceiling as the trend: past it Epley is inventing a number
-       rather than reading one, and one 20-rep back-off set would move a
-       muscle's whole index. Each set's weight is already converted to the
-       unit on screen, so a row logged in the other unit is not blended in
-       raw — see rowWeight() in app.js. */
-    const done = sess.sets.filter(x => x.worked && x.r <= EST_MAX_REPS);
-    if (!done.length) return;
-    let best = 0;
-    done.forEach(x => { const v = est1RM(x.w, x.r); if (v > best) best = v; });
-    if (!out[exId]) out[exId] = new Array(weeks).fill(null);
-    if (out[exId][w - 1] == null || best > out[exId][w - 1]) out[exId][w - 1] = best;
-  });
-  return out;
-}
+/* The per-exercise series under the index, best e1RM per week, is
+   strengthByExercise in js/app.js: deloadCheck there reads it on every
+   draw, and a symbol app.js reads stays in app.js (AGENTS.md rule 1). */
 
 /* One indexed series per muscle. The baseline is the first week that muscle
    has anything logged in — usually week 1, but a log that starts late gets

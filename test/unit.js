@@ -36,6 +36,22 @@ const inert = () => ({
   get value() { return ''; }, set value(v) {},
 });
 
+/* What a draw needs from a document, and no more. The card builder writes
+   each set row as innerHTML and reads its three inputs straight back with
+   querySelectorAll, names the exercise with a text node, and a single-card
+   redraw swaps the old card out through its parent. The stub above parses
+   nothing, so that destructuring binds undefined and load()'s first draw
+   falls into recovery: the suite at large runs with `ready` false and never
+   draws, which is fine for arithmetic. The precache-hole section has to
+   draw — a draw is where a symbol that never loaded costs the most — so it
+   asks for this instead. Still not a DOM: every element is inert, every
+   query hands back more of them, and nothing a draw writes reads back. */
+const drawable = () => Object.assign(inert(), {
+  parentNode: {}, replaceWith() {},
+  querySelector() { return drawable(); },
+  querySelectorAll() { return [drawable(), drawable(), drawable()]; },
+});
+
 /* The same order as the <script> tags in index.html — theme-init.js first
    because it loads in <head>, app.js after the ten it wires and then calls
    load() from, and boot-guard.js last, after app.js, because it is the one
@@ -53,14 +69,17 @@ const SHELL_SCRIPTS = [
 /* `omit` drops files from the load, which is how the no-op stubs in app.js
    get exercised: a returning user's service worker can serve an index.html
    whose script tag for a split-out file is missing from the cache, and the
-   stubs are the only thing between that and a recovery screen. */
-function loadApp(omit = []) {
+   stubs are the only thing between that and a recovery screen. `drawing`
+   swaps in the document above that load()'s first draw can get through. */
+function loadApp(omit = [], { drawing = false } = {}) {
   const store = {};
+  const el = drawing ? drawable : inert;
   const ctx = vm.createContext({
     document: {
-      getElementById: () => inert(), createElement: () => inert(),
-      querySelector: () => inert(), querySelectorAll: () => [],
-      addEventListener() {}, documentElement: inert(), body: inert(), head: inert(),
+      getElementById: () => el(), createElement: () => el(),
+      ...(drawing ? { createTextNode: () => el() } : {}),
+      querySelector: () => el(), querySelectorAll: () => [],
+      addEventListener() {}, documentElement: el(), body: el(), head: el(),
     },
     window: { addEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {} }) },
     localStorage: {
@@ -246,26 +265,228 @@ console.log('\n== the harness ==');
 ok('every source file loads in one shared scope', call('typeof migrate') === 'function');
 ok('load() seeded a state object', call('!!state && !!state.profiles'));
 
-/* js/app.js stubs the entry points of the split-out files it still names, so the
-   app still boots when the worker serves an index.html whose script tag for
-   one of them is not in the cache. Nothing exercised those stubs, because
-   the harness always loaded all thirteen files — the defence against the
-   third stuck-loading crash was itself untested. Each pass here is a
-   precache hole survived. */
-console.log('\n== a precache hole: app.js boots without each split file (AGENTS.md rule 1) ==');
-[['js/rest-timer.js', ['startRest', 'stopRest', 'renderSoundBtn', 'askForNotifications', 'keepAliveStop']],
- ['js/chart.js', ['openChart']],
- /* js/qr-transfer.js needs no stub since sheets register their own
-    teardown (plans/009 item 1) — nothing in app.js names closeQr now. The
-    file still gets its precache-hole pass: the shell must load without it. */
- ['js/qr-transfer.js', []]].forEach(([file, stubs]) => {
+/* AGENTS.md's two split rules, checked against the code itself rather than
+   against whichever states the draws below happen to walk. Rule 1: app.js,
+   and the three files that predate the split (which the rules treat as
+   app.js), read nothing that only a guarded file defines unless app.js
+   stubs it or the read sits under a `typeof … === 'function'` test. Rule 2:
+   a guarded file reads nothing that only another guarded file defines —
+   stub or no stub. deloadCheck's unstubbed read of strengthByExercise
+   broke rule 1 on every draw after a mid-block deload, and nothing here
+   could see it: the section below only ever loaded three of the seven
+   guarded files, and never drew. */
+console.log('\n== the split rules hold in the source (AGENTS.md rules 1 and 2) ==');
+const PRE_SPLIT = ['js/data.js', 'js/block-editor.js', 'js/profile-transfer.js'];
+/* Every file split out since then: guarded by default, so a new one is
+   checked here and drawn without below the day its script tag lands. */
+const GUARDED_SPLIT = SHELL_SCRIPTS.filter(f =>
+  !PRE_SPLIT.includes(f) && !['js/theme-init.js', 'js/app.js', 'js/boot-guard.js'].includes(f));
+
+/* The source with its comments, strings and regex literals blanked to
+   spaces, so a name the prose discusses, a Spanish sentence or a class in
+   an innerHTML string ('tick') is not taken for a read. Template literals
+   keep their ${…} code. Lengths and line breaks are kept, so an offset or
+   a line number means the same thing in both. */
+function codeOnly(src) {
+  let i = 0, last = '';
+  const blank = s => s.replace(/[^\n]/g, ' ');
+  /* A slash starts a regex where an operand is expected, and divides
+     after one: after a name, a number, `)` or `]`. */
+  const regexHere = () => !last || /^[(,=:[!&|?{};+\-*%<>~^]$/.test(last) ||
+    /^(return|typeof|case|in|of|delete|void|throw|new|else|do|instanceof)$/.test(last);
+  function code(inTemplate) {
+    let out = '', depth = 0;
+    while (i < src.length) {
+      const c = src[i], d = src[i + 1];
+      if (inTemplate && c === '}' && depth === 0) return out;
+      let end = -1;
+      if (c === '/' && d === '*') { end = src.indexOf('*/', i + 2); end = end < 0 ? src.length : end + 2; }
+      else if (c === '/' && d === '/') { end = src.indexOf('\n', i); if (end < 0) end = src.length; }
+      else if (c === '/' && regexHere()) {
+        let j = i + 1, cls = false;
+        while (j < src.length && src[j] !== '\n' && (cls || src[j] !== '/')) {
+          if (src[j] === '\\') j++; else if (src[j] === '[') cls = true; else if (src[j] === ']') cls = false;
+          j++;
+        }
+        if (src[j] === '/') { j++; while (/[a-z]/.test(src[j] || '')) j++; end = j; last = 'x'; }
+      }
+      if (end >= 0) { out += blank(src.slice(i, end)); i = end; continue; }
+      if (c === '\'' || c === '"') {
+        let j = i + 1;
+        while (j < src.length && src[j] !== c) j += src[j] === '\\' ? 2 : 1;
+        out += c + blank(src.slice(i + 1, j)) + c; i = j + 1; last = 'x'; continue;
+      }
+      if (c === '`') {
+        out += ' '; i++;
+        while (i < src.length && src[i] !== '`') {
+          if (src[i] === '\\') { out += blank(src.slice(i, i + 2)); i += 2; }
+          else if (src[i] === '$' && src[i + 1] === '{') { out += '  '; i += 2; out += code(true) + ' '; i++; }
+          else { out += src[i] === '\n' ? '\n' : ' '; i++; }
+        }
+        out += ' '; i++; last = 'x'; continue;
+      }
+      if (c === '{') depth++; else if (c === '}') depth--;
+      out += c;
+      if (/[\w$]/.test(c)) last = /[\w$]/.test(src[i - 1] || '') ? last + c : c;
+      else if (!/\s/.test(c)) last = c;
+      i++;
+    }
+    return out;
+  }
+  return code(false);
+}
+
+/* Each read of a name in `names` (name → the file that alone defines it)
+   that the engine would evaluate as a global: not a property (`.tick`),
+   not a `typeof` (which cannot throw), not inside a block that declares a
+   local of the same name (app.js's `const tick`, the card's own button,
+   is not rest-timer.js's tick()). `guarded` is whether a `typeof name ===
+   'function'` test covers it: the rest of that statement, or the block
+   its `if` opens. */
+function guardedReads(src, own, names) {
+  const code = codeOnly(src), out = [], locals = [], guards = [];
+  const prune = (list, gone) => { for (let k = list.length - 1; k >= 0; k--) if (gone(list[k])) list.splice(k, 1); };
+  const re = /[A-Za-z_$][\w$]*|\d[\w.]*|\n|\S/g;
+  let depth = 0, line = 1, prev = '', m;
+  while ((m = re.exec(code))) {
+    const t = m[0];
+    if (t === '\n') { line++; continue; }
+    if (t === '{') {
+      guards.forEach(g => { if (g.block == null && g.depth === depth) g.block = depth + 1; });
+      depth++;
+    } else if (t === '}') {
+      depth--;
+      prune(locals, l => l.depth > depth);
+      prune(guards, g => g.block != null && g.block > depth);
+    } else if (t === ';') {
+      prune(guards, g => g.block == null && g.depth === depth);
+    } else if (names.has(t) && names.get(t) !== own && prev !== '.') {
+      if (prev === 'typeof') {
+        if (/^\s*===\s*'function'/.test(src.slice(m.index + t.length))) guards.push({ name: t, depth, block: null });
+      } else if (depth > 0 && /^(const|let|var|function)$/.test(prev)) {
+        locals.push({ name: t, depth });
+      } else if (!locals.some(l => l.name === t)) {
+        out.push({ name: t, from: names.get(t), line, guarded: guards.some(g => g.name === t) });
+      }
+    }
+    prev = t;
+  }
+  return out;
+}
+
+const shellSrc = {}, definedIn = {};
+SHELL_SCRIPTS.forEach(f => {
+  shellSrc[f] = fs.readFileSync(path.join(ROOT, f), 'utf8');
+  /* Top-level declarations start at column 0 in every shell file. */
+  definedIn[f] = new Set([...codeOnly(shellSrc[f]).matchAll(
+    /^(?:async\s+)?(?:function\*?\s+([A-Za-z_$][\w$]*)|(?:const|let|var|class)\s+([A-Za-z_$][\w$]*))/gm)]
+    .map(m => m[1] || m[2]));
+});
+const onlyInGuarded = new Map();
+GUARDED_SPLIT.forEach(f => definedIn[f].forEach(n => {
+  if (!SHELL_SCRIPTS.some(g => g !== f && definedIn[g].has(n))) onlyInGuarded.set(n, f);
+}));
+const appStubs = [...shellSrc['js/app.js'].matchAll(/if \(typeof (\w+) !== 'function'\) globalThis\.\1 = /g)].map(m => m[1]);
+
+/* The scanner on the cases it exists to tell apart, so a scanner that sees
+   nothing cannot pass the two checks after it by default. */
+{
+  const fixture = new Map([['strengthByExercise', 'js/diagnostics.js'], ['openReview', 'js/review.js'], ['tick', 'js/rest-timer.js']]);
+  const seen = guardedReads([
+    "function a(p, b) { return strengthByExercise(p, b); }",
+    "/* strengthByExercise */ const s = 'openReview'; const r = /tick/; const t = `${'tick'}`;",
+    "function c() { if (x && typeof openReview === 'function') { openReview(); } openReview(); }",
+    "if (typeof tick === 'function') tick(); tick();",
+    "function d(row) { const tick = row.querySelector('.tick'); tick.onclick = 1; }",
+  ].join('\n'), 'js/app.js', fixture).map(r => r.line + ':' + r.name + (r.guarded ? '+' : ''));
+  ok('the scanner sees a bare read, a guarded one and an unguarded one after it; not a comment, string, regex, local or property',
+     seen.join(' ') === '1:strengthByExercise 3:openReview+ 3:openReview 4:tick+ 4:tick', seen.join(' '));
+}
+
+const rule1 = [];
+['js/app.js', ...PRE_SPLIT].forEach(f => guardedReads(shellSrc[f], f, onlyInGuarded).forEach(r => {
+  if (!r.guarded && !appStubs.includes(r.name)) rule1.push(f + ':' + r.line + ' ' + r.name + ' (' + r.from + ')');
+}));
+ok('rule 1: app.js and the pre-split files read nothing only a guarded file defines, unless stubbed or under typeof',
+   rule1.length === 0, rule1.join('; '));
+ok('...and the check reaches the reads it lets through (a stubbed openChart, a typeof-guarded wireReview)',
+   guardedReads(shellSrc['js/app.js'], 'js/app.js', onlyInGuarded)
+     .filter(r => (r.name === 'openChart' && !r.guarded) || (r.name === 'wireReview' && r.guarded)).length >= 2);
+
+/* One standing breach, written down here rather than passed over: the
+   block review builds on the Diagnóstico's rows, and all six of these are
+   defined in js/diagnostics.js alone. A hole that drops diagnostics.js and
+   keeps review.js leaves "Revisión del bloque" throwing when it opens —
+   and "+ Nuevo bloque → Ver la revisión" with it, since the typeof test in
+   newBlock finds openReview and can see no further. The fix is rule 2's
+   own: the six, and what they are built from, move into app.js. The list
+   only shrinks: a new breach fails, and so does an entry that has gone. */
+const RULE2_STANDING = ['DIAG_TRENDS', 'DIAG_WINDOW', 'diagPct', 'diagRows', 'freqRows', 'strengthRows']
+  .map(n => 'js/review.js reads ' + n + ' from js/diagnostics.js');
+const rule2 = [...new Set([].concat(...GUARDED_SPLIT.map(f =>
+  guardedReads(shellSrc[f], f, onlyInGuarded).map(r => f + ' reads ' + r.name + ' from ' + r.from))))].sort();
+ok('rule 2: no guarded file reads what only another guarded file defines, beyond the standing list',
+   JSON.stringify(rule2) === JSON.stringify(RULE2_STANDING.slice().sort()),
+   'new: ' + rule2.filter(x => !RULE2_STANDING.includes(x)).join('; ') +
+   ' | gone: ' + RULE2_STANDING.filter(x => !rule2.includes(x)).join('; '));
+
+/* The same rules, run. js/app.js stubs the entry points of the split files
+   it still names, so the app still boots when a worker's precache is
+   missing one of them (sw.js adds each shell file on its own and lets a
+   miss go). Each file below is left out in turn and the shell is asked to
+   do what it does on every open — draw — through a block whose deload sits
+   mid-block, with sets ticked either side of it: every week, the days in
+   rotation, and every card redrawn on its own the way a tick redraws it.
+   The recovery screen swallows the throw it answers, so for the walk it is
+   made to let the throw through, and a failure names the draw's own error.
+   Each pass is a precache hole survived. */
+console.log('\n== a precache hole: the shell draws without each guarded file (AGENTS.md rule 1) ==');
+GUARDED_SPLIT.forEach(file => {
   let partial = null, err = null;
-  try { partial = loadApp([file]); } catch (e) { err = e; }
+  try { partial = loadApp([file], { drawing: true }); } catch (e) { err = e; }
   ok('the shell loads without ' + file, !err && !!partial, err && err.message);
   if (!partial) return;
   const c = expr => vm.runInContext(expr, partial);
-  stubs.forEach(name => ok(file + ' absent: ' + name + ' is a callable stub', c('typeof ' + name) === 'function'));
-  ok(file + ' absent: load() still seeded state', c('!!state && !!state.profiles'));
+  appStubs.filter(n => onlyInGuarded.get(n) === file)
+    .forEach(name => ok(file + ' absent: ' + name + ' is a callable stub', c('typeof ' + name) === 'function'));
+  /* render() answers a throw with the recovery screen, which sets `ready`
+     false, so `ready` is the whole of the first draw's verdict. */
+  const why = () => { try { c('drawApp()'); return 'drawApp() did not throw a second time'; } catch (e) { return e.message; } };
+  ok(file + ' absent: load() drew — ready is true', c('ready') === true, c('ready') === true ? '' : why());
+  const walk = JSON.parse(c(`(function () {
+    const p = getProfile(), b = getBlock(), days = dayList(b);
+    b.deload = Math.max(2, Math.floor(blockWeeks(b) / 2));
+    [b.deload - 1, b.deload, b.deload + 1].forEach(w => days.forEach(day => {
+      const bucket = (p.log[b.id] = p.log[b.id] || {})[slot(w, day.id)] = {};
+      exList(day).forEach(ex => {
+        bucket[ex.id] = [{ w: String(w === b.deload ? 30 : 40 + w), r: '8', done: true,
+                           ts: Date.now() - (12 - w) * 7 * 864e5 }];
+      });
+    }));
+    logChanged();
+    showRecovery = e => { throw e; };
+    const errs = [];
+    let drawn = 0;
+    for (let w = 1; w <= blockWeeks(b); w++) {
+      p.week = w; p.day = (w - 1) % days.length;
+      try {
+        drawApp();
+        dayCards.map(x => x.ex.id).forEach(id => drawCard(id));
+        drawn++;
+      } catch (e) { errs.push('semana ' + w + ': ' + e.message); }
+    }
+    p.week = b.deload + 1;
+    let compared = false;
+    try { compared = !!deloadCheck(p, b); } catch (e) { errs.push('deloadCheck: ' + e.message); }
+    return JSON.stringify({ weeks: blockWeeks(b), deload: b.deload, drawn: drawn, compared: compared, errs: errs });
+  })()`));
+  ok(file + ' absent: every week of a block with a mid-block deload draws, and so does each card on its own',
+     walk.errs.length === 0 && walk.drawn === walk.weeks, walk.errs.slice(0, 3).join(' | '));
+  /* Without this the walk could pass by never reaching the comparison that
+     threw — a default block that stops ticking the weeks either side of
+     its deload would draw clean for the wrong reason. */
+  ok(file + ' absent: ...including the week after the deload, compared against the week before it',
+     walk.compared, JSON.stringify(walk));
 });
 
 /* A ratchet, not a target. Fixed sleeps are why the browser suite takes
@@ -401,6 +622,67 @@ ok('...and on the active profile for a key nobody has', slotFor('ghost') === cal
   ok('...and on the active profile for "' + k + '", never through the prototype (plans/040)',
      slotFor(k) === call('state.activeProfile'), slotFor(k));
 });
+
+/* The same hole one level down, in the block ids localStorage itself
+   carries, which never pass through normalizeImportedProfile: a truthy
+   `profile.blocks[id]` let an activeBlock of 'constructor' and a
+   'toString' in blockOrder through migrate(), and getBlock() then handed
+   the first draw Object.prototype.constructor instead of a block. Each pair
+   is [activeBlock, the reserved entry in blockOrder]; the first is the one
+   the second architecture review found. */
+[['constructor', 'toString'], ['toString', 'constructor'], ['__proto__', '__proto__'],
+ ['valueOf', 'hasOwnProperty'], ['hasOwnProperty', 'valueOf']].forEach(([active, listed]) => {
+  const got = JSON.parse(call('state = ' + JSON.stringify({
+    profiles: { hombre: { blocks: { b1: { name: 'Real', days: [] } }, blockOrder: [listed, 'b1'], activeBlock: active } },
+    activeProfile: 'hombre',
+  }) + '; migrate(); JSON.stringify({ active: getProfile().activeBlock, order: getProfile().blockOrder.map(String),' +
+    ' block: typeof getBlock() === "object" ? getBlock().name : typeof getBlock() })'));
+  ok('migrate() repairs an activeBlock of "' + active + '" onto a block the profile owns',
+     got.active === 'b1' && got.block === 'Real', JSON.stringify(got));
+  ok('...and drops "' + listed + '" from blockOrder, which keeps only the blocks the profile owns',
+     JSON.stringify(got.order) === '["b1"]', JSON.stringify(got.order));
+});
+
+/* A block's `id` is the key it is filed under, and every write to the
+   record goes through it (entry, setOrder, the plan editor's save), so a
+   stored id that disagreed with the key used to be trusted: 'constructor'
+   filed every logged set onto the global Object function, where no save
+   ever finds it, and another block's key filed them under that block. */
+const blockIds = call('state = ' + JSON.stringify({
+  profiles: { hombre: {
+    blocks: { b1: { id: 'constructor', name: 'A', days: [] }, b2: { id: 'b1', name: 'B', days: [] }, b3: { id: '__proto__', name: 'C', days: [] } },
+    blockOrder: ['b1', 'b2', 'b3'], activeBlock: 'b1',
+  } },
+  activeProfile: 'hombre',
+}) + '; migrate(); Object.keys(getProfile().blocks).map(k => k + "=" + getProfile().blocks[k].id).join(" ")');
+ok('migrate() makes every block\'s id the key it is filed under, whatever the stored copy said',
+   blockIds === 'b1=b1 b2=b2 b3=b3', blockIds);
+
+/* ...which is only safe once no block is filed under a reserved name. A
+   block that OWNS '__proto__' passes the own-key test, but its key is its
+   id, and on the log that id was not an own key yet: the first set logged
+   on it went onto Object.prototype, and nothing was saved. Written as JSON
+   text because only JSON.parse makes '__proto__' an own key; an object
+   literal sets the prototype instead. */
+const ownDay = JSON.stringify([{ id: 'd0', name: 'D', ex: [{ id: 'e1', n: 'E', sets: 3, reps: '10' }] }]);
+const ownReserved = '{"activeProfile":"hombre","profiles":{"hombre":{' +
+  '"blocks":{"__proto__":{"name":"P","days":' + ownDay + '},"constructor":{"name":"C","days":' + ownDay + '}},' +
+  '"blockOrder":["constructor","__proto__"],"activeBlock":"__proto__",' +
+  '"log":{"constructor":{"w1-d0":{"e1":[{"w":"50","r":"10","done":true}]}}}}}}';
+const renamed = JSON.parse(call('state = JSON.parse(' + JSON.stringify(ownReserved) + '); migrate(); (() => {' +
+  ' const p = getProfile(), b = getBlock(), c = p.blocks[p.blockOrder[0]];' +
+  ' entry(p, b.id, 2, "d0", "e1", 3)[0].w = "60";' +
+  ' return JSON.stringify({' +
+  '   keys: Object.keys(p.blocks).filter(k => safeKey(k) && p.blocks[k].id === k).length,' +
+  '   order: p.blockOrder.map(id => p.blocks[id].name).join(), active: b.name,' +
+  '   moved: JSON.stringify(Object.keys(p.log[c.id] || {})),' +
+  '   saved: Object.prototype.hasOwnProperty.call(p.log, b.id) && Object.keys(p.log[b.id]).join(),' +
+  '   leaked: Object.keys(Object.prototype).concat(Object.keys(Object)).join() }); })()'));
+ok('migrate() re-keys a block that owns a reserved name, and blockOrder and activeBlock follow it',
+   renamed.keys === 2 && renamed.order === 'C,P' && renamed.active === 'P', JSON.stringify(renamed));
+ok('...its history moves with it', renamed.moved === '["w1-d0"]', renamed.moved);
+ok('...and a set logged on it is saved under its own key, never onto the prototype',
+   renamed.saved === 'w2-d0' && renamed.leaked === '', JSON.stringify(renamed));
 
 /* A block that is not an object at all — null, a string, a list — is one no
    writer in the app produces, and the import refuses it
@@ -3795,6 +4077,68 @@ ok('the day changing changes the key', sk.afterDay !== sk.base, JSON.stringify(s
 ok('the active block changing changes the key', sk.afterBlock !== sk.base, JSON.stringify(sk));
 ok('the active profile changing changes the key', sk.afterProfile !== sk.base, JSON.stringify(sk));
 ok('going back to the same session returns the original key', sk.backToBase === sk.base, JSON.stringify(sk));
+
+console.log('\n== the footer names the next session, and a block ends at its own last week ==');
+/* The last day of an eight-week block used to say "Siguiente: …, semana
+   9": the wrap to the next week never asked how many weeks the block had.
+   Probed against a bare state like sessionOnScreen above, and shortened to
+   five weeks so a hard-coded 8 could not pass for blockWeeks. */
+const nextProbe = call(`
+  (function () {
+    if (typeof nextSessionLine !== 'function') return { missing: true };
+    const saved = state;
+    state = defaultState();
+    migrate();
+    const profile = state.profiles[state.activeProfile];
+    const block = profile.blocks[profile.activeBlock];
+    block.weeks = 5;
+    const days = dayList(block);
+    const last = days.length - 1;
+    const at = (w, d) => { profile.week = w; profile.day = d; return nextSessionLine(profile, block, days); };
+    const out = { names: days.map(d => d.name), weeks: blockWeeks(block) };
+    out.midWeek = at(2, 0);
+    out.lastDay = at(4, last);
+    out.lastWeek = at(5, last);
+    out.lastWeekMidDay = at(5, 0);
+
+    /* A block after this one, the way "+ Nuevo bloque" leaves it: pushed
+       onto blockOrder. Its first live day is named, a retired one is not. */
+    const next = JSON.parse(JSON.stringify(block));
+    next.id = 'block-next';
+    next.name = 'Bloque 2';
+    next.days[0].off = true;
+    profile.blocks[next.id] = next;
+    profile.blockOrder.push(next.id);
+    out.nextFirst = dayList(next)[0].name;
+    out.intoNext = at(5, last);
+    out.beforeEnd = at(4, last);
+    /* The block being trained is the later one: nothing comes after it. */
+    profile.activeBlock = next.id;
+    profile.week = 5;
+    profile.day = dayList(next).length - 1;
+    out.fromNewest = nextSessionLine(profile, next, dayList(next));
+    state = saved;
+    return out;
+  })()
+`);
+if (nextProbe.missing) ok('nextSessionLine exists', false);
+else {
+  const n = nextProbe.names;
+  ok('mid-week, the next day of the same week', nextProbe.midWeek === 'Siguiente: ' + n[1] + '.', nextProbe.midWeek);
+  ok('the last day of a week wraps to the first day of the next',
+     nextProbe.lastDay === 'Siguiente: ' + n[0] + ', semana 5.', nextProbe.lastDay);
+  ok('the last day of the last week names no week past the block',
+     !/semana 6/.test(nextProbe.lastWeek) && nextProbe.lastWeek === 'Fin del bloque: crea el siguiente con "+ Nuevo bloque", en Plan.',
+     nextProbe.lastWeek);
+  ok('the last week still moves day to day before its last day',
+     nextProbe.lastWeekMidDay === 'Siguiente: ' + n[1] + '.', nextProbe.lastWeekMidDay);
+  ok('with a later block in blockOrder, its first live day, week 1',
+     nextProbe.intoNext === 'Fin del bloque. Siguiente: ' + nextProbe.nextFirst + ', semana 1 de "Bloque 2".', nextProbe.intoNext);
+  ok('a later block does not change a week that is not the last',
+     nextProbe.beforeEnd === 'Siguiente: ' + n[0] + ', semana 5.', nextProbe.beforeEnd);
+  ok('the newest block ends with "+ Nuevo bloque", not a wrap to an older one',
+     /^Fin del bloque: crea el siguiente/.test(nextProbe.fromNewest), nextProbe.fromNewest);
+}
 
 console.log('\n== seed plans match their published block files (plans/008 item 12) ==');
 /* js/data.js:6-9 asks whoever edits the seed plans by hand to also
