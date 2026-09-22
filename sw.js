@@ -18,7 +18,7 @@
    are deleted on activate, and the app shows an "Actualizar" prompt rather
    than swapping the code under a session in progress. */
 
-const CACHE_VERSION = 'v120';
+const CACHE_VERSION = 'v121';
 const SHELL_CACHE = 'heavy-iron-shell-' + CACHE_VERSION;
 const RUNTIME_CACHE = 'heavy-iron-runtime-' + CACHE_VERSION;
 /* Bumped only when js/vendor/ itself changes (see js/vendor/README.md's

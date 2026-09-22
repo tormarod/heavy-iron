@@ -47,7 +47,7 @@ const deloadSpanLabel = d => d.deload === d.deloadEnd
 function buildBlockReview(profile, block) {
   const weeks = blockWeeks(block);
   const upTo = Math.min(Math.max(profile.week, 1), weeks);
-  const tonnage = blockTonnageByWeek(profile, block, convertedSetVolume);
+  const tonnage = blockTonnageByWeek(profile, block);
   const weeksLogged = tonnage.filter(v => v > 0).length;
 
   /* Bounded to the block's own weeks, exactly like tonnage just above —
@@ -56,13 +56,11 @@ function buildBlockReview(profile, block) {
      belong to a week this block no longer claims. Left in, the count and
      the tonnage beside it would silently disagree about which weeks the
      block even has (plans/050). Screens about the block hide a stranded
-     week everywhere else; this is one more of them. */
+     week everywhere else; this is one more of them — sessionsOf's own
+     weeks:'plan' now, rather than a bound reimplemented by hand (plans/057). */
   let doneSets = 0;
-  forEachSlot(profile.log, block.id, (k, w, d, slotRows) => {
-    if (w < 1 || w > weeks) return;
-    const s = slotRows || {};
-    Object.keys(s).forEach(exId => { if (Array.isArray(s[exId])) doneSets += s[exId].filter(r => r && r.done).length; });
-  });
+  const blockSessions = sessionsOf(profile, { weeks: 'plan', blocks: [block.id] });
+  blockSessions.forEach(sess => { doneSets += sess.sets.length; });
 
   const strength = strengthRows(profile, block);
   const freq = freqRows(profile, block, upTo);
@@ -105,21 +103,25 @@ function buildBlockReview(profile, block) {
   /* Energy read back as context, never as a series: how much you moved on
      the days you said you arrived flat, against the rest. An optional
      input can support a comparison of two groups; it cannot support a
-     line through the days you skipped tapping it. */
+     line through the days you skipped tapping it.
+
+     Grouped by slot from blockSessions above — the same sessions doneSets
+     just summed, weeks:'plan' already applied — rather than walked raw a
+     second time: a stranded week has no energy tag anybody is still asking
+     about, and it used to be summed into a bucket's mean regardless
+     (plans/057). A slot can hold more than one exercise, so its sessions are
+     added together before the kg>0 check and the one push per slot — the
+     same shape the raw walk had, not one entry per exercise. */
   const energy = { baja: [], normal: [], alta: [] };
-  const blk = profile.log[block.id] || {};
-  Object.keys(blk).forEach(k => {
-    const s = parseSlot(k);
-    if (!s) return;
+  const bySlot = new Map();
+  blockSessions.forEach(sess => {
+    const key = slot(sess.week, sess.day);
+    bySlot.set(key, (bySlot.get(key) || 0) + sessionVolume(sess.sets));
+  });
+  bySlot.forEach((kg, key) => {
+    const s = parseSlot(key);
     const tag = getEnergy(profile, block.id, s.week, s.dayId);
-    if (!energy[tag]) return;
-    const slotRows = blk[k] || {};
-    let kg = 0;
-    Object.keys(slotRows).forEach(exId => {
-      const rows = slotRows[exId];
-      if (Array.isArray(rows)) kg += rows.reduce((t, r) => t + convertedSetVolume(r), 0);
-    });
-    if (kg > 0) energy[tag].push(kg);
+    if (energy[tag] && kg > 0) energy[tag].push(kg);
   });
   const mean = a => (a.length ? a.reduce((t, v) => t + v, 0) / a.length : null);
 

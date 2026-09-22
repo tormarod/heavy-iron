@@ -46,20 +46,19 @@ function dayKey(ts) {
 }
 
 /* Every day of the block with something ticked on it, and how much — the
-   input for the calendar strip below. */
+   input for the calendar strip below. sessionsOf's own weeks:'plan' now,
+   not a raw walk of the whole log (plans/057): a week logged after the
+   block was shortened below it (a stranded week, CONTEXT.md) used to shade
+   a day into the calendar all the same. Every lift, retired exercises
+   included — they were still trained — same as blockTonnageByWeek right
+   beside it in this sheet. */
 function trainedDays(profile, block) {
-  const blk = profile.log[block.id] || {};
   const days = {};
-  Object.keys(blk).forEach(k => {
-    const slotRows = blk[k] || {};
-    Object.keys(slotRows).forEach(exId => {
-      const rows = slotRows[exId];
-      if (!Array.isArray(rows)) return;
-      rows.forEach(r => {
-        if (!r || !r.done || !(r.ts > 0)) return;
-        const key = dayKey(r.ts);
-        days[key] = (days[key] || 0) + 1;
-      });
+  sessionsOf(profile, { weeks: 'plan', blocks: [block.id] }).forEach(sess => {
+    sess.sets.forEach(s => {
+      if (!(s.ts > 0)) return;
+      const key = dayKey(s.ts);
+      days[key] = (days[key] || 0) + 1;
     });
   });
   return days;

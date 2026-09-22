@@ -370,20 +370,38 @@ const ok = (name, cond, extra) => {
     }));
     ok('setVolume ignores a ticked set with a missing number', await page.evaluate(() =>
       setVolume({ done: true, w: '', r: '8' }) === 0));
-    ok('blockTonnageByWeek indexes by week and skips weeks past the block length', await page.evaluate(() => {
+    const btw1 = await page.evaluate(() => {
       const block = { id: 'tb', weeks: 2, days: [] };
-      const profile = { log: { tb: {
+      /* blockTonnageByWeek reads sessionsOf now (plans/057), which resolves
+         the block from profile.blocks — the object this test already
+         passes as the second argument is not enough on its own — and
+         always converts to the unit on screen. This session's first-run
+         setup picked lb, so a kg row (no `u` stamp) has to be read back
+         through that conversion; pin kg here so the numbers below stay
+         the plain ones the test names, then restore what was there. */
+      const profile = { blocks: { tb: block }, log: { tb: {
         'w1-d1': { a: [{ done: true, w: '10', r: '10' }] },
         'w2-d1': { a: [{ done: true, w: '20', r: '10' }, { w: '99', r: '9' }] },
         'w3-d1': { a: [{ done: true, w: '50', r: '10' }] },
       } } };
-      return JSON.stringify(blockTonnageByWeek(profile, block)) === JSON.stringify([100, 200]);
-    }));
-    ok('blockTonnageByWeek still counts a retired exercise\'s logged sets', await page.evaluate(() => {
+      const prev = state.prefs.units;
+      state.prefs.units = 'kg';
+      const got = blockTonnageByWeek(profile, block);
+      state.prefs.units = prev;
+      return got;
+    });
+    ok('blockTonnageByWeek indexes by week and skips weeks past the block length',
+       JSON.stringify(btw1) === JSON.stringify([100, 200]), JSON.stringify(btw1));
+    const btw2 = await page.evaluate(() => {
       const block = { id: 'tb', weeks: 1, days: [{ id: 'd1', ex: [{ id: 'a', off: 1 }] }] };
-      const profile = { log: { tb: { 'w1-d1': { a: [{ done: true, w: '10', r: '10' }] } } } };
-      return blockTonnageByWeek(profile, block)[0] === 100;
-    }));
+      const profile = { blocks: { tb: block }, log: { tb: { 'w1-d1': { a: [{ done: true, w: '10', r: '10' }] } } } };
+      const prev = state.prefs.units;
+      state.prefs.units = 'kg';
+      const got = blockTonnageByWeek(profile, block);
+      state.prefs.units = prev;
+      return got;
+    });
+    ok('blockTonnageByWeek still counts a retired exercise\'s logged sets', btw2[0] === 100, JSON.stringify(btw2));
 
     await openHub(page, 'progress');
     await page.click('#volumeBtn');
@@ -400,10 +418,17 @@ const ok = (name, cond, extra) => {
          but it would make this a test of the conversion rather than of the
          block/week split it is actually about. */
       p.log[b.id][slot(2, day)] = { probe: [{ done: true, w: '100', r: '10', u: 'lb' }] };
+      /* blockTonnageByWeek reads sessionsOf now (plans/057), and this
+         profile has already been asked its history earlier in this same
+         session — a raw write to p.log bypassing save()/commit() leaves
+         that answer cached and stale (AGENTS.md, "the history cache")
+         without this. */
+      logChanged();
       p.week = 2;
       drawVolumeTonnage(p, b, 2);
       const t = document.getElementById('volumeTonnage').textContent;
       delete p.log[b.id][slot(2, day)];
+      logChanged();
       p.week = 1;
       drawVolumeTonnage(p, b, 1);
       /* es-ES leaves four-digit numbers ungrouped (1225, not 1.225) — the
@@ -1042,7 +1067,7 @@ const ok = (name, cond, extra) => {
       const landed = np.log[id][slot(1, nd.id)][ne.id];
       return landed[0].done === true && landed[0].w === '100' &&
              landed[1].done === false && landed[1].w === '105' &&
-             collectHistory(np, id, nd.id, ne.id, blockWeeks(nb), 'weight').length === 1;
+             collectHistory(np, id, nd.id, ne.id, 'weight').length === 1;
     }));
     /* A profile opens on the week its owner was on, which is usually one they
        have not trained yet: no ticks, and greyed last-week placeholders in
