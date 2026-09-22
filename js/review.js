@@ -435,7 +435,10 @@ function wireReview() {
     const full = blocksFullNote(getProfile());
     if (full) { setNote($('reviewStatus'), full, true); return; }
     let normalized;
-    try { normalized = normalizeImportedBlock(raw); } catch (e) { setNote($('reviewStatus'), e.message, true); return; }
+    /* The target profile, so an id the prompt asked the AI to keep survives
+       the paste at whatever length it already had (decision 1, plans/069) —
+       the round trip this sheet exists for. */
+    try { normalized = normalizeImportedBlock(raw, { profile: getProfile() }); } catch (e) { setNote($('reviewStatus'), e.message, true); return; }
     /* Opened from "+ Nuevo bloque", closing this sheet resumes creating a
        block by copying the old plan. The block just pasted IS the next
        block, so that continuation is dropped before the sheet closes —

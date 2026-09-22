@@ -250,6 +250,27 @@ async function newBlock(skipReview) {
    loads after this file, so calling them from here at call-time (never at
    parse-time — nothing below runs until a user action fires) is safe. */
 
+/* Every exercise id the target profile's blocks already carry, so a paste's
+   id rule (below) can tell the app's own id coming back from a new one.
+   Decision 2 (plans/069): the importer derives this itself from
+   `opts.profile` rather than a caller building the set, so a mixed shell
+   (AGENTS.md's precache-hole note) stays safe either way — a new split file
+   talking to an old cached importer passes a `profile` option the old code
+   just ignores, and an old split file talking to a new importer passes no
+   option at all, and both simply fall back to today's strict 60-character
+   cap. Tolerant of a profile with no blocks yet, or a day/exercise shaped
+   oddly by something upstream having already failed. */
+function knownExerciseIds(profile) {
+  const known = new Set();
+  if (!profile || typeof profile !== 'object' || !profile.blocks || typeof profile.blocks !== 'object') return known;
+  Object.keys(profile.blocks).forEach(bk => {
+    ((profile.blocks[bk] || {}).days || []).forEach(day => {
+      (day && day.ex || []).forEach(e => { if (e && typeof e.id === 'string' && e.id) known.add(e.id); });
+    });
+  });
+  return known;
+}
+
 /* Imported blocks come from outside the app — a file in the repo, a paste
    from a chat, an agent's output — so nothing in them is taken on trust.
    Every string is trimmed to a length that still fits on the card, every
@@ -269,6 +290,10 @@ function normalizeImportedBlock(raw, opts) {
      restore turned the backup into a file that could not be restored
      (plans/010). */
   const own = !!(opts && opts.own);
+  /* See knownExerciseIds above: every id the target profile already has,
+     so the id rule further down can let a long stated id through when it
+     is the app's own, whatever the caller passed (or did not). */
+  const known = knownExerciseIds(opts && opts.profile);
   /* The two counts, retired items included on both paths. A paste is held
      to what the editor itself allows; own data gets the headroom OWN_LIMITS
      explains, because a block the editor let grow past that before it knew
@@ -330,10 +355,24 @@ function normalizeImportedBlock(raw, opts) {
          de-duplication below gives any collision a visible "-2" at import
          time. Own data is the app's ids coming back, so a stored id keeps
          its length up to OWN_TEXT_LIMIT, the most any writer could have
-         slugged it from; a slug is only made there when the id is missing. */
-      const idCap = own ? OWN_TEXT_LIMIT : 60;
+         slugged it from; a slug is only made there when the id is missing.
+
+         One exception to the 60-character paste cap (decision 1, plans/069):
+         the block review's "Analizar con IA" prompt hands the AI the
+         current block with its ids and asks it to keep the ones it keeps,
+         so a paste is also how that answer comes back in. An id this app
+         itself slugged past 60 characters before plan 063 capped that could
+         be one of them, and cutting it at 60 on the way back in silently
+         started that lift's history over — a real id becomes a new one the
+         moment it is copied back one character too long. So a stated id
+         survives whole when it already names an exercise somewhere in the
+         target profile: that is the app's own id coming back, not a new one
+         being smuggled in past the cap, and `known` above only ever holds
+         ids the profile already has. */
+      const stated = txt(e.id, OWN_TEXT_LIMIT);
+      const idCap = own || (known && known.has(stated)) ? OWN_TEXT_LIMIT : 60;
       const capSlug = s => s.slice(0, 60).replace(/-+$/, '');
-      const baseId = safeKey(txt(e.id, idCap)) || safeKey(capSlug(slugify(n))) || ('ex-' + di + '-' + ei);
+      const baseId = safeKey(stated.slice(0, idCap)) || safeKey(capSlug(slugify(n))) || ('ex-' + di + '-' + ei);
       let uniqueId = baseId, suffix = 2;
       while (dayIds.has(uniqueId)) uniqueId = baseId + '-' + (suffix++);
       dayIds.add(uniqueId);
@@ -426,7 +465,9 @@ function applyImportedBlock(raw, sourceLabel) {
   if (full) { setNote($('importError'), full, true); return; }
   let normalized;
   try {
-    normalized = normalizeImportedBlock(raw);
+    /* The target profile, so a stated id already trained under (decision 1,
+       plans/069) survives whatever length it slugged to before plan 063. */
+    normalized = normalizeImportedBlock(raw, { profile: getProfile() });
   } catch (e) {
     setNote($('importError'), e.message, true);
     return;

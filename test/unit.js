@@ -3924,6 +3924,72 @@ console.log('\n== an exercise keeps its own id through a paste and every restore
   ok('...and restoring the result again changes nothing (plans/063)', restored.idempotent, JSON.stringify(restored));
 }
 
+console.log('\n== a paste keeps a stated id past 60 characters only when the target profile already has it (plans/069) ==');
+{
+  /* The block review's "Analizar con IA" prompt hands the AI the current
+     block with its ids and asks for them back exactly (decision 1); the
+     paste is the only path an AI ever writes to, and before this it cut
+     every stated id at 60 regardless of where it came from. A slug made
+     past 60 characters before plan 063 capped that could be one of the ids
+     handed back, and cutting it here started that lift's history over —
+     the same shape of bug plans/063 closed for a restore, one path later. */
+  const known = 'k'.repeat(75), unknown = 'u'.repeat(75);
+  const idProbe = call(`(function () {
+    state = defaultState(); migrate();
+    const profile = getProfile();
+    profile.blocks = { blk: { id: 'blk', name: 'Con historial', weeks: 4, deload: 0, days: [
+      { id: 'd0', name: 'Lunes', ex: [{ id: ${JSON.stringify(known)}, n: 'Remo', sets: 3, reps: '8-10' }] },
+    ] } };
+    profile.blockOrder = ['blk']; profile.activeBlock = 'blk';
+    profile.log = { blk: {} };
+    profile.log.blk[slot(1, 'd0')] = { [${JSON.stringify(known)}]: [{ w: '50', r: '10', done: true }] };
+    migrate();
+    const raw = { name: 'Vuelta de la IA', weeks: 4, deload: 0, days: [
+      { name: 'Lunes', ex: [{ id: ${JSON.stringify(known)}, n: 'Remo', sets: 3, reps: '8-10' }] },
+      { name: 'Jueves', ex: [{ id: ${JSON.stringify(unknown)}, n: 'Press', sets: 3, reps: '8-10' }] },
+    ] };
+    const out = normalizeImportedBlock(raw, { profile: profile });
+    return { got: out.days[0].ex[0].id, gotUnknown: out.days[1].ex[0].id };
+  })()`);
+  ok('a stated id the target profile already carries survives a paste past 60 characters (plans/069)',
+     idProbe.got === known, JSON.stringify(idProbe));
+  ok('...while the same-length id, unknown to the profile, is still cut to 60 (plans/069)',
+     idProbe.gotUnknown === unknown.slice(0, 60) && idProbe.gotUnknown.length === 60, JSON.stringify(idProbe));
+
+  /* Same fixture, through the review sheet's own "Importar" handler rather
+     than calling normalizeImportedBlock directly — wireReview has to be the
+     thing that passes { profile: getProfile() }, or this whole decision is
+     dead code no user path reaches. The elements it wires are manufactured
+     the same way the PROFILE_LIMITS.blocks tests above manufacture them:
+     one per id, cached across lookups so the value typed into one and the
+     handler bound to another are still the same objects when the click
+     fires. */
+  const pasteBack = JSON.stringify({ name: 'Vuelta de la IA', weeks: 4, deload: 0, days: [
+    { name: 'Lunes', ex: [{ id: known, n: 'Remo', sets: 3, reps: '8-10' }] },
+  ] });
+  const els = {};
+  const realGet = app.document.getElementById;
+  app.document.getElementById = id => els[id] || (els[id] = Object.assign({ id }, inert()));
+  call('wireReview()');
+  app.document.getElementById('reviewBlob').value = pasteBack;
+  let reviewThrew = '';
+  try { els.reviewImport.onclick(); } catch (e) { reviewThrew = String(e && e.message); }
+  app.document.getElementById = realGet;
+  const afterReview = call(`(function () {
+    const profile = getProfile();
+    const newId = profile.blocks[profile.activeBlock].days[0].ex[0].id;
+    return { newId: newId, found: sessionsOf(profile, { weeks: 'logged', lift: { id: newId } }).length };
+  })()`);
+  ok('the review\'s own "Importar" keeps a 75-character id the profile already had, unchanged (plans/069)',
+     !reviewThrew && afterReview.newId === known, JSON.stringify({ reviewThrew: reviewThrew, afterReview: afterReview }));
+  ok('...so sessionsOf still finds the old block\'s session filed under it', afterReview.found >= 1, JSON.stringify(afterReview));
+
+  /* Mutation: dropping the `known.has(stated)` branch (js/block-editor.js's
+     idCap line) cuts every stated id at 60 again, regardless of `known` —
+     both the direct-call case above and this one fail, the id 60 characters
+     long instead of 75 and sessionsOf finding nothing under the new one. */
+}
+
 console.log('\n== moveExerciseRecord merges rather than overwrites (plans/008 items 1, 3) ==');
 const moveProbe = call(`
   (function() {
@@ -5411,15 +5477,30 @@ ok('...and so does a minus sign',
   ok('phaseRir: "' + label + '" → ' + want + ' (plans/062)', got === want, String(got));
 });
 
-/* The known limit, pinned so that whoever changes it does so on purpose.
-   The sets×reps "x" refuses the number after it only when a digit stands
-   in front of it — that is what keeps the 2 of "máx 2 RIR" — so an "x"
-   with a word in front refuses nothing, and in "series x 5 RIR 2" the 5
-   reps are read as the reserve. The review of #174 took that cost over
-   the other one, a "máx 2 RIR" that read nothing at all. */
-ok('phaseRir: "series x 5 RIR 2" → 5 (plans/062, the known limit: an "x" with no digit in front refuses nothing)',
-   call('phaseRir({ phase: [{ r: "series x 5 RIR 2" }] }, 0)') === 5,
+/* Decision 4 (plans/069) closes the known limit plans/062 left open: a
+   whole word for sets — "series", "serie", "sets", "set", case-insensitive —
+   right in front of the "x" now refuses the number after it exactly like a
+   digit does, so "series x 5 RIR 2" reads the 2 as reserve rather than the
+   5 as reps. "máx 2 RIR" still reads 2, since "máx" is none of those words
+   and the "x" it ends has neither a digit nor a sets word in front of it. */
+ok('phaseRir: "series x 5 RIR 2" → 2 (plans/069)',
+   call('phaseRir({ phase: [{ r: "series x 5 RIR 2" }] }, 0)') === 2,
    String(call('phaseRir({ phase: [{ r: "series x 5 RIR 2" }] }, 0)')));
+ok('phaseRir: "sets x 5 RIR 2" → 2 (plans/069)',
+   call('phaseRir({ phase: [{ r: "sets x 5 RIR 2" }] }, 0)') === 2,
+   String(call('phaseRir({ phase: [{ r: "sets x 5 RIR 2" }] }, 0)')));
+ok('phaseRir: "Serie x 8 · 1 RIR" → 1 (plans/069, singular and capitalised)',
+   call('phaseRir({ phase: [{ r: "Serie x 8 · 1 RIR" }] }, 0)') === 1,
+   String(call('phaseRir({ phase: [{ r: "Serie x 8 · 1 RIR" }] }, 0)')));
+/* The case above is right either way — 8 is already excluded for being
+   above RIR_MAX (5), so it is not a mutation differentiator on its own.
+   This one keeps the same singular, capitalised "Serie" but with a reps
+   count inside RIR_MAX, so it actually exercises decision 4: read as 5
+   before this plan (the reps count, wrongly taken as RIR), 1 after (the
+   number that really follows "RIR"). */
+ok('phaseRir: "Serie x 5 RIR 1" → 1 (plans/069)',
+   call('phaseRir({ phase: [{ r: "Serie x 5 RIR 1" }] }, 0)') === 1,
+   String(call('phaseRir({ phase: [{ r: "Serie x 5 RIR 1" }] }, 0)')));
 
 /* A fuzz rather than a fixed table: phaseRir takes free text a human typed,
    so the invariant that matters is the shape of every possible answer, not
@@ -9448,7 +9529,7 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
     const handWritten = `[
       '        {',
       '          "n": string OBLIGATORIO — nombre del ejercicio (máx ' + L.exName + ' car.),',
-      '          "id": string opcional (máx 60 car.) — identificador estable del ejercicio. Si abajo te paso mi bloque actual, conserva el id de cada ejercicio que mantengas, para que su historial siga unido; un ejercicio nuevo puede ir sin id. El mismo ejercicio en dos días lleva el mismo nombre (no repitas el id en dos días: se renombraría),',
+      '          "id": string opcional (máx 60 car. si es nuevo; si te paso uno, cópialo tal cual) — identificador estable del ejercicio. Si abajo te paso mi bloque actual, conserva el id de cada ejercicio que mantengas, para que su historial siga unido; un ejercicio nuevo puede ir sin id. El mismo ejercicio en dos días lleva el mismo nombre (no repitas el id en dos días: se renombraría),',
       '          "reps": string OBLIGATORIO — rango de reps, p.ej. "8-12" (máx ' + L.reps + ' car.),',
       '          "sets": número opcional 1-12 (por defecto 3),',
       '          "rest": número opcional — segundos de descanso 0-900 (por defecto 90; usa 0 si el ejercicio va encadenado en superserie),',
