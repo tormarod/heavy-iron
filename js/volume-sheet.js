@@ -24,7 +24,7 @@
    behind one series at a time. Each row is the same line chart as the
    progress sheet, shrunk, with the band behind it and the current week
    marked. */
-function buildTrendSVG(series, weeks, currentWeek, banded, dl) {
+function buildTrendSVG(series, weeks, currentWeek, banded, dls) {
   const W = 300, H = 46, padX = 2, padT = 4, padB = 4;
   const plotH = H - padT - padB;
   const max = Math.max(VOL_BAND_HIGH * (banded ? 1 : 0), 1, ...series);
@@ -39,10 +39,15 @@ function buildTrendSVG(series, weeks, currentWeek, banded, dl) {
     svg += '<line x1="0" y1="' + y(VOL_MAINTENANCE) + '" x2="' + W + '" y2="' + y(VOL_MAINTENANCE) +
       '" stroke="var(--soft)" stroke-width="1" stroke-dasharray="3 3" opacity="0.5"/>';
   }
-  if (dl >= 1 && dl <= weeks) {
-    svg += '<line x1="' + x(dl - 1) + '" y1="' + padT + '" x2="' + x(dl - 1) + '" y2="' + (padT + plotH) +
-      '" stroke="var(--line)" stroke-width="1"/>';
-  }
+  /* One faint line per deload week, field or phase text alike (deloadWeeks,
+     js/app.js) — a block can have more than one now, not only the field's
+     single week. */
+  (dls || []).forEach(dl => {
+    if (dl >= 1 && dl <= weeks) {
+      svg += '<line x1="' + x(dl - 1) + '" y1="' + padT + '" x2="' + x(dl - 1) + '" y2="' + (padT + plotH) +
+        '" stroke="var(--line)" stroke-width="1"/>';
+    }
+  });
   const pts = series.map((v, i) => x(i) + ',' + y(v)).join(' ');
   svg += '<polyline points="' + pts + '" fill="none" stroke="var(--signal)" stroke-width="2" ' +
     'stroke-linejoin="round" stroke-linecap="round"/>';
@@ -168,7 +173,7 @@ function drawVolume() {
 function drawVolumeTrend(profile, block, week, isLog, dimLabel) {
   const banded = volumeDim === 'muscle';
   const rows = volumeTrendRows(isLog ? 'log' : 'plan', profile, block, volumeDim);
-  const weeks = blockWeeks(block), dl = deloadWeek(block);
+  const weeks = blockWeeks(block), dls = deloadWeeks(block);
   const host = $('volumeHost');
 
   $('volumeSub').textContent = block.name + ' — las ' + weeks + ' semanas del bloque, por ' + dimLabel + ' — ' +
@@ -219,7 +224,7 @@ function drawVolumeTrend(profile, block, week, isLog, dimLabel) {
       ? 'sin semanas que contar'
       : String(typical).replace('.', ',') + (typical === 1 ? ' serie/semana' : ' series/semana') +
         (VOL_ZONE[r.zone] ? ' · ' + VOL_ZONE[r.zone] : '');
-    el.querySelector('.vol-trend-chart').innerHTML = buildTrendSVG(r.series, weeks, week, banded, dl);
+    el.querySelector('.vol-trend-chart').innerHTML = buildTrendSVG(r.series, weeks, week, banded, dls);
     host.appendChild(el);
   });
 }

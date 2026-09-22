@@ -3401,7 +3401,7 @@ function renderNav() {
   $('title').textContent = 'Registro de entrenamiento · ' + block.name + ' · ' + profile.label;
 
   $('weeks').innerHTML = '';
-  const weeks = blockWeeks(block), dl = deloadWeek(block);
+  const weeks = blockWeeks(block);
 
   /* The selector says which week and what it asks for, because with the
      strip folded away that line is the only place either is written. */
@@ -3428,11 +3428,14 @@ function renderNav() {
   for (let w = 1; w <= weeks; w++) {
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'wk' + (w === profile.week ? ' on' : '') + (w === dl ? ' deload' : '');
-    b.textContent = w === dl ? 'DL' : w;
+    /* deloadAt, not the field alone: a week that only says "Descarga" in
+       its own goal is a deload here too (plans/054). */
+    const dl = deloadAt(block, w);
+    b.className = 'wk' + (w === profile.week ? ' on' : '') + (dl ? ' deload' : '');
+    b.textContent = dl ? 'DL' : w;
     b.setAttribute('role', 'tab');
     b.setAttribute('aria-selected', w === profile.week ? 'true' : 'false');
-    b.setAttribute('aria-label', 'Semana ' + w + (w === dl ? ', descarga' : ''));
+    b.setAttribute('aria-label', 'Semana ' + w + (dl ? ', descarga' : ''));
     if (weekHasLog(profile, block, w)) { const dot = document.createElement('span'); dot.className = 'dot'; b.appendChild(dot); }
     b.onclick = () => { profile.week = w; commit('view'); };
     $('weeks').appendChild(b);
@@ -3848,7 +3851,7 @@ function drawApp() {
   renderSoundBtn();
 
   const ph = block.phase[profile.week] || { r: '', t: '' };
-  const dl = profile.week === deloadWeek(block);
+  const dl = deloadAt(block, profile.week);
   $('banner').innerHTML = '';
   const bannerDiv = document.createElement('div');
   bannerDiv.className = 'banner' + (dl ? ' deload' : '');
@@ -5426,34 +5429,43 @@ const diagPct = v => (v > 0 ? '+' : v < 0 ? '−' : '') +
 /* ---------- did the deload work? ----------
    Nothing checked whether the week after a deload actually came back up,
    which is the only evidence there is about whether your deloads are the
-   right length. One comparison, on matched pairs so a swapped exercise
-   cannot fake it: the week before the deload against the week after. */
+   right length. One comparison per deload span (CONTEXT.md, "deload
+   span"), on matched pairs so a swapped exercise cannot fake it: the week
+   before the span against the week after it — the same arithmetic as a
+   single deload week, since a one-week span's before/after are exactly
+   dl-1/dl+1, so this reads identically to before wherever a block's only
+   deload is still the field. A span with nothing on one side of it (the
+   block starts or ends on it) has nothing to compare and is left out. */
 function deloadCheck(profile, block) {
-  const dl = deloadWeek(block);
-  if (!dl || dl < 2 || dl + 1 > blockWeeks(block)) return null;
-  const before = dl - 1, after = dl + 1;
+  const weeks = blockWeeks(block);
   const byEx = strengthByExercise(profile, block);
-  const ratios = [];
-  Object.keys(byEx).forEach(exId => {
-    const a = byEx[exId][before - 1], b = byEx[exId][after - 1];
-    if (a > 0 && b > 0) ratios.push(b / a);
+  const out = [];
+  deloadSpans(block).forEach(span => {
+    const before = span.start - 1, after = span.end + 1;
+    if (before < 1 || after > weeks) return;
+    const ratios = [];
+    Object.keys(byEx).forEach(exId => {
+      const a = byEx[exId][before - 1], b = byEx[exId][after - 1];
+      if (a > 0 && b > 0) ratios.push(b / a);
+    });
+    if (!ratios.length) return;
+    const change = 100 * (ratios.reduce((t, v) => t + v, 0) / ratios.length - 1);
+    out.push({ before: before, after: after, deload: span.start, deloadEnd: span.end, n: ratios.length, change: change });
   });
-  if (!ratios.length) return null;
-  const change = 100 * (ratios.reduce((t, v) => t + v, 0) / ratios.length - 1);
-  return { before: before, after: after, deload: dl, n: ratios.length, change: change };
+  return out;
 }
 
 function drawDeloadCheck(profile, block) {
   const el = $('deloadCheck');
   /* The week test before the comparison rather than after it: deloadCheck
      walks every logged set of the block, drawCard calls this after every
-     tick, and on any week that is not the one after the deload the only
+     tick, and on any week that is not right after a deload span the only
      thing that walk can produce is the hidden attribute. */
-  const dl = deloadWeek(block);
-  if (!dl || profile.week !== dl + 1) { el.hidden = true; return; }
-  const d = deloadCheck(profile, block);
-  /* Only where it is the news of the week — standing on the week after the
-     deload. The block review carries it the rest of the time. */
+  if (!deloadSpans(block).some(s => s.end + 1 === profile.week)) { el.hidden = true; return; }
+  const d = deloadCheck(profile, block).find(x => x.after === profile.week);
+  /* Only where it is the news of the week — standing on the week right
+     after a span. The block review carries every span the rest of the
+     time. */
   if (!d) { el.hidden = true; return; }
   const pct = (d.change > 0 ? '+' : d.change < 0 ? '−' : '') +
     String(Math.abs(Math.round(d.change * 10) / 10)).replace('.', ',') + ' %';
@@ -5741,15 +5753,55 @@ function theilSen(pts) {
   return slopes.length ? median(slopes) : 0;
 }
 
-/* A deload is ~60 % of the working weight by design, so its sessions are
-   evidence about nothing and are kept out of every window below. The
-   block's own `deload` field is the answer whenever there is one; the text
-   is read too, because a hand-written phase can say "Descarga" on a week
-   the field never heard about, and halving the sets on a week that says
-   "Descarga" is what the week asks for either way. */
+/* A "descarga" that the goal itself negates — "sin descarga", "no
+   descarga" — is the block saying there is no deload here (CONTEXT.md,
+   "deload week"), so it must not flip a week into one. Lookbehind rather
+   than a second pass over the matches: `test()` alone then answers the
+   question this file actually asks, "is there an unnegated 'descarga'
+   anywhere in the text", instead of only the first occurrence's. */
+const DESCARGA_RE = /(?<!\b(?:sin|no)\s+)descarga/i;
+
+/* Every deload week of the block, sorted and deduped: the `deload` field
+   (deloadWeek) union every week whose phase text says "descarga" without
+   "sin"/"no" right before it — a hand-written phase can say "Descarga" on a
+   week the field never heard about, and halving the sets on a week that
+   says so is what the week asks for either way. Bounded to the block's own
+   weeks, the same as deloadWeek already is, so a week the block has since
+   been shortened past is left out. This is the one list every reader but
+   the editor's own field (block-editor.js) asks — deloadAt is this list's
+   membership test, and deloadWeek stays only as the field's accessor
+   (plans/054: seven readers used to ask the field alone). */
+function deloadWeeks(block) {
+  const weeks = blockWeeks(block);
+  const out = new Set();
+  const fieldDl = deloadWeek(block);
+  if (fieldDl) out.add(fieldDl);
+  for (let w = 1; w <= weeks; w++) {
+    const text = String((block && block.phase && block.phase[w] && block.phase[w].r) || '');
+    if (DESCARGA_RE.test(text)) out.add(w);
+  }
+  return Array.from(out).sort((a, b) => a - b);
+}
+
+/* Consecutive deload weeks, taken as one deload span (CONTEXT.md, "deload
+   span"), in week order. deloadCheck compares the week before a span with
+   the week after it; drawDeloadCheck shows that line on the week right
+   after a span ends. */
+function deloadSpans(block) {
+  const spans = [];
+  deloadWeeks(block).forEach(w => {
+    const last = spans[spans.length - 1];
+    if (last && w === last.end + 1) last.end = w;
+    else spans.push({ start: w, end: w });
+  });
+  return spans;
+}
+
+/* deloadWeeks' membership test. A deload is ~60 % of the working weight by
+   design, so its sessions are evidence about nothing and are kept out of
+   every window that reads this. */
 function deloadAt(block, w) {
-  if (w === deloadWeek(block)) return true;
-  return /descarga/i.test(String((block && block.phase && block.phase[w] && block.phase[w].r) || ''));
+  return deloadWeeks(block).indexOf(w) !== -1;
 }
 
 /* The RIR the plan asks for, never under what the exercise itself says is
@@ -6591,15 +6643,15 @@ function volumeByWeek(scope, profile, block, dim) {
 }
 
 /* Which weeks count toward "where does this muscle usually sit". A deload
-   is halved on purpose, so counting it would drag every muscle under the
-   band and flag a block that is doing exactly what it says. On the
-   registrado side, weeks you simply have not trained yet are not weeks of
-   low volume — only weeks with something logged are evidence. */
+   week — the field or a hand-written phase, deloadAt reads both — is
+   halved on purpose, so counting it would drag every muscle under the band
+   and flag a block that is doing exactly what it says. On the registrado
+   side, weeks you simply have not trained yet are not weeks of low volume
+   — only weeks with something logged are evidence. */
 function volumeWeeksInPlay(scope, block, series) {
-  const dl = deloadWeek(block);
   const idx = [];
   series.forEach((v, i) => {
-    if (i + 1 === dl) return;
+    if (deloadAt(block, i + 1)) return;
     if (scope === 'log' && !v) return;
     idx.push(i);
   });

@@ -229,6 +229,11 @@ Pick which week is the deload — any of them, or **Sin descarga** if the
 block doesn't have one. In the deload week every exercise does half its
 sets, rounded up, minimum two; that used to be hardcoded to week 8.
 
+Writing "Descarga" into a week's own goal makes that week a deload too, on
+every screen — the DL marker, the banner, the volume view, "¿funcionó la
+descarga?" — even if you never touched the field above; a goal that says
+"sin descarga" does not.
+
 Blocks saved before this are exactly what the app used to assume — eight
 weeks, deload on week 8 — so nothing you already have moves.
 
@@ -1052,10 +1057,10 @@ dimension — the landmarks that turn a number into a verdict.
   which is fine for legs on an upper-body block, and fatal for the muscle
   the block is supposed to be for.
 - **Each row says where that muscle typically sits**, as a median across
-  the weeks that count. The deload is excluded, because halving it is the
-  point of it, and on **Registrado** so are weeks you have not trained yet:
-  a week with nothing logged is not a week of low volume.
-- **The current week is the filled dot**, and the deload week is the faint
+  the weeks that count. Deload weeks are excluded, because halving them is
+  the point of them, and on **Registrado** so are weeks you have not
+  trained yet: a week with nothing logged is not a week of low volume.
+- **The current week is the filled dot**, and every deload week is a faint
   vertical line.
 
 These are working ranges from the hypertrophy literature, not precision

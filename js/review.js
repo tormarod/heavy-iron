@@ -28,6 +28,14 @@ const REVIEW_MAX_EXERCISES = 40;
 const reviewPct = v => (v > 0 ? '+' : v < 0 ? '−' : '') +
   String(Math.abs(Math.round(v * 10) / 10)).replace('.', ',') + ' %';
 
+/* "la semana 4" for a one-week deload span, "las semanas 4–5" for a longer
+   one — how the review and the on-screen check both name a span
+   (CONTEXT.md, "deload span"); d.deload/d.deloadEnd are its first and last
+   week (deloadCheck, js/app.js). */
+const deloadSpanLabel = d => d.deload === d.deloadEnd
+  ? 'la semana ' + d.deload
+  : 'las semanas ' + d.deload + '–' + d.deloadEnd;
+
 /* reviewName lives in js/app.js — the prompt and the Diagnóstico use it too. */
 
 /* The unit-converting volume rule is convertedSetVolume in js/app.js — an
@@ -168,7 +176,10 @@ function buildBlockReview(profile, block) {
     sets: doneSets,
     priority: blockPriority(block),
     muscles: muscles,
-    deload: deloadCheck(profile, block),
+    /* One entry per deload span the block has evidence either side of
+       (deloadCheck, js/app.js) — usually zero or one, but a block with more
+       than one deload carries every one of them here. */
+    deloads: deloadCheck(profile, block),
     energy: {
       baja: { n: energy.baja.length, kg: mean(energy.baja) },
       normal: { n: energy.normal.length, kg: mean(energy.normal) },
@@ -191,11 +202,13 @@ function reviewText(r) {
   L.push('- Semanas del bloque: ' + r.weeks + '. Registradas: ' + r.weeksLogged + '. Llegué hasta la semana ' + r.upTo + '.');
   L.push('- Series marcadas como hechas: ' + r.sets + '. Peso movido: ' + Math.round(r.tonnage) + ' ' + units() + '.');
   if (r.priority.length) L.push('- Músculos que marqué como prioritarios: ' + r.priority.map(reviewName).join(', ') + '.');
-  if (r.deload) {
-    L.push('- Descarga en la semana ' + r.deload.deload + ': la semana ' + r.deload.after +
-      ' quedó ' + reviewPct(r.deload.change) + ' respecto a la semana ' + r.deload.before +
-      ' (sobre ' + r.deload.n + ' ejercicios comparables).');
-  }
+  /* One bullet per span — almost always zero or one, exactly today's line;
+     a block with more than one deload gets one line each, in week order. */
+  r.deloads.forEach(d => {
+    L.push('- Descarga en ' + deloadSpanLabel(d) + ': la semana ' + d.after +
+      ' quedó ' + reviewPct(d.change) + ' respecto a la semana ' + d.before +
+      ' (sobre ' + d.n + ' ejercicios comparables).');
+  });
   L.push('');
   L.push('### Por músculo');
   L.push('');
@@ -284,13 +297,15 @@ function drawReview() {
     return;
   }
 
-  if (r.deload) {
+  /* One line per span, same as reviewText — usually the one line this
+     always drew. */
+  r.deloads.forEach(dl => {
     const d = document.createElement('p');
-    d.className = 'rev-deload' + (r.deload.change >= 1 ? ' good' : r.deload.change <= -1 ? ' bad' : '');
-    d.textContent = 'Descarga en la semana ' + r.deload.deload + ': la semana ' + r.deload.after +
-      ' quedó ' + reviewPct(r.deload.change) + ' respecto a la semana ' + r.deload.before + '.';
+    d.className = 'rev-deload' + (dl.change >= 1 ? ' good' : dl.change <= -1 ? ' bad' : '');
+    d.textContent = 'Descarga en ' + deloadSpanLabel(dl) + ': la semana ' + dl.after +
+      ' quedó ' + reviewPct(dl.change) + ' respecto a la semana ' + dl.before + '.';
     host.appendChild(d);
-  }
+  });
 
   r.muscles.forEach(m => {
     const el = document.createElement('div');
