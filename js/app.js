@@ -2393,29 +2393,70 @@ function foldRirMap(profile, blockId) {
 
 /* The RIR the *plan* asks for in a given week, dug out of the free text in
    `phase[w].r` — which is prose ("2–3 RIR", "RIR 2", "0–1 RIR", "Descarga"),
-   not a field. Only a number immediately BEFORE or AFTER "RIR" is a
-   prescription — "RIR 2" is as natural in Spanish as "2 RIR", and the AI
-   prompt's free text invites either; any other digit in the label is a week
-   number, a percentage or a rep scheme, and the week says nothing about
-   reserve — `weekRir` then falls back to the reserve the last session was
-   left at. The FIRST such number in the label wins, whichever side of
-   "RIR" it sits on. A range picks the LOWEST number: "2–3 RIR" is a week
-   you are meant to be able to take to 2, and reading it as 3 quietly
-   under-loads every estimate built on it — the dash class covers the
-   hyphen, the en dash, the em dash and the minus sign so a range split by
-   any of them still reads its lower end, rather than the regex missing the
-   pair and grabbing the lone digit next to "RIR" instead. A week with no
-   "RIR" at all — a deload, or a phase somebody wrote in their own words —
-   returns null, and so does a number above RIR_MAX: a label like "60 RIR"
-   is not a prescription either. */
+   not a field, and gets written more ways than one: the AI prompt that
+   fills it asks for "RIR objetivo", and people write "RIR: 2" or "2-3 reps
+   en reserva". plans/058 stopped reading any digit anywhere ("Descarga 60%"
+   was 60 RIR) but then read only a number touching "RIR", so every one of
+   those came back as no prescription and the planned ramp was quietly
+   ignored. The rule since plans/062, whose table pins it label by label:
+
+   - The marker is "RIR" as a whole word — "sufrir 2" prescribes nothing,
+     while "RIR2" and "2RIR" do — or "reps en reserva" / "repeticiones en
+     reserva".
+   - A number AFTER "RIR" counts when only whitespace, the word "objetivo"
+     and at most one of : = ~ ≈ ( stand between them: "RIR: 2", "RIR (2)",
+     "RIR objetivo: 1-2". A number BEFORE a marker counts when only
+     whitespace does — "2 RIR", "2-3 reps en reserva" — unless it is the
+     week's own number: in "Semana 3 RIR 2" (or "semana3", "Sem. 3",
+     "week 3") the 3 says which week, not how many reps, and the 2 wins.
+   - The FIRST number that counts wins, whichever side of its marker it
+     sits on. Markers are walked left to right and a marker's number before
+     it comes ahead of its number after it, so the first one found is the
+     first in the label.
+   - A range picks the LOWEST number: "2–3 RIR" is a week you are meant to
+     be able to take to 2, and reading it as 3 quietly under-loads every
+     estimate built on it. The dash class covers the hyphen, the en dash,
+     the em dash and the minus sign, so a range split by any of them still
+     reads its lower end rather than the lone digit next to the marker.
+   - A number that is part of a decimal is refused, not rounded: RIR is
+     counted in whole reps, and the 5 of "1,5 RIR" is not what anybody
+     wrote.
+
+   Any other digit in the label is a week number, a percentage or a rep
+   scheme, and a week where nothing counts — a deload, or a phase somebody
+   wrote in their own words — returns null: `weekRir` then falls back to
+   the reserve the last session was left at. So does a number above
+   RIR_MAX: a label like "60 RIR" is not a prescription either.
+
+   No lookbehind anywhere in here: Safari parses it only from 16.4, and a
+   regex the engine cannot read takes the whole of app.js down with it
+   (plans/059). So the character in front of a marker is matched as a
+   group of its own and stepped over, and what stands in front of a number
+   is read off the text up to it. */
 function phaseRir(block, w) {
   const r = String((block && block.phase && block.phase[w] && block.phase[w].r) || '');
-  const before = r.match(/(\d+)(?:\s*[-–—−]\s*(\d+))?\s*RIR/i);
-  const after = r.match(/RIR\s*(\d+)(?:\s*[-–—−]\s*(\d+))?/i);
-  const near = !before ? after : !after ? before : (before.index <= after.index ? before : after);
-  if (!near) return null;
-  const v = Math.min(num(near[1]), num(near[2] != null ? near[2] : near[1]));
-  return v > RIR_MAX ? null : v;
+  const rir = (lo, hi) => {
+    const v = Math.min(num(lo), num(hi != null ? hi : lo));
+    return v > RIR_MAX ? null : v;
+  };
+  const marker = /(^|[^a-záéíóúñü])(?:(RIR)|(?:reps|repeticiones)\s+en\s+reserva)(?![a-záéíóúñü])/gi;
+  let m;
+  while ((m = marker.exec(r))) {
+    const head = r.slice(0, m.index + m[1].length);
+    const before = /(\d+)(?:\s*[-–—−]\s*(\d+))?\s*$/.exec(head);
+    if (before) {
+      const lead = head.slice(0, before.index);
+      if (!/[\d.,]$/.test(lead) && !/\b(?:semana|sem|week)\.?\s*$/i.test(lead)) return rir(before[1], before[2]);
+    }
+    /* Only "RIR" takes a number after it. The phrase is Spanish only with
+       its count in front ("2 reps en reserva"), so a digit after it is
+       about something else. */
+    if (!m[2]) continue;
+    const tail = r.slice(marker.lastIndex);
+    const after = /^\s*(?:objetivo\s*(?:[:=~≈(]\s*)?|[:=~≈(]\s*(?:objetivo\s*)?)?(\d+)(?:\s*[-–—−]\s*(\d+))?/i.exec(tail);
+    if (after && !/^[.,]\d/.test(tail.slice(after[0].length))) return rir(after[1], after[2]);
+  }
+  return null;
 }
 
 /* ---------- session note ----------

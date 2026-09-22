@@ -2258,7 +2258,8 @@ ok('prevLoad mirrors it', call('prevLoad([35, 39, 40], 40, 2.5)') === 39 && call
 /* A phase somebody wrote in their own words has no "RIR" in it, so the
    week cannot say what reserve it wants and the reserve the last session
    was left at stands in — which asks for no change rather than inventing
-   one. `phaseRir` only reads a number immediately next to "RIR" (plans/058);
+   one. `phaseRir` only reads a number standing next to a RIR marker
+   (plans/058; plans/062 let "RIR: 2" and "2 reps en reserva" count too);
    any other digit in the prose, or no digit at all, reads the same: null. */
 t = target([
   { sets: [[40, 10], [40, 9]], rir: '2+' },
@@ -5335,7 +5336,7 @@ blockIndex.forEach(entry => {
      JSON.stringify(statedIds) === JSON.stringify(keptIds));
 });
 
-console.log('\n== phaseRir: the number before or after "RIR" wins, not the lowest digit anywhere (plans/008 item 17, plans/058 item 3) ==');
+console.log('\n== phaseRir: the number before or after "RIR" wins, not the lowest digit anywhere (plans/008 item 17, plans/058 item 3, plans/062) ==');
 ok('a week number ahead of the RIR phrase no longer wins',
    call('phaseRir({ phase: [{ r: "Semana 1: 2-3 RIR" }] }, 0)') === 2);
 ok('a one-off number elsewhere no longer wins over the RIR range',
@@ -5365,13 +5366,37 @@ ok('an em dash in the range still reads its lower end, not the digit RIR sits ne
 ok('...and so does a minus sign',
    call('phaseRir({ phase: [{ r: "2−3 RIR" }] }, 0)') === 2);
 
+/* plans/058 made phaseRir read only a number touching "RIR", and the
+   labels people and the app's own AI prompt ("RIR objetivo") actually
+   write came back as no prescription — weekRir fell back to the last
+   session's reserve and the planned ramp was ignored. The first nine are
+   plans/062's table, the contract: the shapes 058 dropped, and the three
+   it still misread (a decimal read as its last digit, the week number
+   ahead of "RIR", a "rir" inside "sufrir"). The rest pin each rule's edge:
+   the marker touching its number from either side, a decimal after "RIR",
+   a week word that is not right in front of the number, a week word with
+   no space before its number, and RIR_MAX on the side 058 did not test. */
+[
+  ['RIR: 2', 2], ['RIR (2)', 2], ['RIR ~2', 2], ['RIR objetivo 2', 2], ['RIR: 1-2', 1],
+  ['2-3 reps en reserva', 2], ['1,5 RIR', null], ['Semana 3 RIR 2', 2], ['sufrir 2', null],
+  ['RIR2', 2], ['2RIR', 2], ['RIR 0.5', null], ['Sem. 3 · 2 RIR', 2], ['2 RIR, semana 3', 2],
+  ['RIR 10', null], ['semana3 RIR 2', 2],
+].forEach(([label, want]) => {
+  const got = call('phaseRir({ phase: [{ r: ' + JSON.stringify(label) + ' }] }, 0)');
+  ok('phaseRir: "' + label + '" → ' + want + ' (plans/062)', got === want, String(got));
+});
+
 /* A fuzz rather than a fixed table: phaseRir takes free text a human typed,
    so the invariant that matters is the shape of every possible answer, not
    a handful of hand-picked ones. Labels are built from the same vocabulary
    real phase text uses — digits, every dash the regex accepts, "RIR" in
    both the "N RIR" and "RIR N" shapes, "Semana", "%" and a few Spanish
    words — glued together with and without spaces so "2-3 RIR", "RIR 2-3"
-   and stray digit-word runs like "60Descarga" all get exercised. Digits are
+   and stray digit-word runs like "60Descarga" all get exercised. plans/062
+   added what its rule reads: the ":" and "(" allowed after "RIR",
+   "objetivo", the decimal separators, "reps en reserva", a lowercase
+   "semana" for the week-number check and "sufrir" for "rir" inside a
+   word — which changes the labels drawn, not what is asserted. Digits are
    drawn mostly from 0–9 (three draws in four) rather than 0–99, because a
    RIR-adjacent 0–99 draw lands in [0, RIR_MAX] only 6% of the time and the
    positive path — an actual prescription, not just null — needs exercising
@@ -5386,7 +5411,8 @@ const phaseRirFuzzProbe = `
     function pick(arr) { return arr[Math.floor(rnd() * arr.length)]; }
     function digit() { return String(Math.floor(rnd() * (rnd() < 0.75 ? 10 : 100))); }
     const words = ['Semana', 'de', 'tecnica', 'Descarga', 'Top', 'set', 'back-offs',
-      'reps', 'fase', 'RIR', '%', '-', '–', '—', '−', 'proxima', 'bloque'];
+      'reps', 'fase', 'RIR', '%', '-', '–', '—', '−', 'proxima', 'bloque',
+      ':', '(', 'objetivo', ',', '.', 'reps en reserva', 'semana', 'sufrir'];
     const failures = [];
     for (let i = 0; i < 2000; i++) {
       const tokenCount = 1 + Math.floor(rnd() * 6);
@@ -5410,6 +5436,57 @@ const phaseRirFuzzProbe = `
 const phaseRirFuzz = call(phaseRirFuzzProbe);
 ok('2,000 random phase labels: phaseRir is always null or an integer in [0, RIR_MAX], and weekRir (minRir, lastRho in [0, 5]) is always an integer in [0, RIR_MAX]',
    phaseRirFuzz.failCount === 0, JSON.stringify(phaseRirFuzz));
+
+/* plans/062's STOP condition, held as a test: widening the rule may not
+   move the reserve of any label the app ships or writes for itself. That
+   is the seed plans (read through defaultState, so a seed block added
+   later is swept too), every published file in blocks/, and genericPhase —
+   the ramp a block gets for every week it does not write itself, whether
+   it is new, imported with gaps, lengthened or given a new deload week in
+   the editor, or repaired by migrate — at every length a block can have
+   and every week its deload can sit on, "Sin descarga" (0) included. The
+   reference is the function as it stood before, pasted verbatim and
+   defined inside the app's own context, so it reads the same num() and
+   RIR_MAX the shipped one did; a fresh vm context would have neither. */
+{
+  const phaseRirOld = call(String.raw`(function () {
+    /* phaseRir as of b15ae87, before plans/062 */
+    function phaseRirOld(block, w) {
+      const r = String((block && block.phase && block.phase[w] && block.phase[w].r) || '');
+      const before = r.match(/(\d+)(?:\s*[-–—−]\s*(\d+))?\s*RIR/i);
+      const after = r.match(/RIR\s*(\d+)(?:\s*[-–—−]\s*(\d+))?/i);
+      const near = !before ? after : !after ? before : (before.index <= after.index ? before : after);
+      if (!near) return null;
+      const v = Math.min(num(near[1]), num(near[2] != null ? near[2] : near[1]));
+      return v > RIR_MAX ? null : v;
+    }
+    return phaseRirOld;
+  })()`);
+  const phaseRirNow = call('phaseRir');
+  const swept = { seed: 0, published: 0, generic: 0 };
+  const moved = [];
+  const compare = (kind, from, phase) => Object.keys(phase).forEach(key => {
+    const w = Number(key), block = { phase: phase };
+    const was = phaseRirOld(block, w), now = phaseRirNow(block, w);
+    swept[kind]++;
+    if (was !== now) moved.push(from + ' semana ' + w + ' ' + JSON.stringify(phase[key].r) + ': ' + was + ' → ' + now);
+  });
+  const seedState = call('defaultState()');
+  Object.keys(seedState.profiles).forEach(p => {
+    const blocks = seedState.profiles[p].blocks;
+    Object.keys(blocks).forEach(id => compare('seed', 'js/data.js ' + p + '/' + id, blocks[id].phase || {}));
+  });
+  blockDir.forEach(f => compare('published', 'blocks/' + f, readBlockFile(f).phase || {}));
+  const genericPhaseFn = call('genericPhase'), maxWeeks = call('MAX_WEEKS');
+  for (let weeks = 1; weeks <= maxWeeks; weeks++) {
+    for (let deload = 0; deload <= weeks; deload++) {
+      compare('generic', 'genericPhase(' + weeks + ', ' + deload + ')', genericPhaseFn(weeks, deload));
+    }
+  }
+  ok('no seed, published or generic label reads a different RIR than before plans/062',
+     moved.length === 0 && swept.seed > 0 && swept.published > 0 && swept.generic > 0,
+     JSON.stringify({ maxWeeks: maxWeeks, swept: swept, movedCount: moved.length, moved: moved.slice(0, 5) }));
+}
 
 /* trainedDays had no test of its own (plans/057): it fed the calendar
    straight off a raw walk of the whole log, no week bound at all — wider
