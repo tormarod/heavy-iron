@@ -3819,26 +3819,32 @@ console.log('\n== the plan draft: saving erases exactly what "Borrar registro" c
      JSON.stringify(crowded));
 
   /* Nor is a spare day ever a day of the draft, even one nothing is filed
-     under: a copy lifted onto the very day it is going to would be put
-     down from that day onto itself, and moveExerciseRecord from a day to
-     the same day adds the rows to themselves and then deletes them. The
-     day A's copy is sent to here has nothing logged and the name
-     spareDayIds hands out first. */
+     under: a record lifted onto a day that a copy of the same lift is then
+     put down on takes that copy along when it is put down itself. D here
+     has nothing logged and the name spareDayIds would hand out second,
+     and it comes before C. A's copy goes to D and B's to C, so B's would
+     wait on D, A's be merged into it there, and both go on to C, A's chip
+     and objetivo record dropped. One copy sent to D would not show it: a
+     record lifted onto the day it is going to is put down from that day
+     onto itself, which is no move. */
   const namedLikeSpare = tryCall(`(function () {
     ${FIXTURE}
     const p = fixture(true);
-    const spare = spareDayIds(p, openPlanDraft(p, p.blocks.B), 1)[0];
-    p.blocks.B.days.push({ id: spare, name: 'D', ex: [lift('k', 'Curl')] });
+    const spare = spareDayIds(p, openPlanDraft(p, p.blocks.B), 2)[1];
+    p.blocks.B.days.splice(2, 0, { id: spare, name: 'D', ex: [lift('k', 'Curl')] });
     const draft = openPlanDraft(p, p.blocks.B);
-    const dA = draft.block.days[0], dD = draft.block.days[3];
+    const [dA, dB, dD, dC] = draft.block.days;
     moveExToDay(dA.ex[0], dA, dD);
+    moveExToDay(dB.ex[0], dB, dC);
     applyPlanDraft(p, draft);
     const rows = [];
     forEachSlot(p.log, 'B', (k, w, d, s) => ((s && s.e1) || []).forEach(r => { if (rowUsed(r)) rows.push(w + ':' + (d === spare ? 'D' : d) + ':' + r.w); }));
-    return { rows: rows.sort() };
+    const at = (part, d) => ((p[part].B || {})[slot(1, d)] || {}).e1;
+    return { rows: rows.sort(), chips: [at('rir', spare), at('rir', 'dC')], records: [at('obj', spare), at('obj', 'dC')].map(r => r && r.sets[0].w) };
   })()`);
-  ok('...and a copy sent to a day with nothing logged, named the way the first spare day would have been, keeps its sets there',
-     !namedLikeSpare.threw && JSON.stringify(namedLikeSpare.rows) === JSON.stringify(['1:D:50', '1:dB:60', '1:dB:62', '2:D:52']),
+  ok('...and a copy sent to a day with nothing logged, named the way a spare day would have been, keeps its sets, chip and objetivo record there, and the other copy keeps its own',
+     !namedLikeSpare.threw && JSON.stringify(namedLikeSpare.rows) === JSON.stringify(['1:D:50', '1:dC:60', '1:dC:62', '2:D:52']) &&
+     JSON.stringify(namedLikeSpare.chips) === JSON.stringify(['1', '2+']) && JSON.stringify(namedLikeSpare.records) === JSON.stringify([50, 60]),
      JSON.stringify(namedLikeSpare));
 
   /* The point of lifting everything first: the same moves file the record
@@ -5548,6 +5554,30 @@ console.log('\n== RECORD_PARTS: one table for the profile\'s record (plans/046) 
     });`);
   ok('moveExerciseRecord through a day nothing is filed under ends where the one move does, in every part, and leaves nothing on that day',
      composed.length === 0, JSON.stringify(composed));
+
+  /* A move from a day to that same day is no move, and has to leave the
+     record exactly as it was. It used to empty it: the source slot is the
+     destination slot, so the log's rows were added to themselves and then
+     deleted with the source, the legacy chip and the objetivo record were
+     deleted outright, and the session order took the id out and put it
+     back last, or dropped a week's order that held that id alone. The
+     fixture's orders have e1 last already, so this moves every lift of
+     both days, and gives d1 a week 3 whose order is e1 alone. */
+  const stayed = check(`
+    const build = () => {
+      const p = fixture();
+      RECORD_PARTS.forEach(part => {
+        if (byBlock(part)) p[part.name].b1[slot(3, 'd1')] = part.name === 'order' ? ['e1'] : part.keyedBy === 'slot' ? slotV(part) : { e1: srcV(part, 'e1', 3) };
+      });
+      return p;
+    };
+    const p = build(), before = build();
+    ['d1', 'd2'].forEach(d => ['e1', 'e2'].forEach(ex => moveExerciseRecord(p, 'b1', d, d, ex)));
+    RECORD_PARTS.forEach(part => {
+      if (!same(p[part.name], before[part.name])) bad.push(part.name + ' became ' + JSON.stringify(byBlock(part) ? p[part.name].b1 : p[part.name]));
+    });`);
+  ok('moveExerciseRecord from a day to the same day leaves every part exactly as it was, the session order included',
+     stayed.length === 0, JSON.stringify(stayed));
 
   const installed = check(`
     const src = fixture(), p = {}, data = {};
