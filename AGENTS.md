@@ -76,8 +76,7 @@ or CI job fails, and a reviewer is the only check. How to run the checks is
 - **A log key, or a walk over a block's slots** — `slot(week, dayId)` and
   `parseSlot` build and read it, `forEachSlot` walks it; never the regex by
   hand, never keys rebuilt week by week. Held by unit "the log key has one
-  reader as well as one builder" for the four files it scans; a new file
-  that reads slots joins that list.
+  reader as well as one builder", which scans every file in `js/`.
   → [Log keys and slot walks](#log-keys-and-slot-walks)
 - **Anything a user sees** — Spanish; a new or changed behaviour is written
   up in `docs/guide.md`, not the README. Review.
@@ -436,12 +435,11 @@ untrusted.
 
 ### Log keys and slot walks
 
-One shape is worth naming here because it is read in four files: a log key is
-`slot(week, dayId)` and is read back by `parseSlot`, both in `js/app.js`,
-and nothing else runs the regex. `test/unit.js` ("parseSlot() is the only
-place that runs the slot regex") fails if any of the four files it scans
-does — `js/app.js` outside `parseSlot`, `js/chart.js`, `js/diagnostics.js`
-and `js/review.js` — and a new file that reads slots joins that list.
+One shape is worth naming here because it is read outside `js/app.js`: a log
+key is `slot(week, dayId)` and is read back by `parseSlot`, both in
+`js/app.js`, and nothing else runs the regex. `test/unit.js` ("parseSlot()
+is the only place that runs the slot regex") fails if any file in `js/`
+runs it outside `parseSlot`.
 To walk one block of any part of the profile's record keyed by slot, use
 `forEachSlot` rather than rebuilding keys week by week: it visits the
 slots that exist, which is the only way a purge reaches a week filed
