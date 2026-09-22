@@ -714,38 +714,46 @@ function eraseFromDraft(draft, it) {
 function applyPlanDraft(profile, draft) {
   if (planDraftStale(profile, draft)) return null;
   const block = draft.block;
+  /* The only path that erases logged sets, and only the ones explicitly
+     confirmed in "Retirados", each where the dialog counted it: an
+     exercise under the day it started on, and a day in its own slots,
+     plus every exercise it held that came from another day, under that
+     one. It runs in two halves around the moves below, and the order is
+     the fix (plans/053):
+
+       1. every erased exercise, under the day it started on — the ones
+          erased on their own and the ones an erased day brought in;
+       2. the "enviar a…" moves;
+       3. every erased day's own slots.
+
+     Exercises first, because a move can land a copy that shares the id
+     on that very day (the same id can live on two days by design), and
+     once the move has merged the two no purge by day and id can tell
+     whose sets are whose: saving used to erase both. Days last, so an
+     exercise that left a day before the day was erased has taken its
+     record with it by then. An exercise added in this draft has no start
+     day, and nothing filed under its fresh id to erase. */
+  draft.erased.forEach(e => {
+    const exercises = e.ex ? [e.ex] : e.held.filter(ex => draft.startDay.get(ex) !== e.day.id);
+    exercises.forEach(ex => {
+      const from = draft.startDay.get(ex);
+      if (from) purgeRecord(profile, block.id, { day: from, exercise: ex.id });
+    });
+  });
   /* Catch the profile's record up on any "enviar a…" moves made while
      the sheet was open (the log, the legacy RIR chips, the objetivo
      record and the session order: moveExerciseRecord), before anything
      below reads or purges it by session id. Merges into whatever the
      destination day already has rather than overwriting it — the same
      id can live on two days by design, so this can run more than once on
-     the same exercise without losing either day's history.
-
-     Before the erasures, too: an exercise that left a day before that
-     day was erased has to take its record with it before the day's slots
-     are cleared. */
+     the same exercise without losing either day's history. */
   block.days.forEach(day => {
     day.ex.forEach(ex => {
       const from = draft.startDay.get(ex);
       if (from && from !== day.id) moveExerciseRecord(profile, block.id, from, day.id, ex.id);
     });
   });
-  /* The only path that erases logged sets, and only the ones explicitly
-     confirmed in "Retirados" — each resolved to where its sets sit, which
-     is where the dialog counted them: an exercise under the day it started
-     on; a day in its own slots, plus every exercise it held that came from
-     another day, under that one. An exercise added in this draft has no
-     start day, and nothing filed under its fresh id to erase. */
-  const purgeWhereItStarted = ex => {
-    const from = draft.startDay.get(ex);
-    if (from) purgeRecord(profile, block.id, { day: from, exercise: ex.id });
-  };
-  draft.erased.forEach(e => {
-    if (e.ex) { purgeWhereItStarted(e.ex); return; }
-    purgeRecord(profile, block.id, { day: e.day.id });
-    e.held.forEach(ex => { if (draft.startDay.get(ex) !== e.day.id) purgeWhereItStarted(ex); });
-  });
+  draft.erased.forEach(e => { if (e.day) purgeRecord(profile, block.id, { day: e.day.id }); });
   /* An exercise whose NAME changed is a different lift from today on —
      "Elevaciones laterales en polea" became "Elevaciones en Y en polea
      cruzada" and the two are not on the same loads. Recorded here

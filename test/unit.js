@@ -3554,6 +3554,32 @@ console.log('\n== the plan draft: saving erases exactly what "Borrar registro" c
        r.counted === 2 && r.erased === 2, JSON.stringify(r));
   });
 
+  /* The same edge reached through a day: A's copy goes to C, C is erased,
+     and B's copy has meanwhile been sent onto A — the very day C's erasure
+     reaches back to for A's copy's sets. B's copy keeps its two. */
+  const heldBack = tryCall(`(function () {
+    ${FIXTURE}
+    const p = fixture(true);
+    const setsBefore = blockLoggedSets(p, 'B');
+    const draft = openPlanDraft(p, p.blocks.B);
+    const [dA, dB, dC] = draft.block.days, ea = dA.ex[0], eb = dB.ex[0];
+    moveExToDay(ea, dA, dC);
+    moveExToDay(eb, dB, dA);
+    dC.off = 1;
+    const counted = dialogCount(p, draft, { day: dC });
+    eraseFromDraft(draft, { day: dC });
+    applyPlanDraft(p, draft);
+    const rows = [];
+    forEachSlot(p.log, 'B', (k, w, d, s) => ((s && s.e1) || []).forEach(r => { if (rowUsed(r)) rows.push(d + ':' + r.w); }));
+    return {
+      counted: counted, erased: setsBefore - blockLoggedSets(p, 'B'), rows: rows.sort(),
+      kept: p.blocks.B.days.find(d => d.id === 'dA').ex.some(e => e === eb && !e.off),
+    };
+  })()`);
+  ok('the same id on two days, a day erased while holding A\'s copy after B\'s copy was sent onto A: B\'s copy keeps its sets',
+     !heldBack.threw && heldBack.kept && JSON.stringify(heldBack.rows) === JSON.stringify(['dA:60', 'dA:62']) &&
+     heldBack.counted === 4 && heldBack.erased === 4, JSON.stringify(heldBack));
+
   /* Bug 3. Another tab's write is adopted by replacing the profile objects
      (the 'storage' handler in js/app.js), and a draft cut from the old one
      used to be saved straight over it. */
