@@ -352,7 +352,11 @@ function drawReview() {
 
 function openReview(afterClose) {
   reviewAfterClose = typeof afterClose === 'function' ? afterClose : null;
-  $('reviewBlob').value = '';
+  /* Same reasoning as #reviewBtn below: the paste box arrived with the
+     sheet's import leg, after this file, so a precache hole can open the
+     review against a sheet that has no box. */
+  const blob = $('reviewBlob');
+  if (blob) blob.value = '';
   drawReview();
   openSheet('reviewSheet');
 }
@@ -416,10 +420,16 @@ function wireReview() {
      get a looser import. applyImportedBlock is not reused on purpose: it
      reports into the import sheet's own note and closes that sheet,
      neither of which is up. */
-  $('reviewImport').onclick = () => {
+  /* Both ids are newer than this file, and wireReview runs from app.js's
+     tail ahead of load(), so an unguarded read here is the stuck loading
+     screen on a holed shell. Taken once, up here: the handler below only
+     runs when both were found, so nothing inside it needs a guard of its
+     own. */
+  const imp = $('reviewImport'), blob = $('reviewBlob');
+  if (imp && blob) imp.onclick = () => {
     setNote($('reviewStatus'), '', false);
     let raw;
-    try { raw = JSON.parse($('reviewBlob').value); } catch (e) { setNote($('reviewStatus'), 'Eso no es JSON válido.', true); return; }
+    try { raw = JSON.parse(blob.value); } catch (e) { setNote($('reviewStatus'), 'Eso no es JSON válido.', true); return; }
     /* The same ceiling as "Importar JSON", checked at the same point and
        said in the same words (blocksFullNote, js/block-editor.js). */
     const full = blocksFullNote(getProfile());
@@ -432,7 +442,7 @@ function wireReview() {
        or the user is asked to name a second, empty one on top of it. */
     reviewAfterClose = null;
     installImportedBlock(normalized);
-    $('reviewBlob').value = '';
+    blob.value = '';
     closeReview();
     flushSave();
     mark('Bloque "' + normalized.name + '" importado desde la revisión en ' + getProfile().label);

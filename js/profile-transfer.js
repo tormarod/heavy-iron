@@ -446,8 +446,12 @@ async function loadProfileFromText(text) {
    the default for every website — but it is the one thing here that a
    single tap can fix. */
 function renderStorageState() {
-  const line = $('storageState');
-  const acts = $('storageActs');
+  /* Both ids landed a day after this file, so a precache hole can serve
+     this copy against a sheet that has no storage line. Saying nothing is
+     the whole of what this function can do then (AGENTS.md's
+     precache-hole rule, which reads the same on ids as on symbols). */
+  const line = $('storageState'), acts = $('storageActs');
+  if (!line || !acts) return;
   const size = 'Tu registro ocupa ' + fmtBytes(logBytes()) + '.';
 
   if (!canPersist()) {
@@ -475,7 +479,11 @@ function wireProfileTransfer() {
     openSheet('sheet');
   };
 
-  $('storageProtect').onclick = () => {
+  /* wireProfileTransfer is one of the two unguarded calls in app.js's tail,
+     so a throw here takes load() with it and the app never draws — and
+     #storageProtect is newer than this file. */
+  const prot = $('storageProtect');
+  if (prot) prot.onclick = () => {
     askForPersistence().then(safe => {
       renderStorageState();
       mark(safe

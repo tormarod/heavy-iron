@@ -49,11 +49,21 @@ function renderBlockBar() {
      actually has selected rather than blockPickerLabel(activeBlock): a
      profile pointing at a block that is not in blockOrder selects the first
      option instead, and the chip has to say what the picker says. */
+  /* Guarded, and guarded around the chip alone rather than by returning
+     early: #blockBtn arrived with plans/037's bar, years after this file in
+     shell terms, so a precache hole can serve this copy against an
+     index.html that has no chip. Unguarded, the throw lands inside drawApp
+     on every draw, render catches it, and a user whose data is perfectly
+     intact gets the recovery screen — which js/boot-guard.js deliberately
+     does not rescue. The picker itself still renders (AGENTS.md's
+     precache-hole rule, which reads the same on ids as on symbols). */
   const chip = $('blockBtn');
-  const label = (select.selectedOptions && select.selectedOptions[0] && select.selectedOptions[0].textContent) || 'Bloque';
-  chip.innerHTML = '<span class="chip-lbl"></span><span class="chev" aria-hidden="true">▾</span>';
-  chip.querySelector('.chip-lbl').textContent = label;
-  chip.setAttribute('aria-label', 'Bloque: ' + label + '. Cambiar');
+  if (chip) {
+    const label = (select.selectedOptions && select.selectedOptions[0] && select.selectedOptions[0].textContent) || 'Bloque';
+    chip.innerHTML = '<span class="chip-lbl"></span><span class="chev" aria-hidden="true">▾</span>';
+    chip.querySelector('.chip-lbl').textContent = label;
+    chip.setAttribute('aria-label', 'Bloque: ' + label + '. Cambiar');
+  }
 }
 
 /* ---------- deleting blocks ----------
@@ -908,7 +918,12 @@ function moveLive(arr, item, dir) {
    A stored name whose exercises have since been retired still gets a chip,
    so it can be un-marked rather than being stuck in the block invisibly. */
 function renderPriorityChips() {
-  const host = $('pePriority');
+  /* Both ids reached index.html hours after this file did, so a precache
+     hole can pair this copy with a plan editor that has neither. Drawing
+     the chips is this function's whole errand, so it returns instead of
+     guarding each read. */
+  const host = $('pePriority'), hint = $('pePriorityHint');
+  if (!host || !hint) return;
   const block = peDraft.block;
   const tags = blockTagsFor('muscle', block).filter(t => t !== UNCLASSIFIED_LABEL);
   blockPriority(block).forEach(t => { if (tags.indexOf(t) < 0) tags.push(t); });
@@ -934,7 +949,7 @@ function renderPriorityChips() {
     host.appendChild(b);
   });
 
-  $('pePriorityHint').textContent = tags.length
+  hint.textContent = tags.length
     ? 'Los que marques se vigilan en "Volumen muscular → Todo el bloque": si un músculo prioritario se queda por debajo de la franja de 10–20 series por semana, lo avisa.'
     : 'Ningún ejercicio de este bloque tiene músculo asignado todavía. Ponles uno abajo y aparecerán aquí.';
 }
