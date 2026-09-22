@@ -900,11 +900,12 @@ week's RIR against the one you typed.
   come out low, which is the right direction to be wrong in — and both
   censor that set anyway, so neither can raise the estimate on its own.
 - **The week's RIR is read from its goal, the way people write it.**
-  `2 RIR`, `RIR 2`, `RIR: 1-2`, `RIR objetivo 2` and `2-3 reps en reserva`
-  all count, and a range reads its lower end (below). A decimal (`1,5 RIR`),
-  a number above 5 or the week's own number (`Semana 3`) is not a reserve,
-  and a week whose goal holds none keeps the one the last session was left
-  at.
+  `2 RIR`, `RIR 2`, `RIR: 1-2`, `RIR objetivo 2`, `2 a 3 RIR` and
+  `2-3 reps en reserva` all count, and a range reads its lower end (below).
+  A decimal (`1,5 RIR`), a number above 5, the week's own number
+  (`Semana 3`, `S3`) or the reps of a sets×reps scheme is not a reserve and
+  is passed over — `3×10 RIR 2` reads 2 — and a week whose goal holds none
+  keeps the one the last session was left at.
 - **A prescribed range reads as its hard end.** `"2–3 RIR"` is a week you
   are meant to be able to take to 2; reading it as 3 quietly under-loads
   everything built on it.
