@@ -5489,7 +5489,16 @@ ok('phaseRir: "series x 5 RIR 2" → 2 (plans/069)',
 ok('phaseRir: "sets x 5 RIR 2" → 2 (plans/069)',
    call('phaseRir({ phase: [{ r: "sets x 5 RIR 2" }] }, 0)') === 2,
    String(call('phaseRir({ phase: [{ r: "sets x 5 RIR 2" }] }, 0)')));
-ok('phaseRir: "Serie x 5 RIR 1" → 1 (plans/069, singular and capitalised)',
+ok('phaseRir: "Serie x 8 · 1 RIR" → 1 (plans/069, singular and capitalised)',
+   call('phaseRir({ phase: [{ r: "Serie x 8 · 1 RIR" }] }, 0)') === 1,
+   String(call('phaseRir({ phase: [{ r: "Serie x 8 · 1 RIR" }] }, 0)')));
+/* The case above is right either way — 8 is already excluded for being
+   above RIR_MAX (5), so it is not a mutation differentiator on its own.
+   This one keeps the same singular, capitalised "Serie" but with a reps
+   count inside RIR_MAX, so it actually exercises decision 4: read as 5
+   before this plan (the reps count, wrongly taken as RIR), 1 after (the
+   number that really follows "RIR"). */
+ok('phaseRir: "Serie x 5 RIR 1" → 1 (plans/069)',
    call('phaseRir({ phase: [{ r: "Serie x 5 RIR 1" }] }, 0)') === 1,
    String(call('phaseRir({ phase: [{ r: "Serie x 5 RIR 1" }] }, 0)')));
 
