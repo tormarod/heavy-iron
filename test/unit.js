@@ -10504,6 +10504,161 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
      strandedReviewProbe.energyAltaWithStranded.kg === strandedReviewProbe.energyAlta.kg,
      JSON.stringify(strandedReviewProbe));
 
+  /* load() and the two imports that replace data wholesale, "Cargar copia"
+     and loading a profile file, ran migrate() with nothing to catch a throw.
+     In load() the throw stopped the boot before anything drew, so the boot
+     guard's "La app no ha podido arrancar" came up on every open, and the
+     recovery screen, which hands the bytes over, never did. In the imports
+     it left `state` half migrated, with "Deshacer" offered for a change
+     that had not happened, for the next save() to write. adoptStored, the
+     other road in, was fixed the same way (plans/067 B, above). One such
+     throw was real, case 1: the legacy RIR fold reached units() before
+     migrate() had given `prefs` its defaults (plans/071 B). */
+  console.log('\n== no throw inside migrate() strands the app (plans/071 B) ==');
+  {
+    /* The plan 067 B section's stand-in, copied because it is local to that
+       section: throws once, on the next call, then puts the real migrate()
+       back so nothing later in the same boot is affected. */
+    const stubMigrateThrows = boot => boot.call(
+      "(function(){ const m = migrate; migrate = function(){ migrate = m; throw new Error('datos de una versión más nueva'); }; })()"
+    );
+    /* showRecovery replaces the whole body with its box, so the recovery
+       screen is up exactly when that box is the body's child. The fake
+       document parses no markup and makes an element for any id or
+       selector it is asked for, so whether the box would really hold a
+       button is read off its markup. */
+    const recoveryOf = boot => {
+      const box = boot.doc.body.children[0];
+      return box && box.className === 'recovery' ? box : null;
+    };
+
+    /* 1. The throw that was real: storage with no `prefs`, or a null one,
+       and a legacy RIR entry over a ticked row with no RIR of its own. That
+       is the one shape that takes the fold as far as units(). */
+    ['no prefs key', 'prefs: null'].forEach(how => {
+      let err = '', seen = null;
+      try {
+        const at = {};
+        const s = seeded({ week: 1, day: 0 }, (p, b) => {
+          at.b = b.id; at.k = 'w1-' + b.days[0].id; at.ex = b.days[0].ex[0].id;
+          p.log = { [at.b]: { [at.k]: { [at.ex]: [{ w: '50', r: '8', done: true }] } } };
+          p.rir = { [at.b]: { [at.k]: { [at.ex]: '1' } } };
+        });
+        if (how === 'no prefs key') delete s.prefs; else s.prefs = null;
+        const boot = bootApp({ state: s });
+        boot.ctx.__at = at;
+        const box = recoveryOf(boot);
+        seen = {
+          drew: boot.call('ready && !frozen'),
+          rir: boot.call('((((getProfile().log[__at.b] || {})[__at.k] || {})[__at.ex] || [])[0] || {}).rir'),
+          units: boot.call('state.prefs && state.prefs.units'),
+          recovery: box ? box.querySelector('pre').textContent : null,
+        };
+      } catch (e) { err = e.message; }
+      ok('storage with ' + how + ' and a legacy RIR entry to fold boots and draws: the fold used to throw, and the app never drew',
+         !err && seen.drew === true, err || JSON.stringify(seen));
+      ok('...the fold ran, putting the entry on the ticked row, and prefs got their defaults (' + how + ')',
+         !err && seen.rir === '1' && seen.units === 'kg', err || JSON.stringify(seen));
+    });
+
+    /* 2. load() over a migrate() that throws: a good boot's bytes put back
+       in storage, indented the way save() never writes them, so that any
+       write after the throw shows as changed bytes. The download is caught
+       at downloadFile, which is where it would leave the page. */
+    {
+      let err = '', seen = null;
+      try {
+        const boot = settled(seeded({ week: 1, day: 0 }));
+        const key = boot.call('STORAGE_KEY');
+        const raw = JSON.stringify(boot.saved(), null, 1);
+        boot.store[key] = raw;
+        boot.ctx.__handed = null;
+        boot.call('downloadFile = function (name, text) { __handed = text; }');
+        stubMigrateThrows(boot);
+        boot.call('load()');
+        const box = recoveryOf(boot);
+        if (box) box.querySelector('#recDownload').onclick();
+        seen = {
+          ready: boot.call('ready'), frozen: boot.call('frozen'),
+          opened: !!box && box.innerHTML.indexOf('No se ha podido abrir tu registro') >= 0,
+          said: box ? box.querySelector('pre').textContent : null,
+          button: !!box && box.innerHTML.indexOf('id="recDownload"') >= 0,
+          handed: boot.ctx.__handed === raw,
+        };
+        boot.clock.advance(1000);
+        seen.kept = boot.store[key] === raw;
+      } catch (e) { err = e.message; }
+      ok('load() over a migrate() that throws opens the recovery screen, frozen and not ready, saying what threw: the throw used to leave load() and strand the app',
+         !err && seen.frozen === true && seen.ready === false && seen.opened && seen.said === 'datos de una versión más nueva',
+         err || JSON.stringify(seen));
+      ok('...with its download button, which hands over exactly the bytes in storage',
+         !err && seen.button && seen.handed, err || JSON.stringify(seen));
+      ok('...and nothing is written over those bytes', !err && seen.kept, err || JSON.stringify(seen));
+    }
+
+    /* 3. "Cargar copia" whose migrate() throws, pressed on the real button
+       with its dialog answered yes. The copy is this tab's own backup with
+       one preference changed, so a tab left holding the copy shows. */
+    {
+      let err = '', seen = null;
+      try {
+        const boot = settled(seeded({ week: 1, day: 0 }));
+        const key = boot.call('STORAGE_KEY');
+        const copy = JSON.parse(boot.call('JSON.stringify({ app: STORAGE_KEY, v: 1, saved: new Date().toISOString(), data: state })'));
+        copy.data.prefs.barWeight = 22;
+        boot.$('blob').value = JSON.stringify(copy, null, 2);
+        const before = boot.call('state'), data = boot.call('JSON.stringify(state)'), bytes = boot.store[key];
+        stubMigrateThrows(boot);
+        const asked = await pressAnswering(boot, () => boot.$('bRestore').onclick(), 'askOk');
+        seen = {
+          asked: !!asked, same: boot.call('state') === before, unchanged: boot.call('JSON.stringify(state)') === data,
+          noUndo: boot.call('undoSnapshot') === null && boot.call('toastKind') !== 'undo',
+          status: boot.$('status').textContent,
+        };
+        boot.clock.advance(1000);
+        seen.kept = boot.store[key] === bytes;
+      } catch (e) { err = e.message; }
+      ok('"Cargar copia" whose migrate() throws keeps this tab\'s data: state is the same object, unchanged, where it used to be the copy, half migrated',
+         !err && seen.asked && seen.same && seen.unchanged, err || JSON.stringify(seen));
+      ok('...takes back the "Deshacer" it offered, since nothing happened to undo', !err && seen.noUndo, err || JSON.stringify(seen));
+      ok('...says the copy cannot be used, and why',
+         !err && seen.status === 'Esa copia no se puede usar: datos de una versión más nueva', err || JSON.stringify(seen));
+      ok('...and storage holds what it held before the press', !err && seen.kept, err || JSON.stringify(seen));
+    }
+
+    /* 4. The same for a profile file, handed to loadProfileFromText as the
+       file picker hands it over, its dialog answered yes. The file is the
+       app's own export of the profile on screen, renamed so that it is not
+       this tab's data over again. */
+    {
+      let err = '', seen = null;
+      try {
+        const boot = settled(seeded({ week: 1, day: 0 }));
+        const key = boot.call('STORAGE_KEY');
+        const file = JSON.parse(boot.call('profileExportPayload(state.activeProfile)'));
+        file.profile.label = 'Copia';
+        boot.ctx.__file = JSON.stringify(file);
+        const target = file.key;
+        const before = boot.call('state.profiles')[target], data = boot.call('JSON.stringify(state)'), bytes = boot.store[key];
+        stubMigrateThrows(boot);
+        const asked = await pressAnswering(boot, () => boot.call('loadProfileFromText(__file)'), 'askOk');
+        seen = {
+          asked: !!asked, same: boot.call('state.profiles')[target] === before, unchanged: boot.call('JSON.stringify(state)') === data,
+          noUndo: boot.call('undoSnapshot') === null && boot.call('toastKind') !== 'undo',
+          status: boot.$('status').textContent,
+        };
+        boot.clock.advance(1000);
+        seen.kept = boot.store[key] === bytes;
+      } catch (e) { err = e.message; }
+      ok('a profile file whose migrate() throws keeps this tab\'s profile: the same object in its slot, and nothing else changed',
+         !err && seen.asked && seen.same && seen.unchanged, err || JSON.stringify(seen));
+      ok('...takes back the "Deshacer" it offered', !err && seen.noUndo, err || JSON.stringify(seen));
+      ok('...says the profile cannot be used, and why',
+         !err && seen.status === 'Ese perfil no se puede usar: datos de una versión más nueva', err || JSON.stringify(seen));
+      ok('...and storage holds what it held before', !err && seen.kept, err || JSON.stringify(seen));
+    }
+  }
+
   /* The real sw.js, run (loadWorker, plans/066). Everything above only read
      it as text, and the incidents in its upgrade path — a page and scripts
      from two releases, an old worker reading a newer release's cache — were

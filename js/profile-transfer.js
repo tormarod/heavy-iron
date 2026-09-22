@@ -351,13 +351,28 @@ async function restoreFromText(text) {
      the window this covers: realising within seconds that it was the wrong
      file. */
   snapshotForUndo('Registro restaurado desde una copia.');
+  const prev = state;
   state = data;
   /* No default for activeProfile here: migrate() hands a missing or
      foreign one the file's first profile, which is the answer a load from
      storage gets for the same data. A 'hombre' default here was redundant
      with that, and where the file did not list 'hombre' first it picked a
      different profile than a reload of the same data would. */
-  migrate();
+  try {
+    migrate();
+  } catch (err) {
+    /* migrate() throwing partway used to leave `state` pointed at the
+       copy, half migrated and never drawn, with "Deshacer" offered for a
+       restore that had not happened, and the next save() wrote that copy
+       over this tab's data. Put this tab's own back, the way adoptStored
+       (js/app.js) turns away bytes migrate() cannot take in, drop the
+       undo with the toast that offered it, and refuse the copy like the
+       checks above do (plans/071). */
+    state = prev;
+    dropUndo();
+    mark('Esa copia no se puede usar: ' + err.message, true);
+    return;
+  }
   applyTheme();
   commit();
   closeSheet('sheet');
@@ -431,7 +446,20 @@ async function loadProfileFromText(text) {
 
   snapshotForUndo('Perfil de ' + local.label + ' sustituido.');
   state.profiles[target] = incoming;
-  migrate();
+  try {
+    migrate();
+  } catch (err) {
+    /* restoreFromText's catch, above, for one profile: the one this file
+       was replacing goes back in its slot, and the undo offered for a
+       change that did not happen is dropped. The other profiles went
+       through the same migrate(), but they are this app's own data,
+       already migrated, and its repairs change nothing on them
+       (plans/071). */
+    state.profiles[target] = local;
+    dropUndo();
+    mark('Ese perfil no se puede usar: ' + err.message, true);
+    return;
+  }
   applyTheme();
   commit();
   closeSheet('sheet');

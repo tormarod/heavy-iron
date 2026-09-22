@@ -743,7 +743,18 @@ function load() {
     }
     state = parsed;
   }
-  migrate();
+  try {
+    migrate();
+  } catch (err) {
+    /* Data migrate() cannot repair used to stop load() right here, before
+       anything drew, and js/boot-guard.js then said "La app no ha podido
+       arrancar" for good: reopening reads the same bytes and throws again.
+       The recovery screen is what docs/guide.md promises for data broken
+       past repairing: it stops writing and hands the bytes over as a file
+       (plans/071). */
+    showRecovery(err, raw);
+    return;
+  }
   ready = true;
   applyTheme();
   render();
@@ -825,6 +836,47 @@ function migrate() {
   if (!state.profiles || typeof state.profiles !== 'object' || !Object.keys(state.profiles).length) {
     state.profiles = fallback.profiles;
   }
+
+  /* The preferences first, before any profile is repaired, because a repair
+     below may read a preference: the legacy RIR fold reaches units(), and a
+     state with no `prefs` threw there. load() stopped before anything drew,
+     and every open read the same bytes and stopped again (plans/071).
+     Nothing in this block reads a profile, and nothing in the loop writes
+     a preference, so it gives the same answer here as it did after it. */
+  if (!state.prefs || typeof state.prefs !== 'object') state.prefs = {};
+  if (['auto', 'light', 'dark'].indexOf(state.prefs.theme) < 0) state.prefs.theme = 'auto';
+  /* The interface speaks only Spanish today — nothing on screen sets this —
+     but the maintainer decided (2026-09-22) to wire the preference in now
+     rather than when the English version actually lands, so the CSV export
+     already has a value to read instead of a hard-coded language. */
+  if (['es', 'en'].indexOf(state.prefs.lang) < 0) state.prefs.lang = 'es';
+  state.prefs.sound = !!state.prefs.sound;
+  /* Whether the rest alarm keeps working with the phone in a pocket, and
+     whether the browser has already been asked to protect the log — see
+     keepAliveStart() and askForPersistenceOnce(). */
+  state.prefs.bgAlarm = !!state.prefs.bgAlarm;
+  state.prefs.persistAsked = !!state.prefs.persistAsked;
+  /* A label, never a conversion: you write down the number on the machine,
+     and this is what the app calls it. */
+  if (['kg', 'lb'].indexOf(state.prefs.units) < 0) state.prefs.units = 'kg';
+  /* Calculator defaults, seeded once from whatever unit is active at the
+     time — like everything else under units(), never rescaled later, so
+     switching kg/lb afterwards does not silently reinterpret a saved bar
+     or plate set. */
+  if (!(num(state.prefs.barWeight) > 0)) state.prefs.barWeight = DEFAULT_BAR_WEIGHT[state.prefs.units];
+  else state.prefs.barWeight = num(state.prefs.barWeight);
+  /* Your default weight step, for every exercise that doesn't declare its
+     own `inc`. Seeded from the active unit exactly like the bar weight, and
+     never rescaled afterwards for the same reason. */
+  state.prefs.inc = clampNum(state.prefs.inc, INC_MIN, INC_MAX, 0, INC_STEP) || DEFAULT_INC[state.prefs.units];
+  const plates = Array.isArray(state.prefs.plates) ? cleanPlates(state.prefs.plates, state.prefs.units) : [];
+  state.prefs.plates = plates.length ? plates : DEFAULT_PLATES[state.prefs.units].slice();
+  if (['pair', 'solo'].indexOf(state.mode) < 0) state.mode = 'pair';
+  if (typeof state.setupDone !== 'boolean') state.setupDone = true;
+  /* How many sessions have been completed since the last time data actually
+     left the device (a backup download/copy, a profile export, a QR profile
+     share) — see maybeNagBackup(). Reset to 0 by any of those. */
+  state.prefs.sessionsSinceBackup = clampInt(state.prefs.sessionsSinceBackup, 0, 100000, 0);
 
   /* Repair the profiles that are here, rather than the two the seed happens
      to define. Iterating the seed used to resurrect a deleted profile —
@@ -1043,40 +1095,6 @@ function migrate() {
      threw on the way to the first draw, and the recovery screen's buttons
      wrote that state back to disk (plans/040). */
   if (!Object.prototype.hasOwnProperty.call(state.profiles, state.activeProfile)) state.activeProfile = profileKeys()[0];
-  if (!state.prefs || typeof state.prefs !== 'object') state.prefs = {};
-  if (['auto', 'light', 'dark'].indexOf(state.prefs.theme) < 0) state.prefs.theme = 'auto';
-  /* The interface speaks only Spanish today — nothing on screen sets this —
-     but the maintainer decided (2026-09-22) to wire the preference in now
-     rather than when the English version actually lands, so the CSV export
-     already has a value to read instead of a hard-coded language. */
-  if (['es', 'en'].indexOf(state.prefs.lang) < 0) state.prefs.lang = 'es';
-  state.prefs.sound = !!state.prefs.sound;
-  /* Whether the rest alarm keeps working with the phone in a pocket, and
-     whether the browser has already been asked to protect the log — see
-     keepAliveStart() and askForPersistenceOnce(). */
-  state.prefs.bgAlarm = !!state.prefs.bgAlarm;
-  state.prefs.persistAsked = !!state.prefs.persistAsked;
-  /* A label, never a conversion: you write down the number on the machine,
-     and this is what the app calls it. */
-  if (['kg', 'lb'].indexOf(state.prefs.units) < 0) state.prefs.units = 'kg';
-  /* Calculator defaults, seeded once from whatever unit is active at the
-     time — like everything else under units(), never rescaled later, so
-     switching kg/lb afterwards does not silently reinterpret a saved bar
-     or plate set. */
-  if (!(num(state.prefs.barWeight) > 0)) state.prefs.barWeight = DEFAULT_BAR_WEIGHT[state.prefs.units];
-  else state.prefs.barWeight = num(state.prefs.barWeight);
-  /* Your default weight step, for every exercise that doesn't declare its
-     own `inc`. Seeded from the active unit exactly like the bar weight, and
-     never rescaled afterwards for the same reason. */
-  state.prefs.inc = clampNum(state.prefs.inc, INC_MIN, INC_MAX, 0, INC_STEP) || DEFAULT_INC[state.prefs.units];
-  const plates = Array.isArray(state.prefs.plates) ? cleanPlates(state.prefs.plates, state.prefs.units) : [];
-  state.prefs.plates = plates.length ? plates : DEFAULT_PLATES[state.prefs.units].slice();
-  if (['pair', 'solo'].indexOf(state.mode) < 0) state.mode = 'pair';
-  if (typeof state.setupDone !== 'boolean') state.setupDone = true;
-  /* How many sessions have been completed since the last time data actually
-     left the device (a backup download/copy, a profile export, a QR profile
-     share) — see maybeNagBackup(). Reset to 0 by any of those. */
-  state.prefs.sessionsSinceBackup = clampInt(state.prefs.sessionsSinceBackup, 0, 100000, 0);
 }
 
 const profileKeys = () => Object.keys(state.profiles);
