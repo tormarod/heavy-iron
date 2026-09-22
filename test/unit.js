@@ -109,13 +109,16 @@ function readIsGuarded(lines, i, at, id) {
   /* `if ($('id')) $('id').onclick = …` — the read is its own truth test,
      and it guards the body bound on the same line. */
   if (new RegExp("\\bif\\s*\\(\\s*!?\\s*\\$\\('" + id + "'\\)\\s*(?:\\)|&&|\\|\\|)").test(line)) return true;
-  /* `x && $('id').y` and `$('id')?.y`. */
-  if (/(?:&&|\|\|)\s*$/.test(before)) return true;
+  const rest = after.slice(id.length + 5);
+  /* `x && $('id').y` and `$('id')?.y`. Standing to the right of && or ||
+     is not itself a guard — `cached || $('newId').value` still throws — so
+     the read has to BE the truth value: nothing dereferencing it after the
+     call. No instance either way today; fail closed. */
+  if (/(?:&&|\|\|)\s*$/.test(before) && !/^\s*[.[]/.test(rest)) return true;
   if (/^\$\('[^']*'\)\s*\?\./.test(after)) return true;
   /* `const x = $('id');` — one of several declarators is fine — with x
      tested before it is used. */
   const decl = /(?:^|[(,;]|\b(?:const|let|var)\s)\s*([A-Za-z_$][\w$]*)\s*=\s*$/.exec(before);
-  const rest = after.slice(id.length + 5);
   /* Only when the read is the whole initializer. `const box =
      $('blocksSheet').querySelector('.sheet-box'); if (box) …` tests the
      .sheet-box, not #blocksSheet, and the sheet is read unguarded. */
@@ -159,17 +162,28 @@ if (noGit) {
      same answers for a hundred child processes fewer, which is the
      difference between 70 ms and three seconds on Windows. The first
      appearance of `id="…"` among index.html's added lines is what -S finds
-     for that id; -U0 keeps the diff to the lines that changed. */
+     for that id; -U0 keeps the diff to the lines that changed.
+
+     Committer date, not author date: the question is which shell already
+     has the thing, and in a repo that rebases this much that is the order
+     the commits landed in, not the order they were written. No commit is
+     out of order today, so nothing moves — it is the definition that is
+     right, not the numbers that were wrong. */
   const idBorn = {};
   let at = null;
-  for (const ln of git(['log', '--reverse', '--format=@@@%at', '-p', '-U0', '--', 'index.html']).split('\n')) {
+  for (const ln of git(['log', '--reverse', '--format=@@@%ct', '-p', '-U0', '--', 'index.html']).split('\n')) {
     if (ln.startsWith('@@@')) { at = Number(ln.slice(3)); continue; }
     if (ln[0] !== '+') continue;
     for (const m of ln.matchAll(/id="([A-Za-z0-9_-]+)"/g)) if (!(m[1] in idBorn)) idBorn[m[1]] = at;
   }
+  /* --no-renames because a rename is reported as R, not A, and a renamed
+     file would then have no birthday at all — every read in it younger
+     than nothing, and the whole file reported. Split into A+D, the new
+     path is dated by the commit that renamed it, which is the first shell
+     that has it under that name: the right answer either way. */
   const fileBorn = {};
   at = null;
-  for (const ln of git(['log', '--reverse', '--diff-filter=A', '--format=@@@%at', '--name-only', '--', 'js/']).split('\n')) {
+  for (const ln of git(['log', '--reverse', '--diff-filter=A', '--no-renames', '--format=@@@%ct', '--name-only', '--', 'js/']).split('\n')) {
     const t = ln.trim();
     if (t.startsWith('@@@')) { at = Number(t.slice(3)); continue; }
     if (t && !(t in fileBorn)) fileBorn[t] = at;

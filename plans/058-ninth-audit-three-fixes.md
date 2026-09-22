@@ -351,9 +351,10 @@ stayed green with the two assertions simply absent. Nothing outside
 - **A.2 dates in two whole-history passes, not one `git log -S` per id.**
   The plan prescribes `git log --reverse --format=%at -S'id="<id>"' --
   index.html` per id and `git log --diff-filter=A` per file, cached. One
-  pass of `git log --reverse --format=@@@%at -p -U0 -- index.html`
+  pass of `git log --reverse --format=@@@%ct -p -U0 -- index.html`
   (46 commits, 66 KB) and one of `git log --reverse --diff-filter=A
-  --format=@@@%at --name-only -- js/` give **identical answers on all 96
+  --no-renames --format=@@@%ct --name-only -- js/` give **identical
+  answers on all 96
   ids and all 12 files** — checked against the per-id form before the
   swap — in 70 ms rather than ~3 s of child processes on Windows. The
   plan's own requirement is "well under a second", and caching alone does
@@ -370,6 +371,22 @@ stayed green with the two assertions simply absent. Nothing outside
   for — what the parser cannot classify counts as unguarded.
 - **`js/rest-timer.js` is a fifth file the check covers** that A.1 does
   not list; it needed no edit (see above).
+
+**Three hardenings from the review of PR #166**, none of which moves a
+number — 169 reads, 148 unguarded, green before and after:
+
+- The `&&`/`||` rule now also requires that nothing dereferences the read
+  (`.` or `[`) after the call, because standing to the right of `||` is
+  not a guard: `cached || $('newId').value` still throws. No instance
+  either way today; fail closed.
+- The file-birthday log takes `--no-renames`, since a rename reports as R
+  rather than A and a renamed file would otherwise have no birthday at
+  all — every read in it reported as younger than nothing. Split into
+  A+D, the new path is dated by its rename commit, the first shell that
+  has it under that name.
+- Both logs read the committer date (`%ct`) rather than the author date:
+  "which shell has it" is landing order, and this repo rebases enough for
+  the two to diverge. Nothing is out of order today, so no date moves.
 
 **Verification.** `node --check` on the four edited `js/` files and on
 `test/unit.js`; `node test/unit.js` green at 1196. A.4's negative run —
