@@ -1373,6 +1373,37 @@ ok("...day A's sets land on day A's exercise", strictDayAwareLog.dayARow, strict
 ok("...and day B's on the renamed one, not day A's id",
    strictDayAwareLog.dayBRow, strictDayAwareLog.ids + ' - slot B has ' + strictDayAwareLog.sbKeys);
 
+/* plans/063. The block-wide de-duplication can hand an earlier exercise
+   the literal id a later one carries: day 2's `press` becomes `press-2`
+   (day 1 has `press`), so the real `press-2` becomes `press-2-2`. With
+   raw and self-mappings interleaved, `press-2 -> press-2` got in before
+   the sender's own `press-2 -> press-2-2`, and the incline press's rows
+   landed on the flat press while the flat press's were dropped. */
+const rawFirstReKey = call(`
+  (function() {
+    const raw = { name: 'B', weeks: 4, deload: 0, days: [
+      { id: 'd0', name: 'Lunes', ex: [{ id: 'press', n: 'Press banca', reps: '8-10' }] },
+      { id: 'd1', name: 'Jueves', ex: [{ id: 'press', n: 'Press banca', reps: '8-10' },
+                                       { id: 'press-2', n: 'Press inclinado', reps: '10-12' }] },
+    ] };
+    const rawLog = { 'w1-d1': { 'press': [{ w: '60', r: '10', done: true }], 'press-2': [{ w: '40', r: '12', done: true }] } };
+    const normalized = normalizeImportedBlock(JSON.parse(JSON.stringify(raw)));
+    const ids = normalized.days.map(d => d.ex.map(e => e.id));
+    const s = normalizeImportedLog(rawLog, raw, normalized)[slot(1, normalized.days[1].id)] || {};
+    const flat = ids[1][0], incline = ids[1][1];
+    return {
+      ids: JSON.stringify(ids),
+      flat: !!(s[flat] && s[flat].length === 1 && s[flat][0].w === '60' && s[flat][0].r === '10'),
+      incline: !!(s[incline] && s[incline].length === 1 && s[incline][0].w === '40' && s[incline][0].r === '12'),
+      slot: JSON.stringify(s),
+    };
+  })()
+`);
+ok("an import names a day's duplicate press-2 and the real press-2 press-2-2 (plans/063)",
+   rawFirstReKey.ids === JSON.stringify([['press'], ['press-2', 'press-2-2']]), rawFirstReKey.ids);
+ok("...and each lift's rows are filed under the id its own exercise landed with (plans/063)",
+   rawFirstReKey.flat && rawFirstReKey.incline, rawFirstReKey.ids + ' — ' + rawFirstReKey.slot);
+
 /* 7. Every other field a block carries. The probes above each name the
       field the bug was about, which is the problem: `off` was found because
       plans/010 named it, and a field added to the editor next year would be
