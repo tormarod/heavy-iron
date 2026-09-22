@@ -304,7 +304,50 @@ does not end in `__create_pull_request`). Leave the `Bash` entry alone.
   the next push compares with the failed tip — still correct, since that
   tip's shell was never served.
 - The smoke helper in `test/smoke.js` that waits out the first-visit
-  reload (its comment names `registerServiceWorker`) becomes unnecessary
-  after B; leave it — it is harmless — and update its comment if you touch
-  the file anyway.
-- *(Executor: record deviations here.)*
+  reload (its comment names `registerServiceWorker`) does **not** merely
+  become unnecessary after B — it hangs. `openApp()`'s wait for
+  `performance.getEntriesByType('navigation')[0].workerStart > 0` was only
+  ever satisfied by the reload itself: a first-ever navigation is never one
+  a worker answers (no worker exists yet when it is dispatched), so without
+  a second navigation `workerStart` stays 0 forever and the `waitForFunction`
+  times out at 30 s. Confirmed directly (see the deviation note below) on
+  both `main session` and `aviso de versión nueva` before the fix that
+  replaced the wait with `navigator.serviceWorker.controller` — the thing
+  `workerStart` was only ever a proxy for, and which needs no reload.
+- `renderVersion()` (`js/app.js`) is called exactly once, synchronously,
+  right after `register()` resolves — always before a first-time page's
+  worker has had a chance to claim it, so `navigator.serviceWorker.controller`
+  is still null and the footer (`#version`) stays blank. Its own comment
+  already promised "it appears by itself once a worker that does answer
+  takes over"; that was only ever true because the old unconditional reload
+  gave `registerServiceWorker()` a second, by-then-controlled run to render
+  into. B's `controllerchange` listener now calls `renderVersion()` from its
+  first-claim branch (the `if (!controlled) { … }` arm) so the comment's
+  promise still holds once the reload it silently depended on is gone.
+- **Executor (Step B) deviation, recorded in full because it widens the
+  files touched past the Scope section's literal wording**: enabling just
+  the `controlled` guard (the plan's exact diff, verified correct on its
+  own) left `openApp()` hanging on every section that opens a fresh
+  `browser.newContext()` — `main session` included, not only the two
+  sections this step's task named — and left `#version` permanently blank
+  on a first visit. Both were judged fixable in place rather than
+  STOP-worthy: the `openApp()` fix is inside `test/smoke.js`, the file B
+  was already touching for its new section, and the `renderVersion()` call
+  is inside the `controllerchange` listener itself, the one thing Scope
+  names in `js/app.js`. The alternative was shipping B's listener change
+  with the shared smoke helper broken for the whole suite and a real footer
+  regression, which seemed worse than a documented, verified widening.
+  Verified with targeted `--only` runs on port 8794, not the full suite
+  (rung 3 policy — `tools/smoke-gate.sh` still runs the whole thing once,
+  on `gh pr create`): `main session` (236 assertions, incl. service worker
+  sub-section), `aviso de versión nueva`, `primera visita: el trabajador
+  toma el control sin recargar la página`, `arranque roto: el guardián
+  cambia al worker en espera`, `versión en el pie`, `profile import
+  hardening`, `offline`, `published blocks stay importable offline`, `dos
+  pestañas: el guardado pendiente no se adelanta al aviso`, `descanso con
+  la pantalla apagada`, `arranque sin la tipografía`, `installable` — all
+  pass (12 of 32 sections, chosen for being the ones that open a fresh
+  context, share multiple pages/tabs, or exercise the first-run sheet).
+  Mutation (plan's own, on the `controlled` guard): forcing
+  `controlled = true` initially failed the new `primera visita` section as
+  expected; reverted, `node test/unit.js` still `0 failed`.
