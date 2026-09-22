@@ -267,8 +267,10 @@ const RECORD_PARTS = Object.freeze([
      be sitting there when the day came back. Whatever clears a session's
      sets clears these too; clearing one lift does not.
 
-     They do not travel with a block: no share has ever carried them, and
-     no caller of installBlockData passes them. */
+     They do not travel with a block: the block share builds a log, the
+     legacy chips and an order (blockShareLog, blockShareRir,
+     blockShareOrder) and nothing for these, so no caller of
+     installBlockData has them to pass. */
   { name: 'notes', keyedBy: 'slot' },
   { name: 'energy', keyedBy: 'slot' },
 
@@ -280,8 +282,8 @@ const RECORD_PARTS = Object.freeze([
     /* Clearing one lift's sets leaves its id in the order, on purpose: the
        order describes the session, not the sets, and "borrar registro" on
        one lift does not un-reorder the day. The stored ids are resolved
-       against the plan when read (orderedEx), so an id
-       whose lift has left the day simply drops out. */
+       against the plan when read (orderedEx), so an id whose lift has left
+       the day simply drops out. */
     purgeExercise() {},
     /* An order is a permutation of a day's exercises, not a map keyed by
        exercise id, so it needs its own move: drop the id from the source
@@ -373,7 +375,7 @@ const RECORD_PARTS = Object.freeze([
 /* Clear part of the profile's record, the one way every "borrar" does it:
 
      purgeRecord(profile)                              whole profile (wipe)
-     purgeRecord(profile, blockId)                     one block's (deleteBlocks)
+     purgeRecord(profile, blockId)                     one block (deleteBlocks)
      purgeRecord(profile, blockId, { day })            one day, every week
      purgeRecord(profile, blockId, { day, week })      one week of one day (clearDay)
      purgeRecord(profile, blockId, { day, exercise })  one lift on one day, every week
@@ -417,9 +419,13 @@ function purgeRecord(profile, blockId, scope) {
    overwriting it: a block can carry the same exercise id on two days by
    design (see migrate()'s day/exercise-id repair), so the destination can
    already have its own entry, and blindly assigning would erase it. How
-   is each part's `merge`. Either way nothing is ever destroyed by calling
-   this, including calling it twice, which peSave cannot do today but a
-   future bug easily could. */
+   is each part's `merge`: 'concat' puts the moved rows after the
+   destination's own, and 'keep-destination' leaves a single value the
+   destination already has, since two cannot be merged without picking a
+   side (a 'concat' value that is not a list of rows is treated the same
+   way). Either way nothing is ever destroyed by calling this, including
+   calling it twice, which peSave cannot do today but a future bug easily
+   could. */
 function moveExerciseRecord(profile, blockId, fromDayId, toDayId, exId) {
   RECORD_PARTS.forEach(part => {
     const map = profile[part.name];
