@@ -127,4 +127,77 @@ block's start or end (no check).
 
 ## Maintenance notes
 
-(Filled in when the PR lands.)
+**Drift.** Clean at the start: `git diff --stat 8142e33..HEAD` over the
+plan's file list was empty, so every line/function this plan names was
+exactly where it says. Plan 052 (PR 1 only — `test/harness.js`,
+`bootApp()`, no PR 2) landed on `origin/main` as #152 while this was in
+progress, and the branch was rebased over it. It touched only `test/` and
+`AGENTS.md`; `sessionFixture` and the comment-stripped scanner
+(`codeOnly`/`shellSrc`) it moved nothing of, so both were still there,
+unchanged, for the new tests to build on. The rebase's only conflict was
+the row both branches had appended to `plans/README.md`'s table (052 on
+one side, 054 on the other); resolved by keeping both, in plan-number
+order. Plan 053 had not landed.
+
+**Equivalence (Step E).** Run against `origin/main` at `74a657c` (the
+rebased tip), in two vm contexts built the way `loadApp()` builds one (a
+throwaway script, not committed). 37 field-only block fixtures — every
+combination of `weeks` in {1,2,4,5,6,8,10,16} × `deload` in {0, 1, the
+last week, a mid-block week, one past the block's own length}, phase text
+present on every other week but never containing "descarga" in any form —
+**484 comparisons, 0 differences**: the DL chip/banner boolean for every
+week, `volumeWeeksInPlay` on both scopes, `buildTrendSVG`'s output,
+`deloadCheck` (old's `null`/object normalised against new's `[]`/one-entry
+array — every span this scanner ever produced was one week wide, as
+expected when phase text contributes nothing), `reviewText`, and the AI
+prompt's deload clause, all byte-identical.
+
+**Deviations.** None from the decisions or Steps A–E. Judgment calls the
+plan left open:
+- `deloadSpans(block)` is a new helper (not named in the plan) shared by
+  `deloadCheck` and `drawDeloadCheck`, so the "group consecutive weeks"
+  logic exists in one place. `deloadCheck` now returns an array (`[]`
+  where it returned `null`) — nothing outside `js/app.js`, `js/review.js`
+  and `drawDeloadCheck` itself called it, so this was a free rename in
+  place (`test/unit.js`'s one caller of the old `!!deloadCheck(...)` check
+  was updated to `.length > 0`, keeping its outcome, not its literal
+  code — an empty array is truthy and would have made that assertion
+  vacuous otherwise).
+- The negation rule is a lookbehind regex, `/(?<!\b(?:sin|no)\s+)descarga/i`
+  — matches per occurrence, so "sin descarga, pero hay descarga activa"
+  (untested, unrealistic) would still count. Not used elsewhere in shipped
+  `js/`, but `test/unit.js` already had one precedent.
+- `buildBlockReview`'s `deload` field is renamed `deloads` (array) since
+  its shape changed; `review.js`'s per-span line gained a shared
+  `deloadSpanLabel` helper ("la semana N" / "las semanas N–M") reused by
+  both `reviewText` and `drawReview`. Multiple spans read as one bullet
+  line each, in week order — the plan asked only that this be decided and
+  tested, not for a specific rendering.
+- The AI prompt's list join for 3+ deload weeks ("las semanas 4, 6 y 8")
+  was not in the plan's two given examples (0 and 2 weeks); chosen for
+  natural Spanish and tested directly.
+- `docs/guide.md`'s "What a deload does to these numbers" section
+  (~1382, `grep Descarga`) was read and left alone: it describes
+  `strengthByExercise`/the Diagnóstico trend, which already read
+  `deloadAt` before this plan (plans/038) and makes no claim about
+  negation either way, so nothing there became false.
+
+**Tests.** 28 unit assertions added (plus one existing one — the precache
+walk's `!!deloadCheck(...)` truthiness check — rewritten to `.length > 0`
+so an empty array could not make it vacuous; same outcome, same name):
+`deloadWeeks` (field alone, phase alone, both
+on one week, consecutive weeks, negation both directions including mixed
+case/spacing, a week past the block's length, the shipped default phase
+texts); `deloadSpans` (grouping, empty); `deloadCheck` (a single span
+matches today's arithmetic, two separate spans, a two-week span, a span at
+the block's start or its last week); the decision 1 guard (a self-test
+that it is not vacuous, then the real scan — `deloadWeek(` reads exactly
+once in `js/app.js` and twice in `js/block-editor.js`, nowhere else in
+`js/`); the three decision 5 changes each by name (phase-text deload via
+`deloadAt`/`setsFor`/`volumeWeeksInPlay`; "sin descarga" via `setsFor` and
+`volumeWeeksInPlay`; the prompt's 0/1/2-week phrasing); and the review's
+multi-span text and object shape. `node test/smoke.js --only` for
+"volumen del bloque y músculos prioritarios", "nota, energía y control de
+descarga" and "revisión del bloque" (67 passed) plus "main session" for
+the DL-chip assertions it alone carries (234 passed) — 301 total, 0
+failed, no smoke.js edits.
