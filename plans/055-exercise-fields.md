@@ -164,4 +164,164 @@ round-trips exactly.
 
 ## Maintenance notes
 
-(Filled in when the PR lands.)
+**Drift.** Clean at the start: nothing in the drift check's files had
+changed since `8142e33`. main then moved while this was in progress, and
+the branch was rebased over each: #152 and #155 (plan 052, test-only),
+#153 (the Diagnóstico's rows into `app.js`), #154 (plan 053, one
+`peDraft`), #156 ("Enviar a…" refused onto a day that already holds the
+lift), #157 (plan 054) and #158 (plan 056). The conflicts were the
+`plans/README.md` rows (all kept) and the plan editor's save gate, where
+053's `peDraft.block` and this plan's rename to `ex` both stand. Step C's
+unit test reads the draft through `peDraft.block`. 054 changed the
+prompt's sentence about the deload, not its field list.
+
+**The table.** `EX_FIELDS` in `js/app.js`, after `safeKey`, beside
+`IMPORT_LIMITS` and `OWN_TEXT_LIMIT` (2000). "cut" is `txt()` at that
+length on the import and a plain slice in `migrate()`.
+
+| Field | Default | `repair` (migrate) | `accept`: paste / restore | Editor | Prompt |
+|---|---|---|---|---|---|
+| `id` | — | identity code in `migrate()` | identity code in the importer | — | yes |
+| `n` | `''` | always a string: cut at 2000; not text → what `txt()` reads | cut at 120 / 2000; a blank one refused / named (identity) | 120 | yes |
+| `sets` | 3 | clamp 1–12 | clamp 1–12 | number box | yes |
+| `rest` | 90 | clamp 0–900 | clamp 0–900 | number box | yes |
+| `reps` | `10–15` | cut at 2000; not text → `txt()`; empty or missing → default | cut at 40, blank **rejects** / cut at 2000, blank → default | 40 | yes |
+| `alt` | absent | cut at 2000; truthy non-text → `txt()`; falsy non-text dropped | truthy → cut at 200 / 2000 | 200 | yes |
+| `cue` | absent | as `alt` | truthy → cut at 400 / 2000 | 400 | yes |
+| `setup` | absent | `txt()` at 200, blank dropped (unchanged) | truthy → cut at 200, both paths | 200 | yes |
+| `add` | absent | whole weeks ≥ 1, held to the block, else dropped (new) | same, else **rejects** | number box | yes |
+| `inc` | absent | clampNum 0.25–50 step 0.25, kept when > 0 | same | number box | yes |
+| `minRir` | absent | clamp 0–5, kept when > 0 | same | — | yes |
+| `share`, `ss` | absent | 1 or absent (new) | truthy → 1 | checkbox | yes |
+| `muscle` | `MUSCLE_BY_ID` backfill | blank → backfill; else `safeKey(txt())` at 40 or dropped | `safeKey(txt())` at 40 | 40 | yes |
+| `pattern`, `type` | absent | `safeKey(txt())` at 40 or dropped | same | 40 | yes |
+| `off` | absent | 1 or absent (new) | dropped / truthy → 1 | "Retirar" | no |
+
+**Every disagreement between today's places, and how it was settled.**
+1. *Text length.* The importer cut at `IMPORT_LIMITS`; the editor and
+   `migrate()` had no cap. Decision 3 (a restore takes 2000), decision 4
+   (`migrate()` cuts at 2000) and Step C (the editor stops at the strict
+   length).
+2. *`add`.* The import rejects a non-integer and holds one to the block;
+   `migrate()` never looked; the editor rounds (`clampInt`) and holds to
+   `MAX_WEEKS`, then the block on save. Decisions 1 and 4 settle the import
+   and `migrate()`. The editor's rounding is not a table rule (the table
+   has no editor rule for numbers), so it is untouched.
+3. *The flags.* The import writes `1`, the editor `1` or nothing,
+   `newExercise()` writes `share: 0, ss: 0`, and `migrate()` never looked.
+   Decision 4 makes them `1` or absent, and that is the one change the
+   app's own data sees: `newExercise()`'s zeros go on the next load. Two
+   smoke fixtures put a retired exercise back with `off: 0`; they now
+   delete the flag, as "Restaurar" does.
+4. *A whitespace-only rep range.* `migrate()` treats it as present; the
+   import and the editor's save gate treat it as blank. No decision names
+   it, so each keeps its rule: `migrate()` defaults only a missing or empty
+   one.
+5. *Spacing.* The import's `txt()` collapses and trims; the editor stores
+   what was typed. Decision 4 says "capped", so the new text repairs only
+   cut, and the import keeps `txt()`. A text cut at 2000 by the load can
+   end in a space the next restore trims: `txt()`'s old habit.
+6. *The machine settings and the tags.* Every place already held them to
+   200 and 40, so decision 3's flat bound is read as covering the fields
+   the editor never capped, and they keep one length on every path. This
+   is an interpretation of "per field", not a choice between two places.
+   A break that gives `setup` the bound is caught.
+7. *Empty `alt`/`cue`.* The import drops a falsy one (and can itself write
+   `''`); `newExercise()` stores `''`. `migrate()` keeps `''`.
+8. *Plates.* `migrate()` and Ajustes had the same rule and different
+   answers for an empty result. Decision 7: one `cleanPlates()`, and each
+   caller keeps its own answer.
+9. Left as they were, being editor-only or identity: the editor's `inc`
+   fallback (`INC_MIN`, the import's is `0`), its tags stored without
+   `safeKey` (every reader applies it), and the id's 60-character cap,
+   which only the importer applies.
+
+**Equivalence (Step F).** Last run against `origin/main` at `f9252fd`,
+and before that at `74a657c` and `6bda878`, with the same outcome.
+Five shells booted with `test/harness.js`'s `bootApp()`, pointed at main,
+the branch, and a reference: main with decision 3 and decision 4 patched
+in as text, written from the decisions rather than from the branch
+(`2000` as a literal), plus the reference with each decision alone to
+attribute differences. Outputs were compared as JSON text, key order
+included, and thrown messages too. The branch equals the reference on
+every input.
+
+There were **6,750 comparisons, with 0 unexplained**:
+- `migrate()`: 60 own states, 75 hostile ones (15 throw in the identity
+  code on both sides), 60 damaged, 120 twice-migrated, 200 plate lists;
+  10,988 exercises in all.
+- `normalizeImportedBlock`, strict and own: 181 own blocks, 239 hostile,
+  197 damaged, 3 published, and 1,980 limit blocks per path (every text
+  field at 0 to 2600 around each cap in four spellings, `add` at 22 values
+  in three lengths, every junk value in every field).
+- The restore as `restoreFromText` runs it: 195 backups;
+  `normalizeImportedProfile` alone, 390 profiles.
+- `buildAiPrompt`: 120 prompts, byte for byte.
+- "Guardar" in Ajustes, pressed: 150 plate lists.
+
+main and the branch differed on 1,601: 1,241 by decision 3 and 360 by
+decision 4. Storage the app wrote with text inside the paste limits is
+identical, 120 of 120; `newExercise()`'s blocks change at 593 paths, every
+one a `share`/`ss` of `0` going. 60 own backups with text up to the bound
+came back exact, 14,640 text fields.
+
+Fourteen deliberate breaks, all caught (20 seeds, 5,246 comparisons each,
+unexplained differences):
+
+| Break | Caught |
+|---|---|
+| `OWN_TEXT_LIMIT` 1999 | 414 |
+| the name keeps 120 on a restore | 410 |
+| the day name keeps 80 on a restore | 225 |
+| `add` held to `MAX_WEEKS` | 40 |
+| a false flag kept | 118 |
+| `alt` and `cue` swap places | 329 |
+| stored text rewritten, not cut | 178 |
+| `setup` gets the flat bound | 99 |
+| a blank-looking range defaulted | 157 |
+| a blank tag kept as `''` | 225 |
+| `cleanPlates` keeps repeats | 138 |
+| the prompt lists `cue` first | 246 |
+| the prompt says 121 | 246 |
+| `alt: 0` becomes `'0'` | 36 |
+
+**Deviations.**
+- The table is in the importer's key order except `reps`, which sits after
+  `sets` and `rest`: `migrate()` appends a missing field where its repair
+  reaches it, and always filled those three in that order. The importer
+  writes the id, the name and the rep range first itself.
+- `EX_PROMPT_ORDER` is a second list, since the prompt's order is neither;
+  a unit test holds it to the table.
+- The editor cuts on input (`typedText`), not in `syncDraftFromForm`: a
+  save would otherwise cut old text nobody touched. The block name's
+  `maxlength` is set in `wireBlockEditor`, from `IMPORT_LIMITS`, rather
+  than in `index.html`. Phase texts have no box.
+- `syncDraftFromForm`'s exercise is `ex` now, the name the guard reads.
+- `newExercise()` still writes its zeros (plan 010 asked to leave it);
+  `migrate()` drops them.
+- A stored exercise with a `{toString: null}` name and no usable id still
+  throws in `migrate()`'s slug, identity code left where it is; main
+  throws the same.
+- The prompt's `id` line keeps its literal 60, as the importer does.
+
+**Tests.** 26 unit assertions, 1134 → 1160 (one is the index's link to
+this file): the table's shape and prompt order, the guard (code scan,
+the importer's output on both paths, `newExercise()`), decision 3 on both
+paths, decision 4's repairs, `cleanPlates`, a backup of long text through
+`restoreFromText`, the editor's boxes and "Guardar cambios" through
+`bootApp()`, the prompt pin in both units, and Ajustes' "Guardar". Seven
+breaks of the code each fail the test meant to catch them. The main
+session's smoke gains two: the name box's `maxlength`, and a longer value
+cut at it.
+
+**Verification.**
+- `node --check` passes on every `js/*.js`, `sw.js` and `test/*.js`.
+- `node test/unit.js`: 1160 passed, 0 failed, and each commit passes on
+  its own.
+- `BASE=http://127.0.0.1:8803 node test/smoke.js --only "main session"
+  --only "Guardar cambios" --only "volumen del bloque" --only "profile
+  import hardening" --only "revisión del bloque"`: 292 passed, 0 failed,
+  on `f9252fd`. The one full run (`test/smoke.js` was edited): 586
+  passed, 0 failed, on `6bda878`, before #156–#158.
+- `CACHE_VERSION` is not bumped; that is the orchestrator's step. The
+  equivalence harness is throwaway and not committed.
