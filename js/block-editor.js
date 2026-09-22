@@ -628,13 +628,21 @@ async function copyBlockPrompt(noteEl, opts) {
    removing something that has history retires it instead of deleting it.
    Erasing logged sets for good takes a second, explicit click in
    "Retirados". */
-let peDraftBlock = null;
-let peDraftPurge = [];
-/* draft exercise object -> the session it lived in when the editor was
-   opened. The real log is still filed under that session until "Guardar
-   cambios", so anything that reads "how much history does this exercise
-   have" while the sheet is open has to look there, not at wherever the
-   draft has moved it to.
+
+/* The plan draft (CONTEXT.md) while the sheet is open, null otherwise:
+   one object from openPlanDraft, where it used to be three globals that
+   "Editar plan", closing the sheet and the end of "Guardar cambios" each
+   reset by hand. */
+let peDraft = null;
+
+/* "Editar plan". The draft is a deep copy of the block, plus what saving
+   it needs to know and the copy cannot say for itself:
+
+   `startDay`: draft exercise object -> the session it lived in when the
+   editor was opened. The real log is still filed under that session until
+   "Guardar cambios", so anything that reads "how much history does this
+   exercise have" while the sheet is open has to look there, not at
+   wherever the draft has moved it to.
 
    Keyed by object identity, not by exercise id: a block can carry the same
    id on two days on purpose (migrate() allows it, see test/unit.js "the
@@ -642,15 +650,32 @@ let peDraftPurge = [];
    only remembers one of them, so "Guardar cambios" would move the other
    day's log on top of it even though nothing was sent anywhere. Sending an
    exercise between draft days keeps the same object (moveExToDay splices
-   and pushes, never clones), so identity survives the move. */
-let peDraftOriginalDay = new Map();
+   and pushes, never clones), so identity survives the move.
 
+   `erased`: what "Borrar registro" confirmed, as eraseFromDraft records it.
+
+   `profile`: the profile object the draft was cut from. Another tab's
+   write is adopted by replacing the profile objects (the 'storage' handler
+   in js/app.js), so a draft saved into whatever is there now would write a
+   plan read from the old data over the new one. applyPlanDraft refuses. */
+function openPlanDraft(profile, block) {
+  const copy = JSON.parse(JSON.stringify(block));
+  const startDay = new Map();
+  copy.days.forEach(day => day.ex.forEach(ex => { startDay.set(ex, day.id); }));
+  return { block: copy, startDay: startDay, erased: [], profile: profile };
+}
+
+/* The one question "Guardar cambios" asks before anything else: is the
+   profile being saved into still the one this draft was cut from? */
+function planDraftStale(profile, draft) {
+  return profile !== draft.profile;
+}
 
 /* Logged-set counts for the editor: keyed off the exercise's original
-   session (see peDraftOriginalDay) so a pending "send to another session"
+   session (openPlanDraft's startDay) so a pending "send to another session"
    move doesn't make its history look gone before the draft is saved. */
 function draftExLogged(profile, ex, currentDayId) {
-  return loggedSets(profile, peDraftBlock.id, peDraftOriginalDay.get(ex) || currentDayId, ex.id);
+  return loggedSets(profile, peDraft.block.id, peDraft.startDay.get(ex) || currentDayId, ex.id);
 }
 function draftDayLogged(profile, day) {
   return day.ex.reduce((t, ex) => t + draftExLogged(profile, ex, day.id), 0);
@@ -658,18 +683,105 @@ function draftDayLogged(profile, day) {
 
 /* Move an exercise to another session, keeping its id (and so its log)
    intact. The real log entries only move once the draft is saved — see
-   the migration in peSave. */
+   the catch-up in applyPlanDraft. */
 function moveExToDay(ex, fromDay, toDay) {
   fromDay.ex.splice(fromDay.ex.indexOf(ex), 1);
   toDay.ex.push(ex);
 }
 
+/* A confirmed erase in "Retirados": the item leaves the draft for good,
+   and what is recorded is what the dialog counted — the exercise object,
+   or the day object with the exercises it held at that moment. It used to
+   be the day's id, which is where the item sat in the draft; after an
+   "Enviar a…" that is not where its sets sit, and the save purged a day
+   holding none of them (plans/053). */
+function eraseFromDraft(draft, it) {
+  if (it.ex) {
+    it.day.ex.splice(it.day.ex.indexOf(it.ex), 1);
+    draft.erased.push({ ex: it.ex });
+  } else {
+    draft.block.days.splice(draft.block.days.indexOf(it.day), 1);
+    draft.erased.push({ day: it.day, held: it.day.ex.slice() });
+  }
+}
+
+/* "Guardar cambios" without the dialogs: bring the profile's record into
+   line with the draft and land the draft as the block. Returns how many
+   exercises were renamed, which the status line reports — or null,
+   having changed nothing, when the draft was cut from another profile
+   object than this one (openPlanDraft). There is no merge: the draft
+   describes data that is no longer there. */
+function applyPlanDraft(profile, draft) {
+  if (planDraftStale(profile, draft)) return null;
+  const block = draft.block;
+  /* The only path that erases logged sets, and only the ones explicitly
+     confirmed in "Retirados", each where the dialog counted it: an
+     exercise under the day it started on, and a day in its own slots,
+     plus every exercise it held that came from another day, under that
+     one. It runs in two halves around the moves below, and the order is
+     the fix (plans/053):
+
+       1. every erased exercise, under the day it started on — the ones
+          erased on their own and the ones an erased day brought in;
+       2. the "enviar a…" moves;
+       3. every erased day's own slots.
+
+     Exercises first, because a move can land a copy that shares the id
+     on that very day (the same id can live on two days by design), and
+     once the move has merged the two no purge by day and id can tell
+     whose sets are whose: saving used to erase both. Days last, so an
+     exercise that left a day before the day was erased has taken its
+     record with it by then. An exercise added in this draft has no start
+     day, and nothing filed under its fresh id to erase. */
+  draft.erased.forEach(e => {
+    const exercises = e.ex ? [e.ex] : e.held.filter(ex => draft.startDay.get(ex) !== e.day.id);
+    exercises.forEach(ex => {
+      const from = draft.startDay.get(ex);
+      if (from) purgeRecord(profile, block.id, { day: from, exercise: ex.id });
+    });
+  });
+  /* Catch the profile's record up on any "enviar a…" moves made while
+     the sheet was open (the log, the legacy RIR chips, the objetivo
+     record and the session order: moveExerciseRecord), before anything
+     below reads or purges it by session id. Merges into whatever the
+     destination day already has rather than overwriting it — the same
+     id can live on two days by design, so this can run more than once on
+     the same exercise without losing either day's history. */
+  block.days.forEach(day => {
+    day.ex.forEach(ex => {
+      const from = draft.startDay.get(ex);
+      if (from && from !== day.id) moveExerciseRecord(profile, block.id, from, day.id, ex.id);
+    });
+  });
+  draft.erased.forEach(e => { if (e.day) purgeRecord(profile, block.id, { day: e.day.id }); });
+  /* An exercise whose NAME changed is a different lift from today on —
+     "Elevaciones laterales en polea" became "Elevaciones en Y en polea
+     cruzada" and the two are not on the same loads. Recorded here
+     because this is the last moment the old name still exists: the log
+     keeps no copy of it, so once the draft lands the only way to know
+     where one variant ended is the date written now. See recordVariant
+     and variantSince in js/app.js. The log itself is kept either way —
+     only the objetivo history is cut — but the status line has to say
+     so, or the next session shows no objetivo with no explanation. */
+  const liveBlock = profile.blocks[block.id];
+  let renamed = 0;
+  if (liveBlock) {
+    const wasNamed = Object.create(null);
+    (liveBlock.days || []).forEach(d => (d.ex || []).forEach(e => { if (e && e.id) wasNamed[e.id] = e.n; }));
+    block.days.forEach(d => d.ex.forEach(e => {
+      if (e && e.id && wasNamed[e.id] != null && recordVariant(profile, e.id, wasNamed[e.id], e.n)) renamed++;
+    }));
+  }
+  profile.blocks[block.id] = block;
+  return renamed;
+}
+
 /* The deload list only offers weeks the block actually has, so shortening a
    block cannot leave the deload pointing off the end of it. */
 function renderDeloadOptions() {
-  const weeks = clampInt($('peWeeks').value, 1, MAX_WEEKS, blockWeeks(peDraftBlock));
+  const weeks = clampInt($('peWeeks').value, 1, MAX_WEEKS, blockWeeks(peDraft.block));
   const sel = $('peDeload');
-  const current = deloadWeek(peDraftBlock);
+  const current = deloadWeek(peDraft.block);
   sel.innerHTML = '';
   const none = document.createElement('option');
   none.value = '0';
@@ -743,13 +855,14 @@ function moveLive(arr, item, dir) {
    so it can be un-marked rather than being stuck in the block invisibly. */
 function renderPriorityChips() {
   const host = $('pePriority');
-  const tags = blockTagsFor('muscle', peDraftBlock).filter(t => t !== UNCLASSIFIED_LABEL);
-  blockPriority(peDraftBlock).forEach(t => { if (tags.indexOf(t) < 0) tags.push(t); });
+  const block = peDraft.block;
+  const tags = blockTagsFor('muscle', block).filter(t => t !== UNCLASSIFIED_LABEL);
+  blockPriority(block).forEach(t => { if (tags.indexOf(t) < 0) tags.push(t); });
   tags.sort((a, b) => a.localeCompare(b, 'es'));
 
   host.innerHTML = '';
   tags.forEach(tag => {
-    const on = isPriority(peDraftBlock, tag);
+    const on = isPriority(block, tag);
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'pri-chip' + (on ? ' on' : '');
@@ -757,11 +870,11 @@ function renderPriorityChips() {
     b.setAttribute('aria-pressed', on ? 'true' : 'false');
     b.setAttribute('aria-label', tag + (on ? ' — prioritario, quitar' : ' — marcar como prioritario'));
     b.onclick = () => {
-      const next = blockPriority(peDraftBlock).slice();
+      const next = blockPriority(block).slice();
       const at = next.indexOf(tag);
       if (at >= 0) next.splice(at, 1); else next.push(tag);
       const clean = cleanPriority(next);
-      if (clean.length) peDraftBlock.priority = clean; else delete peDraftBlock.priority;
+      if (clean.length) block.priority = clean; else delete block.priority;
       renderPriorityChips();
     };
     host.appendChild(b);
@@ -779,18 +892,19 @@ function renderPlanEditor() {
 
   renderPriorityChips();
 
-  const live = dayList(peDraftBlock);
+  const block = peDraft.block;
+  const live = dayList(block);
   live.forEach((day, pos) => host.appendChild(buildDayBox(profile, day, pos, live.length)));
 
   const addDay = document.createElement('button');
   addDay.type = 'button';
   addDay.className = 'pe-add-ex';
   addDay.textContent = '+ Añadir día';
-  const full = blockFullNote(peDraftBlock);
+  const full = blockFullNote(block);
   addDay.disabled = !!full;
   addDay.onclick = () => {
-    if (blockFullNote(peDraftBlock)) return;
-    peDraftBlock.days.push({ id: uid('d'), name: 'Día ' + (live.length + 1), ex: [newExercise()] });
+    if (blockFullNote(block)) return;
+    block.days.push({ id: uid('d'), name: 'Día ' + (live.length + 1), ex: [newExercise()] });
     renderPlanEditor();
   };
   host.appendChild(addDay);
@@ -829,8 +943,8 @@ function buildDayBox(profile, day, pos, liveCount) {
   up.disabled = pos === 0;
   down.disabled = pos === liveCount - 1;
   del.disabled = liveCount === 1;
-  up.onclick = () => { moveLive(peDraftBlock.days, day, -1); renderPlanEditor(); };
-  down.onclick = () => { moveLive(peDraftBlock.days, day, 1); renderPlanEditor(); };
+  up.onclick = () => { moveLive(peDraft.block.days, day, -1); renderPlanEditor(); };
+  down.onclick = () => { moveLive(peDraft.block.days, day, 1); renderPlanEditor(); };
   del.onclick = async () => {
     if (logged) {
       const okd = await ask({
@@ -847,7 +961,7 @@ function buildDayBox(profile, day, pos, liveCount) {
         okLabel: 'Quitar', danger: true,
       });
       if (!okd) return;
-      peDraftBlock.days.splice(peDraftBlock.days.indexOf(day), 1);
+      peDraft.block.days.splice(peDraft.block.days.indexOf(day), 1);
     }
     renderPlanEditor();
   };
@@ -874,7 +988,7 @@ function buildDayBox(profile, day, pos, liveCount) {
 
 function renderRetired(host, profile) {
   const items = [];
-  peDraftBlock.days.forEach(day => {
+  peDraft.block.days.forEach(day => {
     if (day.off) { items.push({ day }); return; }
     day.ex.forEach(ex => { if (ex.off) items.push({ day, ex }); });
   });
@@ -914,13 +1028,7 @@ function renderRetired(host, profile) {
         okLabel: 'Borrar', danger: true,
       });
       if (!okd) return;
-      if (isDay) {
-        peDraftBlock.days.splice(peDraftBlock.days.indexOf(it.day), 1);
-        peDraftPurge.push({ dayId: it.day.id });
-      } else {
-        it.day.ex.splice(it.day.ex.indexOf(it.ex), 1);
-        peDraftPurge.push({ dayId: it.day.id, exId: it.ex.id });
-      }
+      eraseFromDraft(peDraft, it);
       renderPlanEditor();
     };
     box.appendChild(row);
@@ -1021,7 +1129,7 @@ function buildExRow(profile, day, ex, pos, liveCount) {
   if (logged) row.querySelector('.pe-log-tag').textContent = setsLabel(logged);
 
   const moveSel = row.querySelector('.pe-move-sel');
-  const otherDays = dayList(peDraftBlock).filter(d => d !== day);
+  const otherDays = dayList(peDraft.block).filter(d => d !== day);
   if (otherDays.length) {
     const placeholder = document.createElement('option');
     placeholder.value = '';
@@ -1072,32 +1180,33 @@ function buildExRow(profile, day, ex, pos, liveCount) {
   return row;
 }
 
-/* Pulls the form fields (name/weeks/deload) into peDraftBlock, regenerates
-   the phase banner for whatever weeks that leaves it with, and defaults
-   blank day names — the same shape-up that used to live inline in
+/* Pulls the form fields (name/weeks/deload) into the draft's block,
+   regenerates the phase banner for whatever weeks that leaves it with, and
+   defaults blank day names — the same shape-up that used to live inline in
    "Guardar cambios". Shared with the export button below: exporting reads
-   peDraftBlock too, so it needs to see the fields as currently typed, not as
+   the draft too, so it needs to see the fields as currently typed, not as
    they were when the sheet was opened, and shouldn't ship a plan missing a
    name or a set of reps any more than a save should write one. Returns an
-   error message, or null once peDraftBlock is ready to use. */
+   error message, or null once the draft is ready to use. */
 function syncDraftFromForm() {
-  peDraftBlock.name = $('peBlockName').value.trim() || peDraftBlock.name;
-  peDraftBlock.weeks = clampInt($('peWeeks').value, 1, MAX_WEEKS, blockWeeks(peDraftBlock));
-  peDraftBlock.deload = clampInt($('peDeload').value, 0, MAX_WEEKS, 0);
-  if (peDraftBlock.deload > peDraftBlock.weeks) peDraftBlock.deload = 0;
+  const block = peDraft.block;
+  block.name = $('peBlockName').value.trim() || block.name;
+  block.weeks = clampInt($('peWeeks').value, 1, MAX_WEEKS, blockWeeks(block));
+  block.deload = clampInt($('peDeload').value, 0, MAX_WEEKS, 0);
+  if (block.deload > block.weeks) block.deload = 0;
   /* Weeks the block has grown into need a goal to show in the banner, and
      the deload week may have moved; anything you wrote yourself is kept. */
-  const phase = peDraftBlock.phase && typeof peDraftBlock.phase === 'object' ? peDraftBlock.phase : {};
-  const generic = genericPhase(peDraftBlock.weeks, peDraftBlock.deload);
+  const phase = block.phase && typeof block.phase === 'object' ? block.phase : {};
+  const generic = genericPhase(block.weeks, block.deload);
   const nextPhase = {};
-  for (let w = 1; w <= peDraftBlock.weeks; w++) {
+  for (let w = 1; w <= block.weeks; w++) {
     const mine = phase[w] || phase[String(w)];
-    const isDeload = w === peDraftBlock.deload;
+    const isDeload = w === block.deload;
     const wasDeload = mine && mine.r === DELOAD_PHASE.r;
     nextPhase[w] = (mine && mine.r && mine.t && isDeload === wasDeload) ? mine : generic[w];
   }
-  peDraftBlock.phase = nextPhase;
-  const days = dayList(peDraftBlock);
+  block.phase = nextPhase;
+  const days = dayList(block);
   if (!days.length) return 'El bloque necesita al menos un día.';
   days.forEach((day, i) => { if (!String(day.name || '').trim()) day.name = 'Día ' + (i + 1); });
   for (const day of days) {
@@ -1113,7 +1222,7 @@ function syncDraftFromForm() {
          length, which the form may just have shortened. */
       e.sets = clampInt(e.sets, 1, 12, 3);
       e.rest = clampInt(e.rest, 0, 900, 90);
-      if (e.add != null) { const a = clampInt(e.add, 0, peDraftBlock.weeks, 0); if (a) e.add = a; else delete e.add; }
+      if (e.add != null) { const a = clampInt(e.add, 0, block.weeks, 0); if (a) e.add = a; else delete e.add; }
     }
   }
   return null;
@@ -1131,9 +1240,7 @@ function syncDraftFromForm() {
 
 function closePlanEditor() {
   closeSheet('planSheet');
-  peDraftBlock = null;
-  peDraftPurge = [];
-  peDraftOriginalDay = new Map();
+  peDraft = null;
 }
 
 
@@ -1193,12 +1300,9 @@ function wireBlockEditor() {
   if ($('manageBtn')) $('manageBtn').onclick = openBlockManager;
 
   $('editPlan').onclick = () => {
-    peDraftBlock = JSON.parse(JSON.stringify(getBlock()));
-    peDraftPurge = [];
-    peDraftOriginalDay = new Map();
-    peDraftBlock.days.forEach(day => day.ex.forEach(ex => { peDraftOriginalDay.set(ex, day.id); }));
-    $('peBlockName').value = peDraftBlock.name;
-    $('peWeeks').value = blockWeeks(peDraftBlock);
+    peDraft = openPlanDraft(getProfile(), getBlock());
+    $('peBlockName').value = peDraft.block.name;
+    $('peWeeks').value = blockWeeks(peDraft.block);
     renderDeloadOptions();
     renderPlanEditor();
     openSheet('planSheet');
@@ -1212,66 +1316,39 @@ function wireBlockEditor() {
      re-read and re-clamped from the input on save regardless, so the draft
      cannot drift from skipping the per-keystroke rebuild. */
   $('peWeeks').oninput = () => {
-    peDraftBlock.weeks = clampInt($('peWeeks').value, 1, MAX_WEEKS, 8);
-    if (deloadWeek(peDraftBlock) > peDraftBlock.weeks) peDraftBlock.deload = 0;
+    const block = peDraft.block;
+    block.weeks = clampInt($('peWeeks').value, 1, MAX_WEEKS, 8);
+    if (deloadWeek(block) > block.weeks) block.deload = 0;
     renderDeloadOptions();
-    peDraftBlock.deload = clampInt($('peDeload').value, 0, MAX_WEEKS, 0);
+    block.deload = clampInt($('peDeload').value, 0, MAX_WEEKS, 0);
   };
   $('peWeeks').onchange = () => renderPlanEditor();
 
   $('peDeload').onchange = () => {
-    peDraftBlock.deload = clampInt($('peDeload').value, 0, MAX_WEEKS, 0);
+    peDraft.block.deload = clampInt($('peDeload').value, 0, MAX_WEEKS, 0);
     renderPlanEditor();
   };
 
   $('peSave').onclick = async () => {
+    const profile = getProfile();
+    /* Before the form is read: a draft cut from data another tab has since
+       replaced cannot be saved however it is filled in (openPlanDraft), so
+       asking for a missing name first would only waste the fix. Before the
+       snapshot too, which would offer to undo a save that never happened.
+       The sheet stays open. */
+    if (planDraftStale(profile, peDraft)) {
+      await tell('No se ha guardado', 'Los datos cambiaron en otra pestaña: vuelve a abrir el editor.');
+      return;
+    }
     const problem = syncDraftFromForm();
     if (problem) { await tell('Falta algo', problem); return; }
-    const profile = getProfile();
     /* This is the one save path that can move or erase logged sets (the
-       "enviar a…" catch-up below, and the purge loop after it), so it is
-       the one that needs the same one-level undo every other destructive
-       action in this sheet already gets. */
+       "enviar a…" catch-up in applyPlanDraft, and the purge after it), so
+       it is the one that needs the same one-level undo every other
+       destructive action in this sheet already gets. */
     snapshotForUndo('Plan actualizado.');
-    /* Catch the profile's record up on any "enviar a…" moves made while
-       the sheet was open (the log, the legacy RIR chips, the objetivo
-       record and the session order: moveExerciseRecord), before anything
-       below reads or purges it by session id. Merges into whatever the
-       destination day already has rather than overwriting it — the same
-       id can live on two days by design, so this can run more than once on
-       the same exercise without losing either day's history. */
-    peDraftBlock.days.forEach(day => {
-      day.ex.forEach(ex => {
-        const from = peDraftOriginalDay.get(ex);
-        if (from && from !== day.id) moveExerciseRecord(profile, peDraftBlock.id, from, day.id, ex.id);
-      });
-    });
-    /* The only path that erases logged sets, and only the ones explicitly
-       confirmed in "Retirados". */
-    peDraftPurge.forEach(p => {
-      if (p.exId) purgeRecord(profile, peDraftBlock.id, { day: p.dayId, exercise: p.exId });
-      else purgeRecord(profile, peDraftBlock.id, { day: p.dayId });
-    });
-    /* An exercise whose NAME changed is a different lift from today on —
-       "Elevaciones laterales en polea" became "Elevaciones en Y en polea
-       cruzada" and the two are not on the same loads. Recorded here
-       because this is the last moment the old name still exists: the log
-       keeps no copy of it, so once the draft lands the only way to know
-       where one variant ended is the date written now. See recordVariant
-       and variantSince in js/app.js. The log itself is kept either way —
-       only the objetivo history is cut — but the status line has to say
-       so, or the next session shows no objetivo with no explanation. */
-    const liveBlock = profile.blocks[peDraftBlock.id];
-    let renamed = 0;
-    if (liveBlock) {
-      const wasNamed = Object.create(null);
-      (liveBlock.days || []).forEach(d => (d.ex || []).forEach(e => { if (e && e.id) wasNamed[e.id] = e.n; }));
-      peDraftBlock.days.forEach(d => d.ex.forEach(e => {
-        if (e && e.id && wasNamed[e.id] != null && recordVariant(profile, e.id, wasNamed[e.id], e.n)) renamed++;
-      }));
-    }
-    profile.blocks[peDraftBlock.id] = peDraftBlock;
-    peDraftBlock = null; peDraftPurge = []; peDraftOriginalDay = new Map();
+    const renamed = applyPlanDraft(profile, peDraft);
+    peDraft = null;
     commit();
     closeSheet('planSheet');
     mark('Plan actualizado — el registro se mantiene' +
@@ -1283,8 +1360,8 @@ function wireBlockEditor() {
     const problem = syncDraftFromForm();
     if (problem) { await tell('Falta algo', problem); return; }
     renderPlanEditor();
-    const plan = blockSharePlan(peDraftBlock);
-    const name = 'heavy-iron-plan-' + (slugify(peDraftBlock.name) || 'bloque') + '-' + new Date().toISOString().slice(0, 10) + '.json';
+    const plan = blockSharePlan(peDraft.block);
+    const name = 'heavy-iron-plan-' + (slugify(peDraft.block.name) || 'bloque') + '-' + new Date().toISOString().slice(0, 10) + '.json';
     downloadFile(name, JSON.stringify(plan, null, 2), 'application/json');
     mark('Plan descargado — sin registro, listo para "Importar JSON" en otro sitio');
   };
@@ -1294,10 +1371,10 @@ function wireBlockEditor() {
   $('peDeleteBlock').onclick = async () => {
     const profile = getProfile();
     if (profile.blockOrder.length <= 1) { await tell('No se puede', 'No puedes eliminar el único bloque de ' + profile.label + '.'); return; }
-    const id = peDraftBlock.id;
+    const id = peDraft.block.id;
     const sets = blockLoggedSets(profile, id);
     const okd = await ask({
-      title: '¿Eliminar "' + peDraftBlock.name + '"?',
+      title: '¿Eliminar "' + peDraft.block.name + '"?',
       body: (sets ? 'Se borran sus ' + setsLabel(sets) + '. ' : 'No tiene nada registrado. ') +
         'Es el bloque en el que estás entrenando: al borrarlo pasas al bloque más reciente que quede. ' + UNDO_PROMISE,
       okLabel: 'Eliminar', danger: true,

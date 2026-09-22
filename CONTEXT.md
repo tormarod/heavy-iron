@@ -24,6 +24,18 @@ A training plan of a fixed number of weeks, made of days, each day made of
 exercises with a set count and a rep range.
 _Avoid_: program, mesocycle, plan (for the whole thing)
 
+**Plan draft**:
+The copy of a block being changed in the plan editor. Nothing in it
+reaches the block or the profile's record until it is saved, and closing
+without saving throws it away.
+_Avoid_: edit buffer, pending plan
+
+**Retired**:
+An exercise or day taken out of the plan that still has sets logged
+against it. It is out of the session, but its sets are kept, and it can
+be restored exactly where it was.
+_Avoid_: archived, hidden, deleted (which a retired item is not)
+
 **Slot**:
 One day of one week of a block, the place everything logged for that
 day is filed under.

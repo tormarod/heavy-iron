@@ -3399,9 +3399,9 @@ peSaveBoot.clock.advance(1000);
 let peSaveRan = '';
 try {
   peSaveBoot.$('editPlan').onclick();
-  peSaveRan = peSaveBoot.call('peDraftBlock') ? 'the draft is still open' : '"Editar plan" opened no draft';
+  peSaveRan = peSaveBoot.call('peDraft') ? 'the draft is still open' : '"Editar plan" opened no draft';
   peSaveBoot.$('peSave').onclick().catch(() => {});
-  if (peSaveBoot.call('peDraftBlock === null && !askResolve')) peSaveRan = '';
+  if (peSaveBoot.call('peDraft === null && !askResolve')) peSaveRan = '';
   peSaveBoot.clock.advance(1000);
 } catch (e) { peSaveRan = e.message; }
 const peSaveProbe = (peSaveBoot.saved() || { profiles: { hombre: { log: {} } } }).profiles.hombre.log.B || {};
@@ -3413,6 +3413,221 @@ ok('an unmodified save leaves day A\'s rows alone',
 ok('...and day B\'s — the id-only map used to erase one of them',
    peSaveProbe['w1-d1'] && peSaveProbe['w1-d1'].e1 && peSaveProbe['w1-d1'].e1.length === 1 && peSaveProbe['w1-d1'].e1[0].w === '60',
    JSON.stringify(peSaveProbe));
+
+/* plans/053. "Borrar registro" used to file the erasure under the day the
+   item sat on in the draft, while the dialog in front of it counted the
+   sets where they actually sit: under the day the exercise started on,
+   until the save moves them. After an "Enviar a…" the two are different
+   days, and the save purged the one where nothing was. These drive the
+   draft the way the editor does (openPlanDraft is "Editar plan",
+   moveExToDay is "Enviar a…", eraseFromDraft is a confirmed "Borrar
+   registro") and read the dialog's count from the functions the dialog
+   calls, so "what was promised" and "what went" are measured the same way. */
+console.log('\n== the plan draft: saving erases exactly what "Borrar registro" counted (plans/053) ==');
+{
+  const tryCall = expr => { try { return call(expr); } catch (e) { return { threw: String(e && e.message || e) }; } };
+  /* Three days, every part of the record filed on two of them. `sameId`
+     puts the id e1 on days A and B, which migrate() allows on purpose. An
+     unused row pads x's second week: purged with its lift, never counted. */
+  const FIXTURE = `
+    const done = w => ({ w: String(w), r: '10', done: true });
+    const lift = (id, n) => ({ id: id, n: n, sets: 2, reps: '8-10', rest: 90 });
+    const fixture = sameId => {
+      const a = sameId ? 'e1' : 'x', b = sameId ? 'e1' : 'y';
+      const block = { id: 'B', name: 'Bloque', weeks: 4, deload: 0, phase: {}, days: [
+        { id: 'dA', name: 'A', ex: [lift(a, 'Press'), lift('w', 'Remo')] },
+        { id: 'dB', name: 'B', ex: [lift(b, sameId ? 'Press' : 'Curl'), lift('v', 'Fondos')] },
+        { id: 'dC', name: 'C', ex: [lift('z', 'Sentadilla'), lift('u', 'Zancada')] },
+      ] };
+      const obj = w => ({ v: 3, at: 1, conf: 'media', sets: [{ w: w, r: 10, m: '' }] });
+      return {
+        label: 'Yo', blocks: { B: block }, blockOrder: ['B'], activeBlock: 'B', week: 1, day: 0,
+        log: { B: {
+          'w1-dA': { [a]: [done(50)], w: [done(30)] },
+          'w2-dA': { [a]: [done(52), { w: '', r: '', done: false }] },
+          'w1-dB': { [b]: [done(60), done(62)], v: [done(20)] },
+          'w1-dC': { z: [done(80)], u: [done(40)] },
+        } },
+        rir: { B: { 'w1-dA': { [a]: '1' }, 'w1-dB': { [b]: '2+' } } },
+        obj: { B: { 'w1-dA': { [a]: obj(50) }, 'w1-dB': { [b]: obj(60) } } },
+        order: { B: { 'w1-dA': ['w', a], 'w1-dB': ['v', b] } },
+        notes: { B: { 'w1-dA': 'A, semana 1', 'w1-dB': 'B, semana 1' } },
+        energy: { B: { 'w1-dA': 'normal', 'w1-dB': 'alta' } },
+        variants: {},
+      };
+    };
+    /* Every part of the block's record filed by slot, one line per value:
+       "part day exId slot value" ("-" for a part about the whole session). */
+    const flat = p => {
+      const out = [];
+      RECORD_PARTS.forEach(part => {
+        if (part.keyedBy === 'exercise') return;
+        forEachSlot(p[part.name], 'B', (key, w, day, v) => {
+          if (part.keyedBy === 'slot') { out.push([part.name, day, '-', key, JSON.stringify(v)].join(' ')); return; }
+          Object.keys(v || {}).forEach(id => out.push([part.name, day, id, key, JSON.stringify(v[id])].join(' ')));
+        });
+      });
+      return out.sort();
+    };
+    const field = (line, i) => line.split(' ')[i];
+    /* What the confirm dialog says, read the way the "Retirados" row reads it. */
+    const dialogCount = (p, draft, it) => {
+      peDraft = draft;
+      try { return it.ex ? draftExLogged(p, it.ex, it.day.id) : draftDayLogged(p, it.day); } finally { peDraft = null; }
+    };
+  `;
+
+  const bug1 = tryCall(`(function () {
+    ${FIXTURE}
+    const p = fixture(false);
+    const before = flat(p), setsBefore = blockLoggedSets(p, 'B');
+    const draft = openPlanDraft(p, p.blocks.B);
+    const [dA, dB] = draft.block.days, x = dA.ex[0];
+    moveExToDay(x, dA, dB);
+    x.off = 1;
+    const counted = dialogCount(p, draft, { day: dB, ex: x });
+    eraseFromDraft(draft, { day: dB, ex: x });
+    applyPlanDraft(p, draft);
+    const after = flat(p);
+    return {
+      counted: counted, erased: setsBefore - blockLoggedSets(p, 'B'),
+      left: after.filter(l => field(l, 2) === 'x'),
+      untouched: JSON.stringify(after) === JSON.stringify(before.filter(l => field(l, 2) !== 'x')),
+    };
+  })()`);
+  ok('bug 1: an exercise sent to another day and then erased leaves no set anywhere in the record, erases what the dialog counted and touches nothing else',
+     !bug1.threw && bug1.left.length === 0 && bug1.untouched && bug1.counted === 2 && bug1.erased === 2, JSON.stringify(bug1));
+
+  const bug2 = tryCall(`(function () {
+    ${FIXTURE}
+    const p = fixture(false);
+    const before = flat(p), setsBefore = blockLoggedSets(p, 'B');
+    const draft = openPlanDraft(p, p.blocks.B);
+    const [dA, dB] = draft.block.days;
+    moveExToDay(dA.ex[0], dA, dB);
+    dB.off = 1;
+    const counted = dialogCount(p, draft, { day: dB });
+    eraseFromDraft(draft, { day: dB });
+    applyPlanDraft(p, draft);
+    const after = flat(p);
+    return {
+      counted: counted, erased: setsBefore - blockLoggedSets(p, 'B'),
+      left: after.filter(l => field(l, 2) === 'x' || field(l, 1) === 'dB'),
+      untouched: JSON.stringify(after) === JSON.stringify(before.filter(l => field(l, 2) !== 'x' && field(l, 1) !== 'dB')),
+    };
+  })()`);
+  ok('bug 2: erasing a day that received an exercise takes that exercise\'s sets and the day\'s own slots, what the dialog counted, and nothing else',
+     !bug2.threw && bug2.left.length === 0 && bug2.untouched && bug2.counted === 5 && bug2.erased === 5, JSON.stringify(bug2));
+
+  /* The other way round, and the reason an erased day's own slots are
+     cleared only after the moves: y leaves day B for A, then B is erased.
+     The dialog counts what B still holds; y's sets go to A with it. */
+  const leftFirst = tryCall(`(function () {
+    ${FIXTURE}
+    const p = fixture(false);
+    const setsBefore = blockLoggedSets(p, 'B');
+    const draft = openPlanDraft(p, p.blocks.B);
+    const [dA, dB] = draft.block.days;
+    moveExToDay(dB.ex[0], dB, dA);
+    dB.off = 1;
+    const counted = dialogCount(p, draft, { day: dB });
+    eraseFromDraft(draft, { day: dB });
+    applyPlanDraft(p, draft);
+    const rows = [];
+    forEachSlot(p.log, 'B', (k, w, d, s) => Object.keys(s || {}).forEach(id => (s[id] || []).forEach(r => { if (rowUsed(r)) rows.push(d + ':' + id + ':' + r.w); })));
+    return {
+      counted: counted, erased: setsBefore - blockLoggedSets(p, 'B'), rows: rows.sort(),
+      chip: ((p.rir.B || {})['w1-dA'] || {}).y || null, dayB: flat(p).filter(l => field(l, 1) === 'dB'),
+    };
+  })()`);
+  ok('an exercise sent away from a day that is then erased keeps its sets, on the day it went to: only what the day still held goes',
+     !leftFirst.threw && leftFirst.counted === 1 && leftFirst.erased === 1 && leftFirst.chip === '2+' && leftFirst.dayB.length === 0 &&
+     JSON.stringify(leftFirst.rows) === JSON.stringify(['dA:w:30', 'dA:x:50', 'dA:x:52', 'dA:y:60', 'dA:y:62', 'dC:u:40', 'dC:z:80']),
+     JSON.stringify(leftFirst));
+
+  /* Decision 3's edge: the same id on days A and B, and B's copy erased.
+     Whichever way the other copy's record is caught up — not at all, moved
+     to a third day, or moved onto the very day being purged — A's copy
+     keeps both its sets, on the day it ends up on, and only B's two go. */
+  [
+    ['nothing moved', '', 'dA'],
+    ['A\'s copy sent to a third day', 'moveExToDay(ea, dA, dC);', 'dC'],
+    ['A\'s copy sent onto B', 'moveExToDay(ea, dA, dB);', 'dB'],
+    ['B\'s copy sent to a third day before it was erased', 'moveExToDay(eb, dB, dC); at = dC;', 'dA'],
+  ].forEach(([how, moves, lands]) => {
+    const r = tryCall(`(function () {
+      ${FIXTURE}
+      const p = fixture(true);
+      const setsBefore = blockLoggedSets(p, 'B');
+      const draft = openPlanDraft(p, p.blocks.B);
+      const [dA, dB, dC] = draft.block.days, ea = dA.ex[0], eb = dB.ex[0];
+      let at = dB;
+      ${moves}
+      eb.off = 1;
+      const counted = dialogCount(p, draft, { day: at, ex: eb });
+      eraseFromDraft(draft, { day: at, ex: eb });
+      applyPlanDraft(p, draft);
+      const rows = [];
+      forEachSlot(p.log, 'B', (k, w, d, s) => ((s && s.e1) || []).forEach(r => { if (rowUsed(r)) rows.push(d + ':' + r.w); }));
+      const landed = p.blocks.B.days.find(d => d.id === '${lands}');
+      return {
+        counted: counted, erased: setsBefore - blockLoggedSets(p, 'B'), rows: rows.sort(),
+        kept: !!landed && landed.ex.some(e => e.id === 'e1' && !e.off),
+      };
+    })()`);
+    ok('the same id on two days, ' + how + ': erasing B\'s copy leaves A\'s copy and its sets intact',
+       !r.threw && r.kept && JSON.stringify(r.rows) === JSON.stringify([lands + ':50', lands + ':52']) &&
+       r.counted === 2 && r.erased === 2, JSON.stringify(r));
+  });
+
+  /* The same edge reached through a day: A's copy goes to C, C is erased,
+     and B's copy has meanwhile been sent onto A — the very day C's erasure
+     reaches back to for A's copy's sets. B's copy keeps its two. */
+  const heldBack = tryCall(`(function () {
+    ${FIXTURE}
+    const p = fixture(true);
+    const setsBefore = blockLoggedSets(p, 'B');
+    const draft = openPlanDraft(p, p.blocks.B);
+    const [dA, dB, dC] = draft.block.days, ea = dA.ex[0], eb = dB.ex[0];
+    moveExToDay(ea, dA, dC);
+    moveExToDay(eb, dB, dA);
+    dC.off = 1;
+    const counted = dialogCount(p, draft, { day: dC });
+    eraseFromDraft(draft, { day: dC });
+    applyPlanDraft(p, draft);
+    const rows = [];
+    forEachSlot(p.log, 'B', (k, w, d, s) => ((s && s.e1) || []).forEach(r => { if (rowUsed(r)) rows.push(d + ':' + r.w); }));
+    return {
+      counted: counted, erased: setsBefore - blockLoggedSets(p, 'B'), rows: rows.sort(),
+      kept: p.blocks.B.days.find(d => d.id === 'dA').ex.some(e => e === eb && !e.off),
+    };
+  })()`);
+  ok('the same id on two days, a day erased while holding A\'s copy after B\'s copy was sent onto A: B\'s copy keeps its sets',
+     !heldBack.threw && heldBack.kept && JSON.stringify(heldBack.rows) === JSON.stringify(['dA:60', 'dA:62']) &&
+     heldBack.counted === 4 && heldBack.erased === 4, JSON.stringify(heldBack));
+
+  /* Bug 3. Another tab's write is adopted by replacing the profile objects
+     (the 'storage' handler in js/app.js), and a draft cut from the old one
+     used to be saved straight over it. */
+  const bug3 = tryCall(`(function () {
+    ${FIXTURE}
+    const p = fixture(false);
+    const draft = openPlanDraft(p, p.blocks.B);
+    const [dA, dB] = draft.block.days;
+    dA.ex[0].n = 'Press inclinado';
+    moveExToDay(dA.ex[0], dA, dB);
+    const y = dB.ex[0];
+    y.off = 1;
+    eraseFromDraft(draft, { day: dB, ex: y });
+    const adopted = JSON.parse(JSON.stringify(p));
+    adopted.log.B['w3-dA'] = { w: [done(35)] };
+    const was = JSON.stringify(adopted), mine = JSON.stringify(p);
+    const result = applyPlanDraft(adopted, draft);
+    return { result: result, adopted: JSON.stringify(adopted) === was, original: JSON.stringify(p) === mine };
+  })()`);
+  ok('bug 3: a draft cut from a profile another tab has since replaced is refused, and nothing changes',
+     !bug3.threw && bug3.result === null && bug3.adopted && bug3.original, JSON.stringify(bug3));
+}
 
 console.log('\n== setup: the active profile is always people[0] (plans/008 item 5) ==');
 const setupOrderProbe = call(`
@@ -4404,29 +4619,29 @@ console.log('\n== input boundary: unsafe tags, editor clamps, setup aliasing (pl
      (The inert DOM stub returns '' for every field, so the draft's weeks
      comes back as 1 here — the `add` bound is still the block's own.) */
   call('state = defaultState(); migrate();');
-  call('peDraftBlock = JSON.parse(JSON.stringify(state.profiles.hombre.blocks["block-1"]));');
-  call('peDraftBlock.days[0].ex[0].sets = 5000;');
-  call('peDraftBlock.days[0].ex[0].rest = 99999;');
-  call('peDraftBlock.days[0].ex[0].add = 40;');
+  call('peDraft = openPlanDraft(state.profiles.hombre, state.profiles.hombre.blocks["block-1"]);');
+  call('peDraft.block.days[0].ex[0].sets = 5000;');
+  call('peDraft.block.days[0].ex[0].rest = 99999;');
+  call('peDraft.block.days[0].ex[0].add = 40;');
   ok('syncDraftFromForm accepts the draft', call('syncDraftFromForm()') === null,
      String(call('syncDraftFromForm()')));
   ok('...and clamps sets to the same 12 migrate() uses',
-     call('peDraftBlock.days[0].ex[0].sets') === 12,
-     String(call('peDraftBlock.days[0].ex[0].sets')));
+     call('peDraft.block.days[0].ex[0].sets') === 12,
+     String(call('peDraft.block.days[0].ex[0].sets')));
   ok('...and clamps rest to the same 900 migrate() uses',
-     call('peDraftBlock.days[0].ex[0].rest') === 900,
-     String(call('peDraftBlock.days[0].ex[0].rest')));
+     call('peDraft.block.days[0].ex[0].rest') === 900,
+     String(call('peDraft.block.days[0].ex[0].rest')));
   ok('...and clamps "+1 serie desde" to the weeks the block actually has',
-     call('peDraftBlock.days[0].ex[0].add') <= call('peDraftBlock.weeks'),
-     'add=' + call('peDraftBlock.days[0].ex[0].add') + ' weeks=' + call('peDraftBlock.weeks'));
+     call('peDraft.block.days[0].ex[0].add') <= call('peDraft.block.weeks'),
+     'add=' + call('peDraft.block.days[0].ex[0].add') + ' weeks=' + call('peDraft.block.weeks'));
   /* A cleared box has to stay cleared. clampInt('') is 0 raised to its low
      bound, so an `add` clamped from 1 would come back as week 1 and could
      never be removed again — clamped from 0 and deleted when falsy. */
-  call('peDraftBlock.days[0].ex[0].add = 0; syncDraftFromForm();');
+  call('peDraft.block.days[0].ex[0].add = 0; syncDraftFromForm();');
   ok('a zeroed "+1 serie desde" is removed, not clamped up to week 1',
-     call('peDraftBlock.days[0].ex[0].add') === undefined,
-     String(call('peDraftBlock.days[0].ex[0].add')));
-  call('peDraftBlock = null;');
+     call('peDraft.block.days[0].ex[0].add') === undefined,
+     String(call('peDraft.block.days[0].ex[0].add')));
+  call('peDraft = null;');
 }
 
 {
@@ -4757,10 +4972,10 @@ console.log('\n== "borrar registro" reaches a week past the cap (plans/009 item 
     const p = { log: { b1: { 'w1-d1': { e1: [{ done: true }] }, 'w17-d1': { e1: [{ done: true }, {}], e2: [{ w: 50 }] },
                              'w17-d2': { e1: [{ done: true }] } } } };
     const e1 = { id: 'e1' }, e2 = { id: 'e2' };
-    peDraftBlock = { id: 'b1' };
+    peDraft = openPlanDraft(p, { id: 'b1', days: [] });
     try {
       return draftExLogged(p, e1, 'd1') + '|' + draftDayLogged(p, { id: 'd1', ex: [e1, e2] });
-    } finally { peDraftBlock = null; }
+    } finally { peDraft = null; }
   })()`);
   ok("the purge confirmation counts the used rows filed under w17, and not the other day's",
      counted === '2|3', counted);
@@ -6090,37 +6305,115 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
     const x = a.split('\n'), y = b.split('\n'), i = x.findIndex((l, k) => l !== y[k]);
     return i < 0 ? x.length + ' lines against ' + y.length : 'line ' + (i + 1) + ': ' + x[i] + ' | whole shell: ' + y[i];
   };
-  for (const file of GUARDED_SPLIT) {
-    const boot = bootApp({ omit: [file], state: reviewState() });
-    let threw = '', review = null;
-    const steps = [];
+
+  /* The plan editor's own controls on a booted app (plans/053). Its rows
+     are built from innerHTML, and the fake document answers each selector
+     on a row with the element the editor bound its handler on, so these
+     are the real "Enviar a…", "Quitar", "Borrar registro" and "Guardar
+     cambios", found by the exercise's name in their box. */
+  console.log('\n== "Editar plan" on a booted app: send, retire, erase, save (plans/053) ==');
+  const planEditor = boot => {
+    const host = boot.$('peDays');
+    const days = () => host.children.filter(c => c.className === 'pe-day');
+    return {
+      row: (day, name) => days()[day].querySelector('.pe-exlist').children.find(r => r.querySelector('.f-n').value === name),
+      retired: name => {
+        const box = host.children.find(c => c.className === 'pe-retired');
+        return box ? box.children.find(r => r.querySelector('b').textContent === name) : undefined;
+      },
+    };
+  };
+  /* A press that asks: what the dialog said, then its answer, then the
+     press run to its end. A press that should not ask and does is
+     answered too, so a dialog nobody expected cannot leave the suite
+     waiting on it; what it said is handed back to fail on. */
+  const pressAnswering = async (boot, press, answer) => {
+    const pressing = press();
+    const asked = boot.call('!!askResolve') ? { title: boot.$('askT').textContent, body: boot.$('askBody').textContent } : null;
+    if (asked) boot.$(answer).onclick();
+    await pressing;
+    return asked;
+  };
+
+  /* Bug 1 through the real controls: the first exercise of day 1, logged
+     in week 1, is sent to day 2, retired there and erased. Its sets sit
+     under day 1 until the save, which is where the dialog counted them and
+     where the save has to erase them; the old one purged day 2, where
+     there was nothing, and every set stayed. */
+  {
+    const boot = settled(seeded({ week: 2, day: 0 }));
+    const read = booted => JSON.parse(booted.call(`JSON.stringify((function () {
+      const p = getProfile(), b = getBlock(), used = {};
+      forEachSlot(p.log, b.id, (k, w, d, s) => Object.keys(s || {}).forEach(id => {
+        const n = (Array.isArray(s[id]) ? s[id] : []).filter(rowUsed).length;
+        if (n) used[k + ' ' + id] = n;
+      }));
+      return { used: used, plan: b.days.map(d => d.ex.map(e => e.id)) };
+    })())`));
+    const x = JSON.parse(boot.call('JSON.stringify((({ id, n }) => ({ id, n }))(getBlock().days[0].ex[0]))'));
+    const setsOf = (used, own) => Object.keys(used).filter(k => (k.split(' ')[1] === x.id) === own).reduce((t, k) => t + used[k], 0);
+    const without = used => JSON.stringify(Object.keys(used).filter(k => k.split(' ')[1] !== x.id).sort().map(k => k + ' ' + used[k]));
+    const before = read(boot);
+    let err = '', retiring = null, erasing = null, saving = 'not pressed', closed = false;
     try {
-      const making = boot.$('newBlockBtn').onclick().catch(e => { threw = e.message; });
-      /* Whatever is asked answered the way someone who wants the block
-         answers it, and the review, once it is up, read the way "Copiar"
-         reads it and closed — which is what resumes the block. */
-      for (let i = 0; i < 4; i++) {
-        await settle();
-        if (boot.call('!!askResolve')) { steps.push(boot.$('askOk').textContent); boot.$('askOk').onclick(); }
-        else if (boot.$('reviewSheet').classList.contains('up')) {
-          steps.push('(revisión)');
-          review = boot.call('reviewText(reviewCache)');
-          boot.$('reviewClose').onclick();
-        } else break;
-      }
-      await making;
-    } catch (e) { threw = threw || e.message; }
-    const made = boot.call('getProfile().blockOrder.length === 2 && getBlock().name === "Bloque 2"');
-    const how = JSON.stringify({ steps, threw });
-    if (file === 'js/review.js') {
-      ok(file + ' absent: "+ Nuevo bloque" skips the review it cannot offer and makes the block',
-         !threw && made && steps.indexOf('(revisión)') < 0, how);
-    } else {
-      ok(file + ' absent: "+ Nuevo bloque" → "Ver la revisión" → the review closed makes the block',
-         !threw && made && steps.indexOf('(revisión)') >= 0, how);
-      ok(file + ' absent: ...and the review it showed is the whole shell\'s, word for word',
-         review === wholeReview, review == null ? how : parting(review, wholeReview));
-    }
+      const ed = planEditor(boot);
+      boot.$('editPlan').onclick();
+      const send = ed.row(0, x.n).querySelector('.pe-move-sel');
+      send.value = boot.call('getBlock().days[1].id');
+      send.onchange();
+      retiring = await pressAnswering(boot, () => ed.row(1, x.n).querySelector('.e-del').onclick(), 'askOk');
+      erasing = await pressAnswering(boot, () => ed.retired(x.n).querySelector('.a-del').onclick(), 'askOk');
+      saving = await pressAnswering(boot, () => boot.$('peSave').onclick(), 'askOk');
+      closed = boot.call('peDraft === null') && !boot.$('planSheet').classList.contains('up');
+    } catch (e) { err = e.message; }
+    const after = read(boot);
+    const promised = erasing ? Number((/ y sus (\d+) series? registradas?\./.exec(erasing.body) || [])[1]) : NaN;
+    ok('"Enviar a…", "Quitar" and "Borrar registro" on the real editor, then "Guardar cambios": the exercise\'s sets are gone, as many as the dialog said',
+       !err && saving === null && !!retiring && closed && promised > 0 && promised === setsOf(before.used, true) &&
+       setsOf(after.used, true) === 0 && after.plan.every(d => d.indexOf(x.id) < 0),
+       err || JSON.stringify({ retiring, erasing, saving, closed, promised, before: setsOf(before.used, true), after: setsOf(after.used, true), plan: after.plan }));
+    ok('...and every other set is where it was', without(after.used) === without(before.used), without(after.used));
+    boot.clock.advance(1000);
+    const back = read(reopen(boot));
+    ok('...and save() writes it that way, as the next open reads it', JSON.stringify(back) === JSON.stringify(after), JSON.stringify(back));
+    let undoErr = '';
+    try { boot.$('toastAct').onclick(); } catch (e) { undoErr = e.message; }
+    ok('"Deshacer" on the toast the save leaves brings the sets and the exercise back',
+       !undoErr && JSON.stringify(read(boot)) === JSON.stringify(before), undoErr || JSON.stringify(read(boot)));
+  }
+
+  /* Bug 3 through the real button: the editor is open with a rename in
+     its draft when another tab's write arrives — one more set, written to
+     the storage both tabs share, and the 'storage' event this tab gets
+     for it. With nothing pending here the handler adopts it by replacing
+     the profile objects, so the draft was cut from one that is gone. */
+  {
+    const boot = settled(seeded({ week: 2, day: 0 }));
+    const key = boot.call('STORAGE_KEY');
+    const first = boot.call('getBlock().days[0].ex[0].n');
+    let err = '', adopted = false, asked = null, open = false;
+    const theirs = boot.saved();
+    const tp = theirs.profiles[theirs.activeProfile], tb = tp.blocks[tp.activeBlock], other = tb.days[1];
+    tp.log[tb.id]['w1-' + other.id] = { [other.ex[0].id]: [{ w: '70', r: '8', done: true, ts: BOOT_TIME - 3 * 864e5 }] };
+    const raw = JSON.stringify(theirs);
+    try {
+      boot.$('editPlan').onclick();
+      const mine = boot.call('getProfile()');
+      boot.type(planEditor(boot).row(0, first).querySelector('.f-n'), first + ' (otra máquina)');
+      boot.store[key] = raw;
+      boot.fire(boot.ctx.window, 'storage', { key: key, newValue: raw });
+      adopted = boot.call('getProfile()') !== mine;
+      asked = await pressAnswering(boot, () => boot.$('peSave').onclick(), 'askOk');
+      open = boot.$('planSheet').classList.contains('up') && boot.call('peDraft !== null');
+    } catch (e) { err = e.message; }
+    boot.clock.advance(1000);
+    ok('"Guardar cambios" on a draft cut before another tab\'s write was adopted refuses, says so, and leaves the sheet open',
+       !err && adopted && !!asked && asked.title === 'No se ha guardado' &&
+       asked.body === 'Los datos cambiaron en otra pestaña: vuelve a abrir el editor.' && open,
+       err || JSON.stringify({ adopted, asked, open }));
+    ok('...and writes nothing: the other tab\'s data stays as it wrote it, the rename is not saved, and there is no undo to offer',
+       boot.store[key] === raw && boot.call('getBlock().days[0].ex[0].n') === first && boot.call('undoSnapshot === null'),
+       JSON.stringify({ stored: boot.store[key] === raw, name: boot.call('getBlock().days[0].ex[0].n'), undo: boot.call('undoSnapshot === null') }));
   }
 
   console.log('\n== requestWakeLock: one rest, one lock — skipped mid-request, doubled up, or re-acquired (plans/008 item 15, plans/013) ==');
@@ -6600,7 +6893,7 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
     const draw = () => { made.length = 0; call('renderPlanEditor()'); };
     const buttons = label => made.filter(el => el.tagName === 'BUTTON' && el.textContent === label);
     const notes = () => made.filter(el => el.tagName === 'P' && el.className === 'setup-hint').map(el => el.textContent);
-    const days = () => call('peDraftBlock.days.length');
+    const days = () => call('peDraft.block.days.length');
 
     /* What "Editar plan" opens: a deep copy of the block, one day retired
        with a set on it. */
@@ -6610,10 +6903,8 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
         const row = entry(getProfile(), block.id, 1, day.id, ex.id, ex.sets)[0];
         row.w = '50'; row.r = '10'; row.done = true;
       })();
-      peDraftBlock = JSON.parse(JSON.stringify(getBlock()));
-      peDraftPurge = []; peDraftOriginalDay = new Map();
-      peDraftBlock.days.forEach(day => day.ex.forEach(ex => peDraftOriginalDay.set(ex, day.id)));
-      peDraftBlock.days[1].off = 1;`);
+      peDraft = openPlanDraft(getProfile(), getBlock());
+      peDraft.block.days[1].off = 1;`);
     const limit = call('IMPORT_LIMITS.days');
 
     let guard = 0;
@@ -6633,20 +6924,20 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
        dayNote.indexOf('"+ Nuevo bloque"') >= 0, dayNote);
 
     /* Day 1 is retired, so the first live day's button is the first one. */
-    call('while (peDraftBlock.days[0].ex.length < IMPORT_LIMITS.ex) peDraftBlock.days[0].ex.push(newExercise());');
+    call('while (peDraft.block.days[0].ex.length < IMPORT_LIMITS.ex) peDraft.block.days[0].ex.push(newExercise());');
     draw();
     const addEx = buttons('+ Añadir ejercicio');
     ok('"+ Añadir ejercicio" is disabled on a day at IMPORT_LIMITS.ex, and only there',
        addEx.length > 1 && addEx[0].disabled === true && addEx.slice(1).every(b => !b.disabled),
        JSON.stringify(addEx.map(b => b.disabled)));
-    const exBefore = call('peDraftBlock.days[0].ex.length');
+    const exBefore = call('peDraft.block.days[0].ex.length');
     addEx[0].onclick();
-    ok('...and its handler refuses', call('peDraftBlock.days[0].ex.length') === exBefore, String(call('peDraftBlock.days[0].ex.length')));
+    ok('...and its handler refuses', call('peDraft.block.days[0].ex.length') === exBefore, String(call('peDraft.block.days[0].ex.length')));
     ok('...with its own line: nothing retired in that day, so just the ceiling',
        notes().indexOf('Este día ya tiene 40 ejercicios; el máximo es 40.') >= 0, JSON.stringify(notes()));
 
     /* "Enviar a…" is the other road into a day. */
-    const fullId = call('peDraftBlock.days[0].id');
+    const fullId = call('peDraft.block.days[0].id');
     const toFull = made.filter(el => el.tagName === 'OPTION' && el.value === fullId);
     const toOthers = made.filter(el => el.tagName === 'OPTION' && el.value && el.value !== fullId);
     ok('"Enviar a…" offers the full day disabled, and marked so', toFull.length > 0 &&
@@ -6656,7 +6947,7 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
 
     /* A block saved over the limit before it existed: it opens, it says
        where it stands, and it cannot grow. */
-    call('peDraftBlock.days.push({ id: uid("d"), name: "Extra", ex: [newExercise()] });');
+    call('peDraft.block.days.push({ id: uid("d"), name: "Extra", ex: [newExercise()] });');
     draw();
     ok('a block already past the limit opens with "+ Añadir día" disabled and says how far past it is',
        buttons('+ Añadir día')[0].disabled === true &&
@@ -6664,7 +6955,7 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
        JSON.stringify(notes()));
 
     app.document.createElement = realCreate;
-    call('peDraftBlock = null; peDraftPurge = []; peDraftOriginalDay = new Map();');
+    call('peDraft = null;');
   }
 
   /* plans/010's promise, one level up from the block. A restore reads every

@@ -1415,6 +1415,7 @@ What happens to your history in each case:
 | **Remove an exercise or a day that has logged sets** | it is *retired*: out of the plan and out of the session, log kept, listed under **Retirados** at the bottom of the editor with a **Restaurar** button that puts it back exactly where it was |
 | Remove an exercise or a day with nothing logged | just deleted — there is nothing to keep |
 | **Borrar registro** on a retired item | the only edit that erases logged sets, and it asks first |
+| **Guardar cambios** after another tab has saved | untouched — nothing is written: the editor says the data changed in another tab and stays open, and **Editar plan** opened again starts from what that tab saved |
 
 So "I want to swap this exercise out but keep what I lifted on it" and
 "this day is not working, drop it" are both safe: remove it, keep

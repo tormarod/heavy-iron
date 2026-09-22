@@ -597,8 +597,8 @@ function purgeRecord(profile, blockId, scope) {
    destination already has, since two cannot be merged without picking a
    side (a 'concat' value that is not a list of rows is treated the same
    way). Either way nothing is ever destroyed by calling this, including
-   calling it twice, which peSave cannot do today but a future bug easily
-   could. */
+   calling it twice, which applyPlanDraft cannot do today but a future bug
+   easily could. */
 function moveExerciseRecord(profile, blockId, fromDayId, toDayId, exId) {
   RECORD_PARTS.forEach(part => {
     const map = profile[part.name];
