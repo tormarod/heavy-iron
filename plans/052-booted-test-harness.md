@@ -152,4 +152,103 @@ recorded. Delete the builders that become unused. Don't touch `js/`.
 
 ## Maintenance notes
 
-(Filled in when each PR lands.)
+### PR 1 — the harness (branch `claude/052-pr1`)
+
+**Drift.** Clean: the drift check printed nothing, and main had not
+moved from `8142e33`.
+
+**Step A.** A pure move. The run after it was byte for byte the run
+before it: 1033 passed, 0 failed. AGENTS.md's three pointers at
+`loadApp()` in `test/unit.js` now name `SHELL_SCRIPTS` in
+`test/harness.js`.
+
+**No STOP: the boot needed nothing from `js/`.** `load()` runs for real
+and `drawApp` builds all seven cards. What the fake document supports:
+- `getElementById`: one element per id, made on first ask. All 181
+  literal ids the app looks up are in `index.html`.
+- Per element, `querySelector(sel)` answers with one remembered element
+  and `querySelectorAll(sel)` with a remembered list of three. Setting
+  `innerHTML` or `textContent` forgets those answers and detaches the
+  children.
+- `innerHTML` and `textContent` are stored, never parsed. `className`
+  (with a `classList` over it), attributes, `value`, `checked`,
+  `disabled`, `hidden`, `style` and `dataset` are plain data.
+- `appendChild`, `removeChild`, `remove`, `replaceWith` and
+  `replaceChildren` keep `children` and `parentNode`. That is what
+  `drawCard`'s swap and `refreshWeekDot`'s `children[week - 1]` read,
+  and how `card(i).set(j)` finds a row.
+- `addEventListener` listeners are kept and reachable through `fire()`,
+  and `click()` fires them. `focus()` and `blur()` move
+  `document.activeElement`, and `contains()` walks `parentNode`.
+- The document also has `createElement`, `createTextNode`,
+  `documentElement`, `head`, `body`, `visibilityState: 'visible'` and an
+  `execCommand` that answers false.
+- `window.matchMedia` never matches. `navigator` is empty, so every
+  service-worker, wake-lock, media-session, notification, audio and
+  persistence branch returns early. `location.reload()` is counted.
+- The clock queues `setTimeout` and `setInterval`, and `advance(ms)` runs
+  what falls due, in order. `now` can be set. Inside the vm, `Date` is a
+  subclass whose `now()` and argument-less constructor read the clock,
+  and boots start at a fixed `BOOT_TIME`.
+
+**What surprised.**
+- A handler promise that rejects before anything holds it crashes Node
+  as an unhandled rejection. Tests attach `.catch` before they yield.
+- `load()`'s own `save()` is still pending right after a boot. Unless it
+  lands first, it carries a press's changes to storage even when the
+  press saves nothing. The handler tests boot through `settled()`.
+- A box typed into is a write of its own (`writeRows`), and it starts the
+  session. So the tick test presses an untouched set.
+- Step F found both of those: break 2 below passed until they were
+  fixed.
+- The standing rule-2 breach is live. Without `js/diagnostics.js`,
+  "+ Nuevo bloque → Ver la revisión" throws `strengthRows is not
+  defined` and makes no block. It is now asserted as such, read off
+  `RULE2_STANDING`, so fixing it there moves the expectation.
+
+**Tests.** 1033 → 1063, all passing. The 30 new ones:
+- "the harness": `loadApp()` does not boot (1).
+- The precache section boots each hole. It asserts frozen false as well
+  as ready, and a set ticked on the real card is written and saved (7).
+- `bootApp()` section: a first run (3); one tick, with its adopted
+  weight, record, save and rest timer (4); "Rellenar" (3); "Borrar este
+  día", answered both ways, then undone (4).
+- "+ Nuevo bloque" → "Ver la revisión" for each hole (7).
+- `peSaveProbe` on the real "Editar plan" and "Guardar cambios": its two
+  assertions are kept, plus one that the save ran to its end (1).
+
+**Step F.** `node test/unit.js` passed twice, 1063/0, exiting in about
+1.1 s each time. A booted shell left with the rest interval running,
+and the clock never advanced, exits by itself in about 160 ms. Each break
+below was made in `js/`, the suite run, and the file restored byte for
+byte:
+
+| Break | Result |
+|---|---|
+| 1. The tick stops adopting the greyed weight | 1 FAIL |
+| 2. The tick writes around `writeRows` | 2 FAIL |
+| 3. "Rellenar" files no objetivo records | 1 FAIL |
+| 4. "Borrar este día" purges only the log | 1 FAIL |
+| 5. "Borrar este día" takes no undo snapshot | 1 FAIL |
+| 6. "Guardar cambios" with the id-only origin map (plans/008 item 1) | 2 FAIL |
+| 7. `app.js` stops stubbing `startRest` | 2 FAIL (static rule 1, and the `js/rest-timer.js` hole's tick) |
+
+Against break 6, the Step A suite, with its copy of peSave's loop,
+passes 1033/0.
+
+**Deviations.**
+- `loadApp()`'s `omit` went with `drawing` and `drawable`: nothing used
+  it once the precache section booted.
+- `peSaveProbe` gained one assertion, because unchanged rows are also
+  what a save that never ran looks like.
+- "Ver la revisión" is its own section in the async half of
+  `test/unit.js`, since it awaits the dialogs.
+- Comment-only updates: `test/unit.js`'s header, and one comment in
+  `test/smoke.js` that said the unit suite cannot press a tick.
+
+**Left for others.**
+- README.md's layout table does not list `test/harness.js`. This plan
+  confines itself to `test/`, AGENTS.md and this file.
+- PR 2: `SEED` and `seeded()` in the `bootApp()` section are a seventh
+  history builder (week 1 of the seed's first day). They belong in the
+  one fixture, which should also be able to feed `bootApp`'s `state`.
