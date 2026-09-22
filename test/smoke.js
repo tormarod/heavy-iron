@@ -1220,6 +1220,19 @@ const ok = (name, cond, extra) => {
     await page.click('#editPlan');
     ok('editor opens', await page.locator('#planSheet.up').count() === 1);
     ok('editor lists days', await page.locator('.pe-day').count() >= 1);
+    /* Every text box stops where the importers do, so what is typed here
+       fits every door back in (plans/055). The attribute stops the typing;
+       a value the attribute lets through — set by script, as a paste can
+       be — is cut by the box's own input handler. Closed without saving. */
+    const nameCap = await page.evaluate(() => {
+      const box = document.querySelector('.pe-ex .f-n');
+      const attr = box.getAttribute('maxlength');
+      box.value = 'x'.repeat(IMPORT_LIMITS.exName + 30);
+      box.dispatchEvent(new Event('input'));
+      return { attr, max: IMPORT_LIMITS.exName, shown: box.value.length };
+    });
+    ok('the exercise name box carries a maxlength of IMPORT_LIMITS.exName', nameCap.attr === String(nameCap.max), JSON.stringify(nameCap));
+    ok('...and a value past it is cut at it', nameCap.shown === nameCap.max, JSON.stringify(nameCap));
     await page.click('#peClose');
 
     console.log('\n== profile switch ==');

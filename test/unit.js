@@ -7664,6 +7664,48 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
        cut.length === 0, cut.map(k => k + ': ' + stored[k].length + ' -> ' + (back[k] || '').length).join(' | '));
   }
 
+  console.log('\n== the plan editor stops each text box at the importers\' length (plans/055) ==');
+  {
+    /* A cue typed before the editor capped anything: longer than a paste
+       takes, and never touched below. */
+    const oldCue = words(479);
+    const boot = settled(seeded({ week: 1, day: 0 }, (p, b) => { b.days[0].ex[1].cue = oldCue; }));
+    boot.$('editPlan').onclick();
+    const dayBox = boot.$('peDays').children[0];
+    const row = i => dayBox.querySelector('.pe-exlist').children[i];
+    const caps = JSON.parse(boot.call('JSON.stringify(EX_FIELDS.filter(f => f.max).map(f => [f.key, f.max]))'));
+    const rowHtml = row(0).innerHTML;
+    const uncapped = caps.filter(([key, max]) => !new RegExp('class="f-' + key + '"[^>]*maxlength="' + max + '"').test(rowHtml));
+    ok('every text box of an exercise carries its field\'s maxlength from EX_FIELDS',
+       caps.length === 8 && uncapped.length === 0, JSON.stringify({ caps, uncapped }));
+    const L = JSON.parse(boot.call('JSON.stringify(IMPORT_LIMITS)'));
+    ok('...a day\'s name and pair note theirs from IMPORT_LIMITS, and the block\'s name its own',
+       /class="pe-day-name"[^>]*maxlength="80"/.test(dayBox.innerHTML) && /class="pe-day-pair"[^>]*maxlength="1000"/.test(dayBox.innerHTML) &&
+       boot.$('peBlockName').getAttribute('maxlength') === String(L.name), dayBox.innerHTML.slice(0, 400));
+
+    const nameBox = row(0).querySelector('.f-n');
+    boot.type(nameBox, 'x'.repeat(L.exName + 30));
+    ok('a paste past the cap is cut at it, in the box and in the draft alike',
+       nameBox.value.length === L.exName && boot.call('peDraft.block.days[0].ex[0].n.length') === L.exName,
+       nameBox.value.length + ' / ' + boot.call('peDraft.block.days[0].ex[0].n.length'));
+    boot.type(row(0).querySelector('.f-alt'), ' o con barra  ');
+    ok('...while text inside it is kept exactly as typed', boot.call('peDraft.block.days[0].ex[0].alt') === ' o con barra  ',
+       JSON.stringify(boot.call('peDraft.block.days[0].ex[0].alt')));
+    boot.type(dayBox.querySelector('.pe-day-name'), 'D'.repeat(L.name + 20));
+    boot.type(dayBox.querySelector('.pe-day-pair'), 'P'.repeat(L.pair + 20));
+    boot.type(boot.$('peBlockName'), 'B'.repeat(L.name + 20));
+    boot.$('peSave').onclick().catch(() => {});
+    boot.clock.advance(1000);
+    const saved = (() => {
+      const s = boot.saved(), p = s && s.profiles[s.activeProfile], b = p && p.blocks[p.activeBlock];
+      return b ? { name: b.name.length, day: b.days[0].name.length, pair: b.days[0].pair.length,
+                   n: b.days[0].ex[0].n.length, oldCue: b.days[0].ex[1].cue === oldCue } : null;
+    })();
+    ok('"Guardar cambios" writes what the boxes held, each cut at its cap, and leaves the old cue nobody touched whole',
+       !!saved && saved.name === L.name && saved.day === L.name && saved.pair === L.pair && saved.n === L.exName && saved.oldCue,
+       JSON.stringify(saved));
+  }
+
   /* plans/010's promise, one level up from the block. A restore reads every
      profile back through normalizeImportedProfile, which refused a profile
      of more than PROFILE_LIMITS.blocks blocks, and nothing the app did to

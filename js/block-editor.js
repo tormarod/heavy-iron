@@ -811,6 +811,24 @@ function newExercise() {
   return { id: uid('ex'), n: '', alt: '', cue: '', sets: 3, reps: '10–15', rest: 90, share: 0, ss: 0 };
 }
 
+/* What a text box in this sheet holds, cut at `max`: its field's
+   IMPORT_LIMITS length (EX_FIELDS' `max` for an exercise), which the box's
+   own maxlength already stops typing at. This catches what the attribute
+   lets through, a value set by script or a browser that ignores it, and
+   cuts the box as well as the draft, so what is on screen is what gets
+   saved. With no cap here a restore used to cut what the editor had let
+   you type (OWN_TEXT_LIMIT); held to the importers' lengths, anything typed
+   now goes back in whole through every door. Only ever the box being typed
+   in: a longer text saved before the editor stopped there stays as it was
+   until somebody edits it. */
+function typedText(box, max) {
+  const v = String(box.value);
+  if (v.length <= max) return v;
+  const cut = v.slice(0, max);
+  box.value = cut;
+  return cut;
+}
+
 /* The editor stops where the importers stop: IMPORT_LIMITS.days days in a
    block, IMPORT_LIMITS.ex exercises in a day, counted the way
    normalizeImportedBlock counts them — retired ones included, because they
@@ -937,17 +955,17 @@ function buildDayBox(profile, day, pos, liveCount) {
       '</span>' +
     '</div>' +
     '<div class="pe-day-head">' +
-      '<input type="text" class="pe-day-name" placeholder="Nombre del día">' +
-      '<textarea class="pe-day-pair" placeholder="Nota de pareja para este día (opcional)"></textarea>' +
+      '<input type="text" class="pe-day-name" placeholder="Nombre del día" maxlength="' + IMPORT_LIMITS.name + '">' +
+      '<textarea class="pe-day-pair" placeholder="Nota de pareja para este día (opcional)" maxlength="' + IMPORT_LIMITS.pair + '"></textarea>' +
     '</div><div class="pe-exlist"></div>';
 
   const logged = draftDayLogged(profile, day);
   if (logged) box.querySelector('.pe-log-tag').textContent = setsLabel(logged);
 
   box.querySelector('.pe-day-name').value = day.name;
-  box.querySelector('.pe-day-name').oninput = e => { day.name = e.target.value; };
+  box.querySelector('.pe-day-name').oninput = e => { day.name = typedText(e.target, IMPORT_LIMITS.name); };
   box.querySelector('.pe-day-pair').value = day.pair || '';
-  box.querySelector('.pe-day-pair').oninput = e => { day.pair = e.target.value; };
+  box.querySelector('.pe-day-pair').oninput = e => { day.pair = typedText(e.target, IMPORT_LIMITS.pair); };
 
   const up = box.querySelector('.d-up'), down = box.querySelector('.d-down'), del = box.querySelector('.d-del');
   up.disabled = pos === 0;
@@ -1048,6 +1066,9 @@ function renderRetired(host, profile) {
 }
 
 function buildExRow(profile, day, ex, pos, liveCount) {
+  /* Every text box stops at its field's length in EX_FIELDS (typedText). */
+  const cap = key => ' maxlength="' + exField(key).max + '"';
+  const typed = (e, key) => typedText(e.target, exField(key).max);
   const row = document.createElement('div');
   row.className = 'pe-ex';
   row.innerHTML =
@@ -1062,14 +1083,14 @@ function buildExRow(profile, day, ex, pos, liveCount) {
       '</span>' +
     '</div>' +
     '<div class="pe-row">' +
-      '<div class="u-flex-grow"><span class="pe-field-lbl">Ejercicio</span><input type="text" class="f-n"></div>' +
+      '<div class="u-flex-grow"><span class="pe-field-lbl">Ejercicio</span><input type="text" class="f-n"' + cap('n') + '></div>' +
     '</div>' +
-    '<div class="pe-row"><div class="u-flex-grow"><span class="pe-field-lbl">Alternativa</span><input type="text" class="f-alt"></div></div>' +
-    '<div class="pe-row"><div class="u-flex-grow"><span class="pe-field-lbl">Nota / cue</span><input type="text" class="f-cue"></div></div>' +
-    '<div class="pe-row"><div class="u-flex-grow"><span class="pe-field-lbl">Ajustes de máquina (asiento, respaldo…)</span><input type="text" class="f-setup" maxlength="' + SETUP_LIMIT + '"></div></div>' +
+    '<div class="pe-row"><div class="u-flex-grow"><span class="pe-field-lbl">Alternativa</span><input type="text" class="f-alt"' + cap('alt') + '></div></div>' +
+    '<div class="pe-row"><div class="u-flex-grow"><span class="pe-field-lbl">Nota / cue</span><input type="text" class="f-cue"' + cap('cue') + '></div></div>' +
+    '<div class="pe-row"><div class="u-flex-grow"><span class="pe-field-lbl">Ajustes de máquina (asiento, respaldo…)</span><input type="text" class="f-setup"' + cap('setup') + '></div></div>' +
     '<div class="pe-row">' +
       '<div><span class="pe-field-lbl">Series</span><input type="number" min="1" max="12" class="f-sets"></div>' +
-      '<div class="u-flex-grow-sm"><span class="pe-field-lbl">Reps</span><input type="text" class="f-reps"></div>' +
+      '<div class="u-flex-grow-sm"><span class="pe-field-lbl">Reps</span><input type="text" class="f-reps"' + cap('reps') + '></div>' +
       '<div><span class="pe-field-lbl">Descanso (s)</span><input type="number" min="0" max="900" step="5" class="f-rest"></div>' +
     '</div>' +
     '<div class="pe-row">' +
@@ -1077,12 +1098,12 @@ function buildExRow(profile, day, ex, pos, liveCount) {
       '<div><span class="pe-field-lbl">Incremento de peso (' + esc(units()) + ')</span><input type="number" min="' + INC_MIN + '" max="' + INC_MAX + '" step="' + INC_STEP + '" class="f-inc"></div>' +
     '</div>' +
     '<div class="pe-row"><div class="u-flex-grow"><span class="pe-field-lbl">Músculo</span>' +
-      '<input type="text" class="f-muscle" list="muscleSuggestions" placeholder="Sin clasificar" maxlength="' + MUSCLE_LIMIT + '"></div></div>' +
+      '<input type="text" class="f-muscle" list="muscleSuggestions" placeholder="Sin clasificar"' + cap('muscle') + '></div></div>' +
     '<div class="pe-row">' +
       '<div class="u-flex-grow"><span class="pe-field-lbl">Patrón</span>' +
-        '<input type="text" class="f-pattern" list="patternSuggestions" placeholder="Sin clasificar" maxlength="' + PATTERN_LIMIT + '"></div>' +
+        '<input type="text" class="f-pattern" list="patternSuggestions" placeholder="Sin clasificar"' + cap('pattern') + '></div>' +
       '<div class="u-flex-grow"><span class="pe-field-lbl">Tipo</span>' +
-        '<input type="text" class="f-type" list="typeSuggestions" placeholder="Sin clasificar" maxlength="' + TYPE_LIMIT + '"></div>' +
+        '<input type="text" class="f-type" list="typeSuggestions" placeholder="Sin clasificar"' + cap('type') + '></div>' +
     '</div>' +
     '<div class="pe-row">' +
       '<label class="pe-check pe-check-share"><input type="checkbox" class="f-share"> Compartido (JUNTOS)</label>' +
@@ -1090,20 +1111,20 @@ function buildExRow(profile, day, ex, pos, liveCount) {
     '</div>';
 
   row.querySelector('.f-n').value = ex.n;
-  row.querySelector('.f-n').oninput = e => ex.n = e.target.value;
+  row.querySelector('.f-n').oninput = e => ex.n = typed(e, 'n');
   row.querySelector('.f-alt').value = ex.alt || '';
-  row.querySelector('.f-alt').oninput = e => ex.alt = e.target.value;
+  row.querySelector('.f-alt').oninput = e => ex.alt = typed(e, 'alt');
   row.querySelector('.f-cue').value = ex.cue || '';
-  row.querySelector('.f-cue').oninput = e => ex.cue = e.target.value;
+  row.querySelector('.f-cue').oninput = e => ex.cue = typed(e, 'cue');
   row.querySelector('.f-setup').value = ex.setup || '';
-  row.querySelector('.f-setup').oninput = e => { const v = e.target.value; if (v) ex.setup = v; else delete ex.setup; };
+  row.querySelector('.f-setup').oninput = e => { const v = typed(e, 'setup'); if (v) ex.setup = v; else delete ex.setup; };
   row.querySelector('.f-sets').value = ex.sets;
   /* The bounds migrate() uses (js/app.js), applied as you type rather than
      on the next load: the session builds its set rows from the draft as
      saved, so 5000 in Series is 5000 rows on the spot (plans/012). */
   row.querySelector('.f-sets').oninput = e => ex.sets = clampInt(e.target.value, 1, 12, 3);
   row.querySelector('.f-reps').value = ex.reps;
-  row.querySelector('.f-reps').oninput = e => ex.reps = e.target.value;
+  row.querySelector('.f-reps').oninput = e => ex.reps = typed(e, 'reps');
   row.querySelector('.f-rest').value = ex.rest || 0;
   row.querySelector('.f-rest').oninput = e => ex.rest = clampInt(e.target.value, 0, 900, 90);
   row.querySelector('.f-add').value = ex.add || '';
@@ -1125,11 +1146,11 @@ function buildExRow(profile, day, ex, pos, liveCount) {
      datalist), not a fixed set — type any tag, or clear it to fall back to
      "Sin clasificar". An empty/whitespace value is never stored, the same
      convention share/ss use for their default state. */
-  row.querySelector('.f-muscle').oninput = e => { const v = e.target.value.trim(); if (v) ex.muscle = v; else delete ex.muscle; };
+  row.querySelector('.f-muscle').oninput = e => { const v = typed(e, 'muscle').trim(); if (v) ex.muscle = v; else delete ex.muscle; };
   row.querySelector('.f-pattern').value = ex.pattern || '';
-  row.querySelector('.f-pattern').oninput = e => { const v = e.target.value.trim(); if (v) ex.pattern = v; else delete ex.pattern; };
+  row.querySelector('.f-pattern').oninput = e => { const v = typed(e, 'pattern').trim(); if (v) ex.pattern = v; else delete ex.pattern; };
   row.querySelector('.f-type').value = ex.type || '';
-  row.querySelector('.f-type').oninput = e => { const v = e.target.value.trim(); if (v) ex.type = v; else delete ex.type; };
+  row.querySelector('.f-type').oninput = e => { const v = typed(e, 'type').trim(); if (v) ex.type = v; else delete ex.type; };
   row.querySelector('.f-share').checked = !!ex.share;
   row.querySelector('.f-share').onchange = e => { if (e.target.checked) ex.share = 1; else delete ex.share; };
   row.querySelector('.f-ss').checked = !!ex.ss;
@@ -1306,6 +1327,12 @@ function wireBlockEditor() {
   if ($('newBlockBtn')) $('newBlockBtn').onclick = () => newBlock();
   if ($('importBtn')) $('importBtn').onclick = openImportSheet;
   if ($('manageBtn')) $('manageBtn').onclick = openBlockManager;
+
+  /* The block's name stops where the importers' does, like every text box
+     in this sheet (typedText). Set here rather than written into
+     index.html, so IMPORT_LIMITS stays the one place the length is. */
+  $('peBlockName').setAttribute('maxlength', IMPORT_LIMITS.name);
+  $('peBlockName').oninput = e => { typedText(e.target, IMPORT_LIMITS.name); };
 
   $('editPlan').onclick = () => {
     peDraft = openPlanDraft(getProfile(), getBlock());
