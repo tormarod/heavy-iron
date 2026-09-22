@@ -623,6 +623,67 @@ ok('...and on the active profile for a key nobody has', slotFor('ghost') === cal
      slotFor(k) === call('state.activeProfile'), slotFor(k));
 });
 
+/* The same hole one level down, in the block ids localStorage itself
+   carries, which never pass through normalizeImportedProfile: a truthy
+   `profile.blocks[id]` let an activeBlock of 'constructor' and a
+   'toString' in blockOrder through migrate(), and getBlock() then handed
+   the first draw Object.prototype.constructor instead of a block. Each pair
+   is [activeBlock, the reserved entry in blockOrder]; the first is the one
+   the second architecture review found. */
+[['constructor', 'toString'], ['toString', 'constructor'], ['__proto__', '__proto__'],
+ ['valueOf', 'hasOwnProperty'], ['hasOwnProperty', 'valueOf']].forEach(([active, listed]) => {
+  const got = JSON.parse(call('state = ' + JSON.stringify({
+    profiles: { hombre: { blocks: { b1: { name: 'Real', days: [] } }, blockOrder: [listed, 'b1'], activeBlock: active } },
+    activeProfile: 'hombre',
+  }) + '; migrate(); JSON.stringify({ active: getProfile().activeBlock, order: getProfile().blockOrder.map(String),' +
+    ' block: typeof getBlock() === "object" ? getBlock().name : typeof getBlock() })'));
+  ok('migrate() repairs an activeBlock of "' + active + '" onto a block the profile owns',
+     got.active === 'b1' && got.block === 'Real', JSON.stringify(got));
+  ok('...and drops "' + listed + '" from blockOrder, which keeps only the blocks the profile owns',
+     JSON.stringify(got.order) === '["b1"]', JSON.stringify(got.order));
+});
+
+/* A block's `id` is the key it is filed under, and every write to the
+   record goes through it (entry, setOrder, the plan editor's save), so a
+   stored id that disagreed with the key used to be trusted: 'constructor'
+   filed every logged set onto the global Object function, where no save
+   ever finds it, and another block's key filed them under that block. */
+const blockIds = call('state = ' + JSON.stringify({
+  profiles: { hombre: {
+    blocks: { b1: { id: 'constructor', name: 'A', days: [] }, b2: { id: 'b1', name: 'B', days: [] }, b3: { id: '__proto__', name: 'C', days: [] } },
+    blockOrder: ['b1', 'b2', 'b3'], activeBlock: 'b1',
+  } },
+  activeProfile: 'hombre',
+}) + '; migrate(); Object.keys(getProfile().blocks).map(k => k + "=" + getProfile().blocks[k].id).join(" ")');
+ok('migrate() makes every block\'s id the key it is filed under, whatever the stored copy said',
+   blockIds === 'b1=b1 b2=b2 b3=b3', blockIds);
+
+/* ...which is only safe once no block is filed under a reserved name. A
+   block that OWNS '__proto__' passes the own-key test, but its key is its
+   id, and on the log that id was not an own key yet: the first set logged
+   on it went onto Object.prototype, and nothing was saved. Written as JSON
+   text because only JSON.parse makes '__proto__' an own key; an object
+   literal sets the prototype instead. */
+const ownDay = JSON.stringify([{ id: 'd0', name: 'D', ex: [{ id: 'e1', n: 'E', sets: 3, reps: '10' }] }]);
+const ownReserved = '{"activeProfile":"hombre","profiles":{"hombre":{' +
+  '"blocks":{"__proto__":{"name":"P","days":' + ownDay + '},"constructor":{"name":"C","days":' + ownDay + '}},' +
+  '"blockOrder":["constructor","__proto__"],"activeBlock":"__proto__",' +
+  '"log":{"constructor":{"w1-d0":{"e1":[{"w":"50","r":"10","done":true}]}}}}}}';
+const renamed = JSON.parse(call('state = JSON.parse(' + JSON.stringify(ownReserved) + '); migrate(); (() => {' +
+  ' const p = getProfile(), b = getBlock(), c = p.blocks[p.blockOrder[0]];' +
+  ' entry(p, b.id, 2, "d0", "e1", 3)[0].w = "60";' +
+  ' return JSON.stringify({' +
+  '   keys: Object.keys(p.blocks).filter(k => safeKey(k) && p.blocks[k].id === k).length,' +
+  '   order: p.blockOrder.map(id => p.blocks[id].name).join(), active: b.name,' +
+  '   moved: JSON.stringify(Object.keys(p.log[c.id] || {})),' +
+  '   saved: Object.prototype.hasOwnProperty.call(p.log, b.id) && Object.keys(p.log[b.id]).join(),' +
+  '   leaked: Object.keys(Object.prototype).concat(Object.keys(Object)).join() }); })()'));
+ok('migrate() re-keys a block that owns a reserved name, and blockOrder and activeBlock follow it',
+   renamed.keys === 2 && renamed.order === 'C,P' && renamed.active === 'P', JSON.stringify(renamed));
+ok('...its history moves with it', renamed.moved === '["w1-d0"]', renamed.moved);
+ok('...and a set logged on it is saved under its own key, never onto the prototype',
+   renamed.saved === 'w2-d0' && renamed.leaked === '', JSON.stringify(renamed));
+
 const bareProfile = {
   profiles: { hombre: { blocks: {}, blockOrder: [], log: {} } },
   activeProfile: 'hombre',

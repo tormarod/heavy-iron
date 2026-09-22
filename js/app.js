@@ -789,20 +789,59 @@ function migrate() {
       profile.blockOrder = seed.blockOrder.slice();
     }
 
+    /* "Exists" is an own key, the same test plans/040 put on activeProfile
+       below: a plain object answers profile.blocks['toString'] with a
+       function and ['__proto__'] with Object.prototype. An import never
+       reaches here with a name like that (normalizeImportedProfile re-keys
+       every block), but localStorage itself is not an import. */
+    const ownBlock = id => Object.prototype.hasOwnProperty.call(profile.blocks, id) ? profile.blocks[id] : undefined;
+
+    /* A block filed under a name safeKey refuses moves to a fresh key, and
+       everything that names it follows — the rename normalizeImportedProfile
+       gives an import. Owning the key is not enough: the key is the block's
+       id (below), and the id indexes every other part of the record, where
+       it is not an own key yet. A block owning '__proto__' filed its first
+       logged set onto Object.prototype itself, and nothing was saved. */
+    Object.keys(profile.blocks).forEach(bk => {
+      if (safeKey(bk)) return;
+      let id = uid('block');
+      while (ownBlock(id)) id = uid('block');
+      profile.blocks[id] = profile.blocks[bk];
+      delete profile.blocks[bk];
+      RECORD_PARTS.forEach(part => {
+        const map = profile[part.name];
+        if (part.keyedBy === 'exercise' || !map || typeof map !== 'object') return;
+        if (Object.prototype.hasOwnProperty.call(map, bk)) { map[id] = map[bk]; delete map[bk]; }
+      });
+      if (Array.isArray(profile.blockOrder)) profile.blockOrder = profile.blockOrder.map(x => (x === bk ? id : x));
+      if (profile.activeBlock === bk) profile.activeBlock = id;
+    });
+
     /* The picker is driven off blockOrder, so it has to list every block
-       that exists, exactly once, and nothing that doesn't. */
+       that exists, exactly once, and nothing that doesn't. A hand-edited
+       blockOrder or activeBlock naming 'toString' or 'constructor' used to
+       pass a truthy read here, and getBlock() then handed the first draw a
+       function instead of a block. */
     const order = (Array.isArray(profile.blockOrder) ? profile.blockOrder : [])
-      .filter((id, i, a) => profile.blocks[id] && a.indexOf(id) === i);
+      .filter((id, i, a) => ownBlock(id) && a.indexOf(id) === i);
     Object.keys(profile.blocks).forEach(id => { if (order.indexOf(id) < 0) order.push(id); });
     profile.blockOrder = order;
-    if (!profile.blocks[profile.activeBlock]) profile.activeBlock = order[order.length - 1];
+    if (!ownBlock(profile.activeBlock)) profile.activeBlock = order[order.length - 1];
 
     profile.week = clampInt(profile.week, 1, MAX_WEEKS, 1);
     profile.day = clampInt(profile.day, 0, 99, 0);
 
     Object.keys(profile.blocks).forEach(bk => {
       const block = profile.blocks[bk];
-      if (!block.id) block.id = bk;
+      /* Always the key, never a stored id that disagrees with it. Every
+         write to the record is filed under block.id (entry, setOrder, the
+         plan editor's save into profile.blocks), while blockOrder and every
+         reader go by the key, so a block whose id said 'constructor' filed
+         its sets onto the global Object function, where no save finds them,
+         and one whose id named another block wrote into that block's
+         history. The app's own writers always keep the two equal;
+         normalizeImportedProfile makes the same call for the same reason. */
+      block.id = bk;
       if (!block.name) block.name = 'Bloque';
       /* Blocks saved before length was configurable are exactly what the app
          used to assume: eight weeks, the eighth halved. */
