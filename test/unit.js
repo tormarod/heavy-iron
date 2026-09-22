@@ -7718,9 +7718,19 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
     }
   `);
   const HEAD = '﻿perfil,bloque,semana,dia,ejercicio,orden,serie,peso,unidad,reps,hecha,fecha,rir,bajadas,tipo_bajada,nota,energia';
+  /* fecha is the local day (plans/068), and these two ts are 22:13:20Z and
+     22:15:00Z: still 2023-11-14 in Madrid or in CI's UTC, but already
+     2023-11-15 from UTC+2 up (22:13 + 2h rolls past local midnight) and in
+     Tokyo. Computed through the app's own localDay rather than hard-coded,
+     so this fixture holds in whatever zone the suite runs in — separately
+     for each ts, even though 100 seconds apart puts them on the same local
+     day in every zone a real place uses, so a future edit to one literal
+     cannot quietly go stale against the other. */
+  const fecha1 = call('localDay(1700000000000)');
+  const fecha2 = call('localDay(1700000100000)');
   const PLAN_ROWS = [
-    'H,Fuerza,1,Empuje,Press banca,1,1,60,kg,8,si,2023-11-14,2,,,dormí mal,',
-    'H,Fuerza,1,Empuje,Press banca,1,2,60,kg,7,si,2023-11-14,,,,dormí mal,',
+    `H,Fuerza,1,Empuje,Press banca,1,1,60,kg,8,si,${fecha1},2,,,dormí mal,`,
+    `H,Fuerza,1,Empuje,Press banca,1,2,60,kg,7,si,${fecha2},,,,dormí mal,`,
     'H,Fuerza,2,Empuje,Press banca,2,1,"62,5",kg,8,si,,,45x5,Forzado,,alta',
     'H,Fuerza,2,Empuje,Press banca,2,2,"62,5",kg,6,no,,,,,,alta',
     'H,Fuerza,1,Empuje,Press militar,2,1,40,kg,10,si,,,,,dormí mal,',
