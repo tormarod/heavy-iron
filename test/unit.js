@@ -7206,6 +7206,107 @@ console.log('\n== the row codec: every field a set carries, sent, accepted and e
      header);
 }
 
+console.log('\n== timestamps (plans/068) ==');
+{
+  /* 1. ROW_FIELDS' accept, reached through rowFromImport the way the row
+     codec's own hostile cases above do rather than calling accept alone,
+     since accept is handed the row built so far. */
+  const tsRows = JSON.parse(call(`JSON.stringify([
+    rowFromImport({ w: '1', r: '1', done: true, ts: 9e15 }),
+    rowFromImport({ w: '1', r: '1', done: true, ts: 8.64e15 }),
+    rowFromImport({ w: '1', r: '1', done: true, ts: -1 }),
+    rowFromImport({ w: '1', r: '1', done: true, ts: 'x' }),
+    rowFromImport({ w: '1', r: '1', done: true, ts: {} }),
+  ])`));
+  ok('a ts past TS_MAX (8.64e15, the largest a Date can hold) is dropped on import, same as a negative, non-numeric or object one always was',
+     !('ts' in tsRows[0]) && !('ts' in tsRows[2]) && !('ts' in tsRows[3]) && !('ts' in tsRows[4]),
+     JSON.stringify(tsRows));
+  ok('...while TS_MAX itself is still kept', tsRows[1].ts === 8.64e15, JSON.stringify(tsRows[1]));
+
+  /* 2. The one-off lateral-raise seed (same setup as "the lateral-raise
+     rename is seeded" above), but with a ts no Date can hold on its only
+     logged row and booted for real (bootApp, not loadApp): before validTs
+     guarded the scan, isoDay(first || Date.now()) saw that 9e15 as `first`
+     and threw inside migrate(), which load() calls with nothing catching
+     it — the stuck-loading, not-even-recovery crash the plan describes. A
+     profile fresh from defaultState() has no `variants` map yet (the same
+     shape a pre-v3 backup has), which is exactly what lets bootApp's own
+     first migrate() run seedLateralVariants from scratch. */
+  const latBoot = (() => {
+    const seed = call(`
+      (function () {
+        const s = defaultState();
+        const p = s.profiles.hombre;
+        const day = p.blocks['block-1'].days[0];
+        const lat = day.ex.find(function (e) { return e.id === 'lat1'; });
+        lat.n = 'Elevaciones en Y en polea cruzada';
+        p.log['block-1'] = { 'w1-d0': { lat1: [{ w: '6.8', r: '20', done: true, ts: 9e15 }] } };
+        return JSON.stringify(s);
+      })()
+    `);
+    let boot = null, err = null;
+    try { boot = bootApp({ state: seed }); } catch (e) { err = e; }
+    return { boot, err };
+  })();
+  ok('a stored ts past TS_MAX does not stop seedLateralVariants from letting migrate() finish: the app boots drawn, not crashed and not into recovery',
+     !latBoot.err && !!latBoot.boot && latBoot.boot.call('ready') === true && latBoot.boot.call('frozen') === false,
+     latBoot.err ? latBoot.err.message :
+       JSON.stringify({ ready: latBoot.boot.call('ready'), frozen: latBoot.boot.call('frozen') }));
+
+  /* isoDay's own guard, direct: even handed a ts no Date can hold, it lands
+     on today rather than throw — belt and suspenders for any caller other
+     than seedLateralVariants' now-filtered scan. The diagnostic is built
+     only on the safe side of that same throws() check: a second unguarded
+     call here would throw while assembling the failure message itself,
+     which is exactly the crash this assertion exists to catch. */
+  const isoDaySafe = !throws('isoDay(9e15)');
+  ok('isoDay itself cannot throw on a ts past TS_MAX; it falls back to today, the same day isoDay(Date.now()) gives',
+     isoDaySafe && call('isoDay(9e15)') === call('isoDay(Date.now())'),
+     isoDaySafe ? call('isoDay(9e15)') : 'isoDay(9e15) threw');
+
+  /* 3. The CSV's fecha cell: the local day, not the UTC one toISOString
+     gives, and timezone-proof — the suite runs in whatever zone the
+     machine has (CI is UTC; a laptop in Spain is not) — so the expected
+     string is computed inside the context with the same local getters
+     localDay uses, rather than hard-coded. localDay(ts) === '2026-03-10'
+     is asserted separately, and that one holds in every zone because the
+     ts was built from those exact local components in the first place. */
+  const csvDate = JSON.parse(call(`
+    (function () {
+      state = defaultState(); migrate();
+      Object.keys(state.profiles).forEach(function (k) { if (k !== 'hombre') delete state.profiles[k]; });
+      const profile = state.profiles.hombre;
+      const blockId = profile.blockOrder[0];
+      const day = profile.blocks[blockId].days[0];
+      const exId = day.ex[0].id;
+      const localTs = new Date(2026, 2, 10, 0, 30).getTime();
+      const d = new Date(localTs);
+      const pad = function (n) { return String(n).padStart(2, '0'); };
+      const expectedLocal = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+      profile.log[blockId] = {};
+      profile.log[blockId][slot(1, day.id)] = { [exId]: [{ w: '60', r: '5', done: true, ts: localTs }] };
+      const line1 = buildCsv().split('\\r\\n')[1];
+      profile.log[blockId] = {};
+      profile.log[blockId][slot(2, day.id)] = { [exId]: [{ w: '60', r: '5', done: true, ts: 9e15 }] };
+      let hugeThrew = false, line2 = '';
+      try { line2 = buildCsv().split('\\r\\n')[1]; } catch (e) { hugeThrew = true; }
+      return JSON.stringify({
+        cell: line1.split(',')[11],
+        expectedLocal: expectedLocal,
+        localDayHolds: localDay(localTs) === '2026-03-10',
+        hugeThrew: hugeThrew,
+        hugeCell: hugeThrew ? null : line2.split(',')[11],
+      });
+    })()
+  `));
+  ok('a set logged at 00:30 local time exports the local calendar day, the same way localDay computes it, in whatever zone the suite runs',
+     csvDate.cell === csvDate.expectedLocal, JSON.stringify(csvDate));
+  ok('...which is 2026-03-10 in every zone, since the ts was built from those exact local components',
+     csvDate.localDayHolds === true, JSON.stringify(csvDate));
+  ok('a ts past TS_MAX does not stop the export from finishing, and that row\'s fecha cell is blank',
+     csvDate.hugeThrew === false && csvDate.hugeCell === '', JSON.stringify(csvDate));
+}
+
 console.log('\n== EX_FIELDS: what a plan exercise may hold, in one table (plans/055) ==');
 {
   const fields = JSON.parse(call(`JSON.stringify(EX_FIELDS.map(f => ({ key: f.key, max: f.max, ownMax: f.ownMax,
@@ -7617,9 +7718,19 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
     }
   `);
   const HEAD = '﻿perfil,bloque,semana,dia,ejercicio,orden,serie,peso,unidad,reps,hecha,fecha,rir,bajadas,tipo_bajada,nota,energia';
+  /* fecha is the local day (plans/068), and these two ts are 22:13:20Z and
+     22:15:00Z: still 2023-11-14 in Madrid or in CI's UTC, but already
+     2023-11-15 from UTC+2 up (22:13 + 2h rolls past local midnight) and in
+     Tokyo. Computed through the app's own localDay rather than hard-coded,
+     so this fixture holds in whatever zone the suite runs in — separately
+     for each ts, even though 100 seconds apart puts them on the same local
+     day in every zone a real place uses, so a future edit to one literal
+     cannot quietly go stale against the other. */
+  const fecha1 = call('localDay(1700000000000)');
+  const fecha2 = call('localDay(1700000100000)');
   const PLAN_ROWS = [
-    'H,Fuerza,1,Empuje,Press banca,1,1,60,kg,8,si,2023-11-14,2,,,dormí mal,',
-    'H,Fuerza,1,Empuje,Press banca,1,2,60,kg,7,si,2023-11-14,,,,dormí mal,',
+    `H,Fuerza,1,Empuje,Press banca,1,1,60,kg,8,si,${fecha1},2,,,dormí mal,`,
+    `H,Fuerza,1,Empuje,Press banca,1,2,60,kg,7,si,${fecha2},,,,dormí mal,`,
     'H,Fuerza,2,Empuje,Press banca,2,1,"62,5",kg,8,si,,,45x5,Forzado,,alta',
     'H,Fuerza,2,Empuje,Press banca,2,2,"62,5",kg,6,no,,,,,,alta',
     'H,Fuerza,1,Empuje,Press militar,2,1,40,kg,10,si,,,,,dormí mal,',

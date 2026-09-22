@@ -270,4 +270,57 @@ assertions, two separator cases, two `lang` cases, three smoke sections.
 - When English lands, the language control writes `state.prefs.lang`;
   the CSV needs nothing more. `localDay` is the date to show a person;
   `isoDay` stays the UTC key `variantSince` compares.
+- Step A done as PR #180 (`claude/068-a`). No deviations from
+  A.1–A.4; the plan's three numbered test cases and its two named
+  mutation checks (cell → toISOString, validTs dropped from accept) all
+  landed as described. Two additions beyond the minimum, both worth
+  knowing about: a direct `isoDay(9e15)` no-throw assertion, and a third
+  mutation check (isoDay's own guard reverted alone) that showed its
+  fallback and seedLateralVariants' `validTs(t)` scan filter are
+  independent layers — reverting either one alone leaves migrate()
+  un-thrown because the other still covers it; only reverting both (or
+  the direct isoDay assertion) catches a regression in just one. While
+  running that extra mutation check by hand, an early version of the
+  direct assertion crashed the whole `node test/unit.js` process instead
+  of failing cleanly: its diagnostic-message argument (the third argument
+  to `ok()`) called the throwing expression a second, unguarded time
+  outside `throws()`'s try/catch — JS evaluates all of a call's arguments
+  before the call runs, so this happened even though the condition
+  argument short-circuited past its own copy of the same call. Fixed by
+  computing the diagnostic only on the safe side of the same `throws()`
+  check. Worth remembering for any future assertion here that both
+  probes a throw and wants to report the thrown value: guard the
+  diagnostic exactly as strictly as the condition, not looser.
+- Review round 1 on #180 found a second, pre-existing timezone bug this
+  plan's own fix exposed rather than caused: `test/unit.js`'s byte-for-byte
+  CSV fixture (`csvFixture`, "the CSV: every set ever logged") pinned its
+  two ts-bearing rows' `fecha` as the literal `2023-11-14`. Those ts values
+  are 22:13:20Z/22:15:00Z, so once `fecha` became the local day the
+  literal only held from UTC+1 down — from UTC+2 up (and in zones like
+  Tokyo) the local day is already the 15th. Fixed by computing both
+  through `call('localDay(...))` instead of hard-coding, each ts
+  separately even though the two are only 100 seconds apart (so a later
+  edit to one literal can't quietly go stale against the other). Confirmed
+  against a real UTC+9 zone before and after (see below), not just argued.
+  Landed as its own commit on `claude/068-a`, then a rebase onto
+  `origin/main` (which had taken v135 via #178 meanwhile) and a re-bump to
+  v136 — `git rebase` correctly dropped this branch's own v134→v135 bump
+  commit as a duplicate of main's rather than conflicting on it.
+- **This Windows Node build does not honour an IANA zone name in `TZ`**
+  (confirmed on `node v24.18.0`): `TZ=Asia/Tokyo` and `TZ=America/Los_Angeles`
+  both run `node test/unit.js` to completion with no error and no warning,
+  but silently keep the system's own zone (Europe/Madrid here) instead —
+  checked directly with `new Date(...).toString()` under each, both came
+  back `Central European Standard Time`, identical to no `TZ` at all. A
+  bare POSIX offset string (`TZ=JST-9`, `TZ=CET-1`) is also silently
+  ignored, falling back to a plain `GMT+0000` instead. Only a short list of
+  legacy names is actually honoured: `UTC` (confirmed), `PST8PDT` (real
+  UTC-8, stands in for `America/Los_Angeles`) and `Japan` (real UTC+9,
+  stands in for `Asia/Tokyo`) among what was tried. Anything here that
+  needs a *real* non-UTC, non-Madrid offset to prove a timezone fix on
+  this machine should use one of those two rather than the IANA name, and
+  should sanity-check the offset it actually got
+  (`TZ=<name> node -e "console.log(new Date().toString())"`) rather than
+  trust that a run with no error means the zone took effect — the failure
+  mode here is silent, not a crash.
 - *(Executor: record deviations here.)*

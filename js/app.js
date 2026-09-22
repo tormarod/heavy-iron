@@ -6505,7 +6505,30 @@ const VARIANT_SINCE_RE = /^\d{4}-\d{2}-\d{2}$/;
    rate-limits and read only at its tail: a plan somebody renames forty
    times has forty rows of history nothing will ever ask for. */
 const VARIANT_LIMIT = 12;
-const isoDay = ts => new Date(ts).toISOString().slice(0, 10);
+/* The largest time value a JS Date can hold; toISOString() throws above it.
+   Every reader that turns a row's ts into a date (isoDay, localDay, the
+   CSV's fecha column) shares this ceiling, so a ts past it has to be kept
+   out of storage in the first place rather than crash whichever of them
+   runs into it first. */
+const TS_MAX = 8.64e15;
+const validTs = t => Number.isFinite(t) && t > 0 && t <= TS_MAX;
+/* A ts this cannot vouch for (someone else's backup, a corrupted write)
+   must not be able to throw here: land on today instead. Every caller
+   already falls back to "now" when it has nothing better (the line below,
+   recordVariant's `ts || Date.now()`), so this is that same fallback, just
+   impossible to miss. */
+const isoDay = ts => new Date(validTs(ts) ? ts : Date.now()).toISOString().slice(0, 10);
+/* The calendar day a person would say a set was trained on, not the UTC
+   one: a set ticked at 00:30 in Spain belongs to the evening before, and
+   isoDay stays UTC on purpose (variantSince compares it as UTC midnight
+   against session times). js/diagnostics.js's dayKey follows the same
+   rule for the same reason — app.js may not read a split file's symbol
+   (AGENTS.md), so this is a second copy under a different name rather
+   than a shared one. */
+function localDay(ts) {
+  const d = new Date(ts);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
 
 function variantSince(profile, exId) {
   const list = profile && profile.variants && profile.variants[exId];
@@ -6544,7 +6567,7 @@ function seedLateralVariants(profile) {
       forEachSlot(profile.log, bk, (k, w, dayId, sl) => {
         const rows = sl && sl[exId];
         if (!Array.isArray(rows)) return;
-        rows.forEach(r => { const t = r && +r.ts; if (t > 0 && (!first || t < first)) first = t; });
+        rows.forEach(r => { const t = r && +r.ts; if (validTs(t) && (!first || t < first)) first = t; });
       });
     });
     profile.variants[exId] = [
@@ -7641,12 +7664,16 @@ const ROW_FIELDS = [
     accept: raw => !!raw.done,
     cell: r => (r.done ? 'si' : 'no') },
   { key: 'ts', col: 'fecha',
-    send: r => (Number.isFinite(+r.ts) && +r.ts > 0 ? +r.ts : undefined),
+    send: r => (validTs(+r.ts) ? +r.ts : undefined),
     accept: raw => {
       const ts = isObj(raw.ts) ? NaN : +raw.ts;
-      return Number.isFinite(ts) && ts > 0 ? ts : undefined;
+      return validTs(ts) ? ts : undefined;
     },
-    cell: r => (r.ts ? new Date(r.ts).toISOString().slice(0, 10) : '') },
+    /* localDay, not isoDay: this is the day a person trained, shown in a
+       spreadsheet, not the UTC key variantSince compares. A ts that fails
+       validTs (past TS_MAX, or already dropped by accept so absent) exports
+       as a blank cell instead of throwing and losing the whole CSV. */
+    cell: r => (validTs(+r.ts) ? localDay(+r.ts) : '') },
   { key: 'rir', col: 'rir',
     send: r => (rowRir(r) != null ? String(rowRir(r)) : undefined),
     /* One digit or nothing. A '2+' on a row is not a row value — the
