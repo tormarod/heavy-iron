@@ -20,6 +20,7 @@
 const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
+const cp = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -67,6 +68,140 @@ ok('every js/ entry in SHELL exists on disk',
 ok('sw.js reads the cache via fromCache, not bare caches.match',
    !swSrc.includes('caches.match('),
    'found bare caches.match( in sw.js');
+
+/* AGENTS.md's precache-hole rule "reads the same on ids": a file other than
+   js/app.js can be served against an index.html older than itself, because
+   sw.js's repairCache re-adds a missing URL from the server — the current
+   release of that one file — into the old shell cache, which makes the
+   mixed shell a steady state rather than a moment. An unguarded $('newId')
+   then throws: inside a draw that is the recovery screen with intact data,
+   inside a wire*() it is the stuck loading screen. The two symbol rules are
+   held to the source further down; this one was prose until plans/058, and
+   nine ids in four files had slipped past review — invisible here because
+   harness.js's fake document manufactures an element for every id.
+
+   No list of ids to maintain: the dates decide. A read passes when it is
+   guarded, or when its id reached index.html no later than the commit that
+   added the file reading it. js/app.js is out of scope — it is precached in
+   every shell, reads hundreds of ids, and a hole in it is what
+   js/boot-guard.js exists for.
+
+   The parser is line-based on purpose. A read it cannot classify counts as
+   unguarded, and the fix for a false positive is the guard, not a smarter
+   parser. */
+console.log('\n== an unguarded $(id) is at least as old as the file reading it (AGENTS.md, plans/058) ==');
+
+/* The rest of the statement: this line after the read, plus the first line
+   below that is neither blank nor a comment. Two lines is all
+   `const x = $('id'); if (x) …` needs, and a wider window would start
+   calling unrelated code a guard. */
+function afterRead(lines, i, rest) {
+  for (let j = i + 1; j < lines.length && j <= i + 3; j++) {
+    const t = lines[j].trim();
+    if (!t || t.startsWith('//') || t.startsWith('/*') || t.startsWith('*')) continue;
+    return rest + '\n' + t;
+  }
+  return rest;
+}
+
+function readIsGuarded(lines, i, at, id) {
+  const line = lines[i], before = line.slice(0, at), after = line.slice(at);
+  /* `if ($('id')) $('id').onclick = …` — the read is its own truth test,
+     and it guards the body bound on the same line. */
+  if (new RegExp("\\bif\\s*\\(\\s*!?\\s*\\$\\('" + id + "'\\)\\s*(?:\\)|&&|\\|\\|)").test(line)) return true;
+  const rest = after.slice(id.length + 5);
+  /* `x && $('id').y` and `$('id')?.y`. Standing to the right of && or ||
+     is not itself a guard — `cached || $('newId').value` still throws — so
+     the read has to BE the truth value: nothing dereferencing it after the
+     call. No instance either way today; fail closed. */
+  if (/(?:&&|\|\|)\s*$/.test(before) && !/^\s*[.[]/.test(rest)) return true;
+  if (/^\$\('[^']*'\)\s*\?\./.test(after)) return true;
+  /* `const x = $('id');` — one of several declarators is fine — with x
+     tested before it is used. */
+  const decl = /(?:^|[(,;]|\b(?:const|let|var)\s)\s*([A-Za-z_$][\w$]*)\s*=\s*$/.exec(before);
+  /* Only when the read is the whole initializer. `const box =
+     $('blocksSheet').querySelector('.sheet-box'); if (box) …` tests the
+     .sheet-box, not #blocksSheet, and the sheet is read unguarded. */
+  if (decl && (rest.trim() === '' || /^\s*[,;]/.test(rest))) {
+    const name = decl[1], tail = afterRead(lines, i, rest);
+    if (new RegExp('\\bif\\s*\\([^)]*\\b' + name + '\\b').test(tail)) return true;
+    if (new RegExp('\\b' + name + '\\s*(?:&&|\\?\\.)').test(tail)) return true;
+    if (new RegExp('!\\s*\\b' + name + '\\b').test(tail)) return true;
+  }
+  return false;
+}
+
+const idReads = [];
+SHELL_SCRIPTS.filter(f => f !== 'js/app.js').forEach(f => {
+  const lines = fs.readFileSync(path.join(ROOT, f), 'utf8').split('\n');
+  lines.forEach((line, i) => {
+    for (const m of line.matchAll(/\$\('([A-Za-z0-9_-]+)'\)/g)) {
+      idReads.push({ file: f, line: i + 1, id: m[1], guarded: readIsGuarded(lines, i, m.index, m[1]) });
+    }
+  });
+});
+SHELL_SCRIPTS.filter(f => f !== 'js/app.js').forEach(f => {
+  const mine = idReads.filter(r => r.file === f);
+  if (mine.length) console.log('  ' + f + ': ' + mine.length + ' reads, ' +
+    mine.filter(r => r.guarded).length + ' guarded');
+});
+
+const git = args => cp.execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 24 });
+let noGit = '';
+try {
+  if (git(['rev-parse', '--is-shallow-repository']).trim() === 'true') noGit = 'the checkout is shallow';
+} catch (e) { noGit = 'git is not available (' + String(e.message).split('\n')[0] + ')'; }
+
+if (noGit) {
+  /* Nothing asserted rather than something wrong asserted: a shallow clone
+     dates every id and every file to whatever it happens to hold. The unit
+     job checks out with fetch-depth: 0 for exactly this reason. */
+  console.log('  SKIP  ' + idReads.length + ' reads left undated: ' + noGit);
+} else {
+  /* Two passes over the history rather than one `git log -S` per id: the
+     same answers for a hundred child processes fewer, which is the
+     difference between 70 ms and three seconds on Windows. The first
+     appearance of `id="…"` among index.html's added lines is what -S finds
+     for that id; -U0 keeps the diff to the lines that changed.
+
+     Committer date, not author date: the question is which shell already
+     has the thing, and in a repo that rebases this much that is the order
+     the commits landed in, not the order they were written. No commit is
+     out of order today, so nothing moves — it is the definition that is
+     right, not the numbers that were wrong. */
+  const idBorn = {};
+  let at = null;
+  for (const ln of git(['log', '--reverse', '--format=@@@%ct', '-p', '-U0', '--', 'index.html']).split('\n')) {
+    if (ln.startsWith('@@@')) { at = Number(ln.slice(3)); continue; }
+    if (ln[0] !== '+') continue;
+    for (const m of ln.matchAll(/id="([A-Za-z0-9_-]+)"/g)) if (!(m[1] in idBorn)) idBorn[m[1]] = at;
+  }
+  /* --no-renames because a rename is reported as R, not A, and a renamed
+     file would then have no birthday at all — every read in it younger
+     than nothing, and the whole file reported. Split into A+D, the new
+     path is dated by the commit that renamed it, which is the first shell
+     that has it under that name: the right answer either way. */
+  const fileBorn = {};
+  at = null;
+  for (const ln of git(['log', '--reverse', '--diff-filter=A', '--no-renames', '--format=@@@%ct', '--name-only', '--', 'js/']).split('\n')) {
+    const t = ln.trim();
+    if (t.startsWith('@@@')) { at = Number(t.slice(3)); continue; }
+    if (t && !(t in fileBorn)) fileBorn[t] = at;
+  }
+
+  const day = t => (t === undefined ? 'never in index.html' : new Date(t * 1000).toISOString().slice(0, 10));
+  const unguarded = idReads.filter(r => !r.guarded);
+  const younger = unguarded.filter(r =>
+    idBorn[r.id] === undefined || fileBorn[r.file] === undefined || idBorn[r.id] > fileBorn[r.file]);
+  ok('every unguarded $(id) outside js/app.js reads an id at least as old as its file',
+     younger.length === 0,
+     younger.map(r => r.file + ':' + r.line + " $('" + r.id + "') — id " + day(idBorn[r.id]) +
+                      ', file ' + day(fileBorn[r.file])).join('; '));
+  /* A floor, so a parser that stopped matching — or a section pointed at
+     the wrong list of files — cannot pass by checking nothing. */
+  ok('the id check read the whole shell: ' + idReads.length + ' reads, ' + unguarded.length + ' unguarded',
+     idReads.length >= 150, idReads.length + ' reads is below the floor of 150');
+}
 
 /* WCAG 2.x contrast, computed from css/style.css's own hex values rather
    than eyeballed: sRGB -> linear -> relative luminance -> the ratio itself

@@ -273,6 +273,132 @@ last session left it. If the guide does not describe it, add nothing.
 
 _(one subsection per step, filled by its executor)_
 
+### A
+
+Landed in four commits on `claude/058-a`, written on top of `032045a` and
+rebased onto `origin/main` twice, as steps B (`fffd6e3`) and then C
+(`7043d59`) merged. Every conflict was bookkeeping: on the first rebase
+`test/unit.js` kept both new assertions — B's bare-`caches.match` one,
+then this section — and on both rebases the plan's "Maintenance notes"
+kept every subsection already there. C's own `test/unit.js` changes are
+further down the file and merged without a conflict. B took `v124` and C
+`v125`, so this branch ends at `v126`.
+
+1. **The guards (A.1).** Nine ids in eleven reads across four files, every
+   one confirmed younger than its file before being touched:
+   - `js/block-editor.js` `renderBlockBar`, `#blockBtn` (id 2026-09-20,
+     file 2026-08-26) — guarded around the chip block, not by an early
+     return, so the picker still renders.
+   - `js/block-editor.js` `renderPriorityChips`, `#pePriority` and
+     `#pePriorityHint` (both 2026-08-26, ~30 min after the file) — taken
+     together, `if (!host || !hint) return;`, since drawing the chips is
+     the function's whole errand. The `$('pePriorityHint')` read at the
+     foot of the function became `hint`.
+   - `js/diagnostics.js` `drawDiag`, `#diagView` (2026-08-26, ~30 min
+     after the file) — `const view = …; if (view) view.querySelectorAll(…)`.
+     The sheet below still draws.
+   - `js/review.js` `openReview`, `#reviewBlob` (2026-09-18, file
+     2026-08-26).
+   - `js/review.js` `wireReview`, `#reviewImport` — taken once beside
+     `#reviewBlob` (`const imp = …, blob = …; if (imp && blob) imp.onclick
+     = …`), so the two further `$('reviewBlob')` reads inside the handler
+     became `blob` and needed no guard of their own, per A.1's "inside
+     handlers that only run when the element was found".
+   - `js/profile-transfer.js` `renderStorageState` (`#storageState`,
+     `#storageActs`, both 2026-08-27) and `wireProfileTransfer`
+     (`#storageProtect`, 2026-08-27); file 2026-08-26.
+
+2. **The check (A.2)**, `test/unit.js`, its own section directly under the
+   four-script-lists assertions, plus `fetch-depth: 0` on the `unit` job's
+   checkout in `.github/workflows/test.yml`.
+
+3. **AGENTS.md (A.3)**, one sentence added to the "both read the same on
+   ids" paragraph, example untouched.
+
+**What the check reports.** 169 `$('literal')` reads across the nine files
+in `SHELL_SCRIPTS` that have any (`js/theme-init.js`, `js/data.js` and
+`js/boot-guard.js` read no ids), 148 of them unguarded, none younger than
+its file. Per file, reads/guarded: block-editor 52/9, diagnostics 10/1,
+review 21/4, profile-transfer 13/3, calculator 14/0, rest-timer 24/3,
+chart 6/0, volume-sheet 9/0, qr-transfer 20/1. The floor is 150 reads, so
+the section cannot pass by checking nothing. The section adds two
+assertions: 1194 on main after steps B and C, 1196 here.
+
+**Extra reads flagged: none.** With A.1 reverted in the working tree the
+section fails naming exactly eleven reads — the nine ids above, with
+`#reviewBlob` counted at each of the three lines that read it — and no
+read in any file the step does not list. So neither A STOP condition
+fired. Two things the check cleared that A.1 had flagged for guarding:
+
+- `#reviewStatus` (`js/review.js`) arrived in `e65c892`, **the same commit
+  that added the file**, so its reads are left alone per A.1's "if the
+  dating shows one of these ids is in fact as old as its reader". That is
+  also why the `setNote($('reviewStatus'), …)` calls inside the review
+  handlers stayed as they were.
+- `#tnext` and `#navBar` in `js/rest-timer.js` are younger than that file
+  but were already guarded by plans/037; the check agrees.
+
+**How CI runs it.** `test/unit.js` is the only suite GitHub runs. The
+section shells out to `git`, so the `unit` job's `actions/checkout` now
+takes `fetch-depth: 0` — the default single-commit checkout has neither
+date and the section prints `SKIP … the checkout is shallow` and asserts
+nothing. That skip path was exercised by forcing it locally: the suite
+stayed green with the two assertions simply absent. Nothing outside
+`fetch-depth` changed in the workflow.
+
+**Deviations from the plan text:**
+
+- **A.2 dates in two whole-history passes, not one `git log -S` per id.**
+  The plan prescribes `git log --reverse --format=%at -S'id="<id>"' --
+  index.html` per id and `git log --diff-filter=A` per file, cached. One
+  pass of `git log --reverse --format=@@@%ct -p -U0 -- index.html`
+  (46 commits, 66 KB) and one of `git log --reverse --diff-filter=A
+  --no-renames --format=@@@%ct --name-only -- js/` give **identical
+  answers on all 96
+  ids and all 12 files** — checked against the per-id form before the
+  swap — in 70 ms rather than ~3 s of child processes on Windows. The
+  plan's own requirement is "well under a second", and caching alone does
+  not get there because the ids are nearly all distinct.
+- **The read count is printed as a per-file tally plus the two assertion
+  names**, rather than a line per read: A.4 asks the section to report
+  every read it checked, and 169 lines of PASS-adjacent noise on every
+  run is not what the rest of the suite does.
+- **The declaration guard counts only when the read is the whole
+  initializer.** `const box = $('blocksSheet').querySelector('.sheet-box');
+  if (box) …` tests the `.sheet-box`, not `#blocksSheet`, so that read is
+  counted unguarded (it passes on its date). This is one read stricter
+  than the plan's shape description and in the direction the plan asks
+  for — what the parser cannot classify counts as unguarded.
+- **`js/rest-timer.js` is a fifth file the check covers** that A.1 does
+  not list; it needed no edit (see above).
+
+**Three hardenings from the review of PR #166**, none of which moves a
+number — 169 reads, 148 unguarded, green before and after:
+
+- The `&&`/`||` rule now also requires that nothing dereferences the read
+  (`.` or `[`) after the call, because standing to the right of `||` is
+  not a guard: `cached || $('newId').value` still throws. No instance
+  either way today; fail closed.
+- The file-birthday log takes `--no-renames`, since a rename reports as R
+  rather than A and a renamed file would otherwise have no birthday at
+  all — every read in it reported as younger than nothing. Split into
+  A+D, the new path is dated by its rename commit, the first shell that
+  has it under that name.
+- Both logs read the committer date (`%ct`) rather than the author date:
+  "which shell has it" is landing order, and this repo rebases enough for
+  the two to diverge. Nothing is out of order today, so no date moves.
+
+**Verification.** `node --check` on the four edited `js/` files and on
+`test/unit.js`; `node test/unit.js` green at 1196. A.4's negative run —
+`git checkout 032045a -- js/block-editor.js js/diagnostics.js js/review.js
+js/profile-transfer.js`, suite, restore — failed the section naming all
+eleven reads including the three on the boot path. Smoke, against a server
+on `:8791`: `main session`, `revisión del bloque` and `almacenamiento`
+(268 passed, 0 failed), then `la barra y el menú de la tarjeta`, `volumen
+del bloque y músculos prioritarios`, `frecuencia por músculo` and `índice
+de fuerza por músculo` (56 passed, 0 failed) for the chip, the priority
+chips and the Diagnóstico's view switch.
+
 ### B
 
 **What landed:**

@@ -113,6 +113,12 @@ identical to an oversight unless someone writes down which it is:
   `#tnext` and `#navBar` in `js/rest-timer.js`) and guarded every read;
   `wireBlockEditor()` is one of the two unguarded calls in the tail above,
   so a throw inside it takes `load()` with it and the app never draws.
+  `test/unit.js` holds this rule to the source the way it holds the two
+  symbol rules: an unguarded `$('id')` in a file other than `app.js` fails
+  when `git` dates that id in `index.html` after the commit that added the
+  reading file (plans/058 — nine ids in four files had slipped past
+  review, invisible here because the harness manufactures an element for
+  every id).
 
   Both rules have one exception, and it is older than the rules: `js/data.js`,
   `js/block-editor.js` and `js/profile-transfer.js` predate the split and are

@@ -24,6 +24,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # test/unit.js dates every unguarded $('id') outside js/app.js
+          # against the commit that added the file reading it (plans/058).
+          # The default single-commit checkout has neither date, so that
+          # section skips itself and says why; the whole history is what
+          # makes it run here.
+          fetch-depth: 0
 
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

@@ -296,7 +296,11 @@ function drawDiagFreq(profile, block) {
 function drawDiag() {
   const profile = getProfile(), block = getBlock();
 
-  $('diagView').querySelectorAll('.seg-btn').forEach(b => {
+  /* #diagView is newer than this file, so a precache hole can serve this
+     copy against a sheet that has no view switch (AGENTS.md's
+     precache-hole rule). The sheet below still draws. */
+  const view = $('diagView');
+  if (view) view.querySelectorAll('.seg-btn').forEach(b => {
     b.setAttribute('aria-pressed', b.dataset.view === diagView ? 'true' : 'false');
     b.onclick = () => { diagView = b.dataset.view; drawDiag(); };
   });
