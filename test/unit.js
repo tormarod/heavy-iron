@@ -4025,6 +4025,21 @@ console.log('\n== "borrar registro" reaches a week past the cap (plans/009 item 
   })()`);
   ok('purgeExLog reaches the same week, and takes only its own exercise', ex === 'e2|e2', ex);
 
+  /* The editor's purge confirmation quotes these counts, and the purges above
+     delete every week the day has. A count that stopped at MAX_WEEKS told
+     the user fewer sets would go than actually went. */
+  const counted = call(`(function () {
+    const p = { log: { b1: { 'w1-d1': { e1: [{ done: true }] }, 'w17-d1': { e1: [{ done: true }, {}], e2: [{ w: 50 }] },
+                             'w17-d2': { e1: [{ done: true }] } } } };
+    const e1 = { id: 'e1' }, e2 = { id: 'e2' };
+    peDraftBlock = { id: 'b1' };
+    try {
+      return draftExLogged(p, e1, 'd1') + '|' + draftDayLogged(p, { id: 'd1', ex: [e1, e2] });
+    } finally { peDraftBlock = null; }
+  })()`);
+  ok("the purge confirmation counts the used rows filed under w17, and not the other day's",
+     counted === '2|3', counted);
+
   const moved = call(`(function () {
     const p = { log: { b1: { 'w17-d1': { e1: [{ w: 1 }] } } } };
     moveExLog(p, 'b1', 'd1', 'd2', 'e1');
