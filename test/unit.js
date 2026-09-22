@@ -6119,6 +6119,24 @@ console.log('\n== EX_FIELDS: what a plan exercise may hold, in one table (plans/
      promptOrder.length === prompted.length && new Set(promptOrder).size === promptOrder.length &&
      prompted.every(k => promptOrder.includes(k)), JSON.stringify({ promptOrder, prompted }));
 
+  /* Decision 6, the row codec's guard for an exercise: every field the
+     code writes onto one — `ex.x = …` or `delete …ex.x` — has to be one the
+     table declares, or migrate() would never repair it and a restore would
+     drop it. `ex` is the name every writer in the repo gives an exercise
+     (the plan editor's save gate was the one that did not, and was renamed
+     for this). The importer writes through acceptExercise, so its output
+     is checked by running it with every field set, on both paths, and so
+     is newExercise()'s literal. Comments, strings and regex literals are
+     blanked first (codeOnly): they discuss fields. */
+  const written = new Set();
+  fs.readdirSync(path.join(ROOT, 'js')).filter(f => f.endsWith('.js')).forEach(f => {
+    const code = codeOnly(fs.readFileSync(path.join(ROOT, 'js', f), 'utf8'));
+    for (const m of code.matchAll(/\bex\.([A-Za-z_$][\w$]*)\s*=(?!=)/g)) written.add(m[1]);
+    for (const m of code.matchAll(/\bdelete\s+(?:[\w$]+\.)*ex\.([A-Za-z_$][\w$]*)/g)) written.add(m[1]);
+  });
+  const unknown = [...written].filter(k => !keys.includes(k));
+  ok('every exercise field the code writes is in EX_FIELDS, so migrate() repairs it and a restore keeps it',
+     written.size >= 12 && unknown.length === 0, 'written: ' + [...written].join(',') + ' unknown: ' + unknown.join(','));
   const made = JSON.parse(call(`JSON.stringify((function () {
     const every = { id: 'e', n: 'Ex', reps: '8', sets: 3, rest: 60, alt: 'a', cue: 'c', setup: 's', add: 2,
                     inc: 2.5, minRir: 1, share: 1, ss: 1, muscle: 'm', pattern: 'p', type: 't', off: 1, extra: 'x' };
@@ -6195,6 +6213,14 @@ console.log('\n== EX_FIELDS: what a plan exercise may hold, in one table (plans/
   ok('...and never rewrites text the app\'s own writers could have put there',
      r4.n === '  Press  de banca ', JSON.stringify(r4.n));
 
+  /* Decision 7: one rule for the plate list, read the same by the load and
+     by "Guardar" in Ajustes (pressed through bootApp further down). */
+  ok('cleanPlates reads a comma decimal, keeps the unit\'s bounds, each size once, in the order given',
+     call('JSON.stringify(cleanPlates(["20", "0,25", "20", "x", "0.1", "51", 10], "kg"))') === '[20,0.25,10]',
+     call('JSON.stringify(cleanPlates(["20", "0,25", "20", "x", "0.1", "51", 10], "kg"))'));
+  ok('...and migrate() falls back to the unit\'s defaults when nothing is left of a list',
+     call('state = ' + JSON.stringify({ profiles: {}, prefs: { units: 'lb', plates: ['x', 0, 500] } }) +
+          '; migrate(); JSON.stringify(state.prefs.plates) === JSON.stringify(DEFAULT_PLATES.lb)'));
 }
 
 console.log('\n== the Diagnóstico on sessionsOf: the deload is deloadAt (plans/038 PR 4) ==');
@@ -7749,6 +7775,25 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
          want.slice(0, 120) + ' … not found in … ' + prompt.slice(prompt.indexOf('"ex"'), prompt.indexOf('"ex"') + 300));
     }
     call('delete globalThis.L;');
+  }
+
+  /* Decision 7 of plans/055: "Guardar" in Ajustes reads the plate list
+     through cleanPlates, the rule migrate() reads a stored one with, so a
+     list typed there and the same list loaded from a backup cannot come out
+     different. Pressed on a booted app. */
+  console.log('\n== "Guardar" in Ajustes keeps the plates migrate() would (plans/055) ==');
+  {
+    /* The box is a comma-separated list, so its decimals are written with a
+       point; num() reads a comma decimal, which only a stored list holds. */
+    const typedList = '25, 20, 20, 0.25, x, 100, 1.25';
+    const boot = settled(JSON.parse(SEED));
+    boot.call('openSetup(false); setupDraft.platesText = ' + JSON.stringify(typedList) + ';');
+    boot.$('setupSave').onclick();
+    const typedPlates = boot.call('JSON.stringify(state.prefs.plates)');
+    const loaded = boot.call('state = JSON.parse(JSON.stringify(state)); state.prefs.plates = ' + JSON.stringify(typedList) +
+      '.split(","); migrate(); JSON.stringify(state.prefs.plates)');
+    ok('the same list comes out of Ajustes and out of a load: each size once, the unit\'s bounds kept, junk left out',
+       typedPlates === '[25,20,0.25,1.25]' && loaded === typedPlates, typedPlates + ' / ' + loaded);
   }
 
   /* plans/010's promise, one level up from the block. A restore reads every

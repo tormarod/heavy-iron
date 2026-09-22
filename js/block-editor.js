@@ -1228,19 +1228,21 @@ function syncDraftFromForm() {
   if (!days.length) return 'El bloque necesita al menos un día.';
   days.forEach((day, i) => { if (!String(day.name || '').trim()) day.name = 'Día ' + (i + 1); });
   for (const day of days) {
-    const ex = exList(day);
-    if (!ex.length) return 'Cada día necesita al menos un ejercicio — revisa "' + day.name + '".';
-    for (const e of ex) {
-      if (!String(e.n || '').trim()) return 'Todos los ejercicios necesitan un nombre.';
-      if (!e.reps || !String(e.reps).trim()) return 'Falta el rango de repeticiones en "' + (e.n || 'un ejercicio') + '".';
+    const live = exList(day);
+    if (!live.length) return 'Cada día necesita al menos un ejercicio — revisa "' + day.name + '".';
+    /* `ex`, the name every writer of an exercise gives it: the guard in
+       test/unit.js finds the fields the code writes by it (EX_FIELDS). */
+    for (const ex of live) {
+      if (!String(ex.n || '').trim()) return 'Todos los ejercicios necesitan un nombre.';
+      if (!ex.reps || !String(ex.reps).trim()) return 'Falta el rango de repeticiones en "' + (ex.n || 'un ejercicio') + '".';
       /* The oninput clamps above are the UX; this is the gate. migrate()
          clamps these on the next load, but the session draws from the
          draft as saved, and 5000 sets is 5000 rows before any reload gets
          the chance to repair it. `add` is bounded by this block's own
          length, which the form may just have shortened. */
-      e.sets = clampInt(e.sets, 1, 12, 3);
-      e.rest = clampInt(e.rest, 0, 900, 90);
-      if (e.add != null) { const a = clampInt(e.add, 0, block.weeks, 0); if (a) e.add = a; else delete e.add; }
+      ex.sets = clampInt(ex.sets, 1, 12, 3);
+      ex.rest = clampInt(ex.rest, 0, 900, 90);
+      if (ex.add != null) { const a = clampInt(ex.add, 0, block.weeks, 0); if (a) ex.add = a; else delete ex.add; }
     }
   }
   return null;
