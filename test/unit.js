@@ -3399,9 +3399,9 @@ peSaveBoot.clock.advance(1000);
 let peSaveRan = '';
 try {
   peSaveBoot.$('editPlan').onclick();
-  peSaveRan = peSaveBoot.call('peDraftBlock') ? 'the draft is still open' : '"Editar plan" opened no draft';
+  peSaveRan = peSaveBoot.call('peDraft') ? 'the draft is still open' : '"Editar plan" opened no draft';
   peSaveBoot.$('peSave').onclick().catch(() => {});
-  if (peSaveBoot.call('peDraftBlock === null && !askResolve')) peSaveRan = '';
+  if (peSaveBoot.call('peDraft === null && !askResolve')) peSaveRan = '';
   peSaveBoot.clock.advance(1000);
 } catch (e) { peSaveRan = e.message; }
 const peSaveProbe = (peSaveBoot.saved() || { profiles: { hombre: { log: {} } } }).profiles.hombre.log.B || {};
@@ -4567,29 +4567,29 @@ console.log('\n== input boundary: unsafe tags, editor clamps, setup aliasing (pl
      (The inert DOM stub returns '' for every field, so the draft's weeks
      comes back as 1 here — the `add` bound is still the block's own.) */
   call('state = defaultState(); migrate();');
-  call('peDraftBlock = JSON.parse(JSON.stringify(state.profiles.hombre.blocks["block-1"]));');
-  call('peDraftBlock.days[0].ex[0].sets = 5000;');
-  call('peDraftBlock.days[0].ex[0].rest = 99999;');
-  call('peDraftBlock.days[0].ex[0].add = 40;');
+  call('peDraft = openPlanDraft(state.profiles.hombre, state.profiles.hombre.blocks["block-1"]);');
+  call('peDraft.block.days[0].ex[0].sets = 5000;');
+  call('peDraft.block.days[0].ex[0].rest = 99999;');
+  call('peDraft.block.days[0].ex[0].add = 40;');
   ok('syncDraftFromForm accepts the draft', call('syncDraftFromForm()') === null,
      String(call('syncDraftFromForm()')));
   ok('...and clamps sets to the same 12 migrate() uses',
-     call('peDraftBlock.days[0].ex[0].sets') === 12,
-     String(call('peDraftBlock.days[0].ex[0].sets')));
+     call('peDraft.block.days[0].ex[0].sets') === 12,
+     String(call('peDraft.block.days[0].ex[0].sets')));
   ok('...and clamps rest to the same 900 migrate() uses',
-     call('peDraftBlock.days[0].ex[0].rest') === 900,
-     String(call('peDraftBlock.days[0].ex[0].rest')));
+     call('peDraft.block.days[0].ex[0].rest') === 900,
+     String(call('peDraft.block.days[0].ex[0].rest')));
   ok('...and clamps "+1 serie desde" to the weeks the block actually has',
-     call('peDraftBlock.days[0].ex[0].add') <= call('peDraftBlock.weeks'),
-     'add=' + call('peDraftBlock.days[0].ex[0].add') + ' weeks=' + call('peDraftBlock.weeks'));
+     call('peDraft.block.days[0].ex[0].add') <= call('peDraft.block.weeks'),
+     'add=' + call('peDraft.block.days[0].ex[0].add') + ' weeks=' + call('peDraft.block.weeks'));
   /* A cleared box has to stay cleared. clampInt('') is 0 raised to its low
      bound, so an `add` clamped from 1 would come back as week 1 and could
      never be removed again — clamped from 0 and deleted when falsy. */
-  call('peDraftBlock.days[0].ex[0].add = 0; syncDraftFromForm();');
+  call('peDraft.block.days[0].ex[0].add = 0; syncDraftFromForm();');
   ok('a zeroed "+1 serie desde" is removed, not clamped up to week 1',
-     call('peDraftBlock.days[0].ex[0].add') === undefined,
-     String(call('peDraftBlock.days[0].ex[0].add')));
-  call('peDraftBlock = null;');
+     call('peDraft.block.days[0].ex[0].add') === undefined,
+     String(call('peDraft.block.days[0].ex[0].add')));
+  call('peDraft = null;');
 }
 
 {
@@ -4920,10 +4920,10 @@ console.log('\n== "borrar registro" reaches a week past the cap (plans/009 item 
     const p = { log: { b1: { 'w1-d1': { e1: [{ done: true }] }, 'w17-d1': { e1: [{ done: true }, {}], e2: [{ w: 50 }] },
                              'w17-d2': { e1: [{ done: true }] } } } };
     const e1 = { id: 'e1' }, e2 = { id: 'e2' };
-    peDraftBlock = { id: 'b1' };
+    peDraft = openPlanDraft(p, { id: 'b1', days: [] });
     try {
       return draftExLogged(p, e1, 'd1') + '|' + draftDayLogged(p, { id: 'd1', ex: [e1, e2] });
-    } finally { peDraftBlock = null; }
+    } finally { peDraft = null; }
   })()`);
   ok("the purge confirmation counts the used rows filed under w17, and not the other day's",
      counted === '2|3', counted);
@@ -6763,7 +6763,7 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
     const draw = () => { made.length = 0; call('renderPlanEditor()'); };
     const buttons = label => made.filter(el => el.tagName === 'BUTTON' && el.textContent === label);
     const notes = () => made.filter(el => el.tagName === 'P' && el.className === 'setup-hint').map(el => el.textContent);
-    const days = () => call('peDraftBlock.days.length');
+    const days = () => call('peDraft.block.days.length');
 
     /* What "Editar plan" opens: a deep copy of the block, one day retired
        with a set on it. */
@@ -6773,10 +6773,8 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
         const row = entry(getProfile(), block.id, 1, day.id, ex.id, ex.sets)[0];
         row.w = '50'; row.r = '10'; row.done = true;
       })();
-      peDraftBlock = JSON.parse(JSON.stringify(getBlock()));
-      peDraftPurge = []; peDraftOriginalDay = new Map();
-      peDraftBlock.days.forEach(day => day.ex.forEach(ex => peDraftOriginalDay.set(ex, day.id)));
-      peDraftBlock.days[1].off = 1;`);
+      peDraft = openPlanDraft(getProfile(), getBlock());
+      peDraft.block.days[1].off = 1;`);
     const limit = call('IMPORT_LIMITS.days');
 
     let guard = 0;
@@ -6796,20 +6794,20 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
        dayNote.indexOf('"+ Nuevo bloque"') >= 0, dayNote);
 
     /* Day 1 is retired, so the first live day's button is the first one. */
-    call('while (peDraftBlock.days[0].ex.length < IMPORT_LIMITS.ex) peDraftBlock.days[0].ex.push(newExercise());');
+    call('while (peDraft.block.days[0].ex.length < IMPORT_LIMITS.ex) peDraft.block.days[0].ex.push(newExercise());');
     draw();
     const addEx = buttons('+ Añadir ejercicio');
     ok('"+ Añadir ejercicio" is disabled on a day at IMPORT_LIMITS.ex, and only there',
        addEx.length > 1 && addEx[0].disabled === true && addEx.slice(1).every(b => !b.disabled),
        JSON.stringify(addEx.map(b => b.disabled)));
-    const exBefore = call('peDraftBlock.days[0].ex.length');
+    const exBefore = call('peDraft.block.days[0].ex.length');
     addEx[0].onclick();
-    ok('...and its handler refuses', call('peDraftBlock.days[0].ex.length') === exBefore, String(call('peDraftBlock.days[0].ex.length')));
+    ok('...and its handler refuses', call('peDraft.block.days[0].ex.length') === exBefore, String(call('peDraft.block.days[0].ex.length')));
     ok('...with its own line: nothing retired in that day, so just the ceiling',
        notes().indexOf('Este día ya tiene 40 ejercicios; el máximo es 40.') >= 0, JSON.stringify(notes()));
 
     /* "Enviar a…" is the other road into a day. */
-    const fullId = call('peDraftBlock.days[0].id');
+    const fullId = call('peDraft.block.days[0].id');
     const toFull = made.filter(el => el.tagName === 'OPTION' && el.value === fullId);
     const toOthers = made.filter(el => el.tagName === 'OPTION' && el.value && el.value !== fullId);
     ok('"Enviar a…" offers the full day disabled, and marked so', toFull.length > 0 &&
@@ -6819,7 +6817,7 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
 
     /* A block saved over the limit before it existed: it opens, it says
        where it stands, and it cannot grow. */
-    call('peDraftBlock.days.push({ id: uid("d"), name: "Extra", ex: [newExercise()] });');
+    call('peDraft.block.days.push({ id: uid("d"), name: "Extra", ex: [newExercise()] });');
     draw();
     ok('a block already past the limit opens with "+ Añadir día" disabled and says how far past it is',
        buttons('+ Añadir día')[0].disabled === true &&
@@ -6827,7 +6825,7 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
        JSON.stringify(notes()));
 
     app.document.createElement = realCreate;
-    call('peDraftBlock = null; peDraftPurge = []; peDraftOriginalDay = new Map();');
+    call('peDraft = null;');
   }
 
   /* plans/010's promise, one level up from the block. A restore reads every
