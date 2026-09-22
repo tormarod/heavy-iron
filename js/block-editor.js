@@ -318,8 +318,22 @@ function normalizeImportedBlock(raw, opts) {
          straight to a reserved word — "Constructor" to `constructor` — and
          an id safeKey refuses is one recordVariant and the import's
          variants block silently drop, so that lift could never carry a
-         rename cut. */
-      const baseId = safeKey(txt(e.id, 60)) || safeKey(slugify(n)) || ('ex-' + di + '-' + ei);
+         rename cut.
+
+         One cap for an id from outside, stated or slugged: a paste used to
+         cut a stated id at 60 but keep a slug as long as the name made it,
+         and a restore then cut every stored id at 60 — so two long names
+         sharing their first sixty slug characters, on two days, came back
+         from the first restore as one id, and the own path's one-id-on-two-
+         days rule merged two different lifts' histories without a word
+         (plans/063). Now a paste caps both at 60, and the block-wide
+         de-duplication below gives any collision a visible "-2" at import
+         time. Own data is the app's ids coming back, so a stored id keeps
+         its length up to OWN_TEXT_LIMIT, the most any writer could have
+         slugged it from; a slug is only made there when the id is missing. */
+      const idCap = own ? OWN_TEXT_LIMIT : 60;
+      const capSlug = s => s.slice(0, 60).replace(/-+$/, '');
+      const baseId = safeKey(txt(e.id, idCap)) || safeKey(capSlug(slugify(n))) || ('ex-' + di + '-' + ei);
       let uniqueId = baseId, suffix = 2;
       while (dayIds.has(uniqueId)) uniqueId = baseId + '-' + (suffix++);
       dayIds.add(uniqueId);

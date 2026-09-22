@@ -3713,6 +3713,70 @@ ok('...and its energy', renamedDayProbe.renamed && renamedDayProbe.energy0 && re
 ok('...and a key that is no slot, or a week outside 1..MAX_WEEKS, is dropped rather than carried',
    renamedDayProbe.noteKeys.length === 2 && renamedDayProbe.energyKeys.length === 2, JSON.stringify(renamedDayProbe));
 
+console.log('\n== an exercise keeps its own id through a paste and every restore (plans/063) ==');
+{
+  /* A paste capped a stated id at 60 but slugged a missing one from the
+     whole name, and a restore then cut every stored id at 60: two long
+     names sharing their first sixty slug characters, on two days, came
+     back from the first restore as one id, and the own path's one id on
+     two days is how the app records one lift trained twice — so two
+     lifts' histories merged without a word. */
+  const stem = 'Remo con mancuerna a una mano apoyado en banco inclinado con agarre neutro'.slice(0, 70);
+  const pasted = call(`(function () {
+    const nameA = (${JSON.stringify(stem)} + ' y pausa arriba ' + 'a'.repeat(40)).slice(0, 110);
+    const nameB = (${JSON.stringify(stem)} + ' y tempo lento ' + 'b'.repeat(40)).slice(0, 110);
+    const b = normalizeImportedBlock({ name: 'B', weeks: 4, deload: 0, days: [
+      { name: 'Lunes', ex: [{ n: nameA, sets: 3, reps: '8-10' }] },
+      { name: 'Jueves', ex: [{ n: nameB, sets: 3, reps: '8-10' }] },
+    ] });
+    return { a: b.days[0].ex[0].id, b: b.days[1].ex[0].id, nameLengths: [nameA.length, nameB.length] };
+  })()`);
+  ok('a pasted exercise with no id gets a slug capped at 60, like a stated id, and two long names still get two ids (plans/063)',
+     pasted.a.length <= 62 && pasted.b.length <= 62 && pasted.a !== pasted.b
+       && pasted.nameLengths[0] === 110 && pasted.nameLengths[1] === 110, JSON.stringify(pasted));
+
+  /* The own path: ids already stored longer than 60 exist on phones that
+     pasted long names before the cap, and a restore must give them back
+     as they are — each day's set still under its own lift. */
+  const restored = call(`(function () {
+    const common = ('remo-con-mancuerna-a-una-mano-apoyado-en-banco-inclinado-con-agarre').slice(0, 60);
+    const idA = common + '-' + 'a'.repeat(39), idB = common + '-' + 'b'.repeat(39);
+    state = defaultState(); migrate();
+    const profile = state.profiles.hombre;
+    const block = { id: 'blk', name: 'Largo', weeks: 4, deload: 0, days: [
+      { id: 'd0', name: 'Lunes', ex: [{ id: idA, n: 'Remo A', sets: 3, reps: '8-10' }] },
+      { id: 'd1', name: 'Jueves', ex: [{ id: idB, n: 'Remo B', sets: 3, reps: '8-10' }] },
+    ] };
+    profile.blocks = { blk: block }; profile.blockOrder = ['blk']; profile.activeBlock = 'blk';
+    profile.log = { blk: {} };
+    profile.log.blk[slot(1, 'd0')] = { [idA]: [{ w: '50', r: '10', done: true }] };
+    profile.log.blk[slot(1, 'd1')] = { [idB]: [{ w: '70', r: '8', done: true }] };
+    migrate();
+    const restore = () => {
+      const data = normalizeImportedBackup(JSON.parse(JSON.stringify(state)));
+      state = data; migrate();
+      return JSON.stringify(state);
+    };
+    const once = restore();
+    const p = state.profiles.hombre, b = p.blocks.blk, log = p.log.blk;
+    const first = {
+      lengths: [idA.length, idB.length],
+      idA: b.days[0].ex[0].id === idA, idB: b.days[1].ex[0].id === idB,
+      rowA: !!(log[slot(1, 'd0')] && log[slot(1, 'd0')][idA] && log[slot(1, 'd0')][idA][0].w === '50'),
+      rowB: !!(log[slot(1, 'd1')] && log[slot(1, 'd1')][idB] && log[slot(1, 'd1')][idB][0].w === '70'),
+      strayA: !!(log[slot(1, 'd0')] && Object.keys(log[slot(1, 'd0')]).length !== 1),
+      strayB: !!(log[slot(1, 'd1')] && Object.keys(log[slot(1, 'd1')]).length !== 1),
+    };
+    const twice = restore();
+    return Object.assign(first, { idempotent: once === twice });
+  })()`);
+  ok('a restore gives back a stored exercise id longer than 60 whole, two long ids sharing their first 60 staying two (plans/063)',
+     restored.lengths[0] === 100 && restored.lengths[1] === 100 && restored.idA && restored.idB, JSON.stringify(restored));
+  ok('...and each day\'s logged set is still under its own lift (plans/063)',
+     restored.rowA && restored.rowB && !restored.strayA && !restored.strayB, JSON.stringify(restored));
+  ok('...and restoring the result again changes nothing (plans/063)', restored.idempotent, JSON.stringify(restored));
+}
+
 console.log('\n== moveExerciseRecord merges rather than overwrites (plans/008 items 1, 3) ==');
 const moveProbe = call(`
   (function() {
