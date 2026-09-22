@@ -402,6 +402,52 @@ ok('...and on the active profile for a key nobody has', slotFor('ghost') === cal
      slotFor(k) === call('state.activeProfile'), slotFor(k));
 });
 
+/* A block that is not an object at all — null, a string, a list — is one no
+   writer in the app produces, and the import refuses it
+   (describeProfileProblem: 'el bloque … está corrupto'), but localStorage is
+   not an import. migrate() set `id` on it on the way past and threw, so
+   load() never got as far as a draw. Every part of the record filed by block
+   carries an entry under each id here, so a drop that forgot the record
+   leaves one behind and fails. */
+const blockParts = call('RECORD_PARTS.filter(part => part.keyedBy !== "exercise").map(part => part.name)');
+const migrateBlocks = blocks => {
+  const ids = Object.keys(blocks);
+  const profile = { blocks, blockOrder: ids.slice().reverse(), activeBlock: ids[ids.length - 1] };
+  blockParts.forEach(name => { profile[name] = {}; ids.forEach(id => { profile[name][id] = { 'w1-d0': {} }; }); });
+  try {
+    return call('state = ' + JSON.stringify({ profiles: { hombre: profile }, activeProfile: 'hombre' }) +
+      '; migrate(); JSON.parse(JSON.stringify(state.profiles.hombre))');
+  } catch (e) { return { threw: e.message }; }
+};
+const leftUnder = (got, id) => blockParts.filter(name => got[name] && Object.prototype.hasOwnProperty.call(got[name], id));
+[null, 'corrupto', []].forEach(bad => {
+  const label = JSON.stringify(bad);
+  const got = migrateBlocks({ b1: { name: 'A', days: [] }, b2: bad });
+  ok('migrate() survives a block stored as ' + label + ', and keeps the real one beside it',
+     !got.threw && JSON.stringify(Object.keys(got.blocks)) === '["b1"]' && got.blocks.b1.name === 'A',
+     got.threw || JSON.stringify(got.blocks));
+  if (got.threw) return;
+  ok('...blockOrder and activeBlock name only the real block (' + label + ')',
+     JSON.stringify(got.blockOrder) === '["b1"]' && got.activeBlock === 'b1',
+     JSON.stringify({ order: got.blockOrder, active: got.activeBlock }));
+  ok('...the record under the dropped id goes with it, and the real block keeps its own (' + label + ')',
+     !leftUnder(got, 'b2').length && !!got.log.b1, 'left under b2: ' + leftUnder(got, 'b2').join());
+});
+
+/* Nothing left is the same as nothing there: the seed, as for a profile
+   whose `blocks` is empty. The corrupt block here is filed under the seed's
+   own id on purpose — its record has to be gone before the seed takes that
+   id, or the seed block opens on sets nobody logged against its plan. */
+const seeded = migrateBlocks({});
+const allCorrupt = migrateBlocks({ 'block-1': null, b2: 'corrupto', b3: [] });
+const planOf = got => got.threw || JSON.stringify({ order: got.blockOrder, active: got.activeBlock,
+  days: got.blockOrder.map(id => got.blocks[id].days) });
+ok('migrate() falls back to the seed when every block is corrupt, the way it does for an empty blocks',
+   !allCorrupt.threw && planOf(allCorrupt) === planOf(seeded), planOf(allCorrupt).slice(0, 200));
+ok('...and the seed block does not inherit what was filed under the corrupt block it replaced',
+   !allCorrupt.threw && ['block-1', 'b2', 'b3'].every(id => !leftUnder(allCorrupt, id).length),
+   allCorrupt.threw || JSON.stringify(blockParts.map(name => name + ':' + Object.keys(allCorrupt[name] || {}))));
+
 const bareProfile = {
   profiles: { hombre: { blocks: {}, blockOrder: [], log: {} } },
   activeProfile: 'hombre',
