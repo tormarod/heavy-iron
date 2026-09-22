@@ -127,4 +127,130 @@ counts and show at least three deliberate breaks are caught.
 
 ## Maintenance notes
 
-(Filled in when the PR lands.)
+**STOP condition 1 is met by its wording, for the orchestrator to decide.**
+Beyond split, renamed and stranded lifts, rows of two more kinds change.
+Both follow from decision 1, and no implementation of that decision can
+avoid them, because in each case the old count read sessions its trend did
+not:
+
+- **(a) A session whose working sets all ran past `EST_MAX_REPS`.** The old
+  count dropped it, but the trend (the level) never did. The shipped plans
+  have 15–20 and 12–20 lifts, so this happens on real logs. A lift trained
+  at 16–20 reps went from "Aún no hay suficientes sesiones" to a verdict.
+- **(b) "Todos los bloques" on a block that is not the last in
+  `blockOrder`.** The old count read every block in the list, while the
+  trend stops at the block on screen. `exHistory`'s "blocks up to the
+  current one" is listed under "Why this matters", but Step E's three kinds
+  leave it out.
+
+Two unit tests pin both, and the guide names them. With only those two
+readings changed to the objetivo's in the old code, Step E holds exactly
+as written (below).
+
+**Rebased twice.** Once over #152 (plan 052 PR 1, tests only) at the
+start. Then over #153 after Steps A–D were written: #153 moved the
+Diagnóstico's rows into `js/app.js`, so Steps B–D were re-applied to the
+moved code. The names below are after #153.
+
+**The interface.** `liftHistory(profile, block, ex, dayId, beforeWeek,
+onlyBlockId)` is `exHistory`'s old body. It returns `{ sessions, rule }`,
+one for one: the `sessionsOf` sessions the objetivo reads, and
+`ruleSession`'s projection of each. The variant cut-off is still read off
+the rule's date. `exHistory` is its `.rule`, memoized under the same key.
+`diagRows` asks `liftHistory` once per row, with `MAX_WEEKS + 1` and the
+scope's block id, as `diagLevelTrend` used to:
+- `diagPoints(sessions)` is now a projection. It carries `vol`, `sets`,
+  `ts` (the latest tick), `rirs` and `ticked` (every ticked set). The
+  e1RM, weight, reps and label fields are gone; nothing on the row read
+  them.
+- `diagLevelTrend(rule)` takes the rule half.
+
+A lift live on two live days is a row per day. The row carries `dayId` and
+`label` (`Press banca · Empuje`, from `dayTag`; a lift on one live day
+keeps its name). `drawDiag` shows `r.label || r.name`, because a precache
+hole can pair it with a v115 `app.js`, and it sets `data-day`.
+
+**The signals, read off the session's sets.** No signal changed meaning, so
+STOP condition 2 was not met.
+- The typical RIR for `easy` and `failure` is the working sets' `rir`, as
+  before.
+- `forcedDrop(sets)` checks a set with `dropKind === 'forced'` and a drop
+  with something in it.
+- `repDecay` and `decayRows` take the session's sets as they are. A set's
+  `r` is `num()` of the row's, and `num()` returns a number unchanged, so
+  the same sets pass. The first set's own reserve is `rirOwn`.
+- The gap is the latest tick. The work axis is the working sets plus
+  their drops.
+
+**Deviation: `forcedDrop` changed in place, with no twin.** A twin was
+written before #153, keeping the stored-rows version for a pre-056
+`js/diagnostics.js`. After #153 its one caller, `diagRows`, lives in
+`app.js`, and a twin would have left the stored-rows version with no
+caller at all.
+
+**The review.** It follows the rows. A split lift is two lines of the AI
+document, each already named with its day. Each line's RIR tally counts
+that row's day (`sessionsOf` with `day: x.dayId`) rather than every live
+day. For a lift on one live day that is the same day.
+
+**Equivalence (Step E, throwaway).** Two vm contexts built like `loadApp()`,
+`origin/main` (`90140b3`) against the branch. Two seeds × 400 random
+profiles. The profiles had:
+- 1–3 blocks, with the block on screen anywhere in the list;
+- split lifts, retired days and exercises, renames that cut and renames
+  that do not, stranded weeks, both kinds of deload;
+- 15–20 ranges, comma decimals, lb rows, drops of both kinds, extra sets,
+  late and missing ticks, the legacy RIR map, unticked rows.
+
+The kinds were read off the stored rows, not the new code. Compared:
+`diagRows` in both scopes, `buildBlockReview`, `reviewText`, the AI
+prompt's head, and every `exHistory` and `targetFor` for every block, day,
+exercise and week (up to two weeks past the end).
+- Against `origin/main` as it is:
+  - Rows of no kind: 4,525 (2,828 "Este bloque", 1,697 "Todos"), all
+    identical, including labels and order.
+  - The review minus its exercises: 800 identical.
+  - Review entries of ordinary rows: 2,828 identical.
+  - The review text: 27,384 lines identical, with the lines of kinded rows
+    left out.
+  - The AI prompt's head: 800 identical.
+  - `exHistory` and `targetFor`: 173,858 identical.
+  - Kinded rows that differ: split 1,360 of 1,412, renamed 679 of 936,
+    stranded 1,043 of 1,193, (a) 1,418 of 1,487, (b) 1,488 of 1,535
+    (a row can be of several kinds).
+  - Rows of (a) or (b) alone that differ: (a) on "Este bloque" 424 of 442;
+    on "Todos", (a) 289 of 313, (b) 852 of 886, both 140 of 144.
+- Against `origin/main` with (a) and (b) aligned (`diagPoints` keeping
+  every working session and stopping at the block on screen): 6,310 rows
+  neither split, renamed nor stranded, with 0 differences. Also 0 across
+  3,270 review entries, 27,826 text lines, the AI heads and 173,858
+  `exHistory`/`targetFor` comparisons. Differences appear only on split
+  (1,355), renamed (641) and stranded (998) rows.
+- Seven deliberate breaks, each caught:
+  - a window of five: 136 rows;
+  - decay reading the inherited `rir` for the first set: 4 rows;
+  - the gap from the session date: 442 rows;
+  - a planned drop read as forced: 9 rows;
+  - the review tally reading `rir`: 132 lines;
+  - a day tag on every row: 905 labels;
+  - the own-day filter reaching earlier blocks: 2,076 `exHistory`/`targetFor`.
+
+**Tests.** Step A added 14 assertions, all failing before Step B. The unit
+and smoke tests of `diagPoints`' and `diagLevelTrend`'s old arguments now
+ask `liftHistory` for the row's history: four unit tests and three smoke
+call sites. #153's three new tests in this area pass unchanged.
+
+**Verification.** `node --check` on every `js/` file. `node test/unit.js`:
+1094 passed, 0 failed. `node test/smoke.js --only` on "objetivo de peso y
+diagnóstico", "frecuencia por músculo", "índice de fuerza por músculo",
+"nota, energía y control de descarga" and "revisión del bloque": 104
+passed, 0 failed. `test/smoke.js` was edited, so one full run: 584 passed,
+0 failed.
+
+**Left for the PR.** No `CACHE_VERSION` bump: `js/app.js`,
+`js/diagnostics.js` and `js/review.js` changed, so it needs
+`tools/bump-cache-version.sh`. No `plans/README.md` status.
+
+**Out of scope, noticed.** The guide's work-axis section and
+`js/diagnostics.js`'s header still say the trend is fitted through each
+session's best set. That was true of the e1RM line the level replaced.
