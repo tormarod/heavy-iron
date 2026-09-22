@@ -5549,6 +5549,30 @@ console.log('\n== RECORD_PARTS: one table for the profile\'s record (plans/046) 
   ok('moveExerciseRecord through a day nothing is filed under ends where the one move does, in every part, and leaves nothing on that day',
      composed.length === 0, JSON.stringify(composed));
 
+  /* A move from a day to that same day is no move, and has to leave the
+     record exactly as it was. It used to empty it: the source slot is the
+     destination slot, so the log's rows were added to themselves and then
+     deleted with the source, the legacy chip and the objetivo record were
+     deleted outright, and the session order took the id out and put it
+     back last, or dropped a week's order that held that id alone. The
+     fixture's orders have e1 last already, so this moves every lift of
+     both days, and gives d1 a week 3 whose order is e1 alone. */
+  const stayed = check(`
+    const build = () => {
+      const p = fixture();
+      RECORD_PARTS.forEach(part => {
+        if (byBlock(part)) p[part.name].b1[slot(3, 'd1')] = part.name === 'order' ? ['e1'] : part.keyedBy === 'slot' ? slotV(part) : { e1: srcV(part, 'e1', 3) };
+      });
+      return p;
+    };
+    const p = build(), before = build();
+    ['d1', 'd2'].forEach(d => ['e1', 'e2'].forEach(ex => moveExerciseRecord(p, 'b1', d, d, ex)));
+    RECORD_PARTS.forEach(part => {
+      if (!same(p[part.name], before[part.name])) bad.push(part.name + ' became ' + JSON.stringify(byBlock(part) ? p[part.name].b1 : p[part.name]));
+    });`);
+  ok('moveExerciseRecord from a day to the same day leaves every part exactly as it was, the session order included',
+     stayed.length === 0, JSON.stringify(stayed));
+
   const installed = check(`
     const src = fixture(), p = {}, data = {};
     RECORD_PARTS.forEach(part => { if (byBlock(part)) data[part.name] = src[part.name].b1; });
