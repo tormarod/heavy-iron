@@ -6088,11 +6088,20 @@ function theilSen(pts) {
 
 /* A "descarga" that the goal itself negates — "sin descarga", "no
    descarga" — is the block saying there is no deload here (CONTEXT.md,
-   "deload week"), so it must not flip a week into one. Lookbehind rather
-   than a second pass over the matches: `test()` alone then answers the
-   question this file actually asks, "is there an unnegated 'descarga'
-   anywhere in the text", instead of only the first occurrence's. */
-const DESCARGA_RE = /(?<!\b(?:sin|no)\s+)descarga/i;
+   "deload week"), so it must not flip a week into one. A lookbehind would
+   answer this in one regex, but Safari only parses one from 16.4, and a
+   regex literal the engine cannot read is a SyntaxError for the whole of
+   app.js — the app never starts (plans/059). The floor is Safari 15, so
+   this walks every match instead and asks whether any one of them is
+   unnegated. */
+function saysDescarga(text) {
+  const re = /descarga/gi;
+  let m;
+  while ((m = re.exec(text))) {
+    if (!/\b(?:sin|no)\s+$/i.test(text.slice(0, m.index))) return true;
+  }
+  return false;
+}
 
 /* Every deload week of the block, sorted and deduped: the `deload` field
    (deloadWeek) union every week whose phase text says "descarga" without
@@ -6111,7 +6120,7 @@ function deloadWeeks(block) {
   if (fieldDl) out.add(fieldDl);
   for (let w = 1; w <= weeks; w++) {
     const text = String((block && block.phase && block.phase[w] && block.phase[w].r) || '');
-    if (DESCARGA_RE.test(text)) out.add(w);
+    if (saysDescarga(text)) out.add(w);
   }
   return Array.from(out).sort((a, b) => a - b);
 }
