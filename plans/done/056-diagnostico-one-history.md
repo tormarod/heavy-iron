@@ -257,3 +257,19 @@ same seeds and gave the same numbers.
 **Out of scope, noticed.** The guide's work-axis section and
 `js/diagnostics.js`'s header still say the trend is fitted through each
 session's best set. That was true of the e1RM line the level replaced.
+
+**Orchestrator's decision on STOP condition 1 (2026-09-22).** Accepted.
+Beyond split, renamed and stranded lifts, two more kinds of row change,
+and both follow directly from decision 1, which the maintainer settled
+(every part of a row reads the objetivo's sessions):
+- a lift whose sessions all ran past 15 reps now gets a verdict. The old
+  count dropped those sessions, while the trend always read them;
+- "Todos los bloques" viewed from a block that isn't the latest in
+  `blockOrder` now counts only up to the block on screen, where the trend
+  already stopped.
+
+The executor showed these are the only extra differences. Against
+`origin/main` with just those two readings patched in, 6,310 rows that are
+neither split, renamed nor stranded came out identical. Both kinds are
+pinned by unit tests and named in the guide. They are not new choices:
+refusing them would mean the count kept reading sessions the trend doesn't.
