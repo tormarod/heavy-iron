@@ -313,4 +313,15 @@ in-scope files.
 - Follow-up not in this plan: a WebKit project in `test/smoke.js` would
   catch what the list does not know. It costs a second browser download per
   gate run; weigh that separately.
-- *(Executor: record here anything that deviated from the plan.)*
+- Executor deviation (small, in the spirit of the plan): `test/unit.js`
+  had one existing comment (≈ line 2214, in the `phaseRir` fallback test
+  predating this plan) that named `DESCARGA_RE` by symbol, explaining why
+  a different example wasn't usable for that comparison. Left unchanged
+  it would have been stale documentation pointing at a symbol this plan
+  deletes, so it was reworded to name `saysDescarga` instead and note the
+  plans/059 rename, with no change to the test's assertions. Same file,
+  no behaviour change, `node test/unit.js` unaffected (1206 passed both
+  before and after).
+- Steps 2 and 3 landed in one commit (`test/unit.js` touched by both,
+  closely related) rather than two; Steps 1, 4 and 5 each got their own
+  commit as the plan's git-workflow section implies.
