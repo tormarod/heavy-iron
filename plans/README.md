@@ -88,6 +88,10 @@ below so it is not lost or re-audited.
 | 064 | [An import that could not be saved says so, and the objetivo's rung list is built once per history](done/064-save-failure-and-load-ladder.md) | P3 | S each (A, B) | LOW | — (060 soft: `flushSave`) | DONE — B (#175, v131): `loadLadder` memoised per history answer (300 warm day switches over a never-repeating ladder: 164 ms → 1.4 ms each, desktop); A (#177, v134): `writeState`/`flushSave` return whether they wrote, and the five import paths report success only on `!== false` (an old cached `app.js` answers `undefined`) |
 | 065 | [The guide says what undo covers and quotes the real dialog; the README's block contract matches the importer and the AI prompt](done/065-docs-undo-and-block-json.md) | P2 | S | LOW | 060 (soft) — no bump | DONE (#176, no bump) — the guide names all six undoable actions and quotes the real dialog; the README’s `ex.id`, `phase`, `minRir` and § Tests match the code |
 | 066 | [The service worker runs under test — install with a hole, activate offline, two releases side by side, and the swap](done/066-service-worker-tests.md) | P2 | M | LOW | — no bump | DONE (#172, no bump) — `loadWorker()` runs the real `sw.js` over a fake cache store and network; 11 cases and 2 mutation checks, every case guarded so a throw is a FAIL, not a crash; README and AGENTS.md name the third loader |
+| 067 | [Storage no writer produced is repaired without stealing, sharing or polluting — and another tab's data is taken in whole or not at all](067-storage-no-writer-produced.md) | P2 | S / S–M | LOW | — (A and B are independent PRs) | TODO |
+| 068 | [A set's date is the day it was trained, a timestamp no clock can read is refused, and the CSV follows a language preference](068-timestamps-and-csv-by-language.md) | P2 | S each | LOW / LOW–MED | — (A owns the `ts` row field; B must not touch it) | TODO |
+| 069 | [What an AI round trip hands back keeps its lifts' ids, and "series x 5 RIR 2" reads 2](069-ai-round-trip-keeps-long-ids.md) | P3 | S | LOW | — | TODO |
+| 070 | [AGENTS.md opens with the checklist an agent needs before it changes code, and says each rule once](070-agents-md-checklist-first.md) | P3 | S–M | LOW (code) / MED (reader) | 067, 068, 069 merged first — no bump | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
@@ -1147,6 +1151,36 @@ plan's own rule was wrong or incomplete, not just the code.
 - **061 B**: the plan called `openApp()`'s old wait "harmless"; it hangs.
 - **063**: the "Enviar a…" test did not guard the start-day lookup it was
   written for — a reviewer's mutation passed the whole suite.
+
+### Tenth audit — follow-ups, planned (2026-09-22)
+
+The maintainer asked for the follow-ups below to be worked, and plans
+067–070 cover them:
+
+- **067** — the ninth audit's findings 4 (seed blocks by reference —
+  cloned, **not** purged: from the first commit every profile has had
+  blocks and a per-block log, so a blockless profile only comes from
+  damaged storage and its likeliest owner is the seed plan the record
+  still matches), 5 (the id repair "stole" an id another day held —
+  claimed ids first), 6 (arrays accepted as objects) and 12 (a
+  prototype-named lift key reaching `Object.prototype` — the session
+  reader skips it); and the 060 follow-up (`adoptStored` now migrates
+  before it commits).
+- **068** — the tenth audit's finding 14 and the `ts` bound: `fecha` is
+  the local day; a `ts` beyond what a `Date` holds is refused and can no
+  longer stop `migrate()`. **The CSV separator: the maintainer decided it
+  follows a language preference**, wired in now for an English version to
+  come (Spanish → `;`, English → `,`), with no language control on screen
+  yet — the first crack in the "Spanish only" limit, by the maintainer's
+  own call.
+- **069** — the 063 follow-up (a long id the profile already holds
+  survives the paste, and the prompt tells the AI to copy a given id
+  exactly) and the 062 known limit (`series x 5 RIR 2` → 2).
+- **070** — AGENTS.md's restructure: a checklist first, each rule once.
+
+Not planned, and why: `2 sem 3 RIR` → null and `RIR 2 a 3,5` → null are
+readings plan 062 chose by rule; an old-shell phone cutting ids on a QR
+"perfil" cannot be fixed from here (it updates on its next release).
 
 ### Tenth audit — follow-ups, recorded not planned
 
