@@ -5910,11 +5910,17 @@ $('pUpload').addEventListener('change', e => {
 
 /* ---------- sharing a block, and what it is safe to accept back ----------
    The QR transfer that made all of this necessary lives in
-   js/qr-transfer.js. These stayed because three other files read them:
-   blockSharePlan from js/block-editor.js, blockDoneSets from there and
-   from js/review.js, and LOG_LIMITS/normalizeImportedLog/
-   normalizeImportedRir from js/profile-transfer.js, which runs a restored
-   backup through the same per-row checks the camera path has. */
+   js/qr-transfer.js and reads most of this section directly — building
+   and describing what it sends, validating what it receives. A few
+   symbols stayed here for a second reader too, which is what actually
+   keeps them out of qr-transfer.js: blockSharePlan and blockDoneSets are
+   also read by js/block-editor.js's own export and delete dialogs (not by
+   js/review.js any more — plans/050 gave the block review its own
+   week-bounded count instead, in js/review.js itself), and countSets and
+   the normalizeImported* validators are also read by
+   js/profile-transfer.js, which runs a restored backup through the same
+   per-row checks the camera path has — countProfileSets and
+   countBackupSets there are one-liners over countSets (plans/050). */
 
 /* Rows arrive from a camera or from a restored backup file, so they get the
    same treatment as any other imported data: bounded, coerced, never trusted

@@ -42,6 +42,20 @@ function buildBlockReview(profile, block) {
   const tonnage = blockTonnageByWeek(profile, block, convertedSetVolume);
   const weeksLogged = tonnage.filter(v => v > 0).length;
 
+  /* Bounded to the block's own weeks, exactly like tonnage just above —
+     blockDoneSets (js/app.js) is a raw storage count and would add in a
+     stranded week's sets (CONTEXT.md, "stranded week"), which are real but
+     belong to a week this block no longer claims. Left in, the count and
+     the tonnage beside it would silently disagree about which weeks the
+     block even has (plans/050). Screens about the block hide a stranded
+     week everywhere else; this is one more of them. */
+  let doneSets = 0;
+  forEachSlot(profile.log, block.id, (k, w, d, slotRows) => {
+    if (w < 1 || w > weeks) return;
+    const s = slotRows || {};
+    Object.keys(s).forEach(exId => { if (Array.isArray(s[exId])) doneSets += s[exId].filter(r => r && r.done).length; });
+  });
+
   const strength = strengthRows(profile, block);
   const freq = freqRows(profile, block, upTo);
   const planVol = volumeTrendRows('plan', profile, block, 'muscle');
@@ -151,7 +165,7 @@ function buildBlockReview(profile, block) {
     upTo: upTo,
     weeksLogged: weeksLogged,
     tonnage: tonnage.reduce((t, v) => t + v, 0),
-    sets: blockDoneSets(profile, block.id),
+    sets: doneSets,
     priority: blockPriority(block),
     muscles: muscles,
     deload: deloadCheck(profile, block),
