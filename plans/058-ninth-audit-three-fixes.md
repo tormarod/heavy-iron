@@ -271,6 +271,8 @@ last session left it. If the guide does not describe it, add nothing.
 
 ## Maintenance notes
 
+_(one subsection per step, filled by its executor)_
+
 ### B
 
 **What landed:**
@@ -291,3 +293,88 @@ last session left it. If the guide does not describe it, add nothing.
 - `arranque roto: el guardián cambia al worker en espera` (hole repair): 6 passed
 
 All smoke tests passed without changes in outcome.
+
+### C
+
+**What landed.** `phaseRir` (`js/app.js`) no longer falls back to the
+lowest digit anywhere in the label: it returns the number immediately
+next to "RIR" (a range still picks its lower end) or `null`, and clamps
+a next-to-"RIR" value above `RIR_MAX` (5) to `null` too — a label like
+"60 RIR" is not a prescription. `weekRir`'s existing `null` path (the
+reserve the last session was left at) is the unchanged fallback. The
+comment above `phaseRir` was rewritten to describe this. C.1 landed as
+written, no deviation.
+
+**C.2 — minRir and lastRho.** Both are already bounded within
+`[0, RIR_MAX]` before they ever reach `weekRir`, so no clamp was added
+there (decision 3 held, STOP condition did not fire):
+- `ex.minRir` goes through `EX_FIELDS`'s `{ key: 'minRir', lo: 0, hi: 5,
+  accept(v) { … clampInt(v, this.lo, this.hi, 0) … } }` (`js/app.js`,
+  `:3583`) — `hi: 5` is `RIR_MAX` as a literal (the file's own comment
+  at `:4678` names this as deliberate: raising `RIR_MAX` means editing
+  all four literals, this one among them).
+- `lastRho` is `rhoOf(raw)`, and `rhoOf` (`:6044`) is
+  `rirNumber(raw) ?? 0`; `rirNumber` already refuses any digit past
+  `RIR_MAX` (`test/unit.js:2595`, "...including a digit past RIR_MAX",
+  pre-existing and unchanged), so `rhoOf` can only return `0`–`5`.
+
+**C.3 — tests.** The `phaseRir` section's `"Semana 3 de 5"` case now
+expects `null` (decision 4, the one accepted behaviour change); added
+`"Descarga 60%"` → `null`, `"Semana 6 · 10 reps"` → `null`,
+`"60 RIR"` → `null`, `"0 RIR"` → 0, `"5 RIR"` → 5. Fixed the stale
+"falls back to the lowest digit ANYWHERE" comment in the `target(...)`
+helper's phase note.
+
+*Deviation:* the end-to-end `targetFor` case in the plan text names
+`"Descarga 60%"` as the label to compare against prose with no digits.
+That label cannot be used for this comparison: the word "Descarga" (not
+preceded by "sin"/"no") already matches `DESCARGA_RE` and marks the week
+a deload through `deloadAt` (`js/app.js:6087`, `:6099-6109`, plans/054 —
+predates this plan). `targetFor` takes the deload branch
+(`:6568-6580`) and returns before `weekRir`/`phaseRir` are ever called,
+whatever number follows "Descarga" — so a test built on it would pin
+`deloadAt`, not this fix, and "Descarga 60%" does *not* in fact
+prescribe the same sets as prose with no digits (it prescribes a
+deload). I used the plan's other motivating label instead, **"Semana 6 ·
+10 reps"** (also named in "Why this matters" as reading as `6` under the
+old fallback), which contains no "RIR" and does not match `DESCARGA_RE`,
+so it exercises `phaseRir`/`weekRir` as intended. The new case
+(`test/unit.js`, after the existing `ex.minRir` floor case) pins that a
+block whose phase is `"Semana 6 · 10 reps"` prescribes `rirWeek === 2`
+(the same as the existing "prose with no digits" case just above it)
+and the identical `t.show` as the same history under an explicit
+`"2 RIR"` phase — i.e. never a lower weight than that history would
+otherwise justify. This is not one of the plan's enumerated STOP
+conditions (no v3 rule assertion changed outcome, and the C.2 clamp
+question did not arise), so I substituted the label and documented it
+here rather than stopping.
+
+The fuzz (`test/unit.js`, `phaseRirFuzzProbe`) runs 2,000 labels from a
+seeded PRNG (seed `20260922`, reproducible), each built from 1–6 tokens
+drawn from `{ digits 0–99, "Semana", "de", "tecnica", "Descarga", "Top",
+"set", "back-offs", "reps", "fase", "RIR", "%", "-", "–", "proxima",
+"bloque" }`, joined with or without spaces (so both spaced ranges like
+"2-3 RIR" and glued runs like "60Descarga" get exercised), ~35% of
+tokens forced to be a bare number. Per label it asserts `phaseRir` is
+`null` or an integer in `[0, RIR_MAX]`, and calls `weekRir` with the
+same block and a fresh `minRir`/`lastRho` each drawn from `[0, 5]`,
+asserting the result never exceeds `RIR_MAX`. 0 failures over 2,000
+labels.
+
+`docs/guide.md` was checked (grep for "RIR" near "fase"/"semana" and for
+the digits-anywhere fallback by name) and does not describe the
+lowest-number-anywhere reading anywhere — the guardrails section
+(`### The guardrails`) only documents "a prescribed range reads as its
+hard end," which is unaffected by this change. Per C.4, nothing was
+added.
+
+**C.5 — verification.** `node --check js/app.js` clean. `node
+test/unit.js`: 1189 passed, 0 failed (1181 at base + 8 new assertions:
+5 in the `phaseRir` table, 2 in the `targetFor` end-to-end case, 1 for
+the fuzz) — no v3 rule assertion other than `"Semana 3 de 5"` changed
+outcome. Smoke: started a static server on `:8793`
+(`python3 -m http.server 8793`, this port only), `--list` showed one
+section matching "objetivo" — **"objetivo de peso y diagnóstico"** — ran
+`--only "objetivo"`: 33 passed, 0 failed, 30 sections skipped by
+`--only`. Server stopped afterward. The full smoke suite was left to
+the PreToolUse hook on PR open, per instructions.
