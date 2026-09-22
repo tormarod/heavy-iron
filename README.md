@@ -348,6 +348,17 @@ bloque** and every import stop (`PROFILE_LIMITS.blocks` in
 twice that per profile (`OWN_LIMITS.blocks`); a full backup carries at
 most 16 profiles (`PROFILE_LIMITS.profiles`).
 
+Text works the same way. Every text box in the plan editor stops at the
+length in the table above, and a backup or profile file may carry up to
+2,000 characters (`OWN_TEXT_LIMIT`) in the boxes the editor did not
+always cap: an exercise's name, alternative, cue and rep range, a day's
+name and pair note, and the block's name. The machine settings, the
+three tags and the phase texts keep the table's length on every path,
+since nothing the app wrote ever went past it. What an exercise may hold
+is declared once, in `EX_FIELDS` (`js/app.js`): each field's default, how
+`migrate()` repairs it, how an import takes it, how long the editor lets
+it be and the line the AI prompt describes it with.
+
 `blocks/index.json` entries are checked too: `file` must be a plain
 `*.json` name with no path in it, so an entry in that list can only ever
 point at a file inside `blocks/`.

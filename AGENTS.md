@@ -255,7 +255,16 @@ own data coming back and has its own ceilings (`OWN_LIMITS`,
 app's own writers cannot exceed — which is why the plan editor stops at
 `IMPORT_LIMITS`, and "+ Nuevo bloque" and every import at
 `PROFILE_LIMITS.blocks` — or the app's own backup stops restoring
-(plans/010's promise, broken by a 15th day and then by a 41st block). A
+(plans/010's promise, broken by a 15th day and then by a 41st block).
+Text keeps the same promise: every box in the plan editor stops at its
+`IMPORT_LIMITS` length, and a restore takes up to `OWN_TEXT_LIMIT` in the
+fields the editor did not always cap (plans/055). What a plan exercise
+may hold is declared once, in `EX_FIELDS` (`js/app.js`): each field's
+default, its `repair` for `migrate()`, its `accept` on the strict and own
+paths, the editor's length and the AI prompt's line. `migrate()`, the
+import's exercise map, the editor and the prompt all read it, so a new
+field is one entry there, and `test/unit.js` fails when the code writes
+an exercise field the table does not declare. A
 part of the profile's record is accepted by its own `accept` in
 `RECORD_PARTS` (`js/app.js`): its value check, re-keyed to the ids its
 block landed with. `normalizeImportedProfile` (`js/profile-transfer.js`;

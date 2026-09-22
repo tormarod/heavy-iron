@@ -1471,6 +1471,17 @@ retired items are what fills it, make room by deleting one under
 past the limit before the editor stopped there keeps working and still
 restores from its backups; it just can't grow any further.
 
+Every text box in the editor stops at the length an import takes: 120
+characters for an exercise's name, 200 for its alternative and its
+machine settings, 400 for its cue, 40 for its rep range and each tag, 80
+for a day's name or the block's, and 1,000 for a pair note. Whatever you
+type there travels whole, through a backup, a profile file, **Importar
+JSON**, a QR scan or the prompt for your AI. Text saved before the editor
+stopped there keeps its length until you edit that box, and your own
+backups and profile files still bring it back whole, up to 2,000
+characters a box; only a block you share or paste is cut to the lengths
+above.
+
 Two things still work the way they always did: **Borrar este día**
 clears one week's log for the day you are on, and **Borrar todos los
 datos** clears a profile's whole log while leaving the plans in place.

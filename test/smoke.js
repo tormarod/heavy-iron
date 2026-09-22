@@ -962,7 +962,10 @@ const ok = (name, cond, extra) => {
       const b = getBlock(), day = dayList(b)[0], ex = exList(day)[0];
       ex.off = 1;
       const shared = blockSharePlan(b).days.find(d => d.id === day.id);
-      ex.off = 0;
+      /* Put back the way "Restaurar" does it, by deleting the flag: an
+         `off: 0` is nothing the app writes, and the next migrate() drops
+         it (plans/055), which "the other profile is untouched" would see. */
+      delete ex.off;
       return shared.ex.every(e => e.id !== ex.id);
     }));
     /* drawQrShow's own numbers (plans/050): blockLoggedSets/blockDoneSets
@@ -981,7 +984,7 @@ const ok = (name, cond, extra) => {
       const withRetired = document.getElementById('qrShowDesc').textContent;
       const wantPayload = setsWithDoneLabel(countSets(blockShareLog(p, b)), countSets(blockShareLog(p, b), true));
       const wantRaw = setsWithDoneLabel(blockLoggedSets(p, b.id), blockDoneSets(p, b.id));
-      ex.off = 0;
+      delete ex.off;
       drawQrShow();
       return withRetired.includes(wantPayload) && wantPayload !== wantRaw;
     }));
@@ -1217,6 +1220,19 @@ const ok = (name, cond, extra) => {
     await page.click('#editPlan');
     ok('editor opens', await page.locator('#planSheet.up').count() === 1);
     ok('editor lists days', await page.locator('.pe-day').count() >= 1);
+    /* Every text box stops where the importers do, so what is typed here
+       fits every door back in (plans/055). The attribute stops the typing;
+       a value the attribute lets through — set by script, as a paste can
+       be — is cut by the box's own input handler. Closed without saving. */
+    const nameCap = await page.evaluate(() => {
+      const box = document.querySelector('.pe-ex .f-n');
+      const attr = box.getAttribute('maxlength');
+      box.value = 'x'.repeat(IMPORT_LIMITS.exName + 30);
+      box.dispatchEvent(new Event('input'));
+      return { attr, max: IMPORT_LIMITS.exName, shown: box.value.length };
+    });
+    ok('the exercise name box carries a maxlength of IMPORT_LIMITS.exName', nameCap.attr === String(nameCap.max), JSON.stringify(nameCap));
+    ok('...and a value past it is cut at it', nameCap.shown === nameCap.max, JSON.stringify(nameCap));
     await page.click('#peClose');
 
     console.log('\n== profile switch ==');

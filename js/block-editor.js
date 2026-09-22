@@ -265,8 +265,13 @@ function normalizeImportedBlock(raw, opts) {
      better is still somebody's real history, and "Demasiados días (15)" on
      the app's own backup was the bug. */
   const most = own ? OWN_LIMITS : IMPORT_LIMITS;
+  /* The same headroom for the text the plan editor never capped: the
+     block's name, and each day's name and pair note here, and an
+     exercise's text through its EX_FIELDS entry. OWN_TEXT_LIMIT says why a
+     restore takes more than a paste. */
+  const text = (v, max) => txt(v, own ? OWN_TEXT_LIMIT : max);
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('El JSON no es un objeto válido.');
-  const name = txt(raw.name, IMPORT_LIMITS.name) || 'Bloque importado';
+  const name = text(raw.name, IMPORT_LIMITS.name) || 'Bloque importado';
   /* Both optional: a block that says nothing is the eight-week, deload-on-8
      shape every block had before length was configurable. */
   const weeks = clampInt(raw.weeks, 1, MAX_WEEKS, 8);
@@ -279,7 +284,7 @@ function normalizeImportedBlock(raw, opts) {
   const usedDayIds = new Set();
   const days = raw.days.map((day, di) => {
     if (!day || typeof day !== 'object') throw new Error('El día ' + (di + 1) + ' no es válido.');
-    const dayName = txt(day.name, IMPORT_LIMITS.name) || ('Día ' + (di + 1));
+    const dayName = text(day.name, IMPORT_LIMITS.name) || ('Día ' + (di + 1));
     if (!Array.isArray(day.ex) || !day.ex.length) throw new Error('El día "' + dayName + '" necesita al menos un ejercicio.');
     if (day.ex.length > most.ex) throw new Error('El día "' + dayName + '" tiene ' + day.ex.length + ' ejercicios: el máximo es ' + most.ex + '.');
     /* Ids are unique per block for a paste and per day for own data: two
@@ -294,11 +299,11 @@ function normalizeImportedBlock(raw, opts) {
       /* Named rather than rejected on the own path: the blank exercise
          emptyBlock() ships is a real thing the app saves, and a backup the
          app cannot read back is not a backup. */
-      const n = txt(e.n, IMPORT_LIMITS.exName) || (own ? 'Ejercicio ' + (ei + 1) : '');
+      const n = exField('n').accept(e.n, { own }) || (own ? 'Ejercicio ' + (ei + 1) : '');
       if (!n) throw new Error('Falta el nombre de un ejercicio en "' + dayName + '".');
-      /* The same default migrate() fills a blank rep range with. */
-      const reps = txt(e.reps, IMPORT_LIMITS.reps) || (own ? '10–15' : '');
-      if (!reps) throw new Error('Falta el rango de repeticiones en "' + n + '".');
+      /* Before the id, as always: a paste without a rep range is refused
+         next, naming the exercise, and own data gets the default. */
+      const reps = exField('reps').accept(e.reps, { own, n });
       /* safeKey on the slug too, not just on the stated id: a name can slug
          straight to a reserved word — "Constructor" to `constructor` — and
          an id safeKey refuses is one recordVariant and the import's
@@ -308,58 +313,17 @@ function normalizeImportedBlock(raw, opts) {
       let uniqueId = baseId, suffix = 2;
       while (dayIds.has(uniqueId)) uniqueId = baseId + '-' + (suffix++);
       dayIds.add(uniqueId);
-      const out = {
-        id: uniqueId, n, reps,
-        sets: clampInt(e.sets, 1, 12, 3),
-        rest: clampInt(e.rest, 0, 900, 90),
-      };
-      if (e.alt) out.alt = txt(e.alt, IMPORT_LIMITS.alt);
-      if (e.cue) out.cue = txt(e.cue, IMPORT_LIMITS.cue);
-      if (e.setup) out.setup = txt(e.setup, SETUP_LIMIT);
-      /* clampInt would silently round a fractional "add" — 2.3 becoming 2 —
-         and a program quietly rewritten under someone's feet is worse than
-         a rejected import they can fix and retry. Rejected loudly instead,
-         same as a missing name or rep range. `inc` is exempt: it is
-         genuinely a decimal (a weight step), so it goes through clampNum,
-         which is built for that, not this guard. */
-      if (e.add != null) {
-        const av = isObj(e.add) ? NaN : +e.add;
-        if (!Number.isFinite(av) || !Number.isInteger(av) || av < 1) {
-          throw new Error('El incremento de series ("add") de "' + n + '" tiene que ser un número entero de al menos 1 (llegó ' + JSON.stringify(e.add) + ').');
-        }
-        out.add = clampInt(av, 1, weeks, 1);
-      }
-      if (e.inc != null) { const v = clampNum(e.inc, INC_MIN, INC_MAX, 0, INC_STEP); if (v > 0) out.inc = v; }
-      /* `minRir` — the reserve this lift never goes under, whatever the
-         week's phase text asks for: a squat or a Romanian deadlift nobody
-         takes to failure. A week prescribing 0–1 RIR on one of those is a
-         number you are not going to follow, and a target solved for it is
-         a weight you cannot make. Clamped rather than rejected: it is an
-         advisory floor, not a program-defining integer like `add`. */
-      if (e.minRir != null) { const v = clampInt(e.minRir, 0, 5, 0); if (v > 0) out.minRir = v; }
-      if (e.share) out.share = 1;
-      if (e.ss) out.ss = 1;
-      /* Freeform, same as everywhere else it's set — whoever built this
-         block (an agent, a person, another app's export) defines their own
-         muscle/pattern/type taxonomy. Only trimmed and length-capped; a
-         blank or missing value is left absent rather than rejecting the
-         whole import. */
-      if (e.muscle != null) { const m = safeKey(txt(e.muscle, MUSCLE_LIMIT)); if (m) out.muscle = m; }
-      if (e.pattern != null) { const p = safeKey(txt(e.pattern, PATTERN_LIMIT)); if (p) out.pattern = p; }
-      if (e.type != null) { const t = safeKey(txt(e.type, TYPE_LIMIT)); if (t) out.type = t; }
-      /* Own data only. A share drops retired items outright (blockSharePlan)
-         so the receiver gets the plan as trained, but a restore that
-         resurrected them handed the user back a plan they had already
-         edited away from, with no way to tell. */
-      if (own && e.off) out.off = 1;
-      return out;
+      /* Every other field by its own entry in EX_FIELDS (js/app.js): what
+         each one keeps, on which path, and whether it refuses the block —
+         `add` does, rather than round a program under someone's feet. */
+      return acceptExercise(e, { id: uniqueId, n, reps }, { own, weeks, n });
     });
     let dayId = safeKey(txt(day.id, 60));
     while (!dayId || usedDayIds.has(dayId)) dayId = uid('d');
     usedDayIds.add(dayId);
     const out = { id: dayId, name: dayName, ex };
-    if (day.pair) out.pair = txt(day.pair, IMPORT_LIMITS.pair);
-    /* Same rule as the exercise `off` above. */
+    if (day.pair) out.pair = text(day.pair, IMPORT_LIMITS.pair);
+    /* Same rule as an exercise's `off` (EX_FIELDS). */
     if (own && day.off) out.off = 1;
     return out;
   });
@@ -505,8 +469,9 @@ function weeksPhrase(weeks) {
 
 /* Builds a self-contained prompt for a third party's AI agent, describing
    the block JSON shape from the same limits the importer itself enforces
-   (IMPORT_LIMITS, MUSCLE_LIMIT, PATTERN_LIMIT, TYPE_LIMIT, MAX_WEEKS) so it can't quietly drift out of
-   sync with what normalizeImportedBlock actually accepts. The worked
+   (IMPORT_LIMITS, MAX_WEEKS, and for an exercise each field's own line in
+   EX_FIELDS) so it can't quietly drift out of sync with what
+   normalizeImportedBlock actually accepts. The worked
    example is fetched from blocks/ejemplo-plantilla.json — the same file the
    download button offers — rather than duplicated inline, for the same
    reason. Works with no network too: the example is just left out. Once the
@@ -529,22 +494,10 @@ async function buildAiPrompt(opts) {
     '      "pair": string opcional (máx ' + L.pair + ' car.) — nota para una sesión conjunta de pareja ese día,',
     '      "ex": [ // obligatorio, 1-' + L.ex + ' ejercicios',
     '        {',
-    '          "n": string OBLIGATORIO — nombre del ejercicio (máx ' + L.exName + ' car.),',
-    '          "id": string opcional (máx 60 car.) — identificador estable del ejercicio. Si abajo te paso mi bloque actual, conserva el id de cada ejercicio que mantengas, para que su historial siga unido; un ejercicio nuevo puede ir sin id. El mismo ejercicio en dos días lleva el mismo nombre (no repitas el id en dos días: se renombraría),',
-    '          "reps": string OBLIGATORIO — rango de reps, p.ej. "8-12" (máx ' + L.reps + ' car.),',
-    '          "sets": número opcional 1-12 (por defecto 3),',
-    '          "rest": número opcional — segundos de descanso 0-900 (por defecto 90; usa 0 si el ejercicio va encadenado en superserie),',
-    '          "add": número entero opcional 1-weeks — desde esa semana se añade una serie extra (progresión de series; tiene que ser un entero o se rechaza todo el bloque),',
-    '          "inc": número opcional (en ' + units() + '), admite decimales, ' + INC_MIN + '-' + INC_MAX + ' — el escalón de peso más pequeño que se puede cargar en ese ejercicio: lo que sube el objetivo cuando una serie llega al tope del rango, y el paso que se usa mientras no haya pesos registrados de los que leer la pila real de la máquina. Si falta, se usa el incremento por defecto de los ajustes. Pon uno realista por ejercicio (mancuernas y poleas suelen subir de 1-2,5 en 2,5; prensas y hacks, de 5 en 5),',
-    '          "minRir": número entero opcional 0-5 — el RIR mínimo de ese ejercicio: nunca se le pide menos reserva que esta, aunque la semana pida menos. Ponlo (1) en los ejercicios que no se llevan al fallo — sentadilla, peso muerto rumano, hip thrust pesado — y déjalo fuera en máquinas y aislamiento,',
-    '          "alt": string opcional — alternativa (máx ' + L.alt + ' car.),',
-    '          "cue": string opcional — indicación técnica, para todas las series (máx ' + L.cue + ' car.),',
-    '          "setup": string opcional — ajustes de la máquina (altura de asiento, posición del respaldo…), no técnica (máx ' + SETUP_LIMIT + ' car.),',
-    '          "muscle": string opcional — músculo principal, libre, p.ej. Pecho/Espalda/Hombro/Bíceps/Tríceps/Cuádriceps/Isquios/Glúteo/Gemelos/Core (máx ' + MUSCLE_LIMIT + ' car.),',
-    '          "pattern": string opcional — patrón de movimiento, libre, p.ej. Empuje horizontal/Empuje vertical/Tirón horizontal/Tirón vertical/Rodilla dominante/Cadera dominante (máx ' + PATTERN_LIMIT + ' car.),',
-    '          "type": string opcional — tipo de ejercicio, libre, p.ej. Compuesto/Aislamiento (máx ' + TYPE_LIMIT + ' car.),',
-    '          "share": 1 opcional — marca el ejercicio como estación compartida en pareja ("JUNTOS"),',
-    '          "ss": 1 opcional — marca el ejercicio como parte de una superserie ("SS")',
+    /* One line per field, from its entry: the prompt says what the
+       importer takes because both read the same table. */
+    ...EX_PROMPT_ORDER.map((key, i) => '          "' + key + '": ' + exField(key).prompt() +
+      (i < EX_PROMPT_ORDER.length - 1 ? ',' : '')),
     '        }',
     '      ]',
     '    }',
@@ -847,6 +800,24 @@ function newExercise() {
   return { id: uid('ex'), n: '', alt: '', cue: '', sets: 3, reps: '10–15', rest: 90, share: 0, ss: 0 };
 }
 
+/* What a text box in this sheet holds, cut at `max`: its field's
+   IMPORT_LIMITS length (EX_FIELDS' `max` for an exercise), which the box's
+   own maxlength already stops typing at. This catches what the attribute
+   lets through, a value set by script or a browser that ignores it, and
+   cuts the box as well as the draft, so what is on screen is what gets
+   saved. With no cap here a restore used to cut what the editor had let
+   you type (OWN_TEXT_LIMIT); held to the importers' lengths, anything typed
+   now goes back in whole through every door. Only ever the box being typed
+   in: a longer text saved before the editor stopped there stays as it was
+   until somebody edits it. */
+function typedText(box, max) {
+  const v = String(box.value);
+  if (v.length <= max) return v;
+  const cut = v.slice(0, max);
+  box.value = cut;
+  return cut;
+}
+
 /* The editor stops where the importers stop: IMPORT_LIMITS.days days in a
    block, IMPORT_LIMITS.ex exercises in a day, counted the way
    normalizeImportedBlock counts them — retired ones included, because they
@@ -973,17 +944,17 @@ function buildDayBox(profile, day, pos, liveCount) {
       '</span>' +
     '</div>' +
     '<div class="pe-day-head">' +
-      '<input type="text" class="pe-day-name" placeholder="Nombre del día">' +
-      '<textarea class="pe-day-pair" placeholder="Nota de pareja para este día (opcional)"></textarea>' +
+      '<input type="text" class="pe-day-name" placeholder="Nombre del día" maxlength="' + IMPORT_LIMITS.name + '">' +
+      '<textarea class="pe-day-pair" placeholder="Nota de pareja para este día (opcional)" maxlength="' + IMPORT_LIMITS.pair + '"></textarea>' +
     '</div><div class="pe-exlist"></div>';
 
   const logged = draftDayLogged(profile, day);
   if (logged) box.querySelector('.pe-log-tag').textContent = setsLabel(logged);
 
   box.querySelector('.pe-day-name').value = day.name;
-  box.querySelector('.pe-day-name').oninput = e => { day.name = e.target.value; };
+  box.querySelector('.pe-day-name').oninput = e => { day.name = typedText(e.target, IMPORT_LIMITS.name); };
   box.querySelector('.pe-day-pair').value = day.pair || '';
-  box.querySelector('.pe-day-pair').oninput = e => { day.pair = e.target.value; };
+  box.querySelector('.pe-day-pair').oninput = e => { day.pair = typedText(e.target, IMPORT_LIMITS.pair); };
 
   const up = box.querySelector('.d-up'), down = box.querySelector('.d-down'), del = box.querySelector('.d-del');
   up.disabled = pos === 0;
@@ -1084,6 +1055,9 @@ function renderRetired(host, profile) {
 }
 
 function buildExRow(profile, day, ex, pos, liveCount) {
+  /* Every text box stops at its field's length in EX_FIELDS (typedText). */
+  const cap = key => ' maxlength="' + exField(key).max + '"';
+  const typed = (e, key) => typedText(e.target, exField(key).max);
   const row = document.createElement('div');
   row.className = 'pe-ex';
   row.innerHTML =
@@ -1098,14 +1072,14 @@ function buildExRow(profile, day, ex, pos, liveCount) {
       '</span>' +
     '</div>' +
     '<div class="pe-row">' +
-      '<div class="u-flex-grow"><span class="pe-field-lbl">Ejercicio</span><input type="text" class="f-n"></div>' +
+      '<div class="u-flex-grow"><span class="pe-field-lbl">Ejercicio</span><input type="text" class="f-n"' + cap('n') + '></div>' +
     '</div>' +
-    '<div class="pe-row"><div class="u-flex-grow"><span class="pe-field-lbl">Alternativa</span><input type="text" class="f-alt"></div></div>' +
-    '<div class="pe-row"><div class="u-flex-grow"><span class="pe-field-lbl">Nota / cue</span><input type="text" class="f-cue"></div></div>' +
-    '<div class="pe-row"><div class="u-flex-grow"><span class="pe-field-lbl">Ajustes de máquina (asiento, respaldo…)</span><input type="text" class="f-setup" maxlength="' + SETUP_LIMIT + '"></div></div>' +
+    '<div class="pe-row"><div class="u-flex-grow"><span class="pe-field-lbl">Alternativa</span><input type="text" class="f-alt"' + cap('alt') + '></div></div>' +
+    '<div class="pe-row"><div class="u-flex-grow"><span class="pe-field-lbl">Nota / cue</span><input type="text" class="f-cue"' + cap('cue') + '></div></div>' +
+    '<div class="pe-row"><div class="u-flex-grow"><span class="pe-field-lbl">Ajustes de máquina (asiento, respaldo…)</span><input type="text" class="f-setup"' + cap('setup') + '></div></div>' +
     '<div class="pe-row">' +
       '<div><span class="pe-field-lbl">Series</span><input type="number" min="1" max="12" class="f-sets"></div>' +
-      '<div class="u-flex-grow-sm"><span class="pe-field-lbl">Reps</span><input type="text" class="f-reps"></div>' +
+      '<div class="u-flex-grow-sm"><span class="pe-field-lbl">Reps</span><input type="text" class="f-reps"' + cap('reps') + '></div>' +
       '<div><span class="pe-field-lbl">Descanso (s)</span><input type="number" min="0" max="900" step="5" class="f-rest"></div>' +
     '</div>' +
     '<div class="pe-row">' +
@@ -1113,12 +1087,12 @@ function buildExRow(profile, day, ex, pos, liveCount) {
       '<div><span class="pe-field-lbl">Incremento de peso (' + esc(units()) + ')</span><input type="number" min="' + INC_MIN + '" max="' + INC_MAX + '" step="' + INC_STEP + '" class="f-inc"></div>' +
     '</div>' +
     '<div class="pe-row"><div class="u-flex-grow"><span class="pe-field-lbl">Músculo</span>' +
-      '<input type="text" class="f-muscle" list="muscleSuggestions" placeholder="Sin clasificar" maxlength="' + MUSCLE_LIMIT + '"></div></div>' +
+      '<input type="text" class="f-muscle" list="muscleSuggestions" placeholder="Sin clasificar"' + cap('muscle') + '></div></div>' +
     '<div class="pe-row">' +
       '<div class="u-flex-grow"><span class="pe-field-lbl">Patrón</span>' +
-        '<input type="text" class="f-pattern" list="patternSuggestions" placeholder="Sin clasificar" maxlength="' + PATTERN_LIMIT + '"></div>' +
+        '<input type="text" class="f-pattern" list="patternSuggestions" placeholder="Sin clasificar"' + cap('pattern') + '></div>' +
       '<div class="u-flex-grow"><span class="pe-field-lbl">Tipo</span>' +
-        '<input type="text" class="f-type" list="typeSuggestions" placeholder="Sin clasificar" maxlength="' + TYPE_LIMIT + '"></div>' +
+        '<input type="text" class="f-type" list="typeSuggestions" placeholder="Sin clasificar"' + cap('type') + '></div>' +
     '</div>' +
     '<div class="pe-row">' +
       '<label class="pe-check pe-check-share"><input type="checkbox" class="f-share"> Compartido (JUNTOS)</label>' +
@@ -1126,20 +1100,20 @@ function buildExRow(profile, day, ex, pos, liveCount) {
     '</div>';
 
   row.querySelector('.f-n').value = ex.n;
-  row.querySelector('.f-n').oninput = e => ex.n = e.target.value;
+  row.querySelector('.f-n').oninput = e => ex.n = typed(e, 'n');
   row.querySelector('.f-alt').value = ex.alt || '';
-  row.querySelector('.f-alt').oninput = e => ex.alt = e.target.value;
+  row.querySelector('.f-alt').oninput = e => ex.alt = typed(e, 'alt');
   row.querySelector('.f-cue').value = ex.cue || '';
-  row.querySelector('.f-cue').oninput = e => ex.cue = e.target.value;
+  row.querySelector('.f-cue').oninput = e => ex.cue = typed(e, 'cue');
   row.querySelector('.f-setup').value = ex.setup || '';
-  row.querySelector('.f-setup').oninput = e => { const v = e.target.value; if (v) ex.setup = v; else delete ex.setup; };
+  row.querySelector('.f-setup').oninput = e => { const v = typed(e, 'setup'); if (v) ex.setup = v; else delete ex.setup; };
   row.querySelector('.f-sets').value = ex.sets;
   /* The bounds migrate() uses (js/app.js), applied as you type rather than
      on the next load: the session builds its set rows from the draft as
      saved, so 5000 in Series is 5000 rows on the spot (plans/012). */
   row.querySelector('.f-sets').oninput = e => ex.sets = clampInt(e.target.value, 1, 12, 3);
   row.querySelector('.f-reps').value = ex.reps;
-  row.querySelector('.f-reps').oninput = e => ex.reps = e.target.value;
+  row.querySelector('.f-reps').oninput = e => ex.reps = typed(e, 'reps');
   row.querySelector('.f-rest').value = ex.rest || 0;
   row.querySelector('.f-rest').oninput = e => ex.rest = clampInt(e.target.value, 0, 900, 90);
   row.querySelector('.f-add').value = ex.add || '';
@@ -1161,11 +1135,11 @@ function buildExRow(profile, day, ex, pos, liveCount) {
      datalist), not a fixed set — type any tag, or clear it to fall back to
      "Sin clasificar". An empty/whitespace value is never stored, the same
      convention share/ss use for their default state. */
-  row.querySelector('.f-muscle').oninput = e => { const v = e.target.value.trim(); if (v) ex.muscle = v; else delete ex.muscle; };
+  row.querySelector('.f-muscle').oninput = e => { const v = typed(e, 'muscle').trim(); if (v) ex.muscle = v; else delete ex.muscle; };
   row.querySelector('.f-pattern').value = ex.pattern || '';
-  row.querySelector('.f-pattern').oninput = e => { const v = e.target.value.trim(); if (v) ex.pattern = v; else delete ex.pattern; };
+  row.querySelector('.f-pattern').oninput = e => { const v = typed(e, 'pattern').trim(); if (v) ex.pattern = v; else delete ex.pattern; };
   row.querySelector('.f-type').value = ex.type || '';
-  row.querySelector('.f-type').oninput = e => { const v = e.target.value.trim(); if (v) ex.type = v; else delete ex.type; };
+  row.querySelector('.f-type').oninput = e => { const v = typed(e, 'type').trim(); if (v) ex.type = v; else delete ex.type; };
   row.querySelector('.f-share').checked = !!ex.share;
   row.querySelector('.f-share').onchange = e => { if (e.target.checked) ex.share = 1; else delete ex.share; };
   row.querySelector('.f-ss').checked = !!ex.ss;
@@ -1254,19 +1228,21 @@ function syncDraftFromForm() {
   if (!days.length) return 'El bloque necesita al menos un día.';
   days.forEach((day, i) => { if (!String(day.name || '').trim()) day.name = 'Día ' + (i + 1); });
   for (const day of days) {
-    const ex = exList(day);
-    if (!ex.length) return 'Cada día necesita al menos un ejercicio — revisa "' + day.name + '".';
-    for (const e of ex) {
-      if (!String(e.n || '').trim()) return 'Todos los ejercicios necesitan un nombre.';
-      if (!e.reps || !String(e.reps).trim()) return 'Falta el rango de repeticiones en "' + (e.n || 'un ejercicio') + '".';
+    const live = exList(day);
+    if (!live.length) return 'Cada día necesita al menos un ejercicio — revisa "' + day.name + '".';
+    /* `ex`, the name every writer of an exercise gives it: the guard in
+       test/unit.js finds the fields the code writes by it (EX_FIELDS). */
+    for (const ex of live) {
+      if (!String(ex.n || '').trim()) return 'Todos los ejercicios necesitan un nombre.';
+      if (!ex.reps || !String(ex.reps).trim()) return 'Falta el rango de repeticiones en "' + (ex.n || 'un ejercicio') + '".';
       /* The oninput clamps above are the UX; this is the gate. migrate()
          clamps these on the next load, but the session draws from the
          draft as saved, and 5000 sets is 5000 rows before any reload gets
          the chance to repair it. `add` is bounded by this block's own
          length, which the form may just have shortened. */
-      e.sets = clampInt(e.sets, 1, 12, 3);
-      e.rest = clampInt(e.rest, 0, 900, 90);
-      if (e.add != null) { const a = clampInt(e.add, 0, block.weeks, 0); if (a) e.add = a; else delete e.add; }
+      ex.sets = clampInt(ex.sets, 1, 12, 3);
+      ex.rest = clampInt(ex.rest, 0, 900, 90);
+      if (ex.add != null) { const a = clampInt(ex.add, 0, block.weeks, 0); if (a) ex.add = a; else delete ex.add; }
     }
   }
   return null;
@@ -1342,6 +1318,12 @@ function wireBlockEditor() {
   if ($('newBlockBtn')) $('newBlockBtn').onclick = () => newBlock();
   if ($('importBtn')) $('importBtn').onclick = openImportSheet;
   if ($('manageBtn')) $('manageBtn').onclick = openBlockManager;
+
+  /* The block's name stops where the importers' does, like every text box
+     in this sheet (typedText). Set here rather than written into
+     index.html, so IMPORT_LIMITS stays the one place the length is. */
+  $('peBlockName').setAttribute('maxlength', IMPORT_LIMITS.name);
+  $('peBlockName').oninput = e => { typedText(e.target, IMPORT_LIMITS.name); };
 
   $('editPlan').onclick = () => {
     peDraft = openPlanDraft(getProfile(), getBlock());

@@ -6106,6 +6106,123 @@ console.log('\n== the row codec: every field a set carries, sent, accepted and e
      header);
 }
 
+console.log('\n== EX_FIELDS: what a plan exercise may hold, in one table (plans/055) ==');
+{
+  const fields = JSON.parse(call(`JSON.stringify(EX_FIELDS.map(f => ({ key: f.key, max: f.max, ownMax: f.ownMax,
+    accept: typeof f.accept === 'function', repair: typeof f.repair === 'function', prompt: typeof f.prompt === 'function' })))`));
+  const keys = fields.map(f => f.key);
+  ok('every field but the id says how it is accepted and how migrate() repairs it; the id is identity, left to the code that files the exercise',
+     fields.length === 17 && fields.every(f => (f.key === 'id' ? !f.accept && !f.repair : f.accept && f.repair)), JSON.stringify(fields));
+  const promptOrder = JSON.parse(call('JSON.stringify(EX_PROMPT_ORDER)'));
+  const prompted = fields.filter(f => f.prompt).map(f => f.key);
+  ok('EX_PROMPT_ORDER names every field with a prompt line exactly once, and nothing else',
+     promptOrder.length === prompted.length && new Set(promptOrder).size === promptOrder.length &&
+     prompted.every(k => promptOrder.includes(k)), JSON.stringify({ promptOrder, prompted }));
+
+  /* Decision 6, the row codec's guard for an exercise: every field the
+     code writes onto one — `ex.x = …` or `delete …ex.x` — has to be one the
+     table declares, or migrate() would never repair it and a restore would
+     drop it. `ex` is the name every writer in the repo gives an exercise
+     (the plan editor's save gate was the one that did not, and was renamed
+     for this). The importer writes through acceptExercise, so its output
+     is checked by running it with every field set, on both paths, and so
+     is newExercise()'s literal. Comments, strings and regex literals are
+     blanked first (codeOnly): they discuss fields. */
+  const written = new Set();
+  fs.readdirSync(path.join(ROOT, 'js')).filter(f => f.endsWith('.js')).forEach(f => {
+    const code = codeOnly(fs.readFileSync(path.join(ROOT, 'js', f), 'utf8'));
+    for (const m of code.matchAll(/\bex\.([A-Za-z_$][\w$]*)\s*=(?!=)/g)) written.add(m[1]);
+    for (const m of code.matchAll(/\bdelete\s+(?:[\w$]+\.)*ex\.([A-Za-z_$][\w$]*)/g)) written.add(m[1]);
+  });
+  const unknown = [...written].filter(k => !keys.includes(k));
+  ok('every exercise field the code writes is in EX_FIELDS, so migrate() repairs it and a restore keeps it',
+     written.size >= 12 && unknown.length === 0, 'written: ' + [...written].join(',') + ' unknown: ' + unknown.join(','));
+  const made = JSON.parse(call(`JSON.stringify((function () {
+    const every = { id: 'e', n: 'Ex', reps: '8', sets: 3, rest: 60, alt: 'a', cue: 'c', setup: 's', add: 2,
+                    inc: 2.5, minRir: 1, share: 1, ss: 1, muscle: 'm', pattern: 'p', type: 't', off: 1, extra: 'x' };
+    const raw = { name: 'B', days: [{ name: 'D', ex: [every] }] };
+    return {
+      own: Object.keys(normalizeImportedBlock(raw, { own: true }).days[0].ex[0]),
+      paste: Object.keys(normalizeImportedBlock(raw).days[0].ex[0]),
+      fresh: Object.keys(newExercise()),
+    };
+  })())`));
+  ok('what the importer writes on an exercise is the table, in it and nothing else: a restore keeps every field, a paste all but `off`',
+     JSON.stringify(made.own.slice().sort()) === JSON.stringify(keys.slice().sort()) &&
+     JSON.stringify(made.paste.slice().sort()) === JSON.stringify(keys.filter(k => k !== 'off').sort()),
+     JSON.stringify(made));
+  ok('...in the key order an imported exercise has always had',
+     made.own.join() === 'id,n,reps,sets,rest,alt,cue,setup,add,inc,minRir,share,ss,muscle,pattern,type,off', made.own.join());
+  ok('...and newExercise() writes nothing the table does not declare',
+     made.fresh.every(k => keys.includes(k)), made.fresh.join());
+
+  /* Decision 3: the own path takes text past the importers' lengths, up
+     to OWN_TEXT_LIMIT, in every field the plan editor never capped, since
+     text saved before it stopped there can be any length; a paste keeps
+     IMPORT_LIMITS, and the fields the app always held to one length keep
+     it on every path. The text has single spaces and no blank ends, so
+     txt() has nothing else to change and the lengths say it all. */
+  const lens = JSON.parse(call(`JSON.stringify((function () {
+    const at = n => 'palabra '.repeat(Math.ceil(n / 8) + 1).slice(0, n).replace(/ $/, 'x');
+    const L = IMPORT_LIMITS, B = OWN_TEXT_LIMIT;
+    const raw = { name: at(90), weeks: 8, days: [{ id: 'd', name: at(90), pair: at(L.pair + 1), ex: [
+      { id: 'e', n: at(147), alt: at(L.alt + 1), cue: at(450), reps: at(L.reps + 9),
+        setup: at(SETUP_LIMIT + 50), muscle: at(MUSCLE_LIMIT + 5) },
+      { id: 'f', n: at(B), alt: at(B), cue: at(B + 1), reps: at(B) },
+    ] }] };
+    const len = b => [b.name.length, b.days[0].name.length, b.days[0].pair.length].concat(...b.days[0].ex.map(e =>
+      [e.n.length, e.alt.length, e.cue.length, e.reps.length, e.setup ? e.setup.length : 0, e.muscle ? e.muscle.length : 0]));
+    const own = normalizeImportedBlock(JSON.parse(JSON.stringify(raw)), { own: true });
+    return { own: len(own), paste: len(normalizeImportedBlock(JSON.parse(JSON.stringify(raw)))),
+             whole: own.days[0].ex[0].cue === raw.days[0].ex[0].cue && own.name === raw.name };
+  })())`));
+  ok('a restore keeps a name, alternative, cue, rep range, day name, pair note and block name past the paste limits, whole',
+     lens.own.join() === '90,90,1001,147,201,450,49,200,40,2000,2000,2000,2000,0,0' && lens.whole, lens.own.join());
+  ok('...a paste still cuts each of them to IMPORT_LIMITS',
+     lens.paste.join() === '80,80,1000,120,200,400,40,200,40,120,200,400,40,0,0', lens.paste.join());
+
+  /* Decision 4: migrate() repairs every field from the table, including
+     the ones it used to skip — `add` (a whole number of weeks, held to the
+     block, dropped otherwise), the text (cut at the own bound, anything
+     not text read the way a restore reads it) and the flags (1 or absent).
+     What the app's own writers put there comes through untouched: the
+     name typed with double spaces and a blank end, below, is not
+     rewritten. */
+  const repaired = JSON.parse(call(`JSON.stringify((function () {
+    const s = defaultState(), b = s.profiles.hombre.blocks['block-1'], ex = b.days[0].ex;
+    b.weeks = 8;
+    Object.assign(ex[0], { add: 2.5, share: true, ss: 0 });
+    Object.assign(ex[1], { add: '3', off: 'sí' });
+    Object.assign(ex[2], { add: 20 });
+    Object.assign(ex[3], { add: { toString: null }, n: 'x'.repeat(OWN_TEXT_LIMIT + 500), alt: 7, cue: { toString: null }, reps: '' });
+    Object.assign(ex[4], { n: '  Press  de banca ', alt: null, cue: false, reps: 12, off: 0 });
+    delete ex[5].n; delete ex[5].reps;
+    state = s; migrate();
+    return state.profiles.hombre.blocks['block-1'].days[0].ex.slice(0, 6);
+  })())`));
+  const [r0, r1, r2, r3, r4, r5] = repaired;
+  ok('migrate() drops an `add` that is not a whole number of weeks, reads "3" as 3, and holds 20 to the block\'s 8',
+     !('add' in r0) && r1.add === 3 && r2.add === 8 && !('add' in r3), JSON.stringify([r0.add, r1.add, r2.add, r3.add]));
+  ok('...stores a flag as 1 or not at all',
+     r0.share === 1 && !('ss' in r0) && r1.off === 1 && !('off' in r4), JSON.stringify([r0.share, r0.ss, r1.off, r4.off]));
+  ok('...cuts a name at OWN_TEXT_LIMIT and reads a value that is not text the way a restore does',
+     r3.n.length === call('OWN_TEXT_LIMIT') && r3.alt === '7' && r3.cue === '' && r3.reps === '10–15' &&
+     !('alt' in r4) && !('cue' in r4) && r4.reps === '12', JSON.stringify([r3.n.length, r3.alt, r3.cue, r3.reps, r4.alt, r4.cue, r4.reps]));
+  ok('...gives an exercise with no name a blank one, the box the editor shows, and a missing range the default',
+     r5.n === '' && r5.reps === '10–15', JSON.stringify([r5.n, r5.reps]));
+  ok('...and never rewrites text the app\'s own writers could have put there',
+     r4.n === '  Press  de banca ', JSON.stringify(r4.n));
+
+  /* Decision 7: one rule for the plate list, read the same by the load and
+     by "Guardar" in Ajustes (pressed through bootApp further down). */
+  ok('cleanPlates reads a comma decimal, keeps the unit\'s bounds, each size once, in the order given',
+     call('JSON.stringify(cleanPlates(["20", "0,25", "20", "x", "0.1", "51", 10], "kg"))') === '[20,0.25,10]',
+     call('JSON.stringify(cleanPlates(["20", "0,25", "20", "x", "0.1", "51", 10], "kg"))'));
+  ok('...and migrate() falls back to the unit\'s defaults when nothing is left of a list',
+     call('state = ' + JSON.stringify({ profiles: {}, prefs: { units: 'lb', plates: ['x', 0, 500] } }) +
+          '; migrate(); JSON.stringify(state.prefs.plates) === JSON.stringify(DEFAULT_PLATES.lb)'));
+}
+
 console.log('\n== the Diagnóstico on sessionsOf: the deload is deloadAt (plans/038 PR 4) ==');
 {
   /* The one visible change of the move: the Diagnóstico used to skip only
@@ -7529,6 +7646,154 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
 
     app.document.createElement = realCreate;
     call('peDraft = null;');
+  }
+
+  /* The text half of the same promise (plans/055). The editor capped none
+     of its text boxes, so a name, a cue or a day's name could be typed
+     longer than the importers take, and "Cargar copia" cut it: 147
+     characters came back as 120. A restore takes text up to
+     OWN_TEXT_LIMIT now, so what was typed before still comes back whole,
+     and each box stops at its field's IMPORT_LIMITS length (EX_FIELDS'
+     `max`), so what is typed from now on fits every door. Pressed on a
+     booted app: a backup read back through restoreFromText with its
+     confirmation answered yes, and then the real boxes' input handlers and
+     "Guardar cambios". */
+  const words = n => 'palabra '.repeat(Math.ceil(n / 8) + 1).slice(0, n).replace(/ $/, 'x');
+  console.log('\n== a backup gives back the text the plan editor let you type (plans/055) ==');
+  {
+    const L = JSON.parse(call('JSON.stringify(IMPORT_LIMITS)'));
+    /* Text of every length the editor let through before, on the phone that
+       wrote it, and a backup of it read back on another. The cue past
+       OWN_TEXT_LIMIT is the one thing cut, on the load before the backup
+       was ever taken (migrate(), decision 4) — and cut with no blank at the
+       cut, since the restore's txt() trims one, as it always has. */
+    const long = { block: words(90), day: words(90), pair: words(L.pair + 1), n: words(147), alt: words(L.alt + 1),
+                   cue: words(450), reps: words(L.reps + 1), n2: words(2000), cue2: 'x'.repeat(2600) };
+    const writer = settled(seeded({ week: 1, day: 0 }, (p, b) => {
+      b.name = long.block; b.days[0].name = long.day; b.days[0].pair = long.pair;
+      Object.assign(b.days[0].ex[0], { n: long.n, alt: long.alt, cue: long.cue, reps: long.reps });
+      Object.assign(b.days[0].ex[1], { n: long.n2, cue: long.cue2 });
+    }));
+    const texts = s => {
+      const p = s.profiles[s.activeProfile], b = p.blocks[p.activeBlock], d = b.days[0];
+      return { block: b.name, day: d.name, pair: d.pair, n: d.ex[0].n, alt: d.ex[0].alt, cue: d.ex[0].cue, reps: d.ex[0].reps,
+               n2: d.ex[1].n, cue2: d.ex[1].cue };
+    };
+    const stored = texts(writer.saved());
+    const backup = writer.call('JSON.stringify({ app: STORAGE_KEY, v: 1, saved: new Date().toISOString(), data: state }, null, 2)');
+    const reader = settled(JSON.parse(SEED));
+    reader.ctx.__backup = backup;
+    const restoring = reader.call('restoreFromText(__backup)');
+    reader.call('closeAsk(true)');
+    await restoring;
+    reader.clock.advance(1000);
+    const back = texts(reader.saved());
+    const cut = Object.keys(back).filter(k => back[k] !== stored[k]);
+    ok('storage held the typed text whole, the cue past OWN_TEXT_LIMIT cut to it on load',
+       stored.n === long.n && stored.day === long.day && stored.cue2.length === call('OWN_TEXT_LIMIT'),
+       JSON.stringify({ n: stored.n.length, day: stored.day.length, cue2: stored.cue2.length }));
+    ok('"Cargar copia" gives every one of those texts back exactly — 147 characters used to come back as 120',
+       cut.length === 0, cut.map(k => k + ': ' + stored[k].length + ' -> ' + (back[k] || '').length).join(' | '));
+  }
+
+  console.log('\n== the plan editor stops each text box at the importers\' length (plans/055) ==');
+  {
+    /* A cue typed before the editor capped anything: longer than a paste
+       takes, and never touched below. */
+    const oldCue = words(479);
+    const boot = settled(seeded({ week: 1, day: 0 }, (p, b) => { b.days[0].ex[1].cue = oldCue; }));
+    boot.$('editPlan').onclick();
+    const dayBox = boot.$('peDays').children[0];
+    const row = i => dayBox.querySelector('.pe-exlist').children[i];
+    const caps = JSON.parse(boot.call('JSON.stringify(EX_FIELDS.filter(f => f.max).map(f => [f.key, f.max]))'));
+    const rowHtml = row(0).innerHTML;
+    const uncapped = caps.filter(([key, max]) => !new RegExp('class="f-' + key + '"[^>]*maxlength="' + max + '"').test(rowHtml));
+    ok('every text box of an exercise carries its field\'s maxlength from EX_FIELDS',
+       caps.length === 8 && uncapped.length === 0, JSON.stringify({ caps, uncapped }));
+    const L = JSON.parse(boot.call('JSON.stringify(IMPORT_LIMITS)'));
+    ok('...a day\'s name and pair note theirs from IMPORT_LIMITS, and the block\'s name its own',
+       /class="pe-day-name"[^>]*maxlength="80"/.test(dayBox.innerHTML) && /class="pe-day-pair"[^>]*maxlength="1000"/.test(dayBox.innerHTML) &&
+       boot.$('peBlockName').getAttribute('maxlength') === String(L.name), dayBox.innerHTML.slice(0, 400));
+
+    const nameBox = row(0).querySelector('.f-n');
+    boot.type(nameBox, 'x'.repeat(L.exName + 30));
+    ok('a paste past the cap is cut at it, in the box and in the draft alike',
+       nameBox.value.length === L.exName && boot.call('peDraft.block.days[0].ex[0].n.length') === L.exName,
+       nameBox.value.length + ' / ' + boot.call('peDraft.block.days[0].ex[0].n.length'));
+    boot.type(row(0).querySelector('.f-alt'), ' o con barra  ');
+    ok('...while text inside it is kept exactly as typed', boot.call('peDraft.block.days[0].ex[0].alt') === ' o con barra  ',
+       JSON.stringify(boot.call('peDraft.block.days[0].ex[0].alt')));
+    boot.type(dayBox.querySelector('.pe-day-name'), 'D'.repeat(L.name + 20));
+    boot.type(dayBox.querySelector('.pe-day-pair'), 'P'.repeat(L.pair + 20));
+    boot.type(boot.$('peBlockName'), 'B'.repeat(L.name + 20));
+    boot.$('peSave').onclick().catch(() => {});
+    boot.clock.advance(1000);
+    const saved = (() => {
+      const s = boot.saved(), p = s && s.profiles[s.activeProfile], b = p && p.blocks[p.activeBlock];
+      return b ? { name: b.name.length, day: b.days[0].name.length, pair: b.days[0].pair.length,
+                   n: b.days[0].ex[0].n.length, oldCue: b.days[0].ex[1].cue === oldCue } : null;
+    })();
+    ok('"Guardar cambios" writes what the boxes held, each cut at its cap, and leaves the old cue nobody touched whole',
+       !!saved && saved.name === L.name && saved.day === L.name && saved.pair === L.pair && saved.n === L.exName && saved.oldCue,
+       JSON.stringify(saved));
+  }
+
+  /* Decision 5 of plans/055: the prompt's field list is generated from
+     EX_FIELDS and says exactly what it said when it was written out by
+     hand. These are those lines as js/block-editor.js had them at 8142e33,
+     over the same constants — so a limit that moves still moves the
+     prompt, and a word that moves fails here. In both units, since one
+     line names it. */
+  console.log('\n== the AI prompt\'s field list comes from EX_FIELDS, byte for byte what it was (plans/055) ==');
+  {
+    const handWritten = `[
+      '        {',
+      '          "n": string OBLIGATORIO — nombre del ejercicio (máx ' + L.exName + ' car.),',
+      '          "id": string opcional (máx 60 car.) — identificador estable del ejercicio. Si abajo te paso mi bloque actual, conserva el id de cada ejercicio que mantengas, para que su historial siga unido; un ejercicio nuevo puede ir sin id. El mismo ejercicio en dos días lleva el mismo nombre (no repitas el id en dos días: se renombraría),',
+      '          "reps": string OBLIGATORIO — rango de reps, p.ej. "8-12" (máx ' + L.reps + ' car.),',
+      '          "sets": número opcional 1-12 (por defecto 3),',
+      '          "rest": número opcional — segundos de descanso 0-900 (por defecto 90; usa 0 si el ejercicio va encadenado en superserie),',
+      '          "add": número entero opcional 1-weeks — desde esa semana se añade una serie extra (progresión de series; tiene que ser un entero o se rechaza todo el bloque),',
+      '          "inc": número opcional (en ' + units() + '), admite decimales, ' + INC_MIN + '-' + INC_MAX + ' — el escalón de peso más pequeño que se puede cargar en ese ejercicio: lo que sube el objetivo cuando una serie llega al tope del rango, y el paso que se usa mientras no haya pesos registrados de los que leer la pila real de la máquina. Si falta, se usa el incremento por defecto de los ajustes. Pon uno realista por ejercicio (mancuernas y poleas suelen subir de 1-2,5 en 2,5; prensas y hacks, de 5 en 5),',
+      '          "minRir": número entero opcional 0-5 — el RIR mínimo de ese ejercicio: nunca se le pide menos reserva que esta, aunque la semana pida menos. Ponlo (1) en los ejercicios que no se llevan al fallo — sentadilla, peso muerto rumano, hip thrust pesado — y déjalo fuera en máquinas y aislamiento,',
+      '          "alt": string opcional — alternativa (máx ' + L.alt + ' car.),',
+      '          "cue": string opcional — indicación técnica, para todas las series (máx ' + L.cue + ' car.),',
+      '          "setup": string opcional — ajustes de la máquina (altura de asiento, posición del respaldo…), no técnica (máx ' + SETUP_LIMIT + ' car.),',
+      '          "muscle": string opcional — músculo principal, libre, p.ej. Pecho/Espalda/Hombro/Bíceps/Tríceps/Cuádriceps/Isquios/Glúteo/Gemelos/Core (máx ' + MUSCLE_LIMIT + ' car.),',
+      '          "pattern": string opcional — patrón de movimiento, libre, p.ej. Empuje horizontal/Empuje vertical/Tirón horizontal/Tirón vertical/Rodilla dominante/Cadera dominante (máx ' + PATTERN_LIMIT + ' car.),',
+      '          "type": string opcional — tipo de ejercicio, libre, p.ej. Compuesto/Aislamiento (máx ' + TYPE_LIMIT + ' car.),',
+      '          "share": 1 opcional — marca el ejercicio como estación compartida en pareja ("JUNTOS"),',
+      '          "ss": 1 opcional — marca el ejercicio como parte de una superserie ("SS")',
+      '        }',
+    ].join('\\n')`;
+    for (const u of ['kg', 'lb']) {
+      call('state = defaultState(); migrate(); state.setupDone = true; state.prefs.units = "' + u + '"; L = IMPORT_LIMITS;');
+      const want = call(handWritten);
+      const prompt = await call('buildAiPrompt({ withBlock: true })');
+      ok('the prompt describes every exercise field in the words and order it always did (' + u + ')',
+         prompt.indexOf('      "ex": [ // obligatorio, 1-' + call('IMPORT_LIMITS.ex') + ' ejercicios\n' + want + '\n      ]\n') >= 0,
+         want.slice(0, 120) + ' … not found in … ' + prompt.slice(prompt.indexOf('"ex"'), prompt.indexOf('"ex"') + 300));
+    }
+    call('delete globalThis.L;');
+  }
+
+  /* Decision 7 of plans/055: "Guardar" in Ajustes reads the plate list
+     through cleanPlates, the rule migrate() reads a stored one with, so a
+     list typed there and the same list loaded from a backup cannot come out
+     different. Pressed on a booted app. */
+  console.log('\n== "Guardar" in Ajustes keeps the plates migrate() would (plans/055) ==');
+  {
+    /* The box is a comma-separated list, so its decimals are written with a
+       point; num() reads a comma decimal, which only a stored list holds. */
+    const typedList = '25, 20, 20, 0.25, x, 100, 1.25';
+    const boot = settled(JSON.parse(SEED));
+    boot.call('openSetup(false); setupDraft.platesText = ' + JSON.stringify(typedList) + ';');
+    boot.$('setupSave').onclick();
+    const typedPlates = boot.call('JSON.stringify(state.prefs.plates)');
+    const loaded = boot.call('state = JSON.parse(JSON.stringify(state)); state.prefs.plates = ' + JSON.stringify(typedList) +
+      '.split(","); migrate(); JSON.stringify(state.prefs.plates)');
+    ok('the same list comes out of Ajustes and out of a load: each size once, the unit\'s bounds kept, junk left out',
+       typedPlates === '[25,20,0.25,1.25]' && loaded === typedPlates, typedPlates + ' / ' + loaded);
   }
 
   /* plans/010's promise, one level up from the block. A restore reads every
