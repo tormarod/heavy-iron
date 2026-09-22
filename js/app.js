@@ -1326,20 +1326,31 @@ window.addEventListener('storage', e => {
 
 /* Another tab's write, taken in as this tab's state: the 'storage' event's
    answer when nothing is pending here, and "Recargar"'s when something was.
-   Bytes that do not parse, or that are not the app's, are left where they
-   are — this tab carries on with what it has. */
+   Bytes that do not parse, that are not the app's, or that migrate() cannot
+   repair are left where they are — this tab carries on with what it has. */
 function adoptStored(raw) {
   let next;
-  try { next = JSON.parse(raw); } catch (err) { return; }
-  if (!next || !next.profiles) return;
+  try { next = JSON.parse(raw); } catch (err) { return false; }
+  if (!next || !next.profiles) return false;
+  const prev = state;
   state = next;
+  try {
+    migrate();
+  } catch (err) {
+    /* migrate() throwing partway (bytes a newer release wrote, say) used to
+       leave `state` pointed at a half-migrated object with nothing having
+       drawn it — but the next save() still wrote that over this tab's own
+       data. Put it back, the same as the parse/shape checks above. */
+    state = prev;
+    return false;
+  }
   /* A snapshot taken before this would put back the other tab's sets as
      well as ours: undo ends at a change arriving from outside, too. */
   dropUndo();
-  migrate();
   applyTheme();
   render();
   mark('Actualizado desde otra pestaña');
+  return true;
 }
 
 /* ---------- keeping the log ----------
