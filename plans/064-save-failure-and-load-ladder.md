@@ -229,4 +229,52 @@ recorded in Maintenance notes.
   shape.
 - B: if the ladder ever depends on anything besides the sessions array
   (units, the exercise's `inc`), the WeakMap key is no longer enough.
-- *(Executor: record deviations and the before/after timing here.)*
+
+**Step B, landed as `claude/064-b`.** No deviation from the plan's design:
+`loadLadder` keeps the algorithm and gains a module-level
+`const ladderMemo = new WeakMap();` beside it, checked on entry and filled
+before returning a frozen ladder. `grep -n "ladder" js/app.js` confirmed
+before writing it that `nextLoad`/`prevLoad` — the only readers — only ever
+`.filter()` it, never write.
+
+**Before/after timing** (throwaway script under the system temp dir, not
+committed): `bootApp()` with a state of 2 profiles × 20 blocks × 16 weeks
+(3 days/block, 4 lifts/day, 3 sets/lift), every set's weight strictly
+increasing week over week and block over block so a lift's 319-session
+history never repeats a rung (a 638-entry ladder — the worst case for
+`seen.some()`, and the realistic one: progressive overload rarely repeats
+a load). 300 day switches — `profile.day = i; commit('view');`, the same
+call a "Día N" tab's `onclick` makes — cycling the block's 3 days, after an
+untimed 3-switch warm-up lap; best of 3 trials; instrumented to confirm
+every `loadLadder` call in the timed loop was a cache hit (0 misses) on
+the memoised version, and that the *input* array's identity was already
+stable turn to turn before this change (a `WeakMap` keyed on an array that
+changed identity every call would help nothing).
+
+| | total (300 switches) | per switch |
+|---|---|---|
+| before (`origin/main`'s `loadLadder`) | 49 307 ms | 164.358 ms |
+| after (memoised) | 420 ms | 1.399 ms |
+
+~117×. Larger than the plan's own 31.6→10.9 ms full-draw figures because
+this profile's weights never repeat (maximising `seen`) and the timing
+isolates 300 *warm-history* switches specifically — the case this plan is
+about — rather than one cold draw; the two are different measurements,
+not a contradiction.
+
+One dead end worth recording since it cost real time: the first version of
+the measurement script built two profiles with
+`state.profiles = { hombre: profile('Él', ...), mujer: profile('Ella', ...) }`,
+where `profile()` calls `sessionFixture()`, which does
+`state = defaultState()` as its own reset on *every* call. The assignment's
+target (`state`) is resolved before its right-hand side is evaluated, so
+by the time the object literal's two `profile()` calls have each repointed
+the global `state`, the assignment lands on the object `state` referenced
+*before* either call — which nothing points to any more — and the global
+is left an untouched `defaultState()`. The script ran, drew a real (if
+tiny) demo profile, and printed a plausible-looking number for it, with no
+error to say so. Building both profiles into locals first, then assigning
+`state.profiles = { hombre: p1, mujer: p2 }`, fixed it. Caught only by
+instrumenting `loadLadder`'s hit/miss counts and the live profile's own
+`blockOrder.length` rather than trusting a bare timing number — worth
+doing on any throwaway perf script, not just this one.
