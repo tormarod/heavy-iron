@@ -193,4 +193,63 @@ and the unit suite's link check.
 
 - A new rule goes in its section **and** gets a checklist line if it is
   something an agent must do when making a kind of change.
-- *(Executor: record deviations here.)*
+- The checklist's pointers are markdown links, so the unit suite's "docs
+  cross-links resolve" section fails on a heading renamed under them.
+  Keep `_` out of a heading that a link targets: that section's slugger
+  strips `_` and GitHub's keeps it, so no anchor could satisfy both. This
+  is why the `RECORD_PARTS` and `EX_FIELDS` subsections are named in
+  words.
+- Executor, 2026-09-23 (branch `claude/070-agents-md`, from `360b611`):
+  - Drift since `c9114bc`: only 068 B's "Spanish only" clause (`bd1059b`),
+    a rule added. It is kept word for word under Documented limits (third
+    STOP condition: included, and reported in the PR).
+  - The table's "a destructive action → `snapshotForUndo` before its
+    writes, no `await` between" row is left out and listed in the PR. It
+    could not be confirmed, and decision 5 bars it anyway. AGENTS.md never
+    stated the rule. It lives in `js/app.js`'s comment above `undoArmed`
+    and in plan 060's Maintenance notes. Plan 060's unit cases test
+    undo's expiry only through "Borrar este día", and nothing tests a new
+    destructive action's shape.
+  - The "reader of logged sets" row names what the tests hold: the
+    history-cache section pins every `save('view')` and scoped save and
+    freezes the answers. Reading through `sessionsOf` has no source
+    guard, so that half says "review".
+  - Rows beyond the table, each an existing rule of this file with its
+    test checked: rule 2, folded into the symbol row; "a log key, or a
+    walk over a block's slots" (unit "the log key has one reader as well
+    as one builder"); "anything a user sees" and "a code comment"
+    (review).
+  - `wireBlockEditor()`'s missing guard is stated once, in the pre-split
+    exception. The ids subsection links to it for the consequence (a
+    throw there takes `load()` with it). The second `SHELL_SCRIPTS`
+    sentence under How to verify is folded into the split recipe.
+  - Length 440 → 600 lines after the review round below. The growth is
+    the checklist (75 lines) and 17 new headings. 112 of the old file's
+    132 prose sentences survive word for word (whitespace collapsed).
+    Sixteen were re-cut for the new headings or links (four only by a
+    bullet marker or a heading now beside them), and four were corrected
+    in review. The PR lists each.
+- Review round, 2026-09-23 (orchestrator, PR #183): five corrections of
+  fact. Each is a statement the file made that the repo does not bear
+  out, not a rule changed:
+  1. the PR hook's matcher is `mcp__.*__create_pull_request`, which is
+     any MCP server's create-PR tool, since plan 061; the file named only
+     `mcp__github__create_pull_request`;
+  2. the smoke gate's skip list (`TESTED_PATHS`) also has
+     `manifest.webmanifest`;
+  3. "the four script lists agree" holds `index.html` and
+     `SHELL_SCRIPTS` to the same order, but `SHELL` to membership only;
+  4. the slot-regex check scans four named files (`js/app.js`,
+     `js/chart.js`, `js/diagnostics.js`, `js/review.js`), and a new file
+     that reads slots joins that list;
+  5. the contrast section checks the pairs it names, in both themes, and
+     a new pair only once it is added there.
+  The checklist's "A style" and log-key lines carry 5 and 4 too.
+  Recorded as follow-ups, not fixed here: the "AGENTS.md rule (a)"
+  comments in `js/` and `test/`; the unit slugger dropping `_`; making
+  the tests match the old wording. Two more for that list:
+  - `js/block-editor.js` walks slots through `forEachSlot` but is not
+    among the four files the regex check scans.
+  - "read in four files" is historical: `slot`, `parseSlot` and
+    `forEachSlot` are called from `js/app.js`, `js/review.js` and
+    `js/block-editor.js` today.
