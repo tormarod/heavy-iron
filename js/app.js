@@ -2974,7 +2974,7 @@ function renderProfiles() {
     b.setAttribute('aria-pressed', key === state.activeProfile ? 'true' : 'false');
     /* Picking somebody puts the sheet away: the answer to "who is training"
        is one tap, not a tap and a dismissal. */
-    b.onclick = () => { closeSheet('profileSheet'); state.activeProfile = key; stopRest(); commit('view'); };
+    b.onclick = () => { closeSheet('profileSheet'); state.activeProfile = key; commit('view'); };
     host.appendChild(b);
   });
   /* The header carries the answer, not the question: a dot in the profile's
@@ -3158,8 +3158,8 @@ function renderNav() {
   const prev = $('weekPrev'), next = $('weekNext');
   prev.disabled = profile.week <= 1;
   next.disabled = profile.week >= weeks;
-  prev.onclick = () => { if (profile.week > 1) { profile.week--; stopRest(); commit('view'); } };
-  next.onclick = () => { if (profile.week < weeks) { profile.week++; stopRest(); commit('view'); } };
+  prev.onclick = () => { if (profile.week > 1) { profile.week--; commit('view'); } };
+  next.onclick = () => { if (profile.week < weeks) { profile.week++; commit('view'); } };
 
   for (let w = 1; w <= weeks; w++) {
     const b = document.createElement('button');
@@ -3170,7 +3170,7 @@ function renderNav() {
     b.setAttribute('aria-selected', w === profile.week ? 'true' : 'false');
     b.setAttribute('aria-label', 'Semana ' + w + (w === dl ? ', descarga' : ''));
     if (weekHasLog(profile, block, w)) { const dot = document.createElement('span'); dot.className = 'dot'; b.appendChild(dot); }
-    b.onclick = () => { profile.week = w; stopRest(); commit('view'); };
+    b.onclick = () => { profile.week = w; commit('view'); };
     $('weeks').appendChild(b);
   }
 
@@ -3189,7 +3189,7 @@ function renderNav() {
     /* Roving tabindex, the other half of what role="tab" promises: one stop
        for the whole strip in the Tab order, the arrows move within it. */
     b.tabIndex = i === profile.day ? 0 : -1;
-    b.onclick = () => { profile.day = i; stopRest(); commit('view'); };
+    b.onclick = () => { profile.day = i; commit('view'); };
     $('days').appendChild(b);
   });
   /* The cards are this tab's panel, and which day they belong to is the tab
@@ -3215,7 +3215,6 @@ $('days').addEventListener('keydown', e => {
   if (to < 0) return;
   e.preventDefault();
   getProfile().day = to;
-  stopRest();
   commit('view');
   const fresh = $('days').querySelectorAll('.day')[to];
   if (fresh) fresh.focus();

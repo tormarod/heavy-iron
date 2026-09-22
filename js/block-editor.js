@@ -41,7 +41,7 @@ function renderBlockBar() {
   select.onchange = () => {
     closeSheet('blockSheet');
     profile.activeBlock = select.value; profile.week = 1; profile.day = 0;
-    stopRest(); commit('view');
+    commit('view');
   };
   host.appendChild(select);
 
@@ -84,7 +84,6 @@ function deleteBlocks(profile, ids) {
   if (drop.has(profile.activeBlock)) {
     profile.activeBlock = keep[keep.length - 1];
     profile.week = 1; profile.day = 0;
-    stopRest();
   }
   commit();
   return drop.size;
