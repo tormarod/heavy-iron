@@ -287,10 +287,22 @@ does" list only names features and links into the guide.
 One shape is worth naming here because it is read in four files: a log key
 is `slot(week, dayId)` and is read back by `parseSlot`, both in `js/app.js`,
 and nothing else runs the regex — `test/unit.js` fails if anything does.
-To walk one block of `log`/`rir`/`notes`/`energy`/`order`/`obj`, use
+To walk one block of any part of the profile's record keyed by slot, use
 `forEachSlot` rather than rebuilding keys week by week: it visits the slots
 that exist, which is the only way a purge reaches a week filed above
 `MAX_WEEKS`.
+
+The maps that make up **the profile's record** (`CONTEXT.md`) are declared
+in one place, `RECORD_PARTS` in `js/app.js`, beside `forEachSlot`: each
+entry says how its part is keyed, how a move merges it, whether it travels
+with a shared block, and why. Every purge (`purgeRecord`), the move in the
+plan editor (`moveExerciseRecord`), migrate's creation and repair
+(`ensureRecord`) and `installBlockData` loop over that table, and so do the
+tests, so a new part is one entry there rather than an edit at each
+operation. `test/unit.js` fails if a migrated profile carries a key that is
+neither in the table nor in its short list of non-record fields. Import,
+share and restore still validate each part by hand, outside the table
+(plans/046 left them out), so a new part needs its own step there.
 
 To *read* what was lifted, use `sessionsOf` (`js/app.js`, "sessions: the
 one reading of the log") instead of filtering raw log rows: it owns which
@@ -311,10 +323,11 @@ this lift's rows in this slot"); `test/unit.js` pins the list of them, so
 a new one is added there on purpose. A replaced `state` or profile, and a
 unit switch, need nothing.
 
-`variants` is the one per-profile map keyed by exercise id rather than by
+`variants` is the one part of the record keyed by exercise id rather than by
 block and slot (`exId → [{ n, since }]`, read only by `variantSince`), so it
-is never walked by slot and is not in any purge or move helper's list; and
-the objetivo rule that reads both lives in `js/app.js` under "peso
+is never walked by slot, and no purge or move reaches it — its
+`RECORD_PARTS` entry says why; and
+the objetivo rule that reads it and `obj` lives in `js/app.js` under "peso
 objetivo" (`targetFor`) and is documented in `docs/guide.md` § "The weekly
 objetivo" — both maps are absent from every backup written before v3, so
 every reader copes with them missing.
