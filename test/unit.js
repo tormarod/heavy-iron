@@ -2415,6 +2415,72 @@ ok('G1 a converted session behind the kg ones is never a rung the target can lan
    t.show.split(' · ').every(function (s) { return s.indexOf('47,5×') === 0 || s.indexOf('45×') === 0; }),
    JSON.stringify(t));
 
+console.log('\n== loadLadder: cached per history (plans/064) ==');
+/* loadLadder rebuilt the ladder from scratch on every card on every draw,
+   comparing each set with every weight seen so far — 57-67 % of a full
+   draw at a long history (plans/064, Maintenance notes). Its input,
+   exHistory's `rule` array, is the same object across draws until a write
+   drops the history-cache answer it came from — so a WeakMap keyed on it
+   has exactly the right lifetime. */
+const ladderId = JSON.parse(call(`(function () {
+  const a = [{ sets: [{ w: 100, conv: false }, { w: 105, conv: false }, { w: 45.359237, conv: true }] }];
+  const b = [{ sets: [{ w: 100, conv: false }, { w: 105, conv: false }, { w: 45.359237, conv: true }] }];
+  const la1 = loadLadder(a), la2 = loadLadder(a), lb = loadLadder(b);
+  return JSON.stringify({
+    same: la1 === la2, frozen: Object.isFrozen(la1),
+    distinct: lb !== la1, equalContent: JSON.stringify(lb) === JSON.stringify(la1),
+  });
+})()`));
+ok('the same sessions array twice gets back the same frozen ladder',
+   ladderId.same && ladderId.frozen, JSON.stringify(ladderId));
+ok('...and a different array with the same content gets an equal but distinct one',
+   ladderId.distinct && ladderId.equalContent, JSON.stringify(ladderId));
+
+/* No stale ladder survives a write: read a card's history (which warms the
+   memo under the pre-write rule array, same as a draw would), tick a set
+   in a later week, and read again. exHistory hands back a new array once
+   the write drops the history-cache answer, so the memo must miss and
+   rebuild — and what it rebuilds has to match a plain, uncached walk of
+   that same array, rung for rung, and therefore agree on what nextLoad
+   does with it. */
+const ladderWrite = JSON.parse(call(`(function () {
+  state = defaultState(); migrate();
+  state.prefs.units = 'kg';
+  const T0 = Date.UTC(2026, 0, 5), DAY = 86400000;
+  const row = function (w, wk) { return [w, 10, { ts: T0 + wk * 7 * DAY }]; };
+  const sessions = [1, 2, 3].map(function (wk) {
+    return { block: 'A', week: wk, day: 'd1', lift: 'E', sets: [row(90 + wk, wk)] };
+  });
+  const p = sessionFixture({ blocks: [{ id: 'A', weeks: 8, days: [
+    { id: 'd1', ex: [{ id: 'E', n: 'x', sets: 3, reps: '8-12', inc: 2.5 }] } ] }],
+    sessions: sessions, profile: { label: 'Él', theme: 'azul', notes: {}, energy: {}, order: {},
+    activeBlock: 'A', week: 4, day: 0 }, install: true });
+  const b = p.blocks.A, d1 = b.days[0], ex = d1.ex[0];
+  const before = loadLadder(exHistory(p, b, ex, 'd1', 4));
+  const rows = entry(p, 'A', 3, 'd1', 'E', 3);
+  rows[0].w = '150'; rows[0].r = '10'; rows[0].ts = Date.now(); rows[0].done = true;
+  save({ profile: p, block: 'A', week: 3, day: 'd1', lift: 'E' });
+  const rule = exHistory(p, b, ex, 'd1', 4);
+  const oldLoadLadder = function (sess) {
+    const seen = [];
+    sess.forEach(function (s) { s.sets.forEach(function (x) {
+      if (!x.conv && !seen.some(function (v) { return sameLoad(v, x.w); })) seen.push(x.w);
+    }); });
+    return seen.sort(function (x, y) { return x - y; });
+  };
+  const want = oldLoadLadder(rule), got = loadLadder(rule);
+  return JSON.stringify({
+    sameAsBefore: loadLadder(rule) === before,
+    ladderEq: JSON.stringify(want) === JSON.stringify(got),
+    nextEq: nextLoad(want, 90, 2.5) === nextLoad(got, 90, 2.5),
+    has150: got.indexOf(150) >= 0,
+  });
+})()`));
+ok('a write that changes the log drops the stale ladder along with the history-cache answer it was keyed on',
+   ladderWrite.sameAsBefore === false, JSON.stringify(ladderWrite));
+ok('...and the fresh ladder matches an uncached rebuild of the new rule, rung for rung, so nextLoad agrees too',
+   ladderWrite.ladderEq && ladderWrite.nextEq && ladderWrite.has150, JSON.stringify(ladderWrite));
+
 console.log('\n== el mismo ejercicio en dos días del mismo bloque (plans/026) ==');
 /* The harness above is a one-day block by construction, so the day split in
    exHistory — the same machine pressed first on Monday and fourth on

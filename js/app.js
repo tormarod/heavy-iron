@@ -6503,10 +6503,20 @@ function exHistory(profile, block, ex, dayId, beforeWeek, onlyBlockId) {
    the ladder only — everything else still reads them. If every session is
    converted (a permanent unit switch) the ladder is empty and nextLoad /
    prevLoad fall back to `w ± inc`, which is the documented fallback. */
+/* This ran on every card on every full draw and was 57-67 % of one at 20
+   blocks x 16 weeks (plans/064). Its input is the frozen `rule` array
+   exHistory hands back from liftHistory's own cache — the same array
+   object until a write drops that answer — so the array's identity is
+   exactly the ladder's lifetime: memoise on it rather than rebuild it. */
+const ladderMemo = new WeakMap();
 function loadLadder(sessions) {
+  const hit = ladderMemo.get(sessions);
+  if (hit) return hit;
   const seen = [];
   sessions.forEach(s => s.sets.forEach(x => { if (!x.conv && !seen.some(v => sameLoad(v, x.w))) seen.push(x.w); }));
-  return seen.sort((a, b) => a - b);
+  const ladder = Object.freeze(seen.sort((a, b) => a - b));
+  ladderMemo.set(sessions, ladder);
+  return ladder;
 }
 function nextLoad(ladder, w, inc) {
   const up = ladder.filter(v => v > w + WEIGHT_EPS && v <= w + 1.5 * inc + WEIGHT_EPS);
