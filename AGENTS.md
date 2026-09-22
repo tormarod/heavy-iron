@@ -46,9 +46,10 @@ or CI job fails, and a reviewer is the only check. How to run the checks is
 - **A style** — a class in `css/style.css`, never a `style` attribute; a
   value computed at runtime through a CSSOM property; `--edge` for control
   borders, `--line` for dividers, `--amber-ink` for amber text. Held by unit
-  "css tokens keep WCAG contrast", and by smoke "main session" and
-  "accesibilidad: reduced motion y CSP sin unsafe-inline", which fail on a
-  CSP violation on the screens they open. → [The CSP](#the-csp)
+  "css tokens keep WCAG contrast" for the pairs it names (a new pair only
+  once it is added there), and by smoke "main session" and "accesibilidad:
+  reduced motion y CSP sin unsafe-inline", which fail on a CSP violation on
+  the screens they open. → [The CSP](#the-csp)
 - **Anything read from a file, a paste, `blocks/` or a QR scan** — a
   `normalizeImported*` on the way in, `esc` on the way out, and the limits
   in `IMPORT_LIMITS`, `OWN_LIMITS` and `PROFILE_LIMITS`. Held by the unit
@@ -75,7 +76,8 @@ or CI job fails, and a reviewer is the only check. How to run the checks is
 - **A log key, or a walk over a block's slots** — `slot(week, dayId)` and
   `parseSlot` build and read it, `forEachSlot` walks it; never the regex by
   hand, never keys rebuilt week by week. Held by unit "the log key has one
-  reader as well as one builder".
+  reader as well as one builder" for the four files it scans; a new file
+  that reads slots joins that list.
   → [Log keys and slot walks](#log-keys-and-slot-walks)
 - **Anything a user sees** — Spanish; a new or changed behaviour is written
   up in `docs/guide.md`, not the README. Review.
@@ -264,12 +266,13 @@ CI enforces both halves: the `cache-version` job in
 `.github/workflows/test.yml` fails a pull request whose shell changed
 without a bump, and its second step fails one whose `js/*.js` or
 `css/*.css` file is missing from `SHELL`. `test/unit.js` closes the rest
-of that circle — it asserts `index.html`, `SHELL` and `SHELL_SCRIPTS` in
-`test/harness.js` name the same files in the same order (plans/014). The
-deploy workflow (`.github/workflows/pages.yml`, plans/061) guards the same
-change against what is live, so if two PRs both bump `CACHE_VERSION` from
-the same base, the second deploy fails and requires another bump on
-`main`.
+of that circle ("the four script lists agree", plans/014): it holds
+`index.html` and `SHELL_SCRIPTS` in `test/harness.js` to the same files in
+the same order, and `SHELL` to membership only — every `index.html` script
+is in it, and every `js/` entry in it exists on disk. The deploy workflow
+(`.github/workflows/pages.yml`, plans/061) guards the same change against
+what is live, so if two PRs both bump `CACHE_VERSION` from the same base,
+the second deploy fails and requires another bump on `main`.
 
 `tools/bump-cache-version.sh` does the bump, so a red `cache-version` run
 costs one command rather than a round-trip: `--dry-run` prints the current
@@ -294,11 +297,13 @@ node test/smoke.js --only "<section>"    # 3. one browser section, ~5-10 s
 
 The full suite takes about two and a half minutes and is wired as a
 PreToolUse hook in `.claude/settings.json` on both
-`mcp__github__create_pull_request` and `gh pr create`, so every path that
-opens a PR runs it exactly once and a failure blocks the PR. Running it by
-hand before that point only repeats what the hook is about to do. It skips
-itself on a branch that changes nothing the suites load (the shell,
-`sw.js`, `blocks/`, `test/`).
+`mcp__.*__create_pull_request` — any MCP server's create-PR tool,
+`mcp__github__create_pull_request` among them, since plans/061 — and
+`gh pr create`, so every path that opens a PR runs it exactly once and a
+failure blocks the PR. Running it by hand before that point only repeats
+what the hook is about to do. It skips itself on a branch that changes
+nothing the suites load (the shell, `sw.js`, `manifest.webmanifest`,
+`blocks/`, `test/`).
 
 When it blocks, read what it tells you rather than re-running the suite to
 find out: it prints the failing assertions — with the diagnostic each one
@@ -433,7 +438,10 @@ untrusted.
 
 One shape is worth naming here because it is read in four files: a log key is
 `slot(week, dayId)` and is read back by `parseSlot`, both in `js/app.js`,
-and nothing else runs the regex — `test/unit.js` fails if anything does.
+and nothing else runs the regex. `test/unit.js` ("parseSlot() is the only
+place that runs the slot regex") fails if any of the four files it scans
+does — `js/app.js` outside `parseSlot`, `js/chart.js`, `js/diagnostics.js`
+and `js/review.js` — and a new file that reads slots joins that list.
 To walk one block of any part of the profile's record keyed by slot, use
 `forEachSlot` rather than rebuilding keys week by week: it visits the
 slots that exist, which is the only way a purge reaches a week filed
@@ -534,9 +542,14 @@ inline `onload`.
 
 Colour tokens follow a similar one-place rule: control borders use
 `--edge`, dividers `--line`, amber text `--amber-ink` (fills stay
-`--amber`), and the unit suite computes the contrast of every token pair
-straight from `css/style.css`, so a new pair below 4.5:1 (text) or 3:1
-(borders) fails `node test/unit.js` (plans/032).
+`--amber`). The unit suite ("css tokens keep WCAG contrast") computes,
+straight from `css/style.css` and in both themes, the contrast of the
+foreground/background pairs it names — `--soft`, `--ink`, `--amber-ink`,
+`--edge`, `--signal`, `--on-signal`, `--on-share`, `--share-ink`,
+`--danger`, the rest timer's tokens and the profile accents, each on the
+surfaces it sits on — and a pair below 4.5:1 (text) or 3:1 (borders)
+fails `node test/unit.js` (plans/032). A new pair is checked only once it
+is added there.
 
 ## Comment style
 
