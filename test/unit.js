@@ -4874,8 +4874,14 @@ console.log('\n== the history cache: one read per question, dropped by the write
      reads, and a wrong one is a stale objetivo that nothing else would
      catch. So the list of them is pinned: a new one fails here until it
      is added below, in the same diff that adds it, where a reviewer sees
-     it. The card's own scoped saves are pinned the same way — only
-     buildExCard may hand save() a slot. */
+     it. The scoped saves are pinned the same way, and counted by what they
+     are — save() or commit() handed anything but 'view' or nothing — not by
+     what the scope is called: this used to look for the literal
+     `save(here)`, so a scope under any other name slipped past it. Only a
+     card hands save() a slot: writeRows for every write that can start a
+     session (plans/048), buildExCard itself for the three that cannot.
+     commit's own save(scope) is on the list because it is the same text;
+     it passes its caller's claim on and makes none. */
   const claims = [];
   SHELL_SCRIPTS.forEach(f => {
     const src = fs.readFileSync(path.join(ROOT, f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
@@ -4885,7 +4891,9 @@ console.log('\n== the history cache: one read per question, dropped by the write
       if (m) fn = m[1];
       const n = (line.match(/\b(?:save|commit)\('view'\)/g) || []).length;
       for (let i = 0; i < n; i++) claims.push(f + ':' + fn);
-      if (/\bsave\(here\)/.test(line)) claims.push(f + ':' + fn + ':scoped');
+      /* A call, not the two definitions. */
+      const s = (line.match(/(?<!function )\b(?:save|commit)\((?!'view'\)|\))/g) || []).length;
+      for (let i = 0; i < s; i++) claims.push(f + ':' + fn + ':scoped');
     });
   });
   const expected = [
@@ -4893,10 +4901,12 @@ console.log('\n== the history cache: one read per question, dropped by the write
     'js/app.js:renderProfiles',
     'js/app.js:renderNav', 'js/app.js:renderNav', 'js/app.js:renderNav', 'js/app.js:renderNav',
     'js/app.js:days',
+    'js/app.js:commit:scoped',
     'js/app.js:buildExCard',
-    ...Array(9).fill('js/app.js:buildExCard:scoped'),
+    ...Array(3).fill('js/app.js:buildExCard:scoped'),
     'js/app.js:openExMenu',
     'js/app.js:drawOrderNote', 'js/app.js:drawEnergy', 'js/app.js:drawSessionNote',
+    'js/app.js:writeRows:scoped',
     'js/app.js:recordTargetOnStart',
   ];
   ok('the writes that claim to reach no session, or one slot, are exactly the ones plans/045 audited',
