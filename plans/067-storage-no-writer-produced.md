@@ -422,3 +422,41 @@ existing `migrate()`, import and two-tab case stays green unchanged.
   `state = prev` runs, not a stale wrong answer — so the third STOP
   condition did not fire.
 - *(Executor: record deviations here.)*
+- **Step A (`claude/067-a`), deviations and findings:**
+  - **Case 1's fixture names.** Profiles `a` and `b` never shared a seed:
+    `a` (first place) gets hombre's and `b` (second place) mujer's. The
+    case uses `a` and `hombre` instead, the two-profile shape that really
+    shared one object, so reverting A.1 fails it. One more assertion there
+    pins decision 1: the log a blockless profile carried is kept and reads
+    against the seed plan (`block-1/1/d0/chestpress`).
+  - **Case 5** sets every `RECORD_PARTS` part to `[]`, not only `log`, and
+    also checks that a set ticked through `entry()` survives
+    `JSON.stringify`. The phase half compares `phaseRir` week by week with
+    a `genericPhase(6, 4)` block.
+  - **Case 6** puts `constructor` (which wrote onto `Object`) and a real
+    lift in the slot beside `__proto__`. It checks both `Object.prototype`'s
+    and `Object`'s own names for index keys, and sweeps both in a
+    `finally`. The section also puts back the `state` the section before
+    it left.
+  - **Comment wording.** The A.1 comment avoids the literal word for the
+    browser's deep-copy call. The Safari-floor scan in `test/unit.js` is
+    line-based and flags it even inside a comment.
+  - **Mutations beyond the four the plan names:** without the phase
+    `Array.isArray`, the phase assertion fails. Reverting only the exercise
+    loop fails case 3. Without only the reader guard, the reader assertion
+    fails. Without only the own-key test, nothing fails, which is expected:
+    the reader guard stands in front of it (defence in depth).
+  - **A.4 sweep.** One map is written through by a log-derived lift id:
+    `strengthByExercise`'s `out`, now fixed. Every other place reviewed is
+    safe: `muscleSessions` and `strengthRows` write maps keyed by the
+    muscle tag, `deloadCheck` only reads, and `pruneLog` and `foldRirMap`
+    only touch the slot's own key or a row of its array. `weeksBeyondEnd`,
+    `countSets` and `weekHasLog` only count. `buildCsv` reads through
+    own-key tests, and the import path's maps are `Object.create(null)`.
+  - **Outside A.4's pattern, not fixed (out of Scope), follow-up
+    candidates:** `buildCsv`'s `byDay` is a plain `{}` indexed by a slot's
+    *day* id. A slot keyed `w1-__proto__` makes "Exportar CSV" throw
+    (`byDay[dayId].push is not a function`); the fix is one line,
+    `Object.create(null)`. Separately, a `__proto__` lift on a planned day
+    prints `[object Object]` in the CSV's `orden` column. It is read-only
+    and writes nothing.
