@@ -1999,11 +1999,11 @@ ok('prevLoad mirrors it', call('prevLoad([35, 39, 40], 40, 2.5)') === 39 && call
    and a set count that never changes, which leaves five branches of the
    rule reachable only from test/smoke.js or from nothing at all. */
 
-/* A phase somebody wrote in their own words has no number in it, so the
+/* A phase somebody wrote in their own words has no "RIR" in it, so the
    week cannot say what reserve it wants and the reserve the last session
    was left at stands in — which asks for no change rather than inventing
-   one. `phaseRir` falls back to the lowest digit ANYWHERE in the text, so
-   the prose here has to carry none. */
+   one. `phaseRir` only reads a number immediately next to "RIR" (plans/058);
+   any other digit in the prose, or no digit at all, reads the same: null. */
 t = target([
   { sets: [[40, 10], [40, 9]], rir: '2+' },
   { sets: [[40, 10], [40, 9]], rir: '2+' },
@@ -2025,6 +2025,35 @@ t = target([
 ], { range: '6–15', inc: 2.5, sets: 2, minRir: 1, phase: { r: 'Semana de técnica' } });
 ok('...and ex.minRir still floors what the fallback came back with',
    t && t.rirWeek === 1, JSON.stringify(t));
+
+/* A phase label naming a week number and a rep scheme with no "RIR"
+   beside it (plans/058 item 3) used to read as the lowest digit in the
+   label — "Semana 6 · 10 reps" as 6 — and drive every card that week to
+   the floor via moreRir/floor, silently. It now reads null, exactly like
+   prose with no digit at all: same history, same sets, same reserve
+   carried over from the last session.
+
+   (The plan's other motivating example, "Descarga 60%", is not usable for
+   this comparison: the word "Descarga" already marks the week a deload
+   through DESCARGA_RE/deloadAt — plans/054, predating this plan — so
+   targetFor takes the deload branch before weekRir/phaseRir are ever
+   reached, whatever number follows. That path is unrelated to this fix;
+   see the Maintenance notes.) */
+t = target([
+  { sets: [[40, 10], [40, 9]], rir: '2+' },
+  { sets: [[40, 10], [40, 9]], rir: '2+' },
+  { sets: [[40, 11], [40, 9]], rir: '2+' },
+], { range: '6–15', inc: 2.5, sets: 2, phase: { r: 'Semana 6 · 10 reps' } });
+ok('a week number and rep scheme with no "RIR" beside it falls back to the reserve the last session was left at, same as prose with no digits',
+   t && t.rirWeek === 2, JSON.stringify(t));
+const tPercent = t;
+t = target([
+  { sets: [[40, 10], [40, 9]], rir: '2+' },
+  { sets: [[40, 10], [40, 9]], rir: '2+' },
+  { sets: [[40, 11], [40, 9]], rir: '2+' },
+], { range: '6–15', inc: 2.5, sets: 2, phase: { r: '2 RIR' } });
+ok('...and prescribes exactly what the same history under an explicit "2 RIR" phase would, never a lower weight',
+   tPercent && t && tPercent.show === t.show, JSON.stringify([tPercent, t]));
 
 /* A layoff restarts the segment the level is read off: three sessions at
    50 kg, twenty days away, three at 45. Measured against the whole run the
@@ -4764,17 +4793,81 @@ blockIndex.forEach(entry => {
      JSON.stringify(statedIds) === JSON.stringify(keptIds));
 });
 
-console.log('\n== phaseRir: the number next to "RIR" wins, not the lowest digit anywhere (plans/008 item 17) ==');
+console.log('\n== phaseRir: the number before or after "RIR" wins, not the lowest digit anywhere (plans/008 item 17, plans/058 item 3) ==');
 ok('a week number ahead of the RIR phrase no longer wins',
    call('phaseRir({ phase: [{ r: "Semana 1: 2-3 RIR" }] }, 0)') === 2);
 ok('a one-off number elsewhere no longer wins over the RIR range',
    call('phaseRir({ phase: [{ r: "Top set + 2 back-offs, 1 RIR" }] }, 0)') === 1);
 ok('a plain range still reads correctly',
    call('phaseRir({ phase: [{ r: "2-3 RIR" }] }, 0)') === 2);
-ok('no RIR phrase falls back to the lowest digit anywhere',
-   call('phaseRir({ phase: [{ r: "Semana 3 de 5" }] }, 0)') === 3);
+ok('no RIR phrase: a week number no longer falls back to the lowest digit anywhere (plans/058)',
+   call('phaseRir({ phase: [{ r: "Semana 3 de 5" }] }, 0)') === null);
 ok('no digits at all returns null',
    call('phaseRir({ phase: [{ r: "Deload" }] }, 0)') === null);
+ok('a percentage with no RIR reads as null, not the percentage',
+   call('phaseRir({ phase: [{ r: "Descarga 60%" }] }, 0)') === null);
+ok('a week number and a rep scheme with no RIR read as null',
+   call('phaseRir({ phase: [{ r: "Semana 6 · 10 reps" }] }, 0)') === null);
+ok('a number next to RIR above RIR_MAX is not a prescription',
+   call('phaseRir({ phase: [{ r: "60 RIR" }] }, 0)') === null);
+ok('0 RIR is a real prescription, not falsy-null',
+   call('phaseRir({ phase: [{ r: "0 RIR" }] }, 0)') === 0);
+ok('5 RIR is at RIR_MAX and still counts',
+   call('phaseRir({ phase: [{ r: "5 RIR" }] }, 0)') === 5);
+ok('the postfix form reads too — "RIR 2" is as natural in Spanish as "2 RIR"',
+   call('phaseRir({ phase: [{ r: "RIR 2" }] }, 0)') === 2);
+ok('...with a range after it, still the lower end',
+   call('phaseRir({ phase: [{ r: "RIR 2-3" }] }, 0)') === 2);
+ok('an em dash in the range still reads its lower end, not the digit RIR sits next to',
+   call('phaseRir({ phase: [{ r: "2—3 RIR" }] }, 0)') === 2);
+ok('...and so does a minus sign',
+   call('phaseRir({ phase: [{ r: "2−3 RIR" }] }, 0)') === 2);
+
+/* A fuzz rather than a fixed table: phaseRir takes free text a human typed,
+   so the invariant that matters is the shape of every possible answer, not
+   a handful of hand-picked ones. Labels are built from the same vocabulary
+   real phase text uses — digits, every dash the regex accepts, "RIR" in
+   both the "N RIR" and "RIR N" shapes, "Semana", "%" and a few Spanish
+   words — glued together with and without spaces so "2-3 RIR", "RIR 2-3"
+   and stray digit-word runs like "60Descarga" all get exercised. Digits are
+   drawn mostly from 0–9 (three draws in four) rather than 0–99, because a
+   RIR-adjacent 0–99 draw lands in [0, RIR_MAX] only 6% of the time and the
+   positive path — an actual prescription, not just null — needs exercising
+   too. `Math.imul` keeps the multiply inside 32 bits: plain `seed * k`
+   overflows 2^53 on this multiplier and the generator collapses into a
+   short cycle with most labels repeated. The seed is fixed so a failure
+   reproduces; it is not read for anything else. */
+const phaseRirFuzzProbe = `
+  (function() {
+    let seed = 20260922;
+    function rnd() { seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff; return seed / 0x7fffffff; }
+    function pick(arr) { return arr[Math.floor(rnd() * arr.length)]; }
+    function digit() { return String(Math.floor(rnd() * (rnd() < 0.75 ? 10 : 100))); }
+    const words = ['Semana', 'de', 'tecnica', 'Descarga', 'Top', 'set', 'back-offs',
+      'reps', 'fase', 'RIR', '%', '-', '–', '—', '−', 'proxima', 'bloque'];
+    const failures = [];
+    for (let i = 0; i < 2000; i++) {
+      const tokenCount = 1 + Math.floor(rnd() * 6);
+      const tokens = [];
+      for (let j = 0; j < tokenCount; j++) {
+        tokens.push(rnd() < 0.35 ? digit() : pick(words));
+      }
+      const label = tokens.join(rnd() < 0.5 ? ' ' : '');
+      const block = { phase: [{ r: label }] };
+      const v = phaseRir(block, 0);
+      if (!(v === null || (Number.isInteger(v) && v >= 0 && v <= RIR_MAX)))
+        failures.push({ label: label, v: v, kind: 'phaseRir' });
+      const minRir = Math.floor(rnd() * 6), lastRho = Math.floor(rnd() * 6);
+      const wv = weekRir(block, { minRir: minRir }, 0, lastRho);
+      if (!(Number.isInteger(wv) && wv >= 0 && wv <= RIR_MAX))
+        failures.push({ label: label, wv: wv, minRir: minRir, lastRho: lastRho, kind: 'weekRir' });
+    }
+    return { checked: 2000, failCount: failures.length, sample: failures.slice(0, 3) };
+  })()
+`;
+const phaseRirFuzz = call(phaseRirFuzzProbe);
+ok('2,000 random phase labels: phaseRir is always null or an integer in [0, RIR_MAX], and weekRir (minRir, lastRho in [0, 5]) is always an integer in [0, RIR_MAX]',
+   phaseRirFuzz.failCount === 0, JSON.stringify(phaseRirFuzz));
 
 /* trainedDays had no test of its own (plans/057): it fed the calendar
    straight off a raw walk of the whole log, no week bound at all — wider

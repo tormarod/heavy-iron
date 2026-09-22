@@ -2392,22 +2392,30 @@ function foldRirMap(profile, blockId) {
 }
 
 /* The RIR the *plan* asks for in a given week, dug out of the free text in
-   `phase[w].r` — which is prose ("2–3 RIR", "0–1 RIR", "Descarga"), not a
-   field. The LOWEST number in the range wins: "2–3 RIR" is a week you are
-   meant to be able to take to 2, and reading it as 3 quietly under-loads
-   every estimate built on it. A week with no number at all — a deload, or
-   a phase somebody wrote in their own words — returns null, and the
-   estimate is skipped entirely rather than invented: a deload is not a
-   progression week. */
+   `phase[w].r` — which is prose ("2–3 RIR", "RIR 2", "0–1 RIR", "Descarga"),
+   not a field. Only a number immediately BEFORE or AFTER "RIR" is a
+   prescription — "RIR 2" is as natural in Spanish as "2 RIR", and the AI
+   prompt's free text invites either; any other digit in the label is a week
+   number, a percentage or a rep scheme, and the week says nothing about
+   reserve — `weekRir` then falls back to the reserve the last session was
+   left at. The FIRST such number in the label wins, whichever side of
+   "RIR" it sits on. A range picks the LOWEST number: "2–3 RIR" is a week
+   you are meant to be able to take to 2, and reading it as 3 quietly
+   under-loads every estimate built on it — the dash class covers the
+   hyphen, the en dash, the em dash and the minus sign so a range split by
+   any of them still reads its lower end, rather than the regex missing the
+   pair and grabbing the lone digit next to "RIR" instead. A week with no
+   "RIR" at all — a deload, or a phase somebody wrote in their own words —
+   returns null, and so does a number above RIR_MAX: a label like "60 RIR"
+   is not a prescription either. */
 function phaseRir(block, w) {
   const r = String((block && block.phase && block.phase[w] && block.phase[w].r) || '');
-  /* Prefer the number(s) immediately before "RIR" — free text elsewhere in
-     the phase (a week number, a set/rep scheme) can contain a smaller digit
-     that used to win the plain lowest-digit-anywhere scan. */
-  const near = r.match(/(\d+)(?:\s*[–-]\s*(\d+))?\s*RIR/i);
-  if (near) return Math.min(num(near[1]), num(near[2] != null ? near[2] : near[1]));
-  const nums = r.match(/\d+/g);
-  return nums && nums.length ? Math.min.apply(null, nums.map(num)) : null;
+  const before = r.match(/(\d+)(?:\s*[-–—−]\s*(\d+))?\s*RIR/i);
+  const after = r.match(/RIR\s*(\d+)(?:\s*[-–—−]\s*(\d+))?/i);
+  const near = !before ? after : !after ? before : (before.index <= after.index ? before : after);
+  if (!near) return null;
+  const v = Math.min(num(near[1]), num(near[2] != null ? near[2] : near[1]));
+  return v > RIR_MAX ? null : v;
 }
 
 /* ---------- session note ----------
