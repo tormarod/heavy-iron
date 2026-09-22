@@ -8415,6 +8415,80 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
     }
   }
 
+  /* adoptStored used to replace `state` with the other tab's bytes and only
+     then run migrate() on them: bytes this release cannot repair (a newer
+     release wrote them, say) left `state` pointed at a half-migrated object.
+     Nothing had drawn it — migrate() threw before applyTheme()/render() —
+     but the next debounced save() wrote that half-migrated state to disk
+     over this tab's own data regardless. adoptStored now keeps the old
+     state until a try around migrate() comes back clean, and puts it back
+     on a throw (plans/067 B), through both callers: the 'storage' listener
+     directly, and "Recargar", whose own try/catch around adoptStored() —
+     the only thing that used to stand between the throw and a half-migrated
+     `state` — never undid the assignment that had already happened. */
+  console.log('\n== adoptStored migrates before it commits (plans/067 B) ==');
+  {
+    /* Stands in for a real migrate() throwing on a shape this release
+       cannot repair: throws once, on the call adoptStored makes, then
+       restores itself so nothing later in the same boot is affected. */
+    const stubMigrateThrows = boot => boot.call(
+      "(function(){ const m = migrate; migrate = function(){ migrate = m; throw new Error('datos de una versión más nueva'); }; })()"
+    );
+
+    {
+      const boot = settled(seeded({ week: 1, day: 0 }));
+      const key = boot.call('STORAGE_KEY');
+      let err = '', before = null, barBefore = null, sameState = null, barAfter = null, written = null;
+      try {
+        before = boot.call('state');
+        barBefore = boot.call('state.prefs.barWeight');
+        stubMigrateThrows(boot);
+        const theirs = boot.saved();
+        theirs.prefs.barWeight = 22;
+        const raw = JSON.stringify(theirs);
+        boot.store[key] = raw;
+        boot.fire(boot.ctx.window, 'storage', { key: key, newValue: raw });
+        sameState = boot.call('state') === before;
+        barAfter = boot.call('state.prefs.barWeight');
+        boot.call('state.prefs.barWeight = 77, save()');
+        boot.clock.advance(1000);
+        written = boot.saved().prefs.barWeight;
+      } catch (e) { err = e.message; }
+      ok('a storage write whose migrate() throws is left where it is: state stays this tab\'s own object, its data unchanged',
+         !err && sameState && barAfter === barBefore && barAfter !== 22,
+         err || JSON.stringify({ sameState, barBefore, barAfter }));
+      ok('...and a later save() writes this tab\'s own data, not the bytes migrate() could not take in',
+         !err && written === 77, err || 'barWeight on disk: ' + written);
+    }
+
+    /* The same throw, reached through "Recargar" instead: a local change
+       pending (so the write is a conflict, not adopted at once), then the
+       other tab's write while it is held — built the same way plan 060's
+       own conflict() case does. */
+    {
+      const boot = settled(seeded({ week: 1, day: 0 }));
+      const key = boot.call('STORAGE_KEY');
+      let err = '', before = null, after = null, bar = null, reloads = null;
+      try {
+        before = boot.call('state');
+        boot.call('state.prefs.barWeight = 11, save()');
+        const theirs = boot.saved();
+        theirs.prefs.barWeight = 22;
+        const raw = JSON.stringify(theirs);
+        boot.store[key] = raw;
+        boot.fire(boot.ctx.window, 'storage', { key: key, newValue: raw });
+        stubMigrateThrows(boot);
+        boot.$('toastAct2').onclick();
+        after = boot.call('state');
+        bar = boot.call('state.prefs.barWeight');
+        reloads = boot.ctx.location.reloads;
+      } catch (e) { err = e.message; }
+      ok('"Recargar" on bytes whose migrate() throws leaves state as this tab\'s too — the caller\'s own try/catch is not what saves it',
+         !err && after === before && bar === 11 && reloads === 1,
+         err || JSON.stringify({ same: after === before, bar, reloads }));
+    }
+  }
+
   /* "Enviar a…" onto a day that already holds the same id. One lift on two
      days shares its id on purpose, but a day holds it once: the record is
      filed by slot and id, so two copies on one day are one record. The save

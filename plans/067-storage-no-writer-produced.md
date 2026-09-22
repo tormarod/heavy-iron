@@ -408,4 +408,17 @@ existing `migrate()`, import and two-tab case stays green unchanged.
   an id another item of the same list claims: claim first, then assign.
 - The reader guard means a record key `safeKey` refuses is never read. If
   one ever needs recovering, it is still in storage and in every backup.
+- **Step B (PR #178, branch `claude/067-b`, shell v135): no deviations.**
+  Implemented B.1 and B.2 as written. The two new booted tests landed
+  inside plan 060's own top-level block in `test/unit.js` (reusing its
+  `settled`/`seeded` helpers) rather than as a new sibling block, since
+  the plan's own hint was to model them on plan 060's two-tab cases and
+  reuse its `boot.fire(boot.ctx.window, 'storage', { key, newValue: raw })`
+  pattern. Read `migrate()` and everything it calls
+  (`ensureRecord`/`repairExercise`/`purgeRecord`/`cleanPlates`) to confirm
+  none writes outside the `state` object graph before it can throw —
+  `historyCache` is a `WeakMap` keyed by profile-object identity, so an
+  entry for an object inside a discarded candidate is unreachable once
+  `state = prev` runs, not a stale wrong answer — so the third STOP
+  condition did not fire.
 - *(Executor: record deviations here.)*
