@@ -9246,6 +9246,297 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
     }
   }
 
+  /* Six actions take this snapshot (the comment above undoArmed, and
+     UNDO_PROMISE's own comment, both in js/app.js). "Borrar este día"
+     (plans/052, above) and "Guardar cambios" in the plan editor (plans/053,
+     above) already press their real button and check "Deshacer" after;
+     these four did not, and the last two replace the whole log outright —
+     the ones an undo matters most for. "Exactly" below is boot.saved()
+     after clock.advance(1000), deep-equal before the action and after
+     "Deshacer": the saved copy, because pruneLog drops the rows a draw
+     pads and in-memory state still has. */
+  console.log('\n== "Deshacer" on every action that offers it, through its real button (plans/073) ==');
+  {
+    /* Two weeks, two days and a note behind the active block — something
+       real for an undo to lose. The block-deletion cases add two more
+       blocks of their own on top of it, each with a copy of the same log. */
+    const withHistory = (p, b) => {
+      const d0 = b.days[0].id, d1 = b.days[1].id;
+      p.log[b.id]['w2-' + d0] = { [b.days[0].ex[0].id]: [{ w: '45', r: '8', done: true, ts: BOOT_TIME - 3 * 864e5 }] };
+      p.log[b.id]['w1-' + d1] = { [b.days[1].ex[0].id]: [{ w: '100', r: '8', done: true, ts: BOOT_TIME - 6 * 864e5 }] };
+      p.notes = { [b.id]: { ['w1-' + d0]: 'rodilla izquierda en la hack' } };
+    };
+    const withExtraBlocks = (p, b) => {
+      ['block-2', 'block-3'].forEach((id, i) => {
+        const copy = JSON.parse(JSON.stringify(b));
+        copy.id = id; copy.name = 'Bloque ' + (i + 2);
+        p.blocks[id] = copy; p.blockOrder.push(id);
+        p.log[id] = JSON.parse(JSON.stringify(p.log[b.id]));
+      });
+    };
+
+    /* A new destructive action has to keep the shape the comment above
+       undoArmed describes, and nothing but a test through its real button
+       below shows that it does — so the calls are pinned: a seventh fails
+       here until it has one and an entry below. Keyed by the first string
+       literal after the call: deleteBlocks' ternary resolves to
+       'Bloque eliminado.', the literal nearest the call. */
+    {
+      const found = [];
+      fs.readdirSync(path.join(ROOT, 'js')).filter(f => f.endsWith('.js')).forEach(f => {
+        const rel = 'js/' + f;
+        const src = fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+        const needle = 'snapshotForUndo(';
+        let from = 0, at;
+        while ((at = src.indexOf(needle, from)) >= 0) {
+          from = at + needle.length;
+          if (src.slice(Math.max(0, at - 9), at) === 'function ') continue;
+          const close = src.indexOf(')', at);
+          const arg = src.slice(at + needle.length, close < 0 ? at + needle.length : close);
+          const lit = /'([^']*)'/.exec(arg);
+          found.push(rel + ': ' + (lit ? lit[1] : arg.trim()));
+        }
+      });
+      const KNOWN_UNDO_CALLS = [
+        'js/app.js: Borrado ',
+        'js/app.js: Borrado todo el registro de ',
+        'js/block-editor.js: Bloque eliminado.',
+        'js/block-editor.js: Plan actualizado.',
+        'js/profile-transfer.js: Perfil de ',
+        'js/profile-transfer.js: Registro restaurado desde una copia.',
+      ].sort();
+      ok('every snapshotForUndo( call is one of the six known destructive actions, each tested through its real button below',
+         JSON.stringify(found.slice().sort()) === JSON.stringify(KNOWN_UNDO_CALLS), JSON.stringify(found.slice().sort()));
+    }
+
+    /* "Borrar todos los datos" (#wipe): the whole profile's record, every
+       block, in one snapshot. */
+    {
+      const boot = settled(seeded({ week: 2, day: 0 }, withHistory));
+      const label = boot.call('getProfile().label');
+      const planBefore = boot.call('JSON.stringify(getProfile().blocks)');
+      const before = boot.saved();
+      let err = '', cancelAsked = null, okAsked = null, cancelSaved = null, cancelUndo = null;
+      try {
+        cancelAsked = await pressAnswering(boot, () => boot.$('wipe').onclick(), 'askCancel');
+        /* Read right here, not after the block: the "OK" press two lines
+           down changes this same boot, and reading afterwards would grade
+           "Cancelar" on what "Borrar todo" left behind instead. */
+        cancelSaved = boot.saved();
+        cancelUndo = boot.call('undoSnapshot === null');
+        okAsked = await pressAnswering(boot, () => boot.$('wipe').onclick(), 'askOk');
+      } catch (e) { err = e.message; }
+      ok('"Borrar todos los datos" asks, naming the profile, and "Cancelar" leaves it exactly as it was',
+         !err && !!cancelAsked && cancelAsked.title === '¿Borrar todo el registro de ' + label + '?' &&
+         JSON.stringify(cancelSaved) === JSON.stringify(before) && cancelUndo,
+         err || JSON.stringify({ cancelAsked, cancelUndo }));
+      ok('..."Borrar todo" empties every block\'s record, leaves the plan itself untouched, and the toast reads "Deshacer"',
+         !err && !!okAsked && boot.call('countProfileSets(getProfile())') === 0 &&
+         boot.call('JSON.stringify(getProfile().blocks)') === planBefore && boot.$('toastAct').textContent === 'Deshacer',
+         err || JSON.stringify({ okAsked, used: boot.call('countProfileSets(getProfile())'), toast: boot.$('toastAct').textContent }));
+      boot.clock.advance(1000);
+      ok('...save() writes the empty record',
+         !err && boot.call('countProfileSets(getProfile())') === 0 && JSON.stringify(boot.saved()) !== JSON.stringify(before),
+         err || JSON.stringify(boot.saved()));
+      let undoErr = '';
+      try { boot.$('toastAct').onclick(); } catch (e) { undoErr = e.message; }
+      boot.clock.advance(1000);
+      ok('...and "Deshacer" on that toast brings the whole profile back exactly as it was',
+         !err && !undoErr && JSON.stringify(boot.saved()) === JSON.stringify(before),
+         err || undoErr || JSON.stringify(boot.saved()));
+    }
+
+    /* Deleting a block, three ways (decision 2): a non-active block's own
+       "Eliminar" in "Gestionar bloques" first, with three blocks logged so
+       dropping the middle one proves the active block and the third are
+       left alone. */
+    {
+      const boot = settled(seeded({ week: 2, day: 0 }, (p, b) => { withHistory(p, b); withExtraBlocks(p, b); }));
+      const before = boot.saved();
+      boot.$('manageBtn').onclick();
+      const row = () => boot.$('blockList').children[1];
+      const name2 = boot.call("getProfile().blocks['block-2'].name");
+      let err = '', cancelAsked = null, okAsked = null, cancelSaved = null, cancelUndo = null;
+      try {
+        cancelAsked = await pressAnswering(boot, () => row().querySelector('.blk-del').onclick(), 'askCancel');
+        cancelSaved = boot.saved();
+        cancelUndo = boot.call('undoSnapshot === null');
+        okAsked = await pressAnswering(boot, () => row().querySelector('.blk-del').onclick(), 'askOk');
+      } catch (e) { err = e.message; }
+      ok('a block\'s own "Eliminar" in "Gestionar bloques" asks by name, and "Cancelar" leaves every block as it was',
+         !err && !!cancelAsked && cancelAsked.title.indexOf('¿Eliminar "' + name2 + '"') === 0 &&
+         JSON.stringify(cancelSaved) === JSON.stringify(before) && cancelUndo,
+         err || JSON.stringify({ cancelAsked, cancelUndo }));
+      ok('..."Eliminar" drops only that block and leaves the active block untouched',
+         !err && !!okAsked && boot.call('JSON.stringify(getProfile().blockOrder)') === JSON.stringify(['block-1', 'block-3']) &&
+         boot.call('getProfile().activeBlock') === 'block-1',
+         err || JSON.stringify({ okAsked, order: boot.call('JSON.stringify(getProfile().blockOrder)') }));
+      boot.clock.advance(1000);
+      const toastLabel = boot.$('toastAct').textContent;
+      let undoErr = '';
+      try { boot.$('toastAct').onclick(); } catch (e) { undoErr = e.message; }
+      boot.clock.advance(1000);
+      ok('...save() writes it, the toast reads "Deshacer", and it brings the block back with its record',
+         !err && toastLabel === 'Deshacer' && !undoErr && JSON.stringify(boot.saved()) === JSON.stringify(before),
+         err || undoErr || JSON.stringify({ toastLabel, back: boot.saved() }));
+    }
+
+    /* "Eliminar los demás" (#blkKeepCurrent): drops every block but the
+       active one. */
+    {
+      const boot = settled(seeded({ week: 2, day: 0 }, (p, b) => { withHistory(p, b); withExtraBlocks(p, b); }));
+      const before = boot.saved();
+      boot.$('manageBtn').onclick();
+      const label = boot.call('getProfile().label');
+      let err = '', cancelAsked = null, okAsked = null, cancelSaved = null, cancelUndo = null;
+      try {
+        cancelAsked = await pressAnswering(boot, () => boot.$('blkKeepCurrent').onclick(), 'askCancel');
+        cancelSaved = boot.saved();
+        cancelUndo = boot.call('undoSnapshot === null');
+        okAsked = await pressAnswering(boot, () => boot.$('blkKeepCurrent').onclick(), 'askOk');
+      } catch (e) { err = e.message; }
+      ok('"Eliminar los demás" asks how many, and "Cancelar" leaves every block as it was',
+         !err && !!cancelAsked && cancelAsked.title === '¿Eliminar los otros 2 bloques de ' + label + '?' &&
+         JSON.stringify(cancelSaved) === JSON.stringify(before) && cancelUndo,
+         err || JSON.stringify({ cancelAsked, cancelUndo }));
+      ok('..."Eliminar" leaves only the active block',
+         !err && !!okAsked && boot.call('JSON.stringify(getProfile().blockOrder)') === JSON.stringify(['block-1']),
+         err || JSON.stringify({ okAsked, order: boot.call('JSON.stringify(getProfile().blockOrder)') }));
+      boot.clock.advance(1000);
+      const toastLabel = boot.$('toastAct').textContent;
+      let undoErr = '';
+      try { boot.$('toastAct').onclick(); } catch (e) { undoErr = e.message; }
+      boot.clock.advance(1000);
+      ok('...save() writes it, the toast reads "Deshacer", and it brings the other two back, in order and with their record',
+         !err && toastLabel === 'Deshacer' && !undoErr && JSON.stringify(boot.saved()) === JSON.stringify(before),
+         err || undoErr || JSON.stringify({ toastLabel, back: boot.saved() }));
+    }
+
+    /* "Eliminar este bloque" (#peDeleteBlock) in the plan editor, on the
+       active block: closes the editor on its way, same as the real button. */
+    {
+      const boot = settled(seeded({ week: 2, day: 0 }, (p, b) => { withHistory(p, b); withExtraBlocks(p, b); }));
+      const before = boot.saved();
+      boot.$('editPlan').onclick();
+      const name1 = boot.call('getBlock().name');
+      let err = '', cancelAsked = null, okAsked = null, cancelSaved = null, cancelUndo = null, cancelOpen = false;
+      try {
+        cancelAsked = await pressAnswering(boot, () => boot.$('peDeleteBlock').onclick(), 'askCancel');
+        cancelSaved = boot.saved();
+        cancelUndo = boot.call('undoSnapshot === null');
+        cancelOpen = boot.$('planSheet').classList.contains('up');
+        okAsked = await pressAnswering(boot, () => boot.$('peDeleteBlock').onclick(), 'askOk');
+      } catch (e) { err = e.message; }
+      ok('"Eliminar este bloque" in the plan editor asks by name, and "Cancelar" leaves the editor open and every block as it was',
+         !err && !!cancelAsked && cancelAsked.title === '¿Eliminar "' + name1 + '"?' &&
+         JSON.stringify(cancelSaved) === JSON.stringify(before) && cancelUndo && cancelOpen,
+         err || JSON.stringify({ cancelAsked, cancelUndo, cancelOpen }));
+      ok('..."Eliminar" closes the editor, drops the block and lands on another one',
+         !err && !!okAsked && !boot.$('planSheet').classList.contains('up') && boot.call('peDraft === null') &&
+         boot.call('JSON.stringify(getProfile().blockOrder)') === JSON.stringify(['block-2', 'block-3']) &&
+         boot.call('getProfile().activeBlock') === 'block-3',
+         err || JSON.stringify({ okAsked, open: boot.$('planSheet').classList.contains('up'), active: boot.call('getProfile().activeBlock') }));
+      boot.clock.advance(1000);
+      const toastLabel = boot.$('toastAct').textContent;
+      let undoErr = '';
+      try { boot.$('toastAct').onclick(); } catch (e) { undoErr = e.message; }
+      boot.clock.advance(1000);
+      ok('...save() writes it, the toast reads "Deshacer", and it puts the block back as the active one, with its record',
+         !err && toastLabel === 'Deshacer' && !undoErr && JSON.stringify(boot.saved()) === JSON.stringify(before) &&
+         boot.call('getProfile().activeBlock') === 'block-1',
+         err || undoErr || JSON.stringify({ toastLabel, back: boot.saved(), active: boot.call('getProfile().activeBlock') }));
+    }
+
+    /* "Cargar copia" (#bRestore with #blob): a backup of a different
+       phone's data replaces this one's outright — the one action with no
+       button of its own beyond the textarea it reads. */
+    {
+      const boot = settled(seeded({ week: 2, day: 0 }, withHistory));
+      const theirs = settled(seeded({ week: 1, day: 0 }, (p, b) => {
+        p.notes = { [b.id]: { ['w1-' + b.days[0].id]: 'nota de la otra copia' } };
+      }));
+      const backupText = theirs.call('JSON.stringify({ app: STORAGE_KEY, v: 1, saved: new Date().toISOString(), data: state }, null, 2)');
+      const noteAt = booted => booted.call("getNote(getProfile(), getBlock().id, 1, getBlock().days[0].id)");
+      const before = boot.saved();
+      boot.$('blob').value = backupText;
+      let err = '', cancelAsked = null, okAsked = null, cancelSaved = null, cancelUndo = null;
+      try {
+        cancelAsked = await pressAnswering(boot, () => boot.$('bRestore').onclick(), 'askCancel');
+        cancelSaved = boot.saved();
+        cancelUndo = boot.call('undoSnapshot === null');
+        okAsked = await pressAnswering(boot, () => boot.$('bRestore').onclick(), 'askOk');
+      } catch (e) { err = e.message; }
+      ok('"Cargar copia" asks before replacing everything, and "Cancelar" leaves this phone\'s data alone',
+         !err && !!cancelAsked && cancelAsked.title === '¿Reemplazar todo tu registro con esta copia?' &&
+         JSON.stringify(cancelSaved) === JSON.stringify(before) && cancelUndo,
+         err || JSON.stringify({ cancelAsked, cancelUndo }));
+      boot.clock.advance(1000);
+      /* Not a deep-equal against theirs.saved(): restoreFromText runs the
+         backup through normalizeImportedBackup, the same "untrusted input"
+         pass an import gets (AGENTS.md), which is free to normalize a
+         legacy theme name or an unset field differently than a plain
+         migrate() does on data already on disk — a real difference, and not
+         what this case is testing. The note and the set count are what the
+         dialog promised: this phone's own data, replaced by the copy's. */
+      ok('..."Reemplazar" makes the saved copy the backup\'s data, and save() writes it',
+         !err && !!okAsked && noteAt(boot) === 'nota de la otra copia' &&
+         boot.call('countProfileSets(getProfile())') === theirs.call('countProfileSets(getProfile())'),
+         err || JSON.stringify({ okAsked, note: noteAt(boot), sets: boot.call('countProfileSets(getProfile())'), want: theirs.call('countProfileSets(getProfile())') }));
+      const toastLabel = boot.$('toastAct').textContent;
+      let undoErr = '';
+      try { boot.$('toastAct').onclick(); } catch (e) { undoErr = e.message; }
+      boot.clock.advance(1000);
+      ok('...the toast reads "Deshacer" and puts this phone\'s own data back',
+         !err && toastLabel === 'Deshacer' && !undoErr && JSON.stringify(boot.saved()) === JSON.stringify(before),
+         err || undoErr || JSON.stringify(boot.saved()));
+    }
+
+    /* Loading a profile file: reached from a file input and from a QR
+       "perfil", neither of which the harness can drive — loadProfileFromText
+       is the real function either lands in, so it is pressed directly, with
+       every dialog after it still the real one. A file taken from a
+       different phone replaces exactly one profile; the other is untouched. */
+    {
+      const boot = settled(seeded({ week: 2, day: 0 }, withHistory));
+      const theirs = settled(seeded({ week: 1, day: 0 }, (p, b) => {
+        p.notes = { [b.id]: { ['w1-' + b.days[0].id]: 'nota del otro perfil' } };
+      }));
+      const profileText = theirs.call("profileExportPayload('hombre')");
+      const noteAt = booted => booted.call("getNote(getProfile(), getBlock().id, 1, getBlock().days[0].id)");
+      const before = boot.saved();
+      const mujerBefore = JSON.stringify(before.profiles.mujer);
+      boot.ctx.__profileText = profileText;
+      let err = '', cancelAsked = null, okAsked = null, cancelSaved = null, cancelUndo = null;
+      try {
+        cancelAsked = await pressAnswering(boot, () => boot.call('loadProfileFromText(__profileText)'), 'askCancel');
+        cancelSaved = boot.saved();
+        cancelUndo = boot.call('undoSnapshot === null');
+        okAsked = await pressAnswering(boot, () => boot.call('loadProfileFromText(__profileText)'), 'askOk');
+      } catch (e) { err = e.message; }
+      ok('loading a profile file asks before replacing that person\'s log, and "Cancelar" leaves both profiles alone',
+         !err && !!cancelAsked && cancelAsked.title === '¿Sustituir el perfil de ' + before.profiles.hombre.label + '?' &&
+         JSON.stringify(cancelSaved) === JSON.stringify(before) && cancelUndo,
+         err || JSON.stringify({ cancelAsked, cancelUndo }));
+      boot.clock.advance(1000);
+      /* Not a deep-equal against theirs.saved().profiles.hombre — same
+         reason as the backup case above, normalizeImportedProfile runs on
+         this path too. mujer, never touched by this action, is still
+         compared byte for byte. */
+      ok('..."Sustituir" replaces that one profile with the file\'s, leaves the other untouched, and save() writes it',
+         !err && !!okAsked && noteAt(boot) === 'nota del otro perfil' &&
+         boot.call('countProfileSets(getProfile())') === theirs.call('countProfileSets(getProfile())') &&
+         JSON.stringify(boot.saved().profiles.mujer) === mujerBefore,
+         err || JSON.stringify({ okAsked, note: noteAt(boot), sets: boot.call('countProfileSets(getProfile())'), want: theirs.call('countProfileSets(getProfile())') }));
+      const toastLabel = boot.$('toastAct').textContent;
+      let undoErr = '';
+      try { boot.$('toastAct').onclick(); } catch (e) { undoErr = e.message; }
+      boot.clock.advance(1000);
+      ok('...the toast reads "Deshacer" and puts the whole profile back',
+         !err && toastLabel === 'Deshacer' && !undoErr && JSON.stringify(boot.saved()) === JSON.stringify(before),
+         err || undoErr || JSON.stringify(boot.saved()));
+    }
+  }
+
   /* adoptStored used to replace `state` with the other tab's bytes and only
      then run migrate() on them: bytes this release cannot repair (a newer
      release wrote them, say) left `state` pointed at a half-migrated object.

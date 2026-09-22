@@ -348,4 +348,35 @@ mutation check. No harness changes.
 - A seventh destructive action: write its booted "Deshacer" test here
   first, then add it to the pinned list, then its line in AGENTS.md's
   subsection.
-- *(Executor: record deviations here.)*
+- The ternary in `deleteBlocks` is keyed by the first string literal found
+  (`'Bloque eliminado.'`), not by the ternary's own text — decision 3's
+  other option.
+- The "'OK' does what the dialog said" check for "Cargar copia" and
+  loading a profile file does **not** deep-equal `boot.saved()` against
+  the other boot's `saved()`, unlike every other case. Both paths run the
+  incoming data through `normalizeImportedBackup`/`normalizeImportedProfile`
+  (the "untrusted input" pass, AGENTS.md), which legitimately normalizes a
+  couple of things a plain `migrate()` on data already on disk does not:
+  `accentOf` converts a legacy theme name ('hombre'/'mujer') to its modern
+  one ('azul'/'verde'), and at least one `EX_FIELDS`-shaped default
+  (`alt: ''`) comes back omitted rather than present. Both are real,
+  intentional behaviour, not bugs, and not what this plan tests, so
+  pinning them here would have coupled this section to the import
+  validators' internals. The two cases instead check the seeded note
+  (`getNote`) and the total logged-set count (`countProfileSets`) now
+  match the source boot's — a check specific enough that only "the data
+  really moved" can pass it. The "Deshacer" comparison right after each,
+  which decision 1 is actually about, is still a full `boot.saved()`
+  deep-equal against this phone's own pre-action snapshot, same as every
+  other case.
+- Drift: plans 071 and 072 both merged to `main` while this plan was
+  being executed (after the drift check at the top of this plan, which
+  found none against `8ff9355`). Rebased `claude/073-undo-tests` onto the
+  new `origin/main` (`efd7320`) once Steps 1-3 were done; it applied
+  cleanly (071 touched `js/app.js`/`js/profile-transfer.js` outside the
+  six `snapshotForUndo` call sites' messages, and wrapped
+  `restoreFromText`/`loadProfileFromText`'s `migrate()` in a try/catch
+  that only changes the failure path this plan's STOP conditions already
+  cover; 072 touched `test/unit.js` and AGENTS.md in other sections). Full
+  suite re-run after the rebase: still `0 failed`, the new section's 20
+  assertions among the passes.
