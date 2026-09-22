@@ -7325,6 +7325,9 @@ console.log('\n== timestamps (plans/068) ==');
       const d = new Date(localTs);
       const pad = function (n) { return String(n).padStart(2, '0'); };
       const expectedLocal = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+      /* Read off the app (csvFormat().sep) rather than hard-coded ',', so
+         this holds regardless of the active language (plans/068 step B). */
+      const sep = csvFormat().sep;
       profile.log[blockId] = {};
       profile.log[blockId][slot(1, day.id)] = { [exId]: [{ w: '60', r: '5', done: true, ts: localTs }] };
       const line1 = buildCsv().split('\\r\\n')[1];
@@ -7333,11 +7336,11 @@ console.log('\n== timestamps (plans/068) ==');
       let hugeThrew = false, line2 = '';
       try { line2 = buildCsv().split('\\r\\n')[1]; } catch (e) { hugeThrew = true; }
       return JSON.stringify({
-        cell: line1.split(',')[11],
+        cell: line1.split(sep)[11],
         expectedLocal: expectedLocal,
         localDayHolds: localDay(localTs) === '2026-03-10',
         hugeThrew: hugeThrew,
-        hugeCell: hugeThrew ? null : line2.split(',')[11],
+        hugeCell: hugeThrew ? null : line2.split(sep)[11],
       });
     })()
   `));
