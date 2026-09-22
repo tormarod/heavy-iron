@@ -45,7 +45,8 @@ identical to an oversight unless someone writes down which it is:
   applied at all and "auto" never flashes light for a moment on a dark
   system (plans/008 item 20). It has no `wire*()` — it is a self-invoking
   read of the theme preference, not DOM wiring — but it is still in `SHELL`
-  and still loaded by `test/unit.js`'s `loadApp()`, first, ahead of this list.
+  and still first in `SHELL_SCRIPTS` (`test/harness.js`), the list the unit
+  suite loads, ahead of this list.
 - **A file other than `app.js` must keep all its DOM wiring inside its own
   `wire*()` function**, called from `app.js`'s tail (at the foot of that file):
 
@@ -68,8 +69,8 @@ identical to an oversight unless someone writes down which it is:
   along its own five section seams, one per pull request (plans/008 item 13,
   now done); a further split follows the same recipe. Each new file needs
   the script tag *before* `js/app.js`, a `SHELL` entry in `sw.js`, a
-  guarded `wire*()` call here, its place in `loadApp()` in
-  `test/unit.js`, and a line in this list and in the README's layout
+  guarded `wire*()` call here, its place in `SHELL_SCRIPTS` in
+  `test/harness.js`, and a line in this list and in the README's layout
   table.
 
   Two rules the five seams settled, and they are what keeps a split safe:
@@ -142,7 +143,8 @@ halves: the `cache-version` job in `.github/workflows/test.yml` fails a pull
 request whose shell changed without a bump, and its second step fails one
 whose `js/*.js` or `css/*.css` file is missing from `SHELL`. `test/unit.js`
 closes the rest of that circle — it asserts `index.html`, `SHELL` and
-`loadApp()` name the same files in the same order (plans/014).
+`SHELL_SCRIPTS` in `test/harness.js` name the same files in the same order
+(plans/014).
 
 `tools/bump-cache-version.sh` does the bump, so a red `cache-version` run
 costs one command rather than a round-trip: `--dry-run` prints the current
