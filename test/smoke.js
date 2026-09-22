@@ -71,12 +71,54 @@ const section = async (name, fn) => {
   }
 };
 /* A device with no saved data now opens on the first-run setup sheet.
-   Tests that are not about setup skip it, exactly as a user could. */
+   Tests that are not about setup skip it, exactly as a user could.
+
+   load() opens the sheet in the same task that draws the page, so once the
+   skeleton is gone whether it is up is settled. The skip itself is saved
+   through save()'s 400 ms debounce, and a section that writes localStorage
+   behind the app's back straight afterwards has that pending write land on
+   top of its seed: the reload then reads the app's untouched state instead.
+   Every section that seeds that way used to sleep past the debounce and
+   hope; the queue being empty is what actually makes it safe. With no sheet
+   to close, the same wait covers the save load() itself ends on. */
 const dismissSetup = async page => {
+  await page.waitForFunction(() => !document.querySelector('#list .skel'));
   if (await page.locator('#setupSheet.up').count()) {
     await page.click('#setupClose');
-    await page.waitForTimeout(150);
+    await page.waitForSelector('#setupSheet.up', { state: 'hidden', timeout: 4000 });
   }
+  await page.waitForFunction(() => !saveT && !held);
+};
+
+/* On a first visit, the page goto() lands on is not the one a section should
+   start from. The worker installs behind it, its activate claims the page,
+   and app.js reloads on controllerchange (registerServiceWorker) — whenever
+   the precache happens to finish. On a quiet machine that is inside goto's
+   networkidle wait; on a busy one it lands after the section has started,
+   and whatever the section had done to the old page goes with it. With the
+   worker held back 1.3 s, "profile import hardening" ticked a set, the page
+   reloaded under it, and the click on the rest timer's #tskip waited out its
+   30 s for a timer the new page had never started.
+
+   A navigation the worker answered has a workerStart, so a page with one is
+   past that reload; with no skeleton, it has drawn. keepSetup is for the
+   sections that go through the first-run sheet themselves. Contexts that
+   block the worker never get there, so they do not come through here. */
+const openApp = async (page, { keepSetup = false } = {}) => {
+  await page.goto(BASE, { waitUntil: 'networkidle' });
+  await page.waitForFunction(() =>
+    performance.getEntriesByType('navigation')[0].workerStart > 0 && !document.querySelector('#list .skel'),
+  ).catch(async e => {
+    /* A bare timeout here says nothing about the page it gave up on. */
+    const seen = await page.evaluate(() => ({
+      url: location.href,
+      controlled: !!(navigator.serviceWorker && navigator.serviceWorker.controller),
+      skeleton: (document.querySelector('#list .skel') || {}).textContent || null,
+      cards: document.querySelectorAll('.ex').length,
+    })).catch(err => 'unreadable: ' + err.message);
+    throw new Error('the app never settled on a page its worker serves: ' + JSON.stringify(seen) + '\n' + e.message);
+  });
+  if (!keepSetup) await dismissSetup(page);
 };
 
 /* plans/034 folded the header: the week strip, the profile switcher, the
@@ -182,7 +224,7 @@ const ok = (name, cond, extra) => {
     let alertText = null;
     page.on('dialog', async d => { alertText = d.message(); await d.accept(); });
 
-    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await openApp(page, { keepSetup: true });
 
     console.log('\n== first-run setup ==');
     ok('a fresh device opens on the welcome sheet', await page.locator('#setupSheet.up').count() === 1);
@@ -1365,9 +1407,7 @@ const ok = (name, cond, extra) => {
   await section('profile import hardening', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
-    await page.goto(BASE, { waitUntil: 'networkidle' });
-    await dismissSetup(page);
-    await page.waitForTimeout(400);
+    await openApp(page);
 
     // log a set: something a bad restore could destroy, and a good one should bring back
     await page.locator('.ex').first().locator('.set-row').first().locator('input').first().fill('40');
@@ -1407,7 +1447,6 @@ const ok = (name, cond, extra) => {
     await page.evaluate(() => localStorage.removeItem('heavy-iron-v1'));
     await page.reload({ waitUntil: 'networkidle' });
     await dismissSetup(page);
-    await page.waitForTimeout(300);
     ok('the wipe actually took effect', await page.locator('.set-row.done').count() === 0);
 
     await openHub(page, 'more');
@@ -1426,9 +1465,7 @@ const ok = (name, cond, extra) => {
   await section('weight drops', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
-    await page.goto(BASE, { waitUntil: 'networkidle' });
-    await dismissSetup(page);
-    await page.waitForTimeout(400);
+    await openApp(page);
 
     const card = page.locator('.ex').first();
     const row1 = card.locator('.set-row').first();
@@ -1599,10 +1636,8 @@ const ok = (name, cond, extra) => {
   await section('offline', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
-    await page.goto(BASE, { waitUntil: 'networkidle' });
-    await dismissSetup(page);
-    await page.evaluate(() => navigator.serviceWorker.ready);
-    await page.waitForTimeout(500);
+    /* A page the worker served is a precache that finished installing. */
+    await openApp(page);
     await ctx.setOffline(true);
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(800);
@@ -1615,10 +1650,7 @@ const ok = (name, cond, extra) => {
   await section('published blocks stay importable offline (plans/008 item 7)', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
-    await page.goto(BASE, { waitUntil: 'networkidle' });
-    await dismissSetup(page);
-    await page.evaluate(() => navigator.serviceWorker.ready);
-    await page.waitForTimeout(300);
+    await openApp(page);
 
     // blocksBase() fetches blocks/ relative to the page now (same-origin),
     // which is what lets the worker's network-first /blocks/ handler see
@@ -1635,7 +1667,6 @@ const ok = (name, cond, extra) => {
     await ctx.setOffline(true);
     await page.reload({ waitUntil: 'domcontentloaded' });
     await dismissSetup(page);
-    await page.waitForTimeout(500);
     await openHub(page, 'plan');
     await page.click('#importBtn');
     await page.waitForTimeout(500);
@@ -1654,9 +1685,7 @@ const ok = (name, cond, extra) => {
   await section('corrupt data recovery', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
-    await page.goto(BASE, { waitUntil: 'networkidle' });
-    await dismissSetup(page);
-    await page.waitForTimeout(700);
+    await openApp(page);
     ok('a fresh install persists its starting plan', await page.evaluate(() => !!localStorage.getItem('heavy-iron-v1')));
 
     // repairable: dangling activeBlock + missing phase + broken blockOrder
@@ -1689,7 +1718,6 @@ const ok = (name, cond, extra) => {
     await page.evaluate(() => localStorage.removeItem('heavy-iron-v1'));
     await page.reload({ waitUntil: 'networkidle' });
     await dismissSetup(page);
-    await page.waitForTimeout(300);
 
     // unrenderable: force render to throw
     await page.evaluate(() => {
@@ -1717,7 +1745,9 @@ const ok = (name, cond, extra) => {
         return orig.call(this, key);
       };
     });
-    await page.goto(BASE, { waitUntil: 'networkidle' });
+    /* The recovery screen registers the worker too, and is reloaded onto a
+       second recovery screen when it claims the page. */
+    await openApp(page, { keepSetup: true });
     await page.waitForSelector('.recovery', { timeout: 5000 });
     ok('a storage read failure lands on the recovery screen, not a fresh seed',
        await page.locator('.recovery').count() === 1);
@@ -1734,9 +1764,7 @@ const ok = (name, cond, extra) => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     page.on('dialog', d => d.accept());
-    await page.goto(BASE, { waitUntil: 'networkidle' });
-    await dismissSetup(page);
-    await page.waitForTimeout(600);
+    await openApp(page);
 
     // off week 1 first, so "Volver a la semana 1" below is an actual reset
     await page.evaluate(() => { state.profiles.hombre.week = 3; });
@@ -1775,9 +1803,7 @@ const ok = (name, cond, extra) => {
   await section('block delete purges rir/notes/energy/order', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
-    await page.goto(BASE, { waitUntil: 'networkidle' });
-    await dismissSetup(page);
-    await page.waitForTimeout(400);
+    await openApp(page);
 
     await page.evaluate(() => {
       const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
@@ -1800,7 +1826,6 @@ const ok = (name, cond, extra) => {
     });
     await page.reload({ waitUntil: 'networkidle' });
     await dismissSetup(page);
-    await page.waitForTimeout(300);
 
     await openHub(page, 'plan');
     await page.click('#manageBtn');
@@ -1850,9 +1875,7 @@ const ok = (name, cond, extra) => {
   await section('objetivo de peso y diagnóstico', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
-    await page.goto(BASE, { waitUntil: 'networkidle' });
-    await dismissSetup(page);
-    await page.waitForTimeout(400);
+    await openApp(page);
 
     /* The arithmetic itself is asserted in test/unit.js — the fifteen cases
        the rule was specified against, all of which read several sessions and
@@ -2217,11 +2240,7 @@ const ok = (name, cond, extra) => {
   await section('volumen del bloque y músculos prioritarios', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
-    await page.goto(BASE, { waitUntil: 'networkidle' });
-    await dismissSetup(page);
-    /* save() is debounced 400ms; a seed written inside that window gets
-       clobbered by the pending flush. */
-    await page.waitForTimeout(700);
+    await openApp(page);
 
     ok('the shipped plan declares its priority muscles',
        (await page.evaluate(() => (JSON.parse(localStorage.getItem('heavy-iron-v1'))
@@ -2328,9 +2347,7 @@ const ok = (name, cond, extra) => {
   await section('frecuencia por músculo', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
-    await page.goto(BASE, { waitUntil: 'networkidle' });
-    await dismissSetup(page);
-    await page.waitForTimeout(700);
+    await openApp(page);
 
     /* Four weeks. Day 1 every week; day 2 only in weeks 1 and 4, which puts
        a three-week hole in its muscles; day 3 every week. The whole point
@@ -2449,9 +2466,7 @@ const ok = (name, cond, extra) => {
   await section('índice de fuerza por músculo', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
-    await page.goto(BASE, { waitUntil: 'networkidle' });
-    await dismissSetup(page);
-    await page.waitForTimeout(700);
+    await openApp(page);
 
     /* Four weeks of chest. chestpress climbs 60 → 67,5 (+12,5 % on its
        e1RM), pecdeck stays flat, and inclinepress — a much heavier
@@ -2572,9 +2587,7 @@ const ok = (name, cond, extra) => {
   await section('orden real de la sesión', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
-    await page.goto(BASE, { waitUntil: 'networkidle' });
-    await dismissSetup(page);
-    await page.waitForTimeout(700);
+    await openApp(page);
 
     const names = () => page.$$eval('.ex-name', els => els.map(e => e.childNodes[0].textContent.trim()));
     const planned = await names();
@@ -2703,9 +2716,7 @@ const ok = (name, cond, extra) => {
   await section('el mismo ejercicio en dos sesiones', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
-    await page.goto(BASE, { waitUntil: 'networkidle' });
-    await dismissSetup(page);
-    await page.waitForTimeout(400);
+    await openApp(page);
 
     /* Not a hypothetical: the block that ships with the app already plans
        lateral raises twice — `lat1` on the push day and `lat2` on the third
@@ -2739,7 +2750,6 @@ const ok = (name, cond, extra) => {
     });
     await page.reload({ waitUntil: 'networkidle' });
     await dismissSetup(page);
-    await page.waitForTimeout(400);
 
     ok('two rows with the same name are the same lift even with different ids',
        await page.evaluate(() => {
@@ -2842,7 +2852,6 @@ const ok = (name, cond, extra) => {
     });
     await page.reload({ waitUntil: 'networkidle' });
     await dismissSetup(page);
-    await page.waitForTimeout(400);
     ok('renaming one of them splits the history again',
        await page.evaluate(() => {
          const card = [...document.querySelectorAll('.ex')]
@@ -2857,9 +2866,7 @@ const ok = (name, cond, extra) => {
   await section('"Guardar cambios" con el mismo id de ejercicio en dos días', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
-    await page.goto(BASE, { waitUntil: 'networkidle' });
-    await dismissSetup(page);
-    await page.waitForTimeout(400);
+    await openApp(page);
 
     /* migrate() allows the same exercise id on two different days on
        purpose (see test/unit.js, "the same id on two different days
@@ -2882,7 +2889,6 @@ const ok = (name, cond, extra) => {
     });
     await page.reload({ waitUntil: 'networkidle' });
     await dismissSetup(page);
-    await page.waitForTimeout(400);
 
     await openHub(page, 'plan');
     await page.click('#editPlan');
@@ -2904,9 +2910,7 @@ const ok = (name, cond, extra) => {
   await section('nota, energía y control de descarga', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
-    await page.goto(BASE, { waitUntil: 'networkidle' });
-    await dismissSetup(page);
-    await page.waitForTimeout(700);
+    await openApp(page);
 
     ok('the energy chips are offered before the sets', await page.locator('.energy-chip').count() === 3);
     ok('and start empty', await page.locator('.energy-chip.on').count() === 0);
@@ -3121,9 +3125,7 @@ const ok = (name, cond, extra) => {
        withholds by default. */
     const ctx = await browser.newContext({ permissions: ['clipboard-write'] });
     const page = await ctx.newPage();
-    await page.goto(BASE, { waitUntil: 'networkidle' });
-    await dismissSetup(page);
-    await page.waitForTimeout(700);
+    await openApp(page);
 
     await page.evaluate(() => {
       const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
@@ -3272,18 +3274,11 @@ const ok = (name, cond, extra) => {
   await section('primera semana de un bloque nuevo', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
-    await page.goto(BASE, { waitUntil: 'networkidle' });
-    await dismissSetup(page);
-    await page.waitForSelector('.ex');
-    /* Seeding below writes localStorage behind the app's back, so it has to
-       wait for the app's own debounced save() queue to be empty first:
-       closeSetup() schedules one on the way out of the first-run sheet, and
-       when it fires 400 ms later it writes the app's untouched in-memory
-       state straight over the seed — the reload then reads week 1 with an
-       empty log and the new-block flow skips the review offer. (The two
-       older sections seeding this way happen to sleep past it; a condition
-       is what actually makes it safe.) */
-    await page.waitForFunction(() => !saveT && !held);
+    /* Seeding below writes localStorage behind the app's back: openApp()'s
+       dismissSetup waits out the save closing the first-run sheet schedules,
+       which would otherwise land over the seed — the reload then read week 1
+       with an empty log and the new-block flow skipped the review offer. */
+    await openApp(page);
 
     /* Seven working weeks of one exercise, plus the deload at 40 — which
        must be the one week the hint does NOT come from. */
@@ -3348,7 +3343,7 @@ const ok = (name, cond, extra) => {
   await section('almacenamiento', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
-    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await openApp(page, { keepSetup: true });
     await page.fill('#setupNames input >> nth=0', 'Ana');
     await page.click('#setupSave');
     await page.waitForTimeout(500);
@@ -3410,7 +3405,9 @@ const ok = (name, cond, extra) => {
   await section('dos pestañas: el guardado pendiente no se adelanta al aviso', async () => {
     const ctx = await browser.newContext();
     const page1 = await ctx.newPage();
-    await page1.goto(BASE, { waitUntil: 'networkidle' });
+    /* page2 below opens under the worker page1 installed, so only page1 has
+       a reload of its own to wait out. */
+    await openApp(page1, { keepSetup: true });
     await page1.fill('#setupNames input >> nth=0', 'Ana');
     await page1.click('#setupSave');
     await page1.waitForTimeout(500);
@@ -3468,7 +3465,7 @@ const ok = (name, cond, extra) => {
   await section('descanso con la pantalla apagada', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
-    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await openApp(page, { keepSetup: true });
     await page.fill('#setupNames input >> nth=0', 'Ana');
     await page.click('#setupSave');
     await page.waitForTimeout(500);
@@ -3569,8 +3566,7 @@ const ok = (name, cond, extra) => {
 
     /* First visit: register, and become controlled. */
     const first = await ctx.newPage();
-    await first.goto(BASE, { waitUntil: 'networkidle' });
-    await first.waitForTimeout(1200);
+    await openApp(first, { keepSetup: true });
     ok('the app takes control on the first visit',
        await first.evaluate(() => !!navigator.serviceWorker.controller));
     await first.close();
@@ -3689,13 +3685,13 @@ const ok = (name, cond, extra) => {
   await section('versión en el pie', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
-    await page.goto(BASE, { waitUntil: 'networkidle' });
-    await dismissSetup(page);
-
-    /* The worker claims the first uncontrolled page and the app reloads, so
-       wait for a controlled page rather than for a fixed delay. */
-    await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 20000 });
-    await page.waitForTimeout(800);
+    /* A controlled page is not enough on its own: the claim makes the page
+       that is about to be reloaded controlled too. */
+    await openApp(page);
+    /* The line is the worker's answer to a message the page posts once the
+       registration resolves, so it lands a moment after the draw. Bounded
+       and not fatal, so a line that never comes is the FAIL below. */
+    await page.locator('#version').waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
 
     const shown = await page.textContent('#version');
     ok('the footer names the running version', /^Heavy Iron v\d+$/.test(shown.trim()), shown);
@@ -3808,7 +3804,9 @@ const ok = (name, cond, extra) => {
   await section('installable', async () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
-    await page.goto(BASE, { waitUntil: 'networkidle' });
+    /* Past the first visit's reload, or it can take the evaluate below
+       down with the page it was running in. */
+    await openApp(page);
 
     const m = await page.evaluate(async () => {
       const href = document.querySelector('link[rel="manifest"]').getAttribute('href');
@@ -3873,9 +3871,7 @@ const ok = (name, cond, extra) => {
     const page = await ctx.newPage();
     const cspViolations = [];
     page.on('console', msg => { if (msg.text().includes('Content Security Policy')) cspViolations.push(msg.text()); });
-    await page.goto(BASE, { waitUntil: 'networkidle' });
-    await dismissSetup(page);
-    await page.waitForTimeout(300);
+    await openApp(page);
     const dur = await page.evaluate(() =>
       parseFloat(getComputedStyle(document.querySelector('.sm')).transitionDuration) * 1000);
     ok('prefers-reduced-motion collapses a transition to near-zero', dur < 1, dur + 'ms');
@@ -3905,8 +3901,7 @@ const ok = (name, cond, extra) => {
     for (const [label, width] of [['iPhone SE', 375], ['Pixel', 412], ['tablet', 768]]) {
       const ctx = await browser.newContext({ viewport: { width, height: 820 } });
       const page = await ctx.newPage();
-      await page.goto(BASE, { waitUntil: 'networkidle' });
-      await dismissSetup(page);
+      await openApp(page);
 
       /* The bar, before anything is covering it. 48px rather than SC 2.5.8's
          24: it is the floor plans/036 held the card's own controls to, and a
@@ -4005,14 +4000,12 @@ const ok = (name, cond, extra) => {
   await section('accesibilidad: tamaños, foco y área segura', async () => {
     const ctx = await browser.newContext({ viewport: { width: 375, height: 667 }, colorScheme: 'dark' });
     const page = await ctx.newPage();
-    await page.goto(BASE, { waitUntil: 'networkidle' });
-    await dismissSetup(page);
+    await openApp(page);
 
     /* Force the saved theme to "light" against this dark-system context —
        same localStorage-then-reload route the objetivo section uses to seed
        state (test/smoke.js, seed() above) — so the day-tab case in play is
        data-theme="light" on a dark-system browser, the one the bug needed. */
-    await page.waitForTimeout(300);
     await page.evaluate(() => {
       const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
       s.prefs.theme = 'light';
@@ -4161,8 +4154,7 @@ const ok = (name, cond, extra) => {
   await section('la barra y el menú de la tarjeta (plans/036, plans/037)', async () => {
     const ctx = await browser.newContext({ viewport: { width: 375, height: 667 } });
     const page = await ctx.newPage();
-    await page.goto(BASE, { waitUntil: 'networkidle' });
-    await dismissSetup(page);
+    await openApp(page);
 
     // 1. data-keep-open: "Tema" leaves the hub up; every other row puts it away.
     //    closeSheet() and applyTheme() both run synchronously inside the
