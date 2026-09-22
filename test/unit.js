@@ -1020,6 +1020,58 @@ ok('lastTime reads the same cached sets on a second draw (resetRenderCache() in 
    renderCacheResult.sameRef);
 ok('lastTime reads afresh once a write has emptied the history cache',
    renderCacheResult.differentAfterWrite);
+
+/* plans/047: targetNow's and brakeCached's memos used to be keyed with no
+   profile at all (target) or with no key at all (brake), so two profiles
+   asking the same question — both default profiles share the id "block-1" —
+   could read each other's answer. No resetRenderCache() here on purpose:
+   the render cache is whatever the tests above already left it (non-null,
+   the same way a real draw leaves it for drawCard), which is exactly the
+   condition that used to leak one profile's answer into another's. */
+const targetProfileIsolation = call(`
+  (function () {
+    state = defaultState(); migrate();
+    const p1 = state.profiles.hombre, p2 = state.profiles.mujer;
+    const blockId = p1.blockOrder[0];           /* 'block-1' for both profiles */
+    const day1 = p1.blocks[blockId].days[0], day2 = p2.blocks[blockId].days[0];
+    const exId = day1.ex[0].id;                 /* 'chestpress' on both */
+    p1.log[blockId] = {};
+    p1.log[blockId][slot(1, day1.id)] = { [exId]: [{ w: '40', r: '10', done: true, ts: Date.now() }] };
+    p2.log[blockId] = {};
+    p2.log[blockId][slot(1, day2.id)] = { [exId]: [{ w: '100', r: '10', done: true, ts: Date.now() }] };
+    const t1 = targetNow(p1, p1.blocks[blockId], day1, day1.ex[0], 2);
+    const t2 = targetNow(p2, p2.blocks[blockId], day2, day2.ex[0], 2);
+    return { sameObject: t1 === t2, w1: t1 && t1.sets[0].w, w2: t2 && t2.sets[0].w };
+  })()
+`);
+ok('targetNow keys its memo by profile: two profiles sharing block-1/day/exercise/week get their own answer',
+   !targetProfileIsolation.sameObject && targetProfileIsolation.w1 != null &&
+   targetProfileIsolation.w2 != null && targetProfileIsolation.w1 !== targetProfileIsolation.w2,
+   JSON.stringify(targetProfileIsolation));
+
+const brakeProfileIsolation = call(`
+  (function () {
+    state = defaultState(); migrate();
+    const p1 = state.profiles.hombre, p2 = state.profiles.mujer;
+    const b1 = p1.blocks[p1.blockOrder[0]], b2 = p2.blocks[p2.blockOrder[0]];
+    /* Stubbed the way the brake-counting probe above stubs it: the value
+       says which profile and week asked, so a stale slot answering for the
+       wrong one is caught by the value itself rather than by a call count. */
+    const real = brakeOn;
+    brakeOn = function (profile, block, week) { return (profile === p1 ? 'p1-w' : 'p2-w') + week; };
+    try {
+      const r1 = brakeCached(p1, b1, 3, Date.now());
+      const r2 = brakeCached(p2, b2, 5, Date.now());
+      return { r1: r1, r2: r2 };
+    } finally {
+      brakeOn = real;
+    }
+  })()
+`);
+ok('brakeCached keys its memo by profile, block and week: a second profile/week does not read the first slot filled',
+   brakeProfileIsolation.r1 === 'p1-w3' && brakeProfileIsolation.r2 === 'p2-w5',
+   JSON.stringify(brakeProfileIsolation));
+
 ok('slugifyCached("constructor") returns the slug of the string, not an inherited property',
    call('slugifyCached("constructor")') === 'constructor');
 ok('slugifyCached agrees with slugify for accented Spanish text',
@@ -1143,9 +1195,6 @@ const sheetSeesTick = call(`
     for (let w = 1; w <= 4; w++) pr.log[blockId][slot(w, day.id)] = { [exId]: session('60', at(w)) };
     block.weeks = 8; block.deload = 0;
     pr.week = 5;
-    /* Stands in for the last full draw, which is what fills the cache the
-       sheet would otherwise inherit. */
-    resetRenderCache();
     const before = diagRows(pr, block, 'block').find(r => r.id === exId);
     /* A tick on the week being trained, written the way the card writes it. */
     pr.log[blockId][slot(5, day.id)] = { [exId]: session('100', Date.now()) };
@@ -1197,7 +1246,6 @@ const deloadVerdict = call(`
     }
     block.weeks = 8; block.deload = 5;
     pr.week = 5;
-    resetRenderCache();
     const rows = diagRows(pr, block, 'block');
     const row = rows.find(x => x.id === exId) || rows[0];
     const est = targetNow(pr, block, day, day.ex[0], 5);
@@ -1232,7 +1280,6 @@ const objetivoDownVerdict = call(`
     }
     block.weeks = 8; block.deload = 0;
     pr.week = 5;
-    resetRenderCache();
     const rows = diagRows(pr, block, 'block');
     const row = rows.find(x => x.id === exId) || rows[0];
     const est = targetNow(pr, block, day, day.ex[0], 5);
@@ -1266,6 +1313,11 @@ console.log('\n== objetivo: los quince casos de la v3 ==');
 const targetProbe = `
   (function (sessions, opts) {
     opts = opts || {};
+    /* units() reads the global state.prefs.units, and this profile is a
+       bare object of its own rather than one of state.profiles — so it is
+       set here rather than inherited from whichever earlier test last
+       touched the setup sheet (plans/047). */
+    state.prefs.units = 'kg';
     const DAY = 86400000, T0 = Date.UTC(2026, 0, 5);
     const week = opts.week || sessions.length + 1;
     const phase = {};
@@ -1298,10 +1350,10 @@ const targetProbe = `
       if (s.rir) profile.rir.B['w' + (i + 1) + '-D'] = { E: s.rir };
     });
     const now = T0 + (opts.now != null ? opts.now : lastDay + 7) * DAY;
-    /* Same block and exercise ids on every call and no draw in between, so
-       the history cache has to be dropped or the second call reads the
-       first call's log. */
-    resetRenderCache();
+    /* Calls targetFor directly, not targetNow, so this never touches
+       renderCache at all — and the history cache below it needs no help
+       either, because profile is a fresh object literal every call and
+       the history cache keys on profile identity (plans/045). */
     const t = targetFor(profile, block, block.days[0], ex, week, now, !!opts.brake);
     if (!t) return null;
     return {
@@ -1468,6 +1520,10 @@ ok('T14 no history at all is no line, not a guess',
    decline inside the last seven days; two is not enough. */
 const brakeProbe = `
   (function (caps, nEx) {
+    /* Same reason as targetProbe above: a bare profile object, not one of
+       state.profiles, so the unit it reads has to be set here rather than
+       inherited (plans/047). */
+    state.prefs.units = 'kg';
     const DAY = 86400000, T0 = Date.UTC(2026, 0, 5);
     const phase = {}; for (let i = 1; i <= 8; i++) phase[i] = { r: '2 RIR' };
     const ex = [];
@@ -1484,7 +1540,8 @@ const brakeProbe = `
       profile.log.B['w' + (i + 1) + '-D'] = rows;
       profile.rir.B['w' + (i + 1) + '-D'] = ex.reduce(function (o, e) { o[e.id] = '1'; return o; }, {});
     });
-    resetRenderCache();
+    /* Calls brakeOn directly, not brakeCached, so renderCache is never in
+       the loop here. */
     return brakeOn(profile, block, caps.length + 1, T0 + (caps.length * 3 + 2) * DAY);
   })
 `;
@@ -1736,7 +1793,6 @@ const twoDayProbe = call(`
 
     const one = { log: { B: logB() }, rir: { B: {} }, obj: {}, variants: {},
                   blocks: { B: blockB }, blockOrder: ['B'] };
-    resetRenderCache();
     const d1 = show(exHistory(one, blockB, ex, 'D1', 3));
     const d2 = show(exHistory(one, blockB, ex, 'D2', 3));
 
@@ -1749,7 +1805,6 @@ const twoDayProbe = call(`
     const two = { log: { A: { 'w1-DA': { E: row(30, -30) } }, B: logB() },
                   rir: { A: {}, B: {} }, obj: {}, variants: {},
                   blocks: { A: blockA, B: blockB }, blockOrder: ['A', 'B'] };
-    resetRenderCache();
     const priorD1 = show(exHistory(two, blockB, ex, 'D1', 3));
     const priorD2 = show(exHistory(two, blockB, ex, 'D2', 3));
     return { d1: d1, d2: d2, priorD1: priorD1, priorD2: priorD2 };
@@ -1903,10 +1958,8 @@ const cutHistory = call(`
       p.log.B['w' + (i + 1) + '-D'] = { E: [{ w: '40', r: '10', done: true, ts: T0 + d * DAY }] };
       p.rir.B['w' + (i + 1) + '-D'] = { E: '1' };
     });
-    resetRenderCache();
     const before = exHistory(p, block, ex, 'D', 4).length;
     p.variants.E = [{ n: 'viejo', since: '1970-01-01' }, { n: 'nuevo', since: '2026-01-15' }];
-    resetRenderCache();
     return { before: before, after: exHistory(p, block, ex, 'D', 4).length };
   })()
 `);
@@ -2265,7 +2318,6 @@ const rirStarts = call(`
         { w: '40', r: '9', done: true, ts: Date.now() - (5 - w) * 7 * 86400000 }] };
     }
     p.week = 4;
-    resetRenderCache();
     const rows = entry(p, 'block-1', 4, day.id, ex.id, 3);
     const est = targetNow(p, block, day, ex, 4);
     const wasSession = rows.some(rowUsed);
@@ -2464,7 +2516,6 @@ const diagProbe = call(`
       }
     });
     p.week = sessions.length + 1; p.day = 0;
-    resetRenderCache();
     const row = diagRows(p, block, 'block').find(function (r) { return r.id === ex.id; });
     return row.trend + ' | ' + row.lectura;
   })
@@ -4466,7 +4517,6 @@ console.log('\n== the history cache: one read per question, dropped by the write
       const n0 = sessionsOf(p, ${Q}).length;
       const sqHist = exHistory(p, b, sq, 'd1', 4);
       const bpBefore = exHistory(p, b, bp, 'd1', 4);
-      resetRenderCache();
       const t0 = targetNow(p, b, d1, bp, 5);
       const rows = entry(p, 'A', 4, 'd1', 'bp', 2);
       rows[0].w = '62,5'; rows[0].r = '10'; rows[0].ts = Date.now(); rows[0].done = true;
@@ -4924,7 +4974,6 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
       pr.notes[blockId] = { [slot(2, day.id)]: 'nota «rara»' };
       day.ex[0].n = 'Press «raro» de banca';
       pr.week = 5;
-      resetRenderCache();
     })()
   `);
   const review = call('reviewText(buildBlockReview(getProfile(), getBlock()))');
@@ -4961,11 +5010,9 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
       }
       pr.week = 3;
       diagScope = 'all';
-      resetRenderCache();
     })()
   `);
   const scoped = call('diagRows(getProfile(), getBlock(), "block").find(r => r.id === getBlock().days[0].ex[0].id).sessions');
-  call('resetRenderCache()');
   const global = call('diagRows(getProfile(), getBlock()).find(r => r.id === getBlock().days[0].ex[0].id).sessions');
   /* `global` is the two blocks' sessions together (4 + 2), capped by
      DIAG_WINDOW; asserted as "more than the scoped count" rather than as 6
@@ -4993,7 +5040,6 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
       const b3 = JSON.parse(JSON.stringify(b1)); b3.id = 'block-3'; b3.name = 'Bloque 3';
       b3.days.forEach(d => d.ex.forEach(e => { e.id = 'imp-' + e.id; }));
       pr.blocks[b3.id] = b3; pr.blockOrder.push(b3.id);
-      resetRenderCache();
       const fromCopy = priorBlockSets(pr, b2, b2.days[0].ex[0]);
       const fromJson = priorBlockSets(pr, b3, b3.days[0].ex[0]);
       const unknown = priorBlockSets(pr, b2, { id: 'nope', n: 'Nada de esto' });
@@ -5039,7 +5085,6 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
       pr.log[b1.id][slot(8, day.id)] = { [ex.id]: [{ w: '40', r: '8', done: true }] };
       const b2 = JSON.parse(JSON.stringify(b1)); b2.id = 'block-2'; b2.name = 'Bloque 2';
       pr.blocks[b2.id] = b2; pr.blockOrder.push(b2.id); pr.activeBlock = b2.id;
-      resetRenderCache();
       const hint = priorBlockSets(pr, b2, b2.days[0].ex[0]);
       return hint && { week: hint.week, w: hint.sets.map(s => s.w).join('/') };
     })()

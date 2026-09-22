@@ -394,3 +394,8 @@ agrees with the all-blocks chart. A ticked row with no `w` key at all
 (hand-edited storage only) is no longer shown in the bands.
 
 **Plan 038 is done** (all seven PRs, 2026-09-22).
+
+**Candidate 3's `targetFrom` split, re-examined and dropped.** Plan 047
+(2026-09-22) found nothing left to do: the clock/brake arguments, the
+single `exHistory` call and `targetNow` being the only app caller were all
+already true here and in plan 045. It is not to be re-proposed.

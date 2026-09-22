@@ -3397,12 +3397,21 @@ function priorBlockSets(profile, block, ex) {
    record bar (bestForExercise) used to be held here too. They read
    sessionsOf now, whose own cache answers them across draws, so a second
    copy per draw would only be one more thing a tick has to empty
-   (plans/038 PR 6). */
+   (plans/038 PR 6).
+
+   target and brake are filed under the profile object first (a WeakMap,
+   the history cache's own lead — plans/045 — since a profile has no id of
+   its own), and only then by block/day/exercise/week. A draw only ever
+   reads one profile, so the extra layer buys that draw nothing; what it
+   buys is every OTHER caller of targetNow/brakeCached, chiefly the unit
+   suite, which builds a fresh defaultState() profile per case and would
+   otherwise collide with whichever earlier profile's block also happened
+   to be called "block-1" (plans/047). */
 let renderCache = null;
 
 function resetRenderCache() {
   renderCache = { liftSlots: Object.create(null), slug: Object.create(null),
-                  target: Object.create(null), brake: null, logSeq: logSeq };
+                  target: new WeakMap(), brake: new WeakMap(), logSeq: logSeq };
 }
 
 /* Whether renderCache may be read for a fact about the log: false when
@@ -3411,22 +3420,26 @@ function resetRenderCache() {
 function renderLogFresh() {
   if (!renderCache) return false;
   if (renderCache.logSeq !== logSeq) {
-    renderCache.target = Object.create(null);
-    renderCache.brake = null;
+    renderCache.target = new WeakMap();
+    renderCache.brake = new WeakMap();
     renderCache.logSeq = logSeq;
   }
   return true;
 }
 
-/* The brake is a single value rather than a map because it is a fact about
-   the whole day; targetFor still takes it as an argument, so the rule
-   itself neither reads the clock nor the other exercises. It asks every
-   exercise of the block for its history, which the history cache answers
-   without a walk once the day has been drawn. */
+/* The brake is a single value per profile/block/week rather than a map over
+   everything else, because it is a fact about the whole day; targetFor
+   still takes it as an argument, so the rule itself neither reads the clock
+   nor the other exercises. It asks every exercise of the block for its
+   history, which the history cache answers without a walk once the day has
+   been drawn. */
 function brakeCached(profile, block, week, now) {
   if (!renderLogFresh()) return brakeOn(profile, block, week, now);
-  if (renderCache.brake == null) renderCache.brake = brakeOn(profile, block, week, now);
-  return renderCache.brake;
+  let m = renderCache.brake.get(profile);
+  if (!m) { m = Object.create(null); renderCache.brake.set(profile, m); }
+  const k = block.id + '|' + week;
+  if (!(k in m)) m[k] = brakeOn(profile, block, week, now);
+  return m[k];
 }
 
 /* The one entry point the app uses: the brake and the clock filled in, and
@@ -3435,11 +3448,13 @@ function targetNow(profile, block, day, ex, week) {
   const now = Date.now();
   const dayId = day && day.id;
   if (!renderLogFresh()) return targetFor(profile, block, day, ex, week, now, brakeOn(profile, block, week, now));
+  let m = renderCache.target.get(profile);
+  if (!m) { m = Object.create(null); renderCache.target.set(profile, m); }
   const k = block.id + '|' + ex.id + '|' + (dayId || '') + '|' + week;
-  if (!(k in renderCache.target)) {
-    renderCache.target[k] = targetFor(profile, block, day, ex, week, now, brakeCached(profile, block, week, now));
+  if (!(k in m)) {
+    m[k] = targetFor(profile, block, day, ex, week, now, brakeCached(profile, block, week, now));
   }
-  return renderCache.target[k];
+  return m[k];
 }
 
 /* O(days × exercises) per call, and the card loop calls it once per card —
