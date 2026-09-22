@@ -433,8 +433,9 @@ function applyImportedBlock(raw, sourceLabel) {
   }
   installImportedBlock(normalized);
   closeSheet('importSheet');
-  flushSave();
-  mark('Bloque "' + normalized.name + '" importado' + (sourceLabel ? ' (' + sourceLabel + ')' : '') + ' en ' + getProfile().label);
+  /* Same as restoreFromText (js/profile-transfer.js): only an explicit
+     false from flushSave means the write failed. */
+  if (flushSave() !== false) mark('Bloque "' + normalized.name + '" importado' + (sourceLabel ? ' (' + sourceLabel + ')' : '') + ' en ' + getProfile().label);
 }
 
 async function loadRepoBlockList() {

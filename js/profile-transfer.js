@@ -361,8 +361,13 @@ async function restoreFromText(text) {
   applyTheme();
   commit();
   closeSheet('sheet');
-  flushSave();
-  mark('Registro restaurado — ' + setsLabel(theirs));
+  /* writeState (and so flushSave) can come back undefined rather than
+     false on an app.js cached from before this return value existed (a
+     precache hole) — only an explicit false means the write failed, so
+     checking truthiness here would swallow every success message on that
+     shell. On false, writeState has already put the failure in the footer
+     and it must stay there. */
+  if (flushSave() !== false) mark('Registro restaurado — ' + setsLabel(theirs));
 }
 
 /* ---------- moving one person between phones (loading a profile file) ----------
@@ -433,9 +438,9 @@ async function loadProfileFromText(text) {
   /* Flushed before the message, not after: save() is debounced 400 ms and
      ends in mark('Guardado …'), so anything said here would be wiped off the
      status line half a second later, unread. Everything below that reports
-     the result of an import does the same. */
-  flushSave();
-  mark(state.profiles[target].label + ' cargado — ' + setsLabel(theirs) + landingNote(state.profiles[target]));
+     the result of an import does the same. Same as restoreFromText above:
+     only an explicit false means the write failed. */
+  if (flushSave() !== false) mark(state.profiles[target].label + ' cargado — ' + setsLabel(theirs) + landingNote(state.profiles[target]));
 }
 
 

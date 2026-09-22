@@ -588,8 +588,9 @@ async function applyQrPayload(payload) {
 
     closeQr();
     installImportedBlock(normalized, log, rir, order);
-    flushSave();
-    mark('Bloque "' + normalized.name + '" añadido' + (log && sets ? ' con ' + setsWithDoneLabel(sets, doneSets) : '') + ' en ' + profile.label);
+    /* Same as restoreFromText (js/profile-transfer.js): only an explicit
+       false from flushSave means the write failed. */
+    if (flushSave() !== false) mark('Bloque "' + normalized.name + '" añadido' + (log && sets ? ' con ' + setsWithDoneLabel(sets, doneSets) : '') + ' en ' + profile.label);
     return;
   }
 
