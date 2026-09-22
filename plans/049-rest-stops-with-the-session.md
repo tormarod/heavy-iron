@@ -103,4 +103,41 @@ back to a different session.
 
 ## Maintenance notes
 
-(Filled in when the PR lands.)
+**Landed 2026-09-22**, branch `claude/049-impl`, on top of `e9e8e7a` (no
+rebase needed — main had not moved). No deviation from the design: no event
+hooks, the five stubs untouched, all eight calls removed with their
+`commit('view')`/`commit()` kept.
+
+- `sessionOnScreen(state)` (`js/app.js`, just above `drawApp`) is the pure
+  key helper Step A suggested — `activeProfile|block.id|slot(week, dayId)`.
+  `drawApp` compares it against `lastSessionOnScreen` (module-level, `null`
+  until the first draw) right after `drawnSlot` is set, since both need the
+  same clamped `profile.week`/`profile.day`. A test wants the same key
+  drawApp would compute: call `sessionOnScreen(state)` directly, not
+  `drawnSlot` (a different bookkeeping variable, for `pruneLog`).
+- The eight removed calls: profile switcher, week ◀/▶, the week list, the
+  day tabs, the day tabs' keyboard handler (all `js/app.js`), the block
+  selector and deleting the active block (both `js/block-editor.js`). Kept:
+  the no-rest-time tick (`js/app.js` ~3934) and `showRecovery` (~1374) — both
+  name something other than "the session on screen changed" — and
+  `js/rest-timer.js`'s own internal calls.
+- Two comments (`js/app.js` and `js/rest-timer.js`, both at the "the rest
+  timer lives in js/rest-timer.js" / "Unlike the calculator" paragraph) said
+  stopRest was called "from every navigation/profile/week/day button" — now
+  stale, since the callers are drawApp and the tick handler. Reworded to
+  name drawApp and this plan; not asked for by the plan text, but the two
+  paragraphs directly describe the mechanism this PR changes.
+- Smoke: no section starts a rest and then uses undo, so Step D's
+  conditional new assertion (undo across a different day ending a running
+  rest) was skipped, per the plan's own "otherwise say so and skip it." The
+  existing undo coverage (`test/smoke.js`, "main session", clearDay + undo)
+  never changes day/week/profile, so it would not have exercised the new
+  behaviour anyway. Nobody has smoke coverage of the silent two-tab adopt
+  path stopping a rest either (`test/smoke.js`'s "dos pestañas" section only
+  drives the conflict-toast branch); decision 4 covers it, Step D does not
+  ask for a test of it, so none was added.
+- **`CACHE_VERSION` is not bumped and `sw.js` is untouched**, even though
+  `js/app.js`, `js/block-editor.js` and `js/rest-timer.js` all changed:
+  left for whoever integrates this branch (possibly alongside 046-048), one
+  bump via `tools/bump-cache-version.sh` for however many of these land
+  together — the `cache-version` CI job will fail until that happens.
