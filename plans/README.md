@@ -71,7 +71,7 @@ below so it is not lost or re-audited.
 | 047 | [The objetivo's two render memos are keyed by what they depend on; the rule's tests stop leaning on resets](done/047-rule-cache-keys.md) | P3 | S | LOW | — | DONE (#140) — both memos keyed by profile; `resetRenderCache()` in unit.js 21 → 4; candidate 3's `targetFrom` split dropped (absorbed by 038 and 045) |
 | 048 | [One way to write a set — `writeRows` — and the card's hint and record decisions as pure functions](done/048-card-writes.md) | P3 | S–M | LOW–MED | the unit-stamp fix (another session) | DONE (#144) — `writeRows` owns the set-write order; `setHints`/`recordFlags`/`tickRow` pure; 0 differences in 170,000 fixtures and a whole-card check of 42,816 events |
 | 049 | [The draw ends a rest when the session on screen changes — eight hand-written `stopRest()` calls go](done/049-rest-stops-with-the-session.md) | P3 | S | LOW | — | DONE (#142) — `drawApp` ends a rest when the session on screen changes; eight hand-written `stopRest()` calls gone; candidate 6's event hooks dropped (one listener) |
-| 050 | [One way to count stored sets — and the two screens that counted the wrong ones](050-one-set-count.md) | P3 | S | LOW | — | IN PROGRESS |
+| 050 | [One way to count stored sets — and the two screens that counted the wrong ones](done/050-one-set-count.md) | P3 | S | LOW | — | DONE (#PR050) — one `countSets`; the QR send sheet counts the payload it sends; the block review counts its own weeks |
 | 051 | [The profile's record says how each part is accepted — one import loop over `RECORD_PARTS`, and unknown keys stay out](051-record-parts-accept.md) | P2 | M | MED | 046 (merged) | IN PROGRESS |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
