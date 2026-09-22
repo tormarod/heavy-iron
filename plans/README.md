@@ -73,7 +73,7 @@ below so it is not lost or re-audited.
 | 049 | [The draw ends a rest when the session on screen changes — eight hand-written `stopRest()` calls go](done/049-rest-stops-with-the-session.md) | P3 | S | LOW | — | DONE (#142) — `drawApp` ends a rest when the session on screen changes; eight hand-written `stopRest()` calls gone; candidate 6's event hooks dropped (one listener) |
 | 050 | [One way to count stored sets — and the two screens that counted the wrong ones](done/050-one-set-count.md) | P3 | S | LOW | — | DONE (#145) — one `countSets`; the QR send sheet counts the payload it sends; the block review counts its own weeks |
 | 051 | [The profile's record says how each part is accepted — one import loop over `RECORD_PARTS`, and unknown keys stay out](done/051-record-parts-accept.md) | P2 | M | MED | 046 (merged) | DONE (#147) — every part has `accept`; import loops over `RECORD_PARTS`; unknown profile and backup keys stripped; one-id orders now survive import |
-| 052 | [A unit harness that boots the app and keeps its handlers — `test/harness.js`, `bootApp()`, one history fixture](052-booted-test-harness.md) | P2 | M | LOW | — | IN PROGRESS — PR 1 (`test/harness.js`, `bootApp()`, real-handler tests, a precache section that boots) #PR0521; PR 2 (one history fixture) next |
+| 052 | [A unit harness that boots the app and keeps its handlers — `test/harness.js`, `bootApp()`, one history fixture](052-booted-test-harness.md) | P2 | M | LOW | — | IN PROGRESS — PR 1 (`test/harness.js`, `bootApp()`, real-handler tests, a precache section that boots) #152; PR 2 (one history fixture) next |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
