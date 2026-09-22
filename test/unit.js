@@ -2891,6 +2891,41 @@ ok('restoring a profile drops a RIR value outside RIR_OPTIONS', restoreProbe.rir
 ok('restoring a profile caps a note to NOTE_LIMIT', restoreProbe.noteCapped, JSON.stringify(restoreProbe));
 ok('restoring a profile drops an energy value outside ENERGY_OPTIONS', restoreProbe.badEnergyDropped, JSON.stringify(restoreProbe));
 
+/* A slot key is slot(week, dayId), so notes and energy carry a day id just
+   as the log does. normalizeImportedBlock renames a day id safeKey refuses,
+   one it has already used, and one past 60 characters; the notes and energy
+   used to be copied across under the old key, which no day answers to any
+   more, so that day's note and energy were gone after the restore. */
+const renamedDayProbe = call(`
+  (function() {
+    const long = 'd'.repeat(70);
+    const block = { name: 'B', weeks: 8, deload: 0, days: [
+      { id: '__proto__', name: 'A', ex: [{ id: 'e1', n: 'Ex', sets: 3, reps: '10-15' }] },
+      { id: long, name: 'B', ex: [{ id: 'e1', n: 'Ex', sets: 3, reps: '10-15' }] },
+    ] };
+    const p = JSON.parse(JSON.stringify({
+      blocks: { b1: block }, blockOrder: ['b1'], activeBlock: 'b1',
+      notes: { b1: { 'w2-__proto__': 'rodilla', ['w3-' + long]: 'dormí poco', ['w99-' + long]: 'fuera', 'nope': 'x' } },
+      energy: { b1: { 'w2-__proto__': 'baja', ['w3-' + long]: 'alta', ['w0-' + long]: 'alta' } },
+    }));
+    const after = normalizeImportedProfile(p);
+    const days = after.blocks.b1.days;
+    const notes = after.notes.b1 || {}, energy = after.energy.b1 || {};
+    return {
+      renamed: days[0].id !== '__proto__' && days[1].id !== long,
+      note0: notes[slot(2, days[0].id)] === 'rodilla',
+      note1: notes[slot(3, days[1].id)] === 'dormí poco',
+      energy0: energy[slot(2, days[0].id)] === 'baja',
+      energy1: energy[slot(3, days[1].id)] === 'alta',
+      noteKeys: Object.keys(notes), energyKeys: Object.keys(energy),
+    };
+  })()
+`);
+ok('a restored day whose id was renamed keeps its session note', renamedDayProbe.renamed && renamedDayProbe.note0 && renamedDayProbe.note1, JSON.stringify(renamedDayProbe));
+ok('...and its energy', renamedDayProbe.renamed && renamedDayProbe.energy0 && renamedDayProbe.energy1, JSON.stringify(renamedDayProbe));
+ok('...and a key that is no slot, or a week outside 1..MAX_WEEKS, is dropped rather than carried',
+   renamedDayProbe.noteKeys.length === 2 && renamedDayProbe.energyKeys.length === 2, JSON.stringify(renamedDayProbe));
+
 console.log('\n== moveExLog / moveExRir / moveExOrder merge rather than overwrite (plans/008 items 1, 3) ==');
 const moveProbe = call(`
   (function() {

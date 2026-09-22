@@ -5927,8 +5927,8 @@ function setsWithDoneLabel(total, done) {
    a log keyed by the *sender's* ids has to be re-keyed to the ids the block
    actually ended up with. `normalizeImportedBlock` maps days and exercises
    one-to-one and in order, so position is a reliable bridge between the two. */
-/* Shared by normalizeImportedLog, normalizeImportedRir and
-   normalizeImportedOrder: all three need to re-key a payload from the
+/* Read by reKeyImportedSlots below, for all six slot-keyed normalizers:
+   each needs to re-key a payload from the
    sender's day/exercise ids to whatever `normalizeImportedBlock` renamed
    them to. First occurrence wins, both here and for days. A sender whose
    block had the same id on two exercises *of one day* leaves a mapping that
@@ -5971,21 +5971,35 @@ function importIdMaps(rawBlock, normalized) {
   return { dayMap, exMap };
 }
 
-function normalizeImportedLog(rawLog, rawBlock, normalized) {
-  if (!rawLog || typeof rawLog !== 'object' || Array.isArray(rawLog)) return {};
+/* The skeleton all six slot-keyed normalizers share: which keys are slots
+   at all, the week bound, the slot cap, and the day id re-keyed through
+   importIdMaps. Only what a slot holds differs, so that is all `keep` is
+   asked — it gets the slot's raw value and that day's exercise map, and
+   returns what to file or undefined to drop the slot. Notes and energy
+   hold no exercise ids and ignore the second argument, but their key still
+   carries a day id: they used to be copied across under it untouched, so a
+   renamed day lost its notes and energy on every restore. */
+function reKeyImportedSlots(raw, rawBlock, normalized, keep) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
   const { dayMap, exMap } = importIdMaps(rawBlock, normalized);
 
   const out = {};
-  Object.keys(rawLog).slice(0, LOG_LIMITS.slots).forEach(key => {
+  Object.keys(raw).slice(0, LOG_LIMITS.slots).forEach(key => {
     const s = parseSlot(key);
     if (!s) return;
     const w = s.week;
     if (!Number.isInteger(w) || w < 1 || w > MAX_WEEKS) return;
     const dayId = dayMap[s.dayId];
     if (!dayId) return;
-    const slotLog = rawLog[key];
+    const kept = keep(raw[key], exMap[dayId] || Object.create(null));
+    if (kept !== undefined) out[slot(w, dayId)] = kept;
+  });
+  return out;
+}
+
+function normalizeImportedLog(rawLog, rawBlock, normalized) {
+  return reKeyImportedSlots(rawLog, rawBlock, normalized, (slotLog, exFor) => {
     if (!slotLog || typeof slotLog !== 'object' || Array.isArray(slotLog)) return;
-    const exFor = exMap[dayId] || Object.create(null);
     const kept = {};
     Object.keys(slotLog).forEach(rawExId => {
       const exId = exFor[rawExId];
@@ -5998,9 +6012,8 @@ function normalizeImportedLog(rawLog, rawBlock, normalized) {
       const rows = slotLog[rawExId].slice(0, LOG_LIMITS.rows).map(rowFromImport);
       if (rows.length) kept[exId] = rows;
     });
-    if (Object.keys(kept).length) out[slot(w, dayId)] = kept;
+    if (Object.keys(kept).length) return kept;
   });
-  return out;
 }
 
 /* The legacy RIR map's twin of normalizeImportedLog, re-keyed the same way.
@@ -6010,28 +6023,15 @@ function normalizeImportedLog(rawLog, rawBlock, normalized) {
    installBlockData. The three chips stay its enum; a row's own digit is
    validated by normalizeImportedLog instead. */
 function normalizeImportedRir(rawRir, rawBlock, normalized) {
-  if (!rawRir || typeof rawRir !== 'object' || Array.isArray(rawRir)) return {};
-  const { dayMap, exMap } = importIdMaps(rawBlock, normalized);
-
-  const out = {};
-  Object.keys(rawRir).slice(0, LOG_LIMITS.slots).forEach(key => {
-    const s = parseSlot(key);
-    if (!s) return;
-    const w = s.week;
-    if (!Number.isInteger(w) || w < 1 || w > MAX_WEEKS) return;
-    const dayId = dayMap[s.dayId];
-    if (!dayId) return;
-    const slotRir = rawRir[key];
+  return reKeyImportedSlots(rawRir, rawBlock, normalized, (slotRir, exFor) => {
     if (!slotRir || typeof slotRir !== 'object' || Array.isArray(slotRir)) return;
-    const exFor = exMap[dayId] || Object.create(null);
     const kept = {};
     Object.keys(slotRir).forEach(rawExId => {
       const exId = exFor[rawExId];
       if (exId && RIR_OPTIONS.indexOf(slotRir[rawExId]) >= 0) kept[exId] = slotRir[rawExId];
     });
-    if (Object.keys(kept).length) out[slot(w, dayId)] = kept;
+    if (Object.keys(kept).length) return kept;
   });
-  return out;
 }
 
 /* The objetivo twin, re-keyed the same way. A record of what the rule put
@@ -6040,20 +6040,8 @@ function normalizeImportedRir(rawRir, rawBlock, normalized) {
    with none, which is exactly what a session nobody had a target for
    looks like anyway. */
 function normalizeImportedObj(rawObj, rawBlock, normalized) {
-  if (!rawObj || typeof rawObj !== 'object' || Array.isArray(rawObj)) return {};
-  const { dayMap, exMap } = importIdMaps(rawBlock, normalized);
-
-  const out = {};
-  Object.keys(rawObj).slice(0, LOG_LIMITS.slots).forEach(key => {
-    const s = parseSlot(key);
-    if (!s) return;
-    const w = s.week;
-    if (!Number.isInteger(w) || w < 1 || w > MAX_WEEKS) return;
-    const dayId = dayMap[s.dayId];
-    if (!dayId) return;
-    const slotObj = rawObj[key];
+  return reKeyImportedSlots(rawObj, rawBlock, normalized, (slotObj, exFor) => {
     if (!slotObj || typeof slotObj !== 'object' || Array.isArray(slotObj)) return;
-    const exFor = exMap[dayId] || Object.create(null);
     const kept = {};
     Object.keys(slotObj).forEach(rawExId => {
       const exId = exFor[rawExId];
@@ -6082,29 +6070,16 @@ function normalizeImportedObj(rawObj, rawBlock, normalized) {
       if (Number.isInteger(rec.rir) && rec.rir >= 0 && rec.rir <= RIR_MAX) keep.rir = rec.rir;
       kept[exId] = keep;
     });
-    if (Object.keys(kept).length) out[slot(w, dayId)] = kept;
+    if (Object.keys(kept).length) return kept;
   });
-  return out;
 }
 
 /* The session-order twin, re-keyed the same way. Ids the sender's block
    does not account for are dropped rather than carried through as strings
    that would never resolve on this phone. */
 function normalizeImportedOrder(rawOrder, rawBlock, normalized) {
-  if (!rawOrder || typeof rawOrder !== 'object' || Array.isArray(rawOrder)) return {};
-  const { dayMap, exMap } = importIdMaps(rawBlock, normalized);
-
-  const out = {};
-  Object.keys(rawOrder).slice(0, LOG_LIMITS.slots).forEach(key => {
-    const s = parseSlot(key);
-    if (!s) return;
-    const w = s.week;
-    if (!Number.isInteger(w) || w < 1 || w > MAX_WEEKS) return;
-    const dayId = dayMap[s.dayId];
-    if (!dayId) return;
-    const ids = rawOrder[key];
+  return reKeyImportedSlots(rawOrder, rawBlock, normalized, (ids, exFor) => {
     if (!Array.isArray(ids)) return;
-    const exFor = exMap[dayId] || Object.create(null);
     const seen = new Set();
     const kept = [];
     ids.slice(0, ORDER_LIMIT).forEach(rawExId => {
@@ -6113,9 +6088,20 @@ function normalizeImportedOrder(rawOrder, rawBlock, normalized) {
       const exId = isObj(rawExId) ? '' : exFor[rawExId];
       if (exId && !seen.has(exId)) { seen.add(exId); kept.push(exId); }
     });
-    if (kept.length > 1) out[slot(w, dayId)] = kept;
+    if (kept.length > 1) return kept;
   });
-  return out;
+}
+
+/* The per-session twins. Their value checks are the ones the restore path
+   has run since plans/008 item 4 — a note capped to NOTE_LIMIT, an energy
+   inside ENERGY_OPTIONS — and a slot left with nothing valid is dropped
+   like any other. */
+function normalizeImportedNotes(rawNotes, rawBlock, normalized) {
+  return reKeyImportedSlots(rawNotes, rawBlock, normalized, v => txt(v, NOTE_LIMIT) || undefined);
+}
+
+function normalizeImportedEnergy(rawEnergy, rawBlock, normalized) {
+  return reKeyImportedSlots(rawEnergy, rawBlock, normalized, v => ENERGY_OPTIONS.indexOf(v) >= 0 ? v : undefined);
 }
 
 /* ---------- CSV export ----------
