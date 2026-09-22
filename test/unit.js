@@ -929,6 +929,21 @@ const badThemeProfile = { profiles: { hombre: { blocks: {}, blockOrder: [], log:
 const migratedTheme = call('state = ' + JSON.stringify(badThemeProfile) + '; migrate(); JSON.parse(JSON.stringify(state));');
 ok('an unknown theme falls back to auto', migratedTheme.prefs.theme === 'auto', migratedTheme.prefs.theme);
 
+/* No screen sets this yet — the interface only speaks Spanish — but the
+   CSV already reads it, so migrate() has to hand it a value the same way
+   it hands theme one (plans/068). */
+const badLangProfile = { profiles: { hombre: { blocks: {}, blockOrder: [], log: {} } }, activeProfile: 'hombre', prefs: { lang: 'fr' } };
+const migratedLang = call('state = ' + JSON.stringify(badLangProfile) + '; migrate(); JSON.parse(JSON.stringify(state));');
+ok('an unknown language falls back to es, the only one the interface speaks so far',
+   migratedLang.prefs.lang === 'es', migratedLang.prefs.lang);
+const missingLangProfile = { profiles: { hombre: { blocks: {}, blockOrder: [], log: {} } }, activeProfile: 'hombre' };
+const migratedNoLang = call('state = ' + JSON.stringify(missingLangProfile) + '; migrate(); JSON.parse(JSON.stringify(state));');
+ok('...and an absent one defaults to es the same way', migratedNoLang.prefs.lang === 'es', JSON.stringify(migratedNoLang.prefs));
+const okLangProfile = { profiles: { hombre: { blocks: {}, blockOrder: [], log: {} } }, activeProfile: 'hombre', prefs: { lang: 'en' } };
+const migratedLangEn = call('state = ' + JSON.stringify(okLangProfile) + '; migrate(); JSON.parse(JSON.stringify(state));');
+ok('...while a known one, en, is kept — the hook the English version will read',
+   migratedLangEn.prefs.lang === 'en', migratedLangEn.prefs.lang);
+
 console.log('\n== normalizeImportedProfile ==');
 
 /* The most important assertion in this section: a profile the app itself
@@ -3495,9 +3510,10 @@ const rirCsvProbe = call(`
     const m = {}; m[ex.id] = '2+';
     p.rir['block-1'][slot(2, day.id)] = m;
     foldRirMap(p, 'block-1');
+    const sep = csvFormat().sep;
     const lines = buildCsv().split('\\r\\n');
-    const col = function (i) { return lines[i].split(',')[12]; };
-    return { head: lines[0].split(',')[12],
+    const col = function (i) { return lines[i].split(sep)[12]; };
+    return { head: lines[0].split(sep)[12],
              week1: [col(1), col(2), col(3)].join(','),
              week2: [col(4), col(5)].join(',') };
   })()
@@ -4962,14 +4978,21 @@ ok('...and the first weighed set of a lift is a record but never a 1RM one: ther
    !flagProbe.missing && flagProbe.first === 'P. ..' && flagProbe.noEstimate === '..', JSON.stringify(flagProbe));
 
 console.log('\n== the CSV is safe to open in a spreadsheet and says which unit each row is in (plans/011) ==');
+/* The separator is read off the app (csvFormat().sep) rather than
+   hard-coded, in every case below: 'es' writes ';' today, but nothing
+   here should need editing again when 'en' starts writing ',' (plans/068). */
 ok('csvCell prefixes a leading = so a name out of an imported file cannot be a formula',
-   call(`csvCell('=SUM(A1)')`) === "'=SUM(A1)", String(call(`csvCell('=SUM(A1)')`)));
+   call(`csvCell('=SUM(A1)', csvFormat().sep)`) === "'=SUM(A1)", String(call(`csvCell('=SUM(A1)', csvFormat().sep)`)));
 ok('csvCell prefixes a leading - too, which opens a formula just as well',
-   call(`csvCell('-5')`) === "'-5", String(call(`csvCell('-5')`)));
+   call(`csvCell('-5', csvFormat().sep)`) === "'-5", String(call(`csvCell('-5', csvFormat().sep)`)));
 ok('csvCell leaves a logged number alone — none of them start with an operator',
-   call(`csvCell('60')`) === '60', String(call(`csvCell('60')`)));
-ok('csvCell still quotes a cell holding a separator',
-   call(`csvCell('a;b')`) === '"a;b"', String(call(`csvCell('a;b')`)));
+   call(`csvCell('60', csvFormat().sep)`) === '60', String(call(`csvCell('60', csvFormat().sep)`)));
+const sepCellProbe = call(`(function () {
+  const sep = csvFormat().sep;
+  return { cell: csvCell('a' + sep + 'b', sep), expected: '"a' + sep + 'b"' };
+})()`);
+ok('csvCell still quotes a cell holding the separator',
+   sepCellProbe.cell === sepCellProbe.expected, JSON.stringify(sepCellProbe));
 
 /* Header and row are written in two different places, so asserting the
    header alone would not catch the two drifting apart by a column. */
@@ -4987,21 +5010,23 @@ const csvProbe = call(`
     setNoteText(profile, blockId, 1, day.id, '=dormí 5 h; lleno');
     setEnergy(profile, blockId, 1, day.id, 'baja');
     const csv = buildCsv();
+    const sep = csvFormat().sep;
     state = prev;
     state.prefs.units = 'kg';
-    return csv;
+    return { csv: csv, sep: sep };
   })()
 `);
-const csvLines = csvProbe.split('\r\n');
+const csvLines = csvProbe.csv.split('\r\n');
+const csvSep = csvProbe.sep;
 ok('the CSV header names the weight column and puts the unit beside it',
-   csvLines[0].indexOf(',peso,unidad,') >= 0, csvLines[0]);
+   csvLines[0].indexOf(`${csvSep}peso${csvSep}unidad${csvSep}`) >= 0, csvLines[0]);
 ok('a lb-stamped set exports the number as typed with its own unit next to it',
-   csvLines.some(l => l.indexOf(',220.462262185,lb,') >= 0),
+   csvLines.some(l => l.indexOf(`${csvSep}220.462262185${csvSep}lb${csvSep}`) >= 0),
    csvLines.slice(1, 3).join(' | '));
 ok('the CSV header ends with the session note and the energy chip',
-   /,nota,energia$/.test(csvLines[0]), csvLines[0]);
+   csvLines[0].endsWith(`${csvSep}nota${csvSep}energia`), csvLines[0]);
 ok('a session\'s note and energy repeat on its rows, formula-guarded and quoted',
-   csvLines.some(l => /,"'=dormí 5 h; lleno",baja$/.test(l)), csvLines.slice(1, 3).join(' | '));
+   csvLines.some(l => l.endsWith(`${csvSep}"'=dormí 5 h; lleno"${csvSep}baja`)), csvLines.slice(1, 3).join(' | '));
 ok('and lastNote walks back to the most recent earlier note on the same day',
    JSON.stringify(call(`
      (function() {
@@ -6504,6 +6529,20 @@ console.log('\n== a restore keeps what the app reads, and nothing else (plans/05
   })()`);
   ok('a restore drops nothing the app itself writes, on a profile or at the top level', own.lost.length === 0, JSON.stringify(own.lost));
   ok('the state the app writes holds nothing BACKUP_FIELDS leaves out', own.stray.length === 0, JSON.stringify(own.stray));
+
+  /* prefs travels whole — BACKUP_FIELDS lists 'prefs' itself, not each of
+     its keys — so a restore needs no code of its own for lang; this is the
+     same restoreFromText sequence (normalizeImportedBackup, then state =
+     data, then migrate()) with only that one field checked (plans/068). */
+  const langKept = call(`(function () {
+    state = defaultState(); migrate();
+    state.prefs.lang = 'en';
+    const data = normalizeImportedBackup(JSON.parse(JSON.stringify(state)));
+    state = data;
+    migrate();
+    return state.prefs.lang;
+  })()`);
+  ok('a backup restored with prefs.lang "en" keeps it, not just Spanish ones', langKept === 'en', langKept);
 }
 
 console.log('\n== RECORD_PARTS: each part says how it is accepted (plans/051) ==');
@@ -7199,10 +7238,13 @@ console.log('\n== the row codec: every field a set carries, sent, accepted and e
      JSON.stringify(hostile[3]));
 
   /* The CSV header is a promise to whoever opens the file in a
-     spreadsheet: building it from the codec must not move a column. */
+     spreadsheet: building it from the codec must not move a column. The
+     separator is read off the app, not hard-coded, so this keeps holding
+     once 'en' writes ',' instead of the ';' 'es' writes today (plans/068). */
   const header = call(`buildCsv().split('\\r\\n')[0].replace(/^\\uFEFF/, '')`);
+  const headerSep = call('csvFormat().sep');
   ok('the CSV header is the one it always was, with the set\'s columns from the codec',
-     header === 'perfil,bloque,semana,dia,ejercicio,orden,serie,peso,unidad,reps,hecha,fecha,rir,bajadas,tipo_bajada,nota,energia',
+     header === ['perfil', 'bloque', 'semana', 'dia', 'ejercicio', 'orden', 'serie', 'peso', 'unidad', 'reps', 'hecha', 'fecha', 'rir', 'bajadas', 'tipo_bajada', 'nota', 'energia'].join(headerSep),
      header);
 }
 
@@ -7283,6 +7325,9 @@ console.log('\n== timestamps (plans/068) ==');
       const d = new Date(localTs);
       const pad = function (n) { return String(n).padStart(2, '0'); };
       const expectedLocal = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+      /* Read off the app (csvFormat().sep) rather than hard-coded ',', so
+         this holds regardless of the active language (plans/068 step B). */
+      const sep = csvFormat().sep;
       profile.log[blockId] = {};
       profile.log[blockId][slot(1, day.id)] = { [exId]: [{ w: '60', r: '5', done: true, ts: localTs }] };
       const line1 = buildCsv().split('\\r\\n')[1];
@@ -7291,11 +7336,11 @@ console.log('\n== timestamps (plans/068) ==');
       let hugeThrew = false, line2 = '';
       try { line2 = buildCsv().split('\\r\\n')[1]; } catch (e) { hugeThrew = true; }
       return JSON.stringify({
-        cell: line1.split(',')[11],
+        cell: line1.split(sep)[11],
         expectedLocal: expectedLocal,
         localDayHolds: localDay(localTs) === '2026-03-10',
         hugeThrew: hugeThrew,
-        hugeCell: hugeThrew ? null : line2.split(',')[11],
+        hugeCell: hugeThrew ? null : line2.split(sep)[11],
       });
     })()
   `));
@@ -7717,29 +7762,38 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
       return buildCsv();
     }
   `);
-  const HEAD = '﻿perfil,bloque,semana,dia,ejercicio,orden,serie,peso,unidad,reps,hecha,fecha,rir,bajadas,tipo_bajada,nota,energia';
-  /* fecha is the local day (plans/068), and these two ts are 22:13:20Z and
-     22:15:00Z: still 2023-11-14 in Madrid or in CI's UTC, but already
-     2023-11-15 from UTC+2 up (22:13 + 2h rolls past local midnight) and in
-     Tokyo. Computed through the app's own localDay rather than hard-coded,
-     so this fixture holds in whatever zone the suite runs in — separately
-     for each ts, even though 100 seconds apart puts them on the same local
-     day in every zone a real place uses, so a future edit to one literal
-     cannot quietly go stale against the other. */
+  const same = call('csvFixture()');
+  /* The separator is read off the app (csvFormat().sep), right after the
+     call that produced `same`, so it is the one that CSV actually used —
+     csvFixture() leaves state.prefs.lang at migrate()'s default, 'es', so
+     sep is ';' here. None of these fields, including the decimal-comma
+     weights, need quoting any more: ';' is what triggers that now, not
+     ',', and none of the plan's own text contains one (plans/068 step B). */
+  const sep = call('csvFormat().sep');
+  const row = fields => fields.join(sep);
+  /* fecha is the local day (plans/068 step A), and these two ts are
+     22:13:20Z and 22:15:00Z: still 2023-11-14 in Madrid or in CI's UTC,
+     but already 2023-11-15 from UTC+2 up (22:13 + 2h rolls past local
+     midnight) and in Tokyo. Computed through the app's own localDay
+     rather than hard-coded, so this fixture holds in whatever zone the
+     suite runs in — separately for each ts, even though 100 seconds
+     apart puts them on the same local day in every zone a real place
+     uses, so a future edit to one literal cannot quietly go stale
+     against the other. */
   const fecha1 = call('localDay(1700000000000)');
   const fecha2 = call('localDay(1700000100000)');
+  const HEAD = '﻿' + row(['perfil', 'bloque', 'semana', 'dia', 'ejercicio', 'orden', 'serie', 'peso', 'unidad', 'reps', 'hecha', 'fecha', 'rir', 'bajadas', 'tipo_bajada', 'nota', 'energia']);
   const PLAN_ROWS = [
-    `H,Fuerza,1,Empuje,Press banca,1,1,60,kg,8,si,${fecha1},2,,,dormí mal,`,
-    `H,Fuerza,1,Empuje,Press banca,1,2,60,kg,7,si,${fecha2},,,,dormí mal,`,
-    'H,Fuerza,2,Empuje,Press banca,2,1,"62,5",kg,8,si,,,45x5,Forzado,,alta',
-    'H,Fuerza,2,Empuje,Press banca,2,2,"62,5",kg,6,no,,,,,,alta',
-    'H,Fuerza,1,Empuje,Press militar,2,1,40,kg,10,si,,,,,dormí mal,',
-    'H,Fuerza,1,Empuje,Fondos,,1,10,lb,12,si,,,,,dormí mal,',
-    'H,Fuerza,1,Pierna,Sentadilla,1,1,100,kg,5,si,,,,,,',
+    row(['H', 'Fuerza', '1', 'Empuje', 'Press banca', '1', '1', '60', 'kg', '8', 'si', fecha1, '2', '', '', 'dormí mal', '']),
+    row(['H', 'Fuerza', '1', 'Empuje', 'Press banca', '1', '2', '60', 'kg', '7', 'si', fecha2, '', '', '', 'dormí mal', '']),
+    row(['H', 'Fuerza', '2', 'Empuje', 'Press banca', '2', '1', '62,5', 'kg', '8', 'si', '', '', '45x5', 'Forzado', '', 'alta']),
+    row(['H', 'Fuerza', '2', 'Empuje', 'Press banca', '2', '2', '62,5', 'kg', '6', 'no', '', '', '', '', '', 'alta']),
+    row(['H', 'Fuerza', '1', 'Empuje', 'Press militar', '2', '1', '40', 'kg', '10', 'si', '', '', '', '', 'dormí mal', '']),
+    row(['H', 'Fuerza', '1', 'Empuje', 'Fondos', '', '1', '10', 'lb', '12', 'si', '', '', '', '', 'dormí mal', '']),
+    row(['H', 'Fuerza', '1', 'Pierna', 'Sentadilla', '1', '1', '100', 'kg', '5', 'si', '', '', '', '', '', '']),
   ];
   /* Written by the walk over the plan this replaced, byte for byte: with
      nothing stranded or removed, the file is the one it always was. */
-  const same = call('csvFixture()');
   ok('with nothing hidden, the CSV is byte for byte the one the plan walk wrote',
      same === [HEAD].concat(PLAN_ROWS).join('\r\n'), JSON.stringify(same));
 
@@ -7750,15 +7804,72 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
     p.log.A[slot(1, 'd9')] = { zz: [{ w: '5', r: '20', done: true }] };
   })`).split('\r\n');
   ok('a stranded week\'s set is exported, after the block\'s own weeks of that exercise, with its day\'s order',
-     more[5] === 'H,Fuerza,3,Empuje,Press banca,1,1,65,kg,5,si,,,,,,', more.slice(1, 7).join(' | '));
+     more[5] === row(['H', 'Fuerza', '3', 'Empuje', 'Press banca', '1', '1', '65', 'kg', '5', 'si', '', '', '', '', '', '']), more.slice(1, 7).join(' | '));
   ok('a set of an exercise removed from the plan is exported with an empty orden, after the day\'s planned ones, under its raw id',
-     more[8] === 'H,Fuerza,1,Empuje,gone,,1,20,kg,15,si,,,,,dormí mal,', more.slice(6, 10).join(' | '));
+     more[8] === row(['H', 'Fuerza', '1', 'Empuje', 'gone', '', '1', '20', 'kg', '15', 'si', '', '', '', '', 'dormí mal', '']), more.slice(6, 10).join(' | '));
   ok('...under the name the plan still has for that id on another day, if it has one',
-     more[9] === 'H,Fuerza,2,Empuje,Sentadilla,,1,90,kg,6,no,,,,,,alta', more.slice(8, 11).join(' | '));
+     more[9] === row(['H', 'Fuerza', '2', 'Empuje', 'Sentadilla', '', '1', '90', 'kg', '6', 'no', '', '', '', '', '', 'alta']), more.slice(8, 11).join(' | '));
   ok('...and a day taken out of the plan goes by its id, after the plan\'s days',
-     more[11] === 'H,Fuerza,1,d9,zz,,1,5,kg,20,si,,,,,,' && more.length === 12, more.slice(9).join(' | '));
+     more[11] === row(['H', 'Fuerza', '1', 'd9', 'zz', '', '1', '5', 'kg', '20', 'si', '', '', '', '', '', '']) && more.length === 12, more.slice(9).join(' | '));
   ok('...while every row the plan walk wrote is still there, in the same order',
      JSON.stringify(more.filter(l => PLAN_ROWS.indexOf(l) >= 0)) === JSON.stringify(PLAN_ROWS), more.join(' | '));
+}
+
+console.log('\n== the CSV separator follows the language preference, not a fixed character (plans/068) ==');
+{
+  /* Replaces the old smoke assertion "CSV quotes the comma decimal", which
+     pinned a design this plan retired: whether 22,5 is quoted is no longer
+     a constant, it depends on state.prefs.lang, so it belongs here next to
+     migrate()'s own lang tests rather than in a browser. */
+  const langCsv = call(`(function () {
+    state = defaultState(); migrate();
+    const profile = state.profiles.hombre;
+    const blockId = profile.blockOrder[0];
+    const day = profile.blocks[blockId].days[0];
+    const exId = day.ex[0].id;
+    profile.log[blockId] = {};
+    profile.log[blockId][slot(1, day.id)] = { [exId]: [{ w: '22,5', r: '5', done: true }] };
+    state.prefs.lang = 'es';
+    const es = buildCsv();
+    state.prefs.lang = 'en';
+    const en = buildCsv();
+    return { es: es, en: en };
+  })()`);
+  const esRow = langCsv.es.split('\r\n').find(l => l.indexOf('22,5') >= 0) || '';
+  ok('with lang es the file is ; separated, so the decimal comma in 22,5 is left bare, between two ;',
+     esRow.indexOf(';22,5;') >= 0, esRow);
+  const enRow = langCsv.en.split('\r\n').find(l => l.indexOf('22,5') >= 0) || '';
+  ok('...while with lang en the file splits on , instead, so that same weight has to be quoted',
+     enRow.indexOf(',"22,5",') >= 0, enRow);
+}
+
+console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/067, out of that step\'s scope; picked up here) ==');
+{
+  /* dayId is parsed off a stored slot key (forEachSlot), never validated
+     against the plan, so damaged storage can hand buildCsv's byDay map
+     either name. Plain string keys — 'w1-__proto__' is not the bare
+     '__proto__' — so no JSON.parse trick is needed to get them onto the
+     slot map; what matters is what parseSlot extracts as dayId, which
+     lands on byDay unguarded either way. */
+  const protoCsvProbe = call(`
+    (function () {
+      state = defaultState(); migrate();
+      const profile = state.profiles.hombre;
+      const blockId = profile.blockOrder[0];
+      const day = profile.blocks[blockId].days[0];
+      const exId = day.ex[0].id;
+      profile.log[blockId] = {};
+      profile.log[blockId][slot(1, '__proto__')] = { [exId]: [{ w: '40', r: '10', done: true }] };
+      profile.log[blockId][slot(1, 'constructor')] = { [exId]: [{ w: '40', r: '10', done: true }] };
+      let threw = null, csv = '';
+      try { csv = buildCsv(); } catch (e) { threw = e.message; }
+      return { threw: threw, hasHeader: csv.indexOf('perfil') >= 0 };
+    })()
+  `);
+  ok('a stored slot keyed __proto__ or constructor (damaged storage) does not make "Exportar CSV" throw',
+     protoCsvProbe.threw === null, JSON.stringify(protoCsvProbe));
+  ok('...and the export still runs to completion, header and all',
+     protoCsvProbe.hasHeader, JSON.stringify(protoCsvProbe));
 }
 
 (async () => {

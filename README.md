@@ -414,7 +414,9 @@ push.
 
 Settled decisions, not bugs — `AGENTS.md` says why each one stays:
 
-- **Spanish only.** Every string lives inline in the source.
+- **Spanish only.** Every string lives inline in the source. A language
+  preference is wired in already, with no control on screen yet, for the
+  English version to come — the CSV export follows it today.
 - **No sync.** There is no server; data moves between phones as a file or
   by QR, by hand.
 - **The QR transfer is one-way and manual.** It copies, it does not merge.

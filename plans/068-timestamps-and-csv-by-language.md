@@ -323,4 +323,36 @@ assertions, two separator cases, two `lang` cases, three smoke sections.
   (`TZ=<name> node -e "console.log(new Date().toString())"`) rather than
   trust that a run with no error means the zone took effect — the failure
   mode here is silent, not a crash.
-- *(Executor: record deviations here.)*
+- Step B: the plan's smoke command example (`--only "main session" --only
+  "orden" --only "bajadas"`) doesn't match any section name literally —
+  `node test/smoke.js --list` (as the plan itself says to check) gives the
+  three sections as "main session", "weight drops" and "orden real de la
+  sesión". Ran all three on port 8814; all pass.
+- Step B: no other deviations from B.1–B.5. `csvCell(v, sep)` quotes on
+  `s.indexOf(sep) >= 0 || /["\n\r]/.test(s)`, matching B.3 exactly; the big
+  CSV fixture test (plans/038) was rewritten field-array-first
+  (`row(fields) => fields.join(sep)`) rather than hand-edited comma to
+  semicolon, so a future language needs no re-editing of that fixture.
+- Step B, addition beyond B.1–B.5, an orchestrator decision recorded here
+  per instruction: `buildCsv`'s `byDay` map is now `Object.create(null)`.
+  It was a plain `{}` indexed by a stored slot's day id, so a damaged
+  profile with a slot keyed `w1-__proto__` or `w1-constructor` made
+  `byDay[dayId].push` reach `Object.prototype`/`Object` instead of
+  `undefined`, and "Exportar CSV" threw. Found by the plan 067 Step A
+  executor while auditing every plain object `buildCsv` indexes by a
+  storage-derived id, out of that step's scope (PR #179's "For the
+  reviewer" section) since Step B already owned `buildCsv`. The audit's
+  other two maps need no change: `exName`'s write is guarded by `e.id in
+  exName`, already true for `'__proto__'` before anything is assigned, so
+  the assignment never runs; `ordAt`'s outer map is keyed by
+  `slot(w, day.id)`, always prefixed `'w<n>-'`, so it can never equal the
+  bare `'__proto__'`/`'constructor'`. Its inner map (keyed by a raw
+  exercise id) can still take `'__proto__'` — the write is a silently
+  no-op'd setter call (it rejects a non-object value), but a later read
+  returns `Object.prototype` itself, printing as `"[object Object]"` in
+  the CSV's `orden` column for that one row. Left as is: it neither throws
+  nor writes through, and PR #179 already documents it as a known,
+  cosmetic, read-only artifact. One new unit case (`buildCsv` does not
+  throw on a `w1-__proto__`/`w1-constructor` slot); mutation-checked by
+  reverting to `{}` and confirming both new assertions FAIL with
+  `byDay[dayId].push is not a function`, then restoring.
