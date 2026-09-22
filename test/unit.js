@@ -5375,12 +5375,28 @@ ok('...and so does a minus sign',
    ahead of "RIR", a "rir" inside "sufrir"). The rest pin each rule's edge:
    the marker touching its number from either side, a decimal after "RIR",
    a week word that is not right in front of the number, a week word with
-   no space before its number, and RIR_MAX on the side 058 did not test. */
+   no space before its number, and RIR_MAX on the side 058 did not test.
+
+   The last nineteen came out of the review of #174, which widened the
+   table with shapes written every week: sets×reps ahead of "RIR" ("3x5
+   RIR 2" read the 5 reps), a number above RIR_MAX that ended the search
+   instead of being passed over ("RIR 10 · 2 RIR" and "3×10 RIR 2" read
+   null), the Spanish ranges "2 a 3" and "2 o 3" (read as 3, the
+   under-loading end), the singular "1 rep en reserva" (not read at all),
+   and the week written "S3", "S 3" or "W3". "5x5 @ 2 RIR", "4x8, RIR 1",
+   "reps 2 RIR" and "2 series, 2 RIR" show the new refusals stop where
+   they should: an "x" that is not right in front of the number, and a
+   word that merely ends in "s", refuse nothing. */
 [
   ['RIR: 2', 2], ['RIR (2)', 2], ['RIR ~2', 2], ['RIR objetivo 2', 2], ['RIR: 1-2', 1],
   ['2-3 reps en reserva', 2], ['1,5 RIR', null], ['Semana 3 RIR 2', 2], ['sufrir 2', null],
   ['RIR2', 2], ['2RIR', 2], ['RIR 0.5', null], ['Sem. 3 · 2 RIR', 2], ['2 RIR, semana 3', 2],
   ['RIR 10', null], ['semana3 RIR 2', 2],
+  ['3×10 RIR 2', 2], ['3x8 RIR 2', 2], ['3x5 RIR 2', 2], ['4x12 RIR 1-2', 1], ['5x5 @ 2 RIR', 2],
+  ['4x8, RIR 1', 1], ['2 a 3 RIR', 2], ['de 2 a 3 RIR', 2], ['2 o 3 RIR', 2], ['RIR 1 a 2', 1],
+  ['1 rep en reserva', 1], ['1 repetición en reserva', 1], ['1 repeticion en reserva', 1],
+  ['S3 RIR 2', 2], ['S 3 · RIR 2', 2], ['W3 RIR 2', 2], ['reps 2 RIR', 2], ['2 series, 2 RIR', 2],
+  ['RIR 10 · 2 RIR', 2],
 ].forEach(([label, want]) => {
   const got = call('phaseRir({ phase: [{ r: ' + JSON.stringify(label) + ' }] }, 0)');
   ok('phaseRir: "' + label + '" → ' + want + ' (plans/062)', got === want, String(got));
@@ -5396,14 +5412,17 @@ ok('...and so does a minus sign',
    added what its rule reads: the ":" and "(" allowed after "RIR",
    "objetivo", the decimal separators, "reps en reserva", a lowercase
    "semana" for the week-number check and "sufrir" for "rir" inside a
-   word — which changes the labels drawn, not what is asserted. Digits are
-   drawn mostly from 0–9 (three draws in four) rather than 0–99, because a
-   RIR-adjacent 0–99 draw lands in [0, RIR_MAX] only 6% of the time and the
-   positive path — an actual prescription, not just null — needs exercising
-   too. `Math.imul` keeps the multiply inside 32 bits: plain `seed * k`
-   overflows 2^53 on this multiplier and the generator collapses into a
-   short cycle with most labels repeated. The seed is fixed so a failure
-   reproduces; it is not read for anything else. */
+   word, and its review the "x" and "×" of sets×reps, the "a" and "o" of a
+   Spanish range, the singular "rep en reserva" and the "S" and "W" of an
+   abbreviated week — which changes the labels drawn, not what is
+   asserted. Digits are drawn mostly from 0–9 (three draws in four) rather
+   than 0–99, because a RIR-adjacent 0–99 draw lands in [0, RIR_MAX] only
+   6% of the time and the positive path — an actual prescription, not just
+   null — needs exercising too. `Math.imul` keeps the multiply inside 32
+   bits: plain `seed * k` overflows 2^53 on this multiplier and the
+   generator collapses into a short cycle with most labels repeated. The
+   seed is fixed so a failure reproduces; it is not read for anything
+   else. */
 const phaseRirFuzzProbe = `
   (function() {
     let seed = 20260922;
@@ -5412,7 +5431,8 @@ const phaseRirFuzzProbe = `
     function digit() { return String(Math.floor(rnd() * (rnd() < 0.75 ? 10 : 100))); }
     const words = ['Semana', 'de', 'tecnica', 'Descarga', 'Top', 'set', 'back-offs',
       'reps', 'fase', 'RIR', '%', '-', '–', '—', '−', 'proxima', 'bloque',
-      ':', '(', 'objetivo', ',', '.', 'reps en reserva', 'semana', 'sufrir'];
+      ':', '(', 'objetivo', ',', '.', 'reps en reserva', 'semana', 'sufrir',
+      'x', '×', 'a', 'o', 'rep en reserva', 'S', 'W'];
     const failures = [];
     for (let i = 0; i < 2000; i++) {
       const tokenCount = 1 + Math.floor(rnd() * 6);
