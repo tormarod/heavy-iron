@@ -1137,6 +1137,10 @@ function pruneLog() {
    force so closing the tab never silently drops a logged set — see its own
    comment below. */
 let held = false;
+/* Set by the conflict's "Recargar" for the moment before the page goes:
+   the change here is being thrown away, so nothing may write it — not the
+   unload's forced flush, not a save() that sneaks in first. */
+let discarding = false;
 
 /* A failed setItem (quota, private-mode limits) used to be reported only in
    the footer #status line — easy to miss, and every later keystroke retries
@@ -1146,7 +1150,7 @@ let held = false;
 let quotaToastShown = false;
 
 function writeState(force) {
-  if (frozen) return;
+  if (frozen || discarding) return;
   if (held && !force) return;
   held = false;
   try {
@@ -1164,6 +1168,12 @@ function writeState(force) {
 }
 
 function save(scope) {
+  /* Any change after the action that took the snapshot ends its undo,
+     whatever the scope claims: 'view' also carries the session note, the
+     energy and the machine settings, and an undo that outlived a typed note
+     would erase it. See snapshotForUndo for how the action's own saves are
+     told apart. */
+  if (undoSnapshot && undoArmed) dropUndo();
   /* Before the timer, not inside it: the next draw can be this same tick
      (a set ticked and its card redrawn), and it must not read the history
      from before the write. See logChanged for what `scope` may claim. */
@@ -1176,7 +1186,9 @@ function save(scope) {
    must never be the reason a set logged right before closing the tab is
    lost. The conflict itself was never about *whether* to keep local
    changes — only about not overwriting the other tab's newer ones out from
-   under the user without asking first. */
+   under the user without asking first. The one exception is the answer
+   that says the opposite: after "Recargar", writeState refuses everything
+   (`discarding`), this forced write included. */
 function flushSave() {
   if (!saveT && !held) return;
   clearTimeout(saveT);
@@ -1229,7 +1241,19 @@ window.addEventListener('storage', e => {
     toast(
       'Otra pestaña ha guardado cambios. Aquí tienes cambios sin guardar.',
       'Quedarme con lo mío', () => { held = false; writeState(true); },
-      'Recargar', () => location.reload()
+      /* "Recargar" used to be a bare reload, and the reload's own
+         beforeunload/pagehide ran flushSave, which forces through a held
+         write — so it overwrote the very data the user had just chosen to
+         keep. `discarding` stops every write from here to the unload,
+         including a save() that lands in between (a box losing focus). */
+      'Recargar', () => {
+        discarding = true;
+        held = false;
+        clearTimeout(saveT);
+        saveT = null;
+        location.reload();
+      },
+      'conflict'
     );
     return;
   }
@@ -1237,6 +1261,9 @@ window.addEventListener('storage', e => {
   try { next = JSON.parse(e.newValue); } catch (err) { return; }
   if (!next || !next.profiles) return;
   state = next;
+  /* A snapshot taken before this would put back the other tab's sets as
+     well as ours: undo ends at a change arriving from outside, too. */
+  dropUndo();
   migrate();
   applyTheme();
   render();
@@ -1322,7 +1349,44 @@ function setNote(el, text, err) {
 /* A second action (actionLabel2/fn2) is for the rare toast offering two real
    choices rather than one action and a dismiss — today only the two-tab
    conflict, above. Omit them for the common one-action-or-none toast. */
-function toast(msg, actionLabel, fn, actionLabel2, fn2) {
+/* There is one toast box, and any later toast() used to take it over. Two
+   toasts cannot afford that, so they are pinned: the two-tab conflict,
+   which leaves `held` set — every save waiting — until one of its buttons is
+   pressed, so replacing it by the undo toast, the backup nag on the tick
+   that finishes a day or the quota warning left the app holding with no
+   way to answer; and "Actualizar", which the browser never offers again in
+   this session once it is gone (updatefound does not re-fire for a worker
+   that is already waiting). The conflict outranks the update.
+
+   While a pinned toast is showing, anything that would have replaced it
+   waits in `queuedToast` instead — a pinned one in its own slot, anything
+   else in `note`, the latest of each winning — and hideToast shows the
+   pinned slot first. A pinned toast displaced by one of the same kind is
+   simply superseded (it asks the same question), so the slot is never
+   overwritten by a stale copy of it. An ordinary toast a pinned one pushes
+   aside waits in `note` too: the undo it may be offering is still good. */
+const TOAST_RANK = { conflict: 2, update: 1 };
+const queuedToast = { pinned: null, note: null };
+let toastKind = null;
+let toastArgs = null;
+
+function toast(msg, actionLabel, fn, actionLabel2, fn2, kind) {
+  kind = kind || 'note';
+  const args = [msg, actionLabel, fn, actionLabel2, fn2, kind];
+  const showing = !$('toast').hidden && toastArgs;
+  const rank = TOAST_RANK[kind] || 0;
+  if (showing) {
+    const shownRank = TOAST_RANK[toastKind] || 0;
+    if (shownRank && rank < shownRank) {
+      if (rank) queuedToast.pinned = args;
+      else queuedToast.note = args;
+      return;
+    }
+    if (shownRank && toastKind !== kind) queuedToast.pinned = toastArgs;
+    else if (!shownRank && rank) queuedToast.note = toastArgs;
+  }
+  toastKind = kind;
+  toastArgs = args;
   $('toastMsg').textContent = msg;
   const act = $('toastAct');
   if (actionLabel) {
@@ -1340,18 +1404,48 @@ function toast(msg, actionLabel, fn, actionLabel2, fn2) {
   } else {
     act2.hidden = true;
   }
+  /* The conflict is a question that holds every save until it is answered,
+     so it has no ✕: dismissing it would leave `held` set with nothing on
+     screen to clear it. "Actualizar" keeps its ✕ — declining is a choice. */
+  $('toastDismiss').hidden = kind === 'conflict';
   $('toast').hidden = false;
 }
-function hideToast() { $('toast').hidden = true; }
+function hideToast() {
+  $('toast').hidden = true;
+  toastKind = null;
+  toastArgs = null;
+  const slot = queuedToast.pinned ? 'pinned' : 'note';
+  const next = queuedToast[slot];
+  queuedToast[slot] = null;
+  if (!next) return;
+  /* An undo that expired while it waited has nothing left to offer. */
+  if (next[5] === 'undo' && !undoSnapshot) { hideToast(); return; }
+  toast.apply(null, next);
+}
 $('toastDismiss').onclick = hideToast;
 
 /* ---------- undo ----------
    Every destructive action asks first, but "yes" used to be the end of it.
    One snapshot of the whole state costs a stringify of something already
    small, and covers the misfire that actually happens: the wrong day, the
-   wrong profile, the wrong block. Offered through the toast, and dropped as
-   soon as the next one replaces it. */
+   wrong profile, the wrong block. Offered through the toast, and ended by
+   the next change of any kind — a set ticked, a box typed, a note, moving
+   to another week — or by a write adopted from another tab. It used to end
+   only when another snapshot replaced it, and the toast never went away by
+   itself: a plan edit's "Deshacer" was still sitting there an hour of
+   training later, and pressing it put back the state from before the edit,
+   every set logged since included, with no second undo (the 2026-09-22
+   audit, plans/060). Ending it early loses nothing; ending it late loses
+   sets. That is also what UNDO_PROMISE, below, has always said. */
 let undoSnapshot = null;
+/* False for the rest of the task that took the snapshot. The action's own
+   writes (purgeRecord / applyPlanDraft / state = …, then commit()) all run
+   synchronously right after snapshotForUndo, so they land while it is
+   unarmed; the first save() after the timer arms it is the next change.
+   Counting saves instead would tie undo to how many a render() issues. A
+   new destructive action has to keep that shape — snapshot, then its
+   writes with no await between — or arm the snapshot itself. */
+let undoArmed = false;
 
 /* What the confirm dialog in front of a snapshot is allowed to promise,
    kept next to the snapshot so the two cannot drift apart. Five dialogs
@@ -1372,14 +1466,25 @@ function snapshotForUndo(what) {
     undoSnapshot = null;
     return;
   }
-  toast(what, 'Deshacer', undoLast);
+  undoArmed = false;
+  setTimeout(() => { if (undoSnapshot) undoArmed = true; }, 0);
+  toast(what, 'Deshacer', undoLast, null, null, 'undo');
+}
+
+function dropUndo() {
+  undoSnapshot = null;
+  undoArmed = false;
+  if (toastKind === 'undo') hideToast();
 }
 
 function undoLast() {
   if (!undoSnapshot) return;
   let restored;
   try { restored = JSON.parse(undoSnapshot); } catch (e) { return; }
+  /* Before the save() below, which would otherwise take it for the next
+     change and try to drop it. */
   undoSnapshot = null;
+  undoArmed = false;
   state = restored;
   migrate();
   applyTheme();
@@ -7216,7 +7321,7 @@ function registerServiceWorker() {
   if (!('serviceWorker' in navigator) || location.protocol.indexOf('http') !== 0) return;
 
   const offerUpdate = sw => {
-    toast('Hay una versión nueva de la app.', 'Actualizar', () => sw.postMessage('skipWaiting'));
+    toast('Hay una versión nueva de la app.', 'Actualizar', () => sw.postMessage('skipWaiting'), null, null, 'update');
   };
 
   navigator.serviceWorker.register('sw.js').then(reg => {
