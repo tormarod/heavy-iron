@@ -60,6 +60,38 @@ the planned RIR ramp is ignored:
 | `1,5 RIR` | 5 | **5** | null (a decimal is not a whole-number RIR) |
 | `Semana 3 RIR 2` | 3 | **3** | 2 |
 | `sufrir 2` | 2 | **2** | null ("rir" inside a word) |
+| `3×10 RIR 2` | 10 | **null** | 2 |
+| `3x8 RIR 2` | 8 | **null** | 2 |
+| `3x5 RIR 2` | 5 | **5** | 2 (the 5 is reps) |
+| `4x12 RIR 1-2` | 12 | **null** | 1 |
+| `5x5 @ 2 RIR` | 2 | 2 | 2 |
+| `4x8, RIR 1` | 1 | 1 | 1 |
+| `2 a 3 RIR` | 3 | **3** | 2 |
+| `de 2 a 3 RIR` | 3 | **3** | 2 |
+| `2 o 3 RIR` | 3 | **3** | 2 |
+| `RIR 1 a 2` | 1 | 1 | 1 |
+| `1 rep en reserva` | 1 | **null** | 1 |
+| `1 repetición en reserva` | 1 | **null** | 1 |
+| `1 repeticion en reserva` | 1 | **null** | 1 |
+| `S3 RIR 2` | 3 | **3** | 2 |
+| `S 3 · RIR 2` | 2 | 2 | 2 |
+| `W3 RIR 2` | 3 | **3** | 2 |
+| `reps 2 RIR` | 2 | 2 | 2 |
+| `2 series, 2 RIR` | 2 | 2 | 2 |
+| `RIR 10 · 2 RIR` | 2 | **null** | 2 (a number above `RIR_MAX` is passed over) |
+| `3x10 a 2 RIR` | 2 | 2 | 2 (the "a" is "at", not a range going down) |
+| `4x8 a 2 RIR` | 2 | 2 | 2 |
+| `Semana 3 a 2 RIR` | 2 | 2 | 2 |
+| `máx 2 RIR` | 2 | 2 | 2 (the "x" of "máx" has no digit in front) |
+| `Pausa 2 s 1 RIR` | 1 | 1 | 1 (an "s" after a number is seconds) |
+| `2 ó 3 RIR` | 3 | **3** | 2 |
+| `series x 5 RIR 2` | 5 | 5 | 5 — the known limit: an "x" with no digit in front refuses nothing |
+
+The rows from `3×10 RIR 2` down were added in the review of #174, over
+two rounds (see Maintenance notes). Where "now" is not bold the row is a
+guard, a label the widened rule must not move; the last row pins a known
+limit instead. "before 058" is the function at `98602ad^`, "now" the one
+at `b15ae87`.
 
 The AI prompt that writes these labels says, word for word, that `r` is
 `"string corto, p.ej. RIR objetivo"` (`js/block-editor.js`, search
@@ -344,3 +376,115 @@ two mutations.
   green. `node test/unit.js`: 1204 passed/0 failed before, 1206
   passed/0 failed after (two new cases). No CRLF introduced (checked with
   `node -e` per AGENTS.md, not Python). Bumped `v126` → `v127`.
+- Step B (executor): drift check against `b15ae87..origin/main` showed
+  only plan 059's `saysDescarga` change in `js/app.js`; `phaseRir` was
+  byte-identical to the excerpt, and 059's "parse on Safari 15" check was
+  on `main`. The rule is written as one exec loop over markers (a
+  consumed prefix group stands in for the lookbehind), with the checks
+  around each number as plain `if`s on `r.slice`. Two choices the plan
+  left open: (1) the decimal check after a number is done in code on the
+  greedy match, not as a lookahead inside the regex — a lookahead lets
+  `\d+` backtrack, so "RIR 10.5" would have read 1 and "RIR 2-3,5" 2; and
+  the check before a number is the hint's "not a digit, `.` or `,`", so
+  ".5 RIR" is refused (it is a decimal) and so is a number glued to a
+  full stop ("Semana dura.2 RIR" → null — the safe direction). (2) After
+  "RIR", "objetivo" and the one symbol may come in either order ("RIR:
+  objetivo 2" reads 2 as well as "RIR objetivo: 1-2"). The seed check
+  sweeps `genericPhase` to `MAX_WEEKS` (16 today) rather than a literal 16,
+  and fails if any of its three sources contributes nothing: it compares
+  16 seed, 19 published and 1,632 generic labels. The plan's Test plan
+  says 15 new fixed cases; its list has 16 (the table's nine plus seven
+  extras), and all 16 are in. Also touched, both in `test/unit.js`: the
+  section header gained "plans/062", and a comment in the targetFor
+  section that still said phaseRir reads "a number immediately next to
+  'RIR'" now says what it reads. Mutations: dropping the week-word check
+  FAILed "Semana 3 RIR 2" and "semana3 RIR 2" (both read 3); dropping the
+  whole-token check (prefix group and lookahead) FAILed "sufrir 2" (read
+  2); a third, unasked, made a range read its upper end and the seed
+  check FAILed with 1,514 moved labels — it is not vacuous. All reverted.
+  `node test/unit.js`: 1208 passed/0 failed before, 1225 passed/0 failed
+  after (16 fixed cases and the seed check). Shapes still read the old
+  way, left alone because the table is the contract, and candidates for
+  new rows: "S3 RIR 2" reads 3 (`S` is not a week word), "2 a 3 RIR"
+  reads 3 (a range written with "a" is not a range), and the singular
+  "1 rep en reserva" / "1 repetición en reserva" is not a marker (null).
+- Review of #174 (the plan's author widened the table; executor applied
+  it). Those three candidates became rows, and the rule grew with them:
+  (1) a number that does not count — refused, or above `RIR_MAX` — no
+  longer ends the search; the loop goes on to the number after the
+  marker and to later markers, so "RIR 10 · 2 RIR" reads 2 (and "60 RIR
+  · 2 RIR", null before, reads 2). Rule 6 still bounds what
+  `recordTarget` stores, because nothing above `RIR_MAX` is ever
+  returned, only passed over. (2) A number before a marker whose lead
+  ends in `x`, `X` or `×` (spaces allowed) is refused: it is the reps of
+  sets×reps. (3) `\s+[ao]\s+` joins a range beside the dash class, on
+  both sides. (4) The phrase marker takes
+  `rep|reps|repetici[oó]n|repeticiones`. (5) The week words gained a
+  standalone `s`, `wk` and `w`. 19 fixed cases: the review's 16 plus
+  three expectations its rule text states ("4x8, RIR 1", "1 repeticion
+  en reserva", "S 3 · RIR 2"). The fuzz gained `x`, `×`, `a`, `o`,
+  `rep en reserva`, `S`, `W`, with its assertion unchanged. The seed
+  check passes unchanged. Mutations: dropping the continue-on-over-max
+  FAILed only "RIR 10 · 2 RIR". The review expected "3×10 RIR 2" to fail
+  there too, but its 10 is also refused by the × rule, so it FAILs only
+  with both dropped (checked: five FAILs then). Dropping the ×-lead
+  refusal FAILed "3x5 RIR 2" (read 5). Dropping the a/o separator FAILed
+  "2 a 3 RIR", "de 2 a 3 RIR" and "2 o 3 RIR" (all read 3). All
+  reverted. `node test/unit.js` on `dc56a52`: 1254 before this round,
+  1273 after, 0 failed.
+
+  Found while probing and left for the plan's author, because the table
+  is the contract: the rules as written move five labels that `b15ae87`
+  reads right.
+  - "3x10 a 2 RIR", "4x8 a 2 RIR" and "Semana 3 a 2 RIR" read null
+    (main: 2). The "a" means "at" here, but it joins "10 a 2" into a
+    range whose lead is then refused.
+  - "máx 2 RIR" reads null (main: 2). The × rule refuses the x of
+    "máx".
+  - "Pausa 2 s 1 RIR" reads null (main: 1). The "s" of seconds is read
+    as the week.
+
+  Two fixes were checked in a scratch copy, not applied: an "a"/"o" pair
+  joins a range only when it goes up, and the × rule needs a digit in
+  front of the x (`\d\s*[x×]\s*$`). Together they hold all 49 fixed
+  cases and every seed and generic label, and read the first four of
+  those labels right again. The one label they give up is "series x 5
+  RIR 2", which would read 5. Also still read the old way: "2 ó 3 RIR"
+  → 3. The accented "ó" is the traditional spelling between numerals,
+  and adding it would mean `[aoó]`.
+- Review of #174, second round: the tech lead's decisions on the list
+  above, applied by the executor.
+  (1) "a", "o" and "ó" join a range only going up (the second number
+  greater than the first). A dash still joins either way, so no seed
+  label moves. The side before a marker now finds the number next to
+  the marker first, then looks left for a range it closes, so a pair
+  going down leaves that number standing alone.
+  (2) The sets×reps rule needs a digit in front of the x
+  (`\d\s*[x×]\s*$`). "series x 5 RIR 2" → 5 is the accepted cost, pinned
+  by its own case, named as the known limit.
+  (3) A lone `s`, `w` or `wk` right after a number is a unit, not the
+  week: a lead matching `/\d\s*(?:s|w|wk)\.?\s*$/i` is exempt.
+  (4) The Spanish separator is `[aoó]`.
+
+  Seven new cases: the five former regressions ("3x10 a 2 RIR", "4x8 a
+  2 RIR" and "Semana 3 a 2 RIR" → 2, "máx 2 RIR" → 2, "Pausa 2 s 1 RIR"
+  → 1), "2 ó 3 RIR" → 2 and the known limit. The fuzz draws "ó" too.
+  The seed check passes unchanged.
+
+  Mutations: dropping the ascending check FAILed the three labels where
+  "a" means "at" (null). Dropping the digit in front of the x FAILed
+  "máx 2 RIR" (null) and the known limit (2). Dropping the
+  after-a-number exception FAILed "Pausa 2 s 1 RIR" (null). The five
+  earlier mutations were re-run on the restructured function and still
+  bite: the week-word check FAILs "Semana 3 RIR 2", "semana3 RIR 2",
+  "S3 RIR 2" and "W3 RIR 2"; the whole-token check FAILs "sufrir 2";
+  continue-on-over-max FAILs "RIR 10 · 2 RIR"; the × refusal FAILs
+  "3x5 RIR 2"; the Spanish separator FAILs "2 a 3", "de 2 a 3", "2 o 3"
+  and "2 ó 3". All reverted.
+
+  `node test/unit.js` on `b1c3ac8`: 1277 before this round, 1284 after,
+  0 failed. Two made-up labels still read differently from `b15ae87`, as
+  the decided rules say they should: "2 sem 3 RIR" → null (was 3; "sem"
+  after a number is still the week, since only `s`, `w` and `wk` are
+  exempt) and "RIR 2 a 3,5" → null (was 2; the range ends in a decimal,
+  as with "RIR 2-3,5").
