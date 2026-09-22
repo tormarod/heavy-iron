@@ -7,13 +7,15 @@
  * into a single node:vm context in the same order reproduces that scope
  * closely enough to call the pure functions directly. That context, the
  * document stubs it is built with and the script list are in
- * test/harness.js.
+ * test/harness.js, beside bootApp(), which boots the shell for real so a
+ * test can press a handler and read back what it did (plans/052).
  *
  * This does not replace test/smoke.js. Anything a user could observe — a
  * class on an element, a value surviving a reload, a sheet opening — belongs
  * there, in a real browser. What belongs here is arithmetic and data repair:
- * migrate(), the import validators, the statistics. Those are expensive and
- * imprecise to assert through a browser and cheap to assert here.
+ * migrate(), the import validators, the statistics, and what a handler
+ * writes. Those are expensive and imprecise to assert through a browser and
+ * cheap to assert here.
  */
 const vm = require('node:vm');
 const fs = require('node:fs');
@@ -21,7 +23,7 @@ const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
 
-const { inert, SHELL_SCRIPTS, loadApp } = require('./harness');
+const { inert, SHELL_SCRIPTS, loadApp, bootApp, BOOT_TIME } = require('./harness');
 
 let pass = 0, fail = 0;
 const ok = (name, cond, extra) => {
@@ -187,6 +189,13 @@ const throws = expr => { try { call(expr); return false; } catch (e) { return tr
 console.log('\n== the harness ==');
 ok('every source file loads in one shared scope', call('typeof migrate') === 'function');
 ok('load() seeded a state object', call('!!state && !!state.profiles'));
+/* Said out loud because it was assumed otherwise: `app` is not a running
+   app. Its stub parses nothing, so load()'s first draw fell into the
+   recovery screen, and everything below that uses it — most of this file —
+   runs frozen, with no handler to call. A test that needs a real handler
+   boots with bootApp() (test/harness.js) instead. */
+ok('loadApp() does not boot: load()\'s first draw fell into recovery, so ready is false and frozen true',
+   call('ready') === false && call('frozen') === true, 'ready ' + call('ready') + ', frozen ' + call('frozen'));
 
 /* AGENTS.md's two split rules, checked against the code itself rather than
    against whichever states the draws below happen to walk. Rule 1: app.js,
@@ -356,26 +365,50 @@ ok('rule 2: no guarded file reads what only another guarded file defines, beyond
 /* The same rules, run. js/app.js stubs the entry points of the split files
    it still names, so the app still boots when a worker's precache is
    missing one of them (sw.js adds each shell file on its own and lets a
-   miss go). Each file below is left out in turn and the shell is asked to
-   do what it does on every open — draw — through a block whose deload sits
-   mid-block, with sets ticked either side of it: every week, the days in
-   rotation, and every card redrawn on its own the way a tick redraws it.
-   The recovery screen swallows the throw it answers, so for the walk it is
-   made to let the throw through, and a failure names the draw's own error.
-   Each pass is a precache hole survived. */
-console.log('\n== a precache hole: the shell draws without each guarded file (AGENTS.md rule 1) ==');
+   miss go). Each file below is left out in turn and the shell is booted
+   for real (bootApp, plans/052) and asked to do what it does on every open.
+   First the two things a session cannot do without: load() draws, and a
+   set ticked on the real card is written — the tick reaches further than
+   the draw (the rest timer, a card redrawn on its own, the backup nag), and
+   a shell that draws but cannot tick has still lost the set. Then the draw
+   again, through a block whose deload sits mid-block, with sets ticked
+   either side of it: every week, the days in rotation, and every card
+   redrawn on its own the way a tick redraws it. The recovery screen
+   swallows the throw it answers, so for the walk it is made to let the
+   throw through, and a failure names the draw's own error. Each pass is a
+   precache hole survived, and a file split out tomorrow is walked here the
+   day its script tag lands. */
+console.log('\n== a precache hole: the shell boots, ticks and draws without each guarded file (AGENTS.md rule 1) ==');
 GUARDED_SPLIT.forEach(file => {
   let partial = null, err = null;
-  try { partial = loadApp([file], { drawing: true }); } catch (e) { err = e; }
+  try { partial = bootApp({ omit: [file] }); } catch (e) { err = e; }
   ok('the shell loads without ' + file, !err && !!partial, err && err.message);
   if (!partial) return;
-  const c = expr => vm.runInContext(expr, partial);
+  const c = partial.call;
   appStubs.filter(n => onlyInGuarded.get(n) === file)
     .forEach(name => ok(file + ' absent: ' + name + ' is a callable stub', c('typeof ' + name) === 'function'));
   /* render() answers a throw with the recovery screen, which sets `ready`
-     false, so `ready` is the whole of the first draw's verdict. */
+     false and `frozen` true, so the pair is the whole of the first draw's
+     verdict. */
   const why = () => { try { c('drawApp()'); return 'drawApp() did not throw a second time'; } catch (e) { return e.message; } };
-  ok(file + ' absent: load() drew — ready is true', c('ready') === true, c('ready') === true ? '' : why());
+  ok(file + ' absent: load() drew — ready is true, frozen false', c('ready') === true && c('frozen') === false,
+     c('ready') === true ? 'frozen ' + c('frozen') : why());
+  /* Typed into the first card's first set and ticked, then read back from
+     what save() wrote once its debounce ran out. `ready` after it says the
+     card the tick redrew did not fall into recovery either. */
+  let tick;
+  try {
+    const card = partial.card(0), set = card.set(0);
+    partial.type(set.w, '60');
+    partial.type(set.r, '8');
+    set.tick.onclick();
+    partial.clock.advance(1000);
+    const saved = partial.saved(), p = saved.profiles[saved.activeProfile];
+    tick = { row: p.log[p.activeBlock][c('slot(getProfile().week, currentDay().id)')][card.ex.id][0], ready: c('ready') };
+  } catch (e) { tick = { err: e.message }; }
+  ok(file + ' absent: a set ticked on the real card is written and saved, and the shell is still up',
+     !!tick.row && tick.row.w === '60' && tick.row.r === '8' && tick.row.done === true && tick.ready === true,
+     JSON.stringify(tick));
   const walk = JSON.parse(c(`(function () {
     const p = getProfile(), b = getBlock(), days = dayList(b);
     b.deload = Math.max(2, Math.floor(blockWeeks(b) / 2));
@@ -3329,43 +3362,51 @@ ok('purging one lift drops the objetivo record with the rows and the chip', call
 `) === true);
 
 console.log('\n== plan editor "Guardar cambios": same exercise id on two days is not confused (plans/008 item 1) ==');
-const peSaveProbe = call(`
-  (function() {
-    /* The same shape editPlan.onclick builds: a deep clone of the block,
-       and an origin map filled by walking every day's exercises. The bug
-       this guards against only shows up with the SAME exercise id on two
-       different days, which migrate() allows on purpose. */
-    const block = {
+/* "Editar plan" and "Guardar cambios" themselves, pressed on a booted app,
+   and the log read back from what save() wrote. This used to copy
+   peSave's catch-up loop and run the copy, which could only ever test the
+   copy (plans/052). The bug it guards against only shows up with the SAME
+   exercise id on two different days, which migrate() allows on purpose,
+   and it happened on a save that changed nothing. The profile stands on
+   week 2 so that neither session under test is the one on screen: the draw
+   pads that one out to the plan's three sets. */
+const peSaveBoot = bootApp({ state: {
+  activeProfile: 'hombre',
+  profiles: { hombre: {
+    label: 'Hombre', activeBlock: 'B', blockOrder: ['B'], week: 2, day: 0,
+    blocks: { B: {
       id: 'B', name: 'Block', weeks: 8, deload: 0,
       days: [
         { id: 'd0', name: 'Day A', ex: [{ id: 'e1', n: 'Chest', sets: 3, reps: '10-15' }] },
         { id: 'd1', name: 'Day B', ex: [{ id: 'e1', n: 'Chest', sets: 3, reps: '10-15' }] },
       ],
-    };
-    const profile = {
-      log: { B: {
-        'w1-d0': { e1: [{ w: '50', r: '10', done: true }] },
-        'w1-d1': { e1: [{ w: '60', r: '8', done: true }] },
-      } },
-      rir: { B: {} }, order: { B: {} },
-    };
-
-    const draft = JSON.parse(JSON.stringify(block));
-    const originalDay = new Map();
-    draft.days.forEach(day => day.ex.forEach(ex => originalDay.set(ex, day.id)));
-
-    /* peSave's catch-up loop, run without touching anything in the sheet —
-       the failure this reproduces happened on an unmodified save. */
-    draft.days.forEach(day => {
-      day.ex.forEach(ex => {
-        const from = originalDay.get(ex);
-        if (from && from !== day.id) moveExerciseRecord(profile, 'B', from, day.id, ex.id);
-      });
-    });
-
-    return JSON.parse(JSON.stringify(profile.log.B));
-  })()
-`);
+    } },
+    log: { B: {
+      'w1-d0': { e1: [{ w: '50', r: '10', done: true }] },
+      'w1-d1': { e1: [{ w: '60', r: '8', done: true }] },
+    } },
+  } },
+} });
+/* Both rows staying where they are is also what a save that never ran
+   looks like, so the first assertion is that it did: the handler clears
+   the draft "Editar plan" opened only on its way out, after the block is
+   written back and committed. Not awaited — with nothing in the draft to
+   complain about it runs to its end before it hands back its promise — and
+   a throw is read off the draft rather than left to take the suite down.
+   load()'s own write-back is let land first, so what storage holds after
+   is what "Guardar cambios" wrote. */
+peSaveBoot.clock.advance(1000);
+let peSaveRan = '';
+try {
+  peSaveBoot.$('editPlan').onclick();
+  peSaveRan = peSaveBoot.call('peDraftBlock') ? 'the draft is still open' : '"Editar plan" opened no draft';
+  peSaveBoot.$('peSave').onclick().catch(() => {});
+  if (peSaveBoot.call('peDraftBlock === null && !askResolve')) peSaveRan = '';
+  peSaveBoot.clock.advance(1000);
+} catch (e) { peSaveRan = e.message; }
+const peSaveProbe = (peSaveBoot.saved() || { profiles: { hombre: { log: {} } } }).profiles.hombre.log.B || {};
+ok('"Guardar cambios" ran to its end on the real button: the draft it opened is closed', !peSaveRan,
+   peSaveRan + (peSaveBoot.call('askResolve') ? ' — asked: ' + peSaveBoot.$('askBody').textContent : ''));
 ok('an unmodified save leaves day A\'s rows alone',
    peSaveProbe['w1-d0'] && peSaveProbe['w1-d0'].e1 && peSaveProbe['w1-d0'].e1.length === 1 && peSaveProbe['w1-d0'].e1[0].w === '50',
    JSON.stringify(peSaveProbe));
@@ -5792,6 +5833,237 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
 }
 
 (async () => {
+  /* One turn of the event loop: every promise the app has settled by now
+     has run what it was waiting on. */
+  const settle = () => new Promise(r => setImmediate(r));
+
+  /* Most of this file calls the app's functions on `app`, which never
+     booted, so what a person presses is out of its reach. Each test here
+     boots the shell (bootApp, plans/052), presses the app's own button —
+     the card's tick, "Rellenar", "Borrar este día" — and reads back what it
+     did to the data: the rows, the profile's record, and what save()
+     wrote, read the way the next open reads it, by booting again from it.
+     What a person would see stays in test/smoke.js. */
+  console.log('\n== bootApp(): the shell booted for real, and its own handlers (plans/052) ==');
+  const firstRun = bootApp();
+  ok('a first run boots: load() draws the day, so ready is true and frozen false',
+     firstRun.call('ready') === true && firstRun.call('frozen') === false,
+     'ready ' + firstRun.call('ready') + ', frozen ' + firstRun.call('frozen'));
+  ok('...with a card for every exercise of the day, which loadApp()\'s document never gets as far as',
+     firstRun.call('dayCards.length') > 0 && firstRun.call('dayCards.length') === firstRun.call('exList(currentDay()).length'),
+     firstRun.call('dayCards.length') + ' cards');
+  const unsaved = firstRun.saved();
+  firstRun.clock.advance(1000);
+  ok('...and load()\'s write-back reaches storage when save()\'s debounce runs out on the fake clock, and not before',
+     unsaved === null && !!firstRun.saved() && firstRun.saved().setupDone === false,
+     JSON.stringify({ before: unsaved, after: !!firstRun.saved() }));
+
+  /* What a phone holds once the app has been opened and set up: the first
+     run's own write-back, with setup done. Every boot below starts from a
+     copy, so none of them sees another's writes. */
+  const SEED = JSON.stringify(Object.assign(firstRun.saved(), { setupDone: true }));
+  /* The seed with the first day of the active block logged in week 1 —
+     every exercise, every planned set, ticked a week before the boot — and
+     the profile moved to `at`. One session behind it is all the objetivo
+     needs to answer for week 2. `edit` is handed the profile and the block
+     for anything else a test wants on file before the boot. */
+  const seeded = (at, edit) => {
+    const s = JSON.parse(SEED), p = s.profiles[s.activeProfile], b = p.blocks[p.activeBlock];
+    const day = b.days[0], filed = {};
+    day.ex.forEach((ex, i) => {
+      filed[ex.id] = Array.from({ length: ex.sets }, (_, k) =>
+        ({ w: String(40 + 5 * i), r: '10', done: true, ts: BOOT_TIME - 7 * 864e5 + k * 60000 }));
+    });
+    p.log = { [b.id]: { ['w1-' + day.id]: filed } };
+    Object.assign(p, at);
+    if (edit) edit(p, b);
+    return s;
+  };
+  /* Booted, with load()'s own write-back already landed: otherwise that
+     pending save would carry whatever a press changed to storage, and a
+     press that saves nothing would pass for one that does. */
+  const settled = state => {
+    const boot = bootApp({ state });
+    boot.clock.advance(1000);
+    return boot;
+  };
+  /* The next open of the app, from whatever save() left in storage: a
+     save that never landed opens as a first run, which no test below
+     mistakes for its own data. */
+  const reopen = boot => bootApp({ state: boot.saved() || undefined });
+
+  /* One tick on the real card: the first set of the day's first exercise,
+     nothing typed into it, so that everything below is the tick's own
+     doing — a box typed into first is a write of its own, which starts the
+     session and schedules the save before the tick is pressed. With a
+     session behind it the card was drawn with an objetivo, so the empty
+     weight box was showing the objetivo's weight for that set, and the tick
+     takes it; the rep and RIR boxes it leaves as they were, since a count
+     nobody reported is not a measurement. Pinned until now as tickRow and
+     setHints each on its own (plans/048). */
+  {
+    const boot = settled(seeded({ week: 2, day: 0 }));
+    const want = JSON.parse(boot.call(`JSON.stringify((function () {
+      const p = getProfile(), day = currentDay(), t = targetNow(p, getBlock(), day, exList(day)[0], p.week);
+      return t ? { w: loadText(t.sets[0].w), sets: t.sets.map(x => x.w) } : { w: 'no objetivo', sets: null };
+    })())`));
+    const read = booted => JSON.parse(booted.call(`JSON.stringify((function () {
+      const p = getProfile(), b = getBlock(), k = slot(p.week, currentDay().id), id = exList(currentDay())[0].id;
+      const rec = ((p.obj[b.id] || {})[k] || {})[id];
+      return { row: (((p.log[b.id] || {})[k] || {})[id] || [])[0] || null, record: rec ? rec.sets.map(x => x.w) : null };
+    })())`));
+    const at = boot.clock.now;
+    let err = '', resting = false;
+    try {
+      boot.card(0).set(0).tick.onclick();
+      resting = boot.call('tId') !== null;
+    } catch (e) { err = e.message; }
+    const got = read(boot);
+    ok('a tick on the real card writes its set: done, at the clock\'s time, with the objetivo\'s weight its empty box showed — and no reps or RIR',
+       !err && !!got.row && got.row.w === want.w && got.row.done === true && got.row.ts === at && got.row.r === '' && !('rir' in got.row),
+       err || JSON.stringify({ want: want.w, row: got.row }));
+    ok('...and, as the session\'s first write, files the objetivo that was on screen as its record',
+       !!want.sets && JSON.stringify(got.record) === JSON.stringify(want.sets), JSON.stringify({ want: want.sets, record: got.record }));
+    boot.clock.advance(1000);
+    const back = read(reopen(boot));
+    ok('...and save() writes both, as the next open reads them',
+       JSON.stringify(back) === JSON.stringify(got), JSON.stringify(back));
+    boot.clock.advance((boot.card(0).ex.rest + 185) * 1000);
+    ok('the tick started the real rest timer on the fake clock, and it stops itself three minutes over: no timer is left to hold Node open',
+       resting && boot.call('tId') === null && boot.clock.pending() === 0,
+       'started ' + resting + ', running ' + (boot.call('tId') !== null) + ', timers left ' + boot.clock.pending());
+  }
+
+  /* "Rellenar con el objetivo" (#copyPrev) on a week with a session behind
+     it: each set box of every exercise on the day gets the objetivo's
+     weight for that set, nothing is ticked, and — since writing them starts
+     the session, with no tick — the objetivo each exercise got is filed as
+     its record. The expectation is the rule's own answer (targetNow), asked
+     before the press: the button has no rule of its own, which is its
+     whole point. */
+  {
+    const boot = settled(seeded({ week: 2, day: 0 }));
+    const want = JSON.parse(boot.call(`JSON.stringify(exList(currentDay()).map(ex => {
+      const p = getProfile(), t = targetNow(p, getBlock(), currentDay(), ex, p.week);
+      return t ? t.sets.map(x => loadText(x.w)) : null;
+    }))`));
+    const read = booted => JSON.parse(booted.call(`JSON.stringify((function () {
+      const p = getProfile(), b = getBlock(), k = slot(p.week, currentDay().id);
+      const rows = (p.log[b.id] || {})[k] || {}, recs = (p.obj[b.id] || {})[k] || {};
+      return exList(currentDay()).map(ex => ({
+        w: rows[ex.id] ? rows[ex.id].map(r => r.w) : null,
+        done: !!rows[ex.id] && rows[ex.id].some(r => r.done),
+        record: recs[ex.id] ? recs[ex.id].sets.map(x => loadText(x.w)) : null,
+      }));
+    })())`));
+    let err = '';
+    try { boot.$('copyPrev').onclick(); } catch (e) { err = e.message; }
+    const got = read(boot);
+    ok('"Rellenar" writes each exercise\'s objetivo into its set boxes, set by set, and ticks nothing',
+       !err && want.length > 0 && want.every(w => !!w) &&
+       JSON.stringify(got.map(g => g.w)) === JSON.stringify(want) && got.every(g => !g.done),
+       err || JSON.stringify({ want, got: got.map(g => g.w) }));
+    ok('...and files the objetivo each exercise got as its session\'s record, since writing them started the session',
+       JSON.stringify(got.map(g => g.record)) === JSON.stringify(want), JSON.stringify(got.map(g => g.record)));
+    boot.clock.advance(1000);
+    const back = read(reopen(boot));
+    ok('...and save() writes both, as the next open reads them', JSON.stringify(back) === JSON.stringify(got), JSON.stringify(back));
+  }
+
+  /* "Borrar este día" (#clearDay) on a logged day, its question answered
+     both ways, then "Deshacer" on the toast it leaves. The day is week 1's
+     first, with a session note and an energy filed beside its sets, and the
+     week's second day has a set of its own: the one thing the button must
+     not reach. */
+  {
+    const boot = settled(seeded({ week: 1, day: 0 }, (p, b) => {
+      const d0 = b.days[0].id, d1 = b.days[1].id;
+      p.log[b.id]['w1-' + d1] = { [b.days[1].ex[0].id]: [{ w: '100', r: '8', done: true, ts: BOOT_TIME - 6 * 864e5 }] };
+      p.notes = { [b.id]: { ['w1-' + d0]: 'rodilla izquierda en la hack' } };
+      p.energy = { [b.id]: { ['w1-' + d0]: 'alta' } };
+    }));
+    const read = booted => JSON.parse(booted.call(`JSON.stringify((function () {
+      const p = getProfile(), b = getBlock(), days = dayList(b);
+      const used = d => Object.values((p.log[b.id] || {})[slot(1, d.id)] || {}).reduce((n, rows) => n + rows.filter(rowUsed).length, 0);
+      return { day: used(days[0]), other: used(days[1]), note: getNote(p, b.id, 1, days[0].id), energy: getEnergy(p, b.id, 1, days[0].id) };
+    })())`));
+    /* The dialog is up by the time the press hands back its promise; the
+       button answering it is pressed, and the press is awaited. */
+    const press = async answer => {
+      const out = { asked: false, err: '' };
+      try {
+        const pressing = boot.$('clearDay').onclick();
+        out.asked = boot.call('!!askResolve') && boot.$('askT').textContent === '¿Borrar este día?';
+        boot.$(answer).onclick();
+        await pressing;
+      } catch (e) { out.err = e.message; }
+      return out;
+    };
+    const before = read(boot);
+    const kept = await press('askCancel');
+    ok('"Borrar este día" asks first, and "Cancelar" leaves the day as it was',
+       kept.asked && !kept.err && JSON.stringify(read(boot)) === JSON.stringify(before), JSON.stringify({ kept, now: read(boot) }));
+    const gone = await press('askOk');
+    const cleared = read(boot);
+    ok('..."Borrar" takes the day\'s sets, its note and its energy, and leaves the other day\'s set alone',
+       gone.asked && !gone.err && before.day > 0 && !!before.note && !!before.energy &&
+       cleared.day === 0 && cleared.note === '' && cleared.energy === '' && cleared.other === before.other,
+       JSON.stringify({ gone, before, cleared }));
+    boot.clock.advance(1000);
+    const back = read(reopen(boot));
+    ok('...and save() writes the day gone, as the next open reads it', JSON.stringify(back) === JSON.stringify(cleared), JSON.stringify(back));
+    let undoErr = '';
+    try { boot.$('toastAct').onclick(); } catch (e) { undoErr = e.message; }
+    ok('"Deshacer" on the toast it leaves brings all of it back', !undoErr && JSON.stringify(read(boot)) === JSON.stringify(before),
+       undoErr || JSON.stringify(read(boot)));
+  }
+
+  /* The runtime half of rule 2's standing breach (RULE2_STANDING, near the
+     top): js/review.js builds the review on names only js/diagnostics.js
+     defines, so a precache hole that drops the one and keeps the other
+     leaves "Ver la revisión" throwing — and "+ Nuevo bloque" with it, since
+     the review is offered on the way to the new block's name. Every other
+     hole has to end where a whole shell does, with the block made: through
+     the review when js/review.js is there, straight to the name when it is
+     not (newBlock's typeof test). The files the review cannot open without
+     are read off the standing list, so fixing the breach there moves the
+     expectation here: the list only shrinks. */
+  console.log('\n== a precache hole: "+ Nuevo bloque" → "Ver la revisión" still makes the block (AGENTS.md rules 1 and 2) ==');
+  const reviewNeeds = new Set(RULE2_STANDING.filter(s => s.indexOf('js/review.js reads ') === 0).map(s => s.split(' from ')[1]));
+  for (const file of GUARDED_SPLIT) {
+    const boot = bootApp({ omit: [file], state: seeded({ week: 2, day: 0 }) });
+    let threw = '';
+    const steps = [];
+    try {
+      const making = boot.$('newBlockBtn').onclick().catch(e => { threw = e.message; });
+      /* Whatever is asked answered the way someone who wants the block
+         answers it, and the review, once it is up, closed — which is what
+         resumes the block. */
+      for (let i = 0; i < 4; i++) {
+        await settle();
+        if (boot.call('!!askResolve')) { steps.push(boot.$('askOk').textContent); boot.$('askOk').onclick(); }
+        else if (boot.$('reviewSheet').classList.contains('up')) { steps.push('(revisión)'); boot.$('reviewClose').onclick(); }
+        else break;
+      }
+      await making;
+    } catch (e) { threw = threw || e.message; }
+    const made = boot.call('getProfile().blockOrder.length === 2 && getBlock().name === "Bloque 2"');
+    const how = JSON.stringify({ steps, threw });
+    if (reviewNeeds.has(file)) {
+      /* On one of the standing names and nothing else: any other throw here
+         is a new breach, not the one written down. */
+      const standing = RULE2_STANDING.map(s => s.split(' ')[2] + ' is not defined');
+      ok(file + ' absent: "Ver la revisión" throws and "+ Nuevo bloque" makes nothing — the standing breach, until it moves',
+         standing.indexOf(threw) >= 0 && !made, how);
+    } else if (file === 'js/review.js') {
+      ok(file + ' absent: "+ Nuevo bloque" skips the review it cannot offer and makes the block',
+         !threw && made && steps.indexOf('(revisión)') < 0, how);
+    } else {
+      ok(file + ' absent: "+ Nuevo bloque" → "Ver la revisión" → the review closed makes the block',
+         !threw && made && steps.indexOf('(revisión)') >= 0, how);
+    }
+  }
+
   console.log('\n== requestWakeLock: one rest, one lock — skipped mid-request, doubled up, or re-acquired (plans/008 item 15, plans/013) ==');
   /* A real WakeLockSentinel carries its own .released flag, and the guard
      added in plans/013 reads it — so the fake has to carry one as well. */
@@ -6350,7 +6622,6 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
      "Descargar copia" and "Exportar" write it and read back through
      restoreFromText and loadProfileFromText, their confirmation answered
      yes, since the refusal is the whole bug. */
-  const settle = () => new Promise(r => setImmediate(r));
   console.log('\n== a profile the app grew past PROFILE_LIMITS.blocks comes back from its own backup (plans/010) ==');
   {
     const marks = [];

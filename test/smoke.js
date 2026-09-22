@@ -1880,10 +1880,11 @@ const ok = (name, cond, extra) => {
        and the Diagnóstico all assume of a blank one. Adopting it would
        feed the rule a number the lifter never gave it.
 
-       The rule itself is tickRow's and test/unit.js pins it (plans/048).
-       This is the same contract through the real tick, which the unit
-       suite cannot press: loadApp's inert document hands querySelectorAll
-       an empty array, so there is no row to tick. */
+       The rule itself is tickRow's and test/unit.js pins it (plans/048),
+       and since plans/052 it also presses this same tick through bootApp
+       and pins what the tick writes. What only a browser shows is the other
+       half: the grey "1" standing in the RIR box, unadopted, beside the
+       weight that was. */
     const adopt = await page.evaluate(() => {
       const row = document.querySelectorAll('.ex')[0].querySelector('.set-row');
       const saved = getProfile().log['block-1']['w4-d0'].chestpress[0];
