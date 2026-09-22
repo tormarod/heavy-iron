@@ -1731,6 +1731,7 @@ const ok = (name, cond, extra) => {
       p.notes[id] = { 'w1-d0': 'nota' };
       p.energy[id] = { 'w1-d0': '7' };
       p.order[id] = { 'w1-d0': ['e0'] };
+      p.obj[id] = { 'w1-d0': { e0: { v: 3, sets: [{ w: 10, r: 10, m: '' }] } } };
       localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
     });
     await page.reload({ waitUntil: 'networkidle' });
@@ -1748,10 +1749,13 @@ const ok = (name, cond, extra) => {
     const leftovers = await page.evaluate(() => {
       const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
       const p = s.profiles[s.activeProfile];
-      return ['log', 'rir', 'notes', 'energy', 'order']
+      /* Every part of the record filed by block, read off the app's own
+         table: the list here used to be written out by hand and had no
+         objetivo record in it. */
+      return RECORD_PARTS.filter(part => part.keyedBy !== 'exercise').map(part => part.name)
         .filter(m => p[m] && Object.prototype.hasOwnProperty.call(p[m], 'block-orphan-test'));
     });
-    ok('deleting a block takes its rir/notes/energy/order with it',
+    ok('deleting a block takes every part of its record with it',
        leftovers.length === 0, 'still present in: ' + leftovers.join(', '));
 
     /* The confirm above was raised from inside the still-open block manager
@@ -2972,6 +2976,7 @@ const ok = (name, cond, extra) => {
       pr.notes['block-1'] = { 'w1-d0': 'algo' };
       pr.energy['block-1'] = { 'w1-d0': 'alta' };
       pr.order['block-1'] = { 'w1-d0': ['lat1', 'chestpress'] };
+      pr.obj['block-1'] = { 'w1-d0': { chestpress: { v: 3, sets: [{ w: 40, r: 10, m: '' }] } } };
       localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
     });
     await page.reload({ waitUntil: 'networkidle' });
@@ -2980,12 +2985,17 @@ const ok = (name, cond, extra) => {
     await page.click('#wipe');
     await answerDialog(page, true);
     await page.waitForTimeout(500);
-    ok('wiping the log wipes the RIR, notes, energy and session order with it',
-       await page.evaluate(() => {
-         const pr = JSON.parse(localStorage.getItem('heavy-iron-v1')).profiles.hombre;
-         return !Object.keys(pr.rir).length && !Object.keys(pr.notes).length &&
-                !Object.keys(pr.energy).length && !Object.keys(pr.order).length;
-       }));
+    /* Every part filed by block, off the app's own table. The log is read
+       for sets rather than keys: the session redrawn after the wipe files
+       its empty rows straight back, which is not a set anybody logged. */
+    const wipeLeft = await page.evaluate(() => {
+      const pr = JSON.parse(localStorage.getItem('heavy-iron-v1')).profiles.hombre;
+      return RECORD_PARTS.filter(part => part.keyedBy !== 'exercise')
+        .filter(part => part.name === 'log' ? countProfileSets(pr) > 0 : Object.keys(pr[part.name]).length)
+        .map(part => part.name + ': ' + JSON.stringify(pr[part.name]).slice(0, 200));
+    });
+    ok('wiping the log wipes every part of the record filed by block with it',
+       wipeLeft.length === 0, wipeLeft.join(' | '));
 
     /* Deload on week 4, with weeks 3 and 5 logged: the only evidence there
        is about whether the deload was the right length. */

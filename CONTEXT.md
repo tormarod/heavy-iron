@@ -11,6 +11,14 @@ One person's whole record: their blocks, everything logged against them,
 and their preferences. There are exactly two.
 _Avoid_: user, account
 
+**The profile's record**:
+Everything a profile keeps about what happened, beside its blocks: the
+sets logged, and for each session its note, energy, order and objetivo
+record, plus each exercise's variants. The legacy one-chip RIR is part of
+it until every value has been folded onto the sets.
+_Avoid_: record (alone, which reads as the RÉCORD badge, a best set),
+parallel maps, profile maps
+
 **Block**:
 A training plan of a fixed number of weeks, made of days, each day made of
 exercises with a set count and a rep range.
@@ -45,6 +53,31 @@ _Avoid_: session timestamp, last ticked
 A set logged beyond the number of sets the plan now asks for. It is kept
 and still counts as lifted, but the exercise card hides it.
 _Avoid_: parked set (in prose), overflow set
+
+**Session note**:
+Free text written about one slot: how the day went, not how one lift did.
+_Avoid_: comment, exercise note
+
+**Energy**:
+How the lifter arrived at a slot, one of low, normal or high, asked
+before the session starts. Context only; no estimate reads it.
+_Avoid_: readiness, mood
+
+**Session order**:
+The order a slot's exercises were actually done in, kept only when it
+differs from the plan's.
+_Avoid_: exercise order (which is the plan's), sequence
+
+**Objetivo record**:
+The objetivo that was on screen for a lift in a slot, kept once the
+session starts and never rewritten, so the rule's advice can later be
+told apart from what was done.
+_Avoid_: target history, obj (in prose)
+
+**Variant**:
+A name an exercise has had, with the date it started. Sets logged before
+the current variant began stop feeding its objetivo.
+_Avoid_: rename, alias
 
 **Lift**:
 The exercise a session belongs to. It is normally matched by the

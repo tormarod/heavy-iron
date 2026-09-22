@@ -99,10 +99,10 @@ function normalizeImportedProfile(p) {
      carries reads back off the plain {} above as a block that is already
      there, and `__proto__` sets its prototype instead of adding a property
      (see safeKey, js/app.js, and plans/008 item 2), so a key like that gets
-     a fresh id here. Every other block-id-keyed thing below
-     (log/rir/notes/energy/order/obj, blockOrder, activeBlock) has to follow the
-     same rename, or the block comes back with everything except its own
-     history.
+     a fresh id here. Every other block-id-keyed thing below (each part of
+     the profile's record filed by block, blockOrder, activeBlock) has to
+     follow the same rename, or the block comes back with everything except
+     its own history.
 
      A Map, not a plain object: the raw key is exactly the untrusted string
      this whole function exists to defend against, and `plainObj[bk] = id`
@@ -132,8 +132,9 @@ function normalizeImportedProfile(p) {
     keyMap.set(bk, id);
     /* Not part of normalizeImportedBlock's own return — it has no concept
        of the key it will be filed under. blockId is the profile.blocks key
-       everywhere else in the app (log/rir/notes/energy/order are all keyed
-       by it too), so that is the id kept here, not whatever raw.id says. */
+       everywhere else in the app (every part of the profile's record but
+       the variants is keyed by it too, see RECORD_PARTS), so that is the id
+       kept here, not whatever raw.id says. */
     normalized.id = id;
     normalized.createdAt = txt(raw && raw.createdAt, 40) || new Date().toISOString();
     blocks[id] = normalized;
@@ -202,10 +203,13 @@ function normalizeImportedProfile(p) {
      both the rename and the orphan drop in one pass. `out[id] = …` is safe
      even though `bk` is not: `id` only ever comes from keyMap, which never
      hands back a name safeKey refuses (see safeKey). A falsy entry (a
-     null where a block's map should be) is dropped here for all six alike:
-     the loop above leaves it untouched, and notes and energy used to be the
-     only two that deleted it. */
-  ['log', 'rir', 'notes', 'energy', 'order', 'obj'].forEach(key => {
+     null where a block's map should be) is dropped here for every part
+     alike: the loop above leaves it untouched, and notes and energy used to
+     be the only two that deleted it. The parts filed by block are
+     RECORD_PARTS' less the one keyed by exercise alone, the variants, which
+     are re-keyed on their own below. */
+  RECORD_PARTS.filter(part => part.keyedBy !== 'exercise').forEach(part => {
+    const key = part.name;
     const map = p[key];
     if (!map || typeof map !== 'object') return;
     const out = {};

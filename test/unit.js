@@ -408,10 +408,12 @@ const bareProfile = {
 };
 const migratedBare = call('state = ' + JSON.stringify(bareProfile) + '; migrate(); JSON.parse(JSON.stringify(state));');
 const p = migratedBare.profiles.hombre;
-ok('rir is created when absent', typeof p.rir === 'object' && p.rir !== null);
-ok('notes is created when absent', typeof p.notes === 'object' && p.notes !== null);
-ok('energy is created when absent', typeof p.energy === 'object' && p.energy !== null);
-ok('order is created when absent', typeof p.order === 'object' && p.order !== null);
+/* Every part of the profile's record, read off the table rather than
+   listed here: this list used to stop at order, and missed obj and
+   variants for as long as they existed. */
+call('RECORD_PARTS.map(part => part.name)').forEach(name => {
+  ok(name + ' is created when absent', typeof p[name] === 'object' && p[name] !== null, JSON.stringify(p[name]));
+});
 
 const badOrderProfile = {
   profiles: {
@@ -533,22 +535,18 @@ const populatedRoundTrip = call(`
     const before = JSON.parse(JSON.stringify(profile));
     const after = normalizeImportedProfile(JSON.parse(JSON.stringify(profile)));
 
-    return {
-      sameLog: JSON.stringify(after.log) === JSON.stringify(before.log),
-      sameRir: JSON.stringify(after.rir) === JSON.stringify(before.rir),
-      sameNotes: JSON.stringify(after.notes) === JSON.stringify(before.notes),
-      sameEnergy: JSON.stringify(after.energy) === JSON.stringify(before.energy),
-      sameOrder: JSON.stringify(after.order) === JSON.stringify(before.order),
-      beforeLog: JSON.stringify(before.log), afterLog: JSON.stringify(after.log),
-    };
+    /* Every part of the record, off the table: the hand-written list here
+       stopped at order and never checked obj or variants. */
+    const same = {};
+    RECORD_PARTS.forEach(part => { same[part.name] = JSON.stringify(after[part.name]) === JSON.stringify(before[part.name]); });
+    return { same, beforeLog: JSON.stringify(before.log), afterLog: JSON.stringify(after.log) };
   })()
 `);
 ok('a real week of logged sets round-trips through normalizeImportedProfile unchanged',
-   populatedRoundTrip.sameLog, populatedRoundTrip.beforeLog + ' vs ' + populatedRoundTrip.afterLog);
-ok('...RIR chips too', populatedRoundTrip.sameRir, JSON.stringify(populatedRoundTrip));
-ok('...session notes too', populatedRoundTrip.sameNotes, JSON.stringify(populatedRoundTrip));
-ok('...energy too', populatedRoundTrip.sameEnergy, JSON.stringify(populatedRoundTrip));
-ok('...session order too', populatedRoundTrip.sameOrder, JSON.stringify(populatedRoundTrip));
+   populatedRoundTrip.same.log, populatedRoundTrip.beforeLog + ' vs ' + populatedRoundTrip.afterLog);
+Object.keys(populatedRoundTrip.same).filter(name => name !== 'log').forEach(name => {
+  ok('...' + name + ' too', populatedRoundTrip.same[name], JSON.stringify(populatedRoundTrip.same));
+});
 
 const validBlock = { name: 'B', weeks: 8, deload: 8, days: [{ name: 'D', ex: [{ n: 'Ex', sets: 3, reps: '10-15' }] }] };
 const tooManyBlocksProfile = { blocks: {}, blockOrder: [], log: {} };
@@ -665,7 +663,7 @@ const emptyPlanRestore = call(`
     const b = emptyBlock();
     p.blocks = {}; p.blocks[b.id] = b;
     p.blockOrder = [b.id]; p.activeBlock = b.id;
-    p.log = {}; p.rir = {}; p.notes = {}; p.energy = {}; p.order = {};
+    RECORD_PARTS.forEach(part => { p[part.name] = {}; });
     try {
       const after = normalizeImportedProfile(JSON.parse(JSON.stringify(p)));
       const ab = after.blocks[after.blockOrder[0]];
@@ -2977,7 +2975,7 @@ ok('...and its energy', renamedDayProbe.renamed && renamedDayProbe.energy0 && re
 ok('...and a key that is no slot, or a week outside 1..MAX_WEEKS, is dropped rather than carried',
    renamedDayProbe.noteKeys.length === 2 && renamedDayProbe.energyKeys.length === 2, JSON.stringify(renamedDayProbe));
 
-console.log('\n== moveExLog / moveExRir / moveExOrder merge rather than overwrite (plans/008 items 1, 3) ==');
+console.log('\n== moveExerciseRecord merges rather than overwrites (plans/008 items 1, 3) ==');
 const moveProbe = call(`
   (function() {
     const profile = {
@@ -2988,35 +2986,31 @@ const moveProbe = call(`
       rir: { B: { 'w1-d0': { e1: '1' }, 'w1-d1': { e1: '0' } } },
       order: { B: { 'w1-d0': ['e1', 'e2'], 'w1-d1': ['e3'] } },
     };
-    moveExLog(profile, 'B', 'd1', 'd0', 'e1');
+    moveExerciseRecord(profile, 'B', 'd1', 'd0', 'e1');
     const mergedRows = profile.log.B['w1-d0'].e1;
     const sourceLogGone = !profile.log.B['w1-d1'] || !profile.log.B['w1-d1'].e1;
-
-    moveExRir(profile, 'B', 'd1', 'd0', 'e1');
     const rirKeptTheDestinations = profile.rir.B['w1-d0'].e1 === '1';
-
-    moveExOrder(profile, 'B', 'd1', 'd0', 'e1');
     const orderRemoved = profile.order.B['w1-d1'].indexOf('e1') < 0;
     const orderAdded = profile.order.B['w1-d0'].indexOf('e1') >= 0;
 
     /* Calling it again must be a no-op, not a second overwrite — the
        source has nothing left under this id after the first move. */
-    moveExLog(profile, 'B', 'd1', 'd0', 'e1');
+    moveExerciseRecord(profile, 'B', 'd1', 'd0', 'e1');
     const stillBothRows = profile.log.B['w1-d0'].e1.length === 2;
 
     return { mergedRows: JSON.stringify(mergedRows), sourceLogGone, rirKeptTheDestinations, orderRemoved, orderAdded, stillBothRows };
   })()
 `);
-ok('moveExLog concatenates the destination day\'s own rows with the moved ones, in order',
+ok('moveExerciseRecord concatenates the destination day\'s own rows with the moved ones, in order',
    JSON.parse(moveProbe.mergedRows).length === 2 &&
    JSON.parse(moveProbe.mergedRows)[0].w === '50' && JSON.parse(moveProbe.mergedRows)[1].w === '60',
    moveProbe.mergedRows);
 ok('...and empties the source rather than leaving a stale copy', moveProbe.sourceLogGone, JSON.stringify(moveProbe));
-ok('moveExRir never overwrites an RIR chip the destination already has',
+ok('...never overwrites an RIR chip the destination already has',
    moveProbe.rirKeptTheDestinations, JSON.stringify(moveProbe));
-ok('moveExOrder drops the id from the source day\'s recorded order', moveProbe.orderRemoved, JSON.stringify(moveProbe));
+ok('...drops the id from the source day\'s recorded order', moveProbe.orderRemoved, JSON.stringify(moveProbe));
 ok('...and appends it to the destination\'s', moveProbe.orderAdded, JSON.stringify(moveProbe));
-ok('calling moveExLog again after the move destroys nothing (idempotent once the source is empty)',
+ok('calling moveExerciseRecord again after the move destroys nothing (idempotent once the source is empty)',
    moveProbe.stillBothRows, JSON.stringify(moveProbe));
 
 /* "Enviar a otra sesión" used to move the log, the chips and the order but
@@ -3029,7 +3023,7 @@ const moveObjProbe = call(`
       'w3-D': { E: { v: 3, conf: 'baja', sets: [{ w: 42 }] } },
       'w3-D2': { E: { v: 3, conf: 'media', sets: [{ w: 99 }] } },
     } } };
-    moveExObj(p, 'B', 'D', 'D2', 'E');
+    moveExerciseRecord(p, 'B', 'D', 'D2', 'E');
     return {
       moved: p.obj.B['w2-D2'] && p.obj.B['w2-D2'].E ? p.obj.B['w2-D2'].E.conf : null,
       sourceGone: !p.obj.B['w2-D'] || p.obj.B['w2-D'].E === undefined,
@@ -3038,7 +3032,7 @@ const moveObjProbe = call(`
     };
   })()
 `);
-ok('moveExObj files the objetivo record under the destination day and empties the source',
+ok('moveExerciseRecord files the objetivo record under the destination day and empties the source',
    moveObjProbe.moved === 'alta' && moveObjProbe.sourceGone, JSON.stringify(moveObjProbe));
 ok('...and never overwrites a record the destination day already has',
    moveObjProbe.destinationKept === 'media' && moveObjProbe.sourceGoneWeek3, JSON.stringify(moveObjProbe));
@@ -3046,11 +3040,11 @@ ok('...and never overwrites a record the destination day already has',
 /* `obj` is the second map keyed by exercise under the slot, and it was added
    after both sweeps were written: "borrar registro" used to leave the
    objetivo record standing over rows that no longer exist (plans/025). */
-ok('purgeExLog drops the objetivo record with the rows and the chip', call(`
+ok('purging one lift drops the objetivo record with the rows and the chip', call(`
   (function () {
     const p = { log: { B: { 'w2-D': { E: [{ w: '40', r: '10', done: true }] } } },
                 rir: { B: { 'w2-D': { E: '1' } } }, obj: { B: { 'w2-D': { E: { v: 3, sets: [] } } } } };
-    purgeExLog(p, 'B', 'D', 'E');
+    purgeRecord(p, 'B', { day: 'D', exercise: 'E' });
     return !p.log.B['w2-D'] || p.log.B['w2-D'].E === undefined ? (p.obj.B['w2-D'] === undefined || p.obj.B['w2-D'].E === undefined) : false;
   })()
 `) === true);
@@ -3086,11 +3080,7 @@ const peSaveProbe = call(`
     draft.days.forEach(day => {
       day.ex.forEach(ex => {
         const from = originalDay.get(ex);
-        if (from && from !== day.id) {
-          moveExLog(profile, 'B', from, day.id, ex.id);
-          moveExRir(profile, 'B', from, day.id, ex.id);
-          moveExOrder(profile, 'B', from, day.id, ex.id);
-        }
+        if (from && from !== day.id) moveExerciseRecord(profile, 'B', from, day.id, ex.id);
       });
     });
 
@@ -4044,7 +4034,7 @@ console.log('\n== the log key has one reader as well as one builder (plans/009 i
   })()`);
   ok('...and narrows to one week when asked', oneWeek === 'w2-d1', oneWeek);
 
-  /* purgeSessionMeta's onlyWeek is optional, and the sweep this replaced read
+  /* purgeRecord's week is optional, and the sweep this replaced read
      it with a plain truthiness check. A null that narrowed to nothing would
      purge nothing, silently. */
   const nullWeek = call(`(function () {
@@ -4128,25 +4118,27 @@ console.log('\n== "borrar registro" reaches a week past the cap (plans/009 item 
      MAX_WEEKS. The old sweeps rebuilt keys w1..w16 and looked each one up,
      so anything filed above the cap was silently left behind — a deleted
      day's rows came back if the block was ever lengthened again. */
+  /* Every part filed by block, off the table: the hand-written fixture
+     this replaced had no objetivo record in it. */
   const left = call(`(function () {
-    const p = { log: { b1: { 'w1-d1': { e1: [{}] }, 'w17-d1': { e1: [{}] }, 'w3-d2': { e1: [{}] } } },
-                rir: { b1: { 'w17-d1': { e1: 2 } } },
-                notes: { b1: { 'w17-d1': 'x' } },
-                energy: { b1: {} }, order: { b1: { 'w17-d1': ['e1'] } } };
-    purgeDayLog(p, 'b1', 'd1');
-    return [Object.keys(p.log.b1).join(','), Object.keys(p.rir.b1).length,
-            Object.keys(p.notes.b1).length, Object.keys(p.order.b1).length].join('|');
+    const p = {};
+    RECORD_PARTS.filter(part => part.keyedBy !== 'exercise').forEach(part => {
+      const v = () => part.keyedBy === 'slot' ? (part.name === 'order' ? ['e1'] : 'x') : { e1: [{}] };
+      p[part.name] = { b1: { 'w1-d1': v(), 'w17-d1': v(), 'w3-d2': v() } };
+    });
+    purgeRecord(p, 'b1', { day: 'd1' });
+    return Object.keys(p).map(name => name + ':' + Object.keys(p[name].b1).join(','));
   })()`);
-  ok('purgeDayLog takes the w17 rows, the chips, the note and the order with it, and leaves the other day alone',
-     left === 'w3-d2|0|0|0', left);
+  ok('purging a day takes the w17 entry from every part filed by block, and leaves the other day alone',
+     left.length > 0 && left.every(s => /:w3-d2$/.test(s)), JSON.stringify(left));
 
   const ex = call(`(function () {
     const p = { log: { b1: { 'w17-d1': { e1: [{}], e2: [{}] } } },
                 rir: { b1: { 'w17-d1': { e1: 2, e2: 3 } } } };
-    purgeExLog(p, 'b1', 'd1', 'e1');
+    purgeRecord(p, 'b1', { day: 'd1', exercise: 'e1' });
     return Object.keys(p.log.b1['w17-d1']).join(',') + '|' + Object.keys(p.rir.b1['w17-d1']).join(',');
   })()`);
-  ok('purgeExLog reaches the same week, and takes only its own exercise', ex === 'e2|e2', ex);
+  ok('purging one lift reaches the same week, and takes only its own exercise', ex === 'e2|e2', ex);
 
   /* The editor's purge confirmation quotes these counts, and the purges above
      delete every week the day has. A count that stopped at MAX_WEEKS told
@@ -4165,23 +4157,212 @@ console.log('\n== "borrar registro" reaches a week past the cap (plans/009 item 
 
   const moved = call(`(function () {
     const p = { log: { b1: { 'w17-d1': { e1: [{ w: 1 }] } } } };
-    moveExLog(p, 'b1', 'd1', 'd2', 'e1');
+    moveExerciseRecord(p, 'b1', 'd1', 'd2', 'e1');
     return JSON.stringify(p.log.b1);
   })()`);
-  ok('moveExLog carries a week past the cap across to the other day',
+  ok('moveExerciseRecord carries a week past the cap across to the other day',
      moved === '{"w17-d2":{"e1":[{"w":1}]}}', moved);
 
-  /* moveExOrder's two halves are independent: the destination day can have a
+  /* The session order's move has two independent halves: the destination day can have a
      recorded order in a week the source day has no entry for at all, and the
      exercise still has to join it. Walking only the source's weeks would
      miss that, which is why it walks the weeks either day has. */
   const order = call(`(function () {
     const p = { order: { b1: { 'w1-d1': ['e1', 'e2'], 'w1-d2': ['e9'], 'w17-d2': ['e9'] } } };
-    moveExOrder(p, 'b1', 'd1', 'd2', 'e1');
+    moveExerciseRecord(p, 'b1', 'd1', 'd2', 'e1');
     return JSON.stringify(p.order.b1);
   })()`);
-  ok('moveExOrder drops the id from the source order and appends it to the destination, in every week either has',
+  ok('moving a lift drops its id from the source order and appends it to the destination, in every week either has',
      order === '{"w1-d1":["e2"],"w1-d2":["e9","e1"],"w17-d2":["e9","e1"]}', order);
+}
+
+console.log('\n== RECORD_PARTS: one table for the profile\'s record (plans/046) ==');
+{
+  /* The list used to be written out by hand at every purge, move, install
+     and repair, and each copy left a different map out. The guard is what
+     keeps the table the WHOLE list: a migrated profile, after a week of
+     use through the app's own writers, may carry nothing but the table's
+     parts and the fields below, which are the profile's settings and plan,
+     not its record. A new key on a profile fails here until it is either
+     declared in RECORD_PARTS or added to this list on purpose. A real
+     object, not the source text, so it cannot be fooled by how a write is
+     spelled. */
+  const NON_RECORD = ['label', 'theme', 'blocks', 'blockOrder', 'activeBlock', 'week', 'day'];
+  const guard = call(`(function () {
+    state = defaultState();
+    migrate();
+    const profile = state.profiles.hombre;
+    const block = profile.blocks[profile.blockOrder[0]];
+    const day = block.days[0], ex = day.ex[0];
+    const row = entry(profile, block.id, 1, day.id, ex.id, ex.sets)[0];
+    row.w = '40'; row.r = '10'; row.done = true;
+    setNoteText(profile, block.id, 1, day.id, 'Bien');
+    setEnergy(profile, block.id, 1, day.id, 'alta');
+    setOrder(profile, block.id, 1, day.id, day.ex.map(e => e.id).reverse());
+    recordVariant(profile, ex.id, ex.n, ex.n + ' en máquina', Date.now());
+    migrate();
+    return {
+      parts: RECORD_PARTS.map(part => part.name),
+      keys: Object.keys(state.profiles).map(k => Object.keys(state.profiles[k])),
+    };
+  })()`);
+  const allowed = guard.parts.concat(NON_RECORD);
+  const stray = [].concat(...guard.keys).filter(k => allowed.indexOf(k) < 0);
+  const missing = guard.keys.map(keys => allowed.filter(k => keys.indexOf(k) < 0));
+  ok('a migrated profile holds the table\'s parts and its non-record fields, and nothing else',
+     stray.length === 0, 'not in RECORD_PARTS and not a known field: ' + JSON.stringify(stray));
+  ok('...and every one of them, on every profile', missing.every(m => m.length === 0), JSON.stringify(missing));
+
+  const shape = call(`(function () {
+    const bad = [];
+    const names = new Set();
+    RECORD_PARTS.forEach(part => {
+      if (names.has(part.name)) bad.push(part.name + ': listed twice');
+      names.add(part.name);
+      if (['slot+exercise', 'slot', 'exercise'].indexOf(part.keyedBy) < 0) bad.push(part.name + ': keyedBy ' + part.keyedBy);
+      if ((part.keyedBy === 'slot+exercise') !== (part.merge != null)) bad.push(part.name + ': merge is for parts keyed by exercise under the slot');
+      if (part.merge != null && ['concat', 'keep-destination'].indexOf(part.merge) < 0) bad.push(part.name + ': merge ' + part.merge);
+      if (part.keyedBy === 'exercise' && part.travelsWithBlock) bad.push(part.name + ': not filed by block, cannot travel with one');
+    });
+    return bad;
+  })()`);
+  ok('every entry says how it is keyed, and a merge rule exactly where a move has two values to merge',
+     shape.length === 0, JSON.stringify(shape));
+
+  /* Every case below builds its fixture from the table and checks every
+     part, so an eighth part is covered without editing this section. Block
+     b1 has day d1 in weeks 1, 2 and 17 (past MAX_WEEKS), and day d2 in
+     week 1; block b2 has one slot that nothing below may touch. Under the
+     slot, e1 and e2; the destination d2 already has its own e1. */
+  const FIXTURE = `
+    const destV = part => part.merge === 'concat' ? [{ w: 'dest' }] : 'dest';
+    const srcV = (part, ex, w) => part.merge === 'concat' ? [{ w: ex + '@' + w }] : ex + '@' + w;
+    const slotV = part => part.name === 'order' ? ['e2', 'e1'] : 'x';
+    const fixture = () => {
+      const p = {};
+      RECORD_PARTS.forEach(part => {
+        if (part.keyedBy === 'exercise') { p[part.name] = { e1: [{ n: 'Antes', since: '2026-01-01' }] }; return; }
+        const b1 = {};
+        [1, 2, 17].forEach(w => {
+          b1[slot(w, 'd1')] = part.keyedBy === 'slot' ? slotV(part) : { e1: srcV(part, 'e1', w), e2: srcV(part, 'e2', w) };
+        });
+        b1[slot(1, 'd2')] = part.keyedBy === 'slot' ? slotV(part) : { e1: destV(part) };
+        p[part.name] = { b1: b1, b2: { [slot(1, 'd1')]: part.keyedBy === 'slot' ? slotV(part) : { e1: srcV(part, 'e1', 1) } } };
+      });
+      return p;
+    };
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const byBlock = part => part.keyedBy !== 'exercise';
+  `;
+  const check = body => call(`(function () { ${FIXTURE} const bad = []; ${body} return bad; })()`);
+
+  const wiped = check(`
+    const p = fixture(), before = fixture();
+    purgeRecord(p);
+    RECORD_PARTS.forEach(part => {
+      if (byBlock(part) && !same(p[part.name], {})) bad.push(part.name + ' survived a wipe');
+      if (!byBlock(part) && !same(p[part.name], before[part.name])) bad.push(part.name + ' was reached by a wipe');
+    });`);
+  ok('purgeRecord(profile) empties every part filed by block, and leaves the variants (plans/046 decision 7)',
+     wiped.length === 0, JSON.stringify(wiped));
+
+  const dropped = check(`
+    const p = fixture(), before = fixture();
+    purgeRecord(p, 'b1');
+    RECORD_PARTS.forEach(part => {
+      if (!byBlock(part)) { if (!same(p[part.name], before[part.name])) bad.push(part.name + ' was reached'); return; }
+      if (Object.prototype.hasOwnProperty.call(p[part.name], 'b1')) bad.push(part.name + ' kept the block');
+      if (!same(p[part.name].b2, before[part.name].b2)) bad.push(part.name + ' lost another block');
+    });`);
+  ok('purgeRecord(profile, block) drops the block from every part filed by block, and nothing else',
+     dropped.length === 0, JSON.stringify(dropped));
+
+  const day = check(`
+    const p = fixture(), before = fixture();
+    purgeRecord(p, 'b1', { day: 'd1' });
+    RECORD_PARTS.forEach(part => {
+      if (!byBlock(part)) { if (!same(p[part.name], before[part.name])) bad.push(part.name + ' was reached'); return; }
+      if (!same(Object.keys(p[part.name].b1), [slot(1, 'd2')])) bad.push(part.name + ' left ' + Object.keys(p[part.name].b1));
+      if (!same(p[part.name].b2, before[part.name].b2)) bad.push(part.name + ' lost another block');
+    });`);
+  ok('purgeRecord(profile, block, { day }) takes every week of that day, w17 included, from every part filed by block',
+     day.length === 0, JSON.stringify(day));
+
+  const week = check(`
+    const p = fixture(), before = fixture();
+    purgeRecord(p, 'b1', { day: 'd1', week: 2 });
+    RECORD_PARTS.forEach(part => {
+      if (!byBlock(part)) { if (!same(p[part.name], before[part.name])) bad.push(part.name + ' was reached'); return; }
+      const want = Object.keys(before[part.name].b1).filter(k => k !== slot(2, 'd1'));
+      if (!same(Object.keys(p[part.name].b1), want)) bad.push(part.name + ' left ' + Object.keys(p[part.name].b1));
+      if (!same(p[part.name].b2, before[part.name].b2)) bad.push(part.name + ' lost another block');
+    });`);
+  ok('purgeRecord(profile, block, { day, week }) takes that one slot and no other (clearDay)',
+     week.length === 0, JSON.stringify(week));
+
+  const lift = check(`
+    const p = fixture(), before = fixture();
+    purgeRecord(p, 'b1', { day: 'd1', exercise: 'e1' });
+    RECORD_PARTS.forEach(part => {
+      if (part.keyedBy !== 'slot+exercise') {
+        if (!same(p[part.name], before[part.name])) bad.push(part.name + ' is not keyed by exercise under the slot, but changed');
+        return;
+      }
+      [1, 2, 17].forEach(w => {
+        const s = p[part.name].b1[slot(w, 'd1')];
+        if (!s || s.e1 !== undefined) bad.push(part.name + ' kept e1 in week ' + w);
+        if (!s || !same(s.e2, before[part.name].b1[slot(w, 'd1')].e2)) bad.push(part.name + ' lost e2 in week ' + w);
+      });
+      if (!same(p[part.name].b1[slot(1, 'd2')], before[part.name].b1[slot(1, 'd2')])) bad.push(part.name + ' reached another day');
+      if (!same(p[part.name].b2, before[part.name].b2)) bad.push(part.name + ' lost another block');
+    });`);
+  ok('purgeRecord(profile, block, { day, exercise }) takes that lift from every part keyed by it, in every week, and leaves the session order its id (plans/046 decision 6)',
+     lift.length === 0, JSON.stringify(lift));
+
+  const moved = check(`
+    const p = fixture(), before = fixture();
+    moveExerciseRecord(p, 'b1', 'd1', 'd2', 'e1');
+    RECORD_PARTS.forEach(part => {
+      if (part.move) return;   /* its own move; the order's is asserted above */
+      if (part.keyedBy !== 'slot+exercise') {
+        if (!same(p[part.name], before[part.name])) bad.push(part.name + ' is not keyed by exercise under the slot, but changed');
+        return;
+      }
+      const b1 = p[part.name].b1;
+      [1, 2, 17].forEach(w => {
+        const from = b1[slot(w, 'd1')];
+        if (from && from.e1 !== undefined) bad.push(part.name + ' left e1 on the source day in week ' + w);
+        if (!from || !same(from.e2, srcV(part, 'e2', w))) bad.push(part.name + ' moved e2 in week ' + w);
+      });
+      [2, 17].forEach(w => {
+        if (!b1[slot(w, 'd2')] || !same(b1[slot(w, 'd2')].e1, srcV(part, 'e1', w))) bad.push(part.name + ' did not file e1 under d2 in week ' + w);
+      });
+      const merged = b1[slot(1, 'd2')].e1;
+      const want = part.merge === 'concat' ? destV(part).concat(srcV(part, 'e1', 1)) : destV(part);
+      if (!same(merged, want)) bad.push(part.name + ' merged into the destination as ' + JSON.stringify(merged));
+      if (!same(p[part.name].b2, before[part.name].b2)) bad.push(part.name + ' reached another block');
+    });`);
+  ok('moveExerciseRecord carries the lift across in every part keyed by it, merging by each part\'s rule, and leaves the rest',
+     moved.length === 0, JSON.stringify(moved));
+
+  const installed = check(`
+    const src = fixture(), p = {}, data = {};
+    RECORD_PARTS.forEach(part => { if (byBlock(part)) data[part.name] = src[part.name].b1; });
+    installBlockData(p, 'nuevo', data);
+    RECORD_PARTS.forEach(part => {
+      const filed = !!(p[part.name] && p[part.name].nuevo);
+      if (filed !== !!part.travelsWithBlock) bad.push(part.name + (filed ? ' was filed' : ' was not filed'));
+    });`);
+  ok('installBlockData files exactly the parts that travel with a block, whatever it is handed',
+     installed.length === 0, JSON.stringify(installed));
+
+  const ensured = check(`
+    const p = { blocks: {}, log: 'not-an-object', rir: null };
+    ensureRecord(p);
+    RECORD_PARTS.forEach(part => {
+      if (!p[part.name] || typeof p[part.name] !== 'object') bad.push(part.name + ' is ' + JSON.stringify(p[part.name]));
+    });`);
+  ok('ensureRecord gives every part an object, missing or malformed', ensured.length === 0, JSON.stringify(ensured));
 }
 
 console.log('\n== sessionsOf: the one reading of the log (plans/038) ==');
@@ -4570,12 +4751,12 @@ console.log('\n== the history cache: one read per question, dropped by the write
       p.log.A[slot(4, 'd1')] = { bp: [{ w: '70', r: '8', done: true, ts: Date.now() }] };  /* copyPrev + a tick, as one broad write */
       commit(); out.write = before !== read(p) && sessionsOf(p, ${Q}).length === 4;
       p = cacheFixture(); before = read(p);
-      delete p.log.A[slot(3, 'd1')]; purgeSessionMeta(p, 'A', 'd1', 3);  /* clearDay */
+      purgeRecord(p, 'A', { day: 'd1', week: 3 });  /* clearDay */
       commit(); out.clearDay = sessionsOf(p, ${Q}).length === 2;
       p = cacheFixture(); read(p);
-      purgeExLog(p, 'A', 'd1', 'bp'); commit(); out.purge = sessionsOf(p, ${Q}).length === 0;
+      purgeRecord(p, 'A', { day: 'd1', exercise: 'bp' }); commit(); out.purge = sessionsOf(p, ${Q}).length === 0;
       p = cacheFixture(); read(p);
-      moveExLog(p, 'A', 'd1', 'd2', 'bp'); commit(); out.move = sessionsOf(p, ${Q}).every(s => s.day === 'd2');
+      moveExerciseRecord(p, 'A', 'd1', 'd2', 'bp'); commit(); out.move = sessionsOf(p, ${Q}).every(s => s.day === 'd2');
       p = cacheFixture(); read(p);
       /* The plan editor lands a clone of the block: one set fewer makes the
          second logged set an extra one. */
@@ -4591,7 +4772,7 @@ console.log('\n== the history cache: one read per question, dropped by the write
       out.newBlock = sessionsOf(p, ${Q}).length === 4;
       deleteBlocks(p, ['B']); out.deleteBlock = sessionsOf(p, ${Q}).length === 3;
       p = cacheFixture(); read(p);
-      p.log = {}; p.rir = {}; commit(); out.wipe = sessionsOf(p, ${Q}).length === 0;
+      purgeRecord(p); commit(); out.wipe = sessionsOf(p, ${Q}).length === 0;
       return JSON.stringify(out);
     })()`));
     ok('every broad write is read at once: a written slot, clearDay, purge, move, the plan\'s set count, the deload week, a new and a deleted block, wipe',
@@ -4615,7 +4796,7 @@ console.log('\n== the history cache: one read per question, dropped by the write
       /* Undo puts back a snapshot of the whole state. */
       p = cacheFixture(); sessionsOf(p, ${Q});
       snapshotForUndo('x');
-      purgeExLog(p, 'A', 'd1', 'bp'); commit();
+      purgeRecord(p, 'A', { day: 'd1', exercise: 'bp' }); commit();
       out.purged = sessionsOf(getProfile(), ${Q}).length === 0;
       undoLast();
       out.undo = sessionsOf(getProfile(), ${Q}).length === 3;
