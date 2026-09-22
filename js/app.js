@@ -1848,7 +1848,7 @@ $('themeBtn').onclick = () => {
    that file's registration unmade, and an unregistered sheet still opens and
    still closes on Escape with the default closeSheet. That is what lets
    app.js stop naming closeQr and closeReview at all: the structure now
-   covers the hole a no-op stub used to (AGENTS.md rule (a)). */
+   covers the hole a no-op stub used to (AGENTS.md's split rule 1). */
 const sheets = Object.create(null);   /* id -> { onClose } */
 const sheetStack = [];                /* [{ id, returnTo }], bottom to top */
 
@@ -5271,8 +5271,8 @@ function openExMenu(ctx, ex, i) {
   };
 
   /* js/calculator.js is a split file, so `openCalc` can be missing from a
-     shell with a precache hole — a guarded call, not a bare one (AGENTS.md
-     rule (a)). A row that does nothing is the cost; a card that throws
+     shell with a precache hole — a guarded call, not a bare one (AGENTS.md's
+     split rule 1). A row that does nothing is the cost; a card that throws
      mid-session is not. */
   $('exMenuCalc').onclick = () => {
     closeSheet('exMenuSheet');
