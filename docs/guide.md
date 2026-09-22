@@ -483,7 +483,12 @@ charge, the line simply isn't there.
   badge is the one you see.
 - **The footer totals the session**: sets done, kilos moved (weight ×
   reps over every completed set), records, and the date you last logged
-  something on this day.
+  something on this day. Once every set is ticked it also names the
+  session after this one: the next day, or after a week's last day the
+  first day of the week after. The last day of the block's last week names
+  no week past the end. If there is a later block in the picker, the line
+  points to its first day, week 1. If there isn't, it points to
+  **+ Nuevo bloque** under **Plan**.
 - **The rest timer** can be nudged with **−30**/**+30** when the machine
   is still busy, and **Aviso sonoro** turns on the alarm at zero for when the phone
   is face-down or you are wearing headphones. One beep is easy to miss

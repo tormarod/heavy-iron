@@ -3860,7 +3860,7 @@ function drawApp() {
      on screen (plans/041). */
   $('beyond').hidden = !stranded;
 
-  drawSessionFoot(profile, days);
+  drawSessionFoot(profile, block, days);
 }
 
 /* ---------- what a card decides ----------
@@ -4546,7 +4546,7 @@ function drawCard(exId) {
        was — creating it is what the press was for. */
     if (focusDrop || focusSetup) takeFocusMark(fresh);
     else if (at) applyFocusPath(fresh, at);
-    drawSessionFoot(profile, days);
+    drawSessionFoot(profile, block, days);
     refreshWeekDot(profile, block);
     drawDeloadCheck(profile, block);
   } catch (e) {
@@ -4554,11 +4554,33 @@ function drawCard(exId) {
   }
 }
 
+/* Where the session after this one is, said once every set is ticked. The
+   last day of a week wraps to the first day of the next — and used to wrap
+   past the last week too, so the final session of an eight-week block
+   promised a "semana 9" the week bar has no button for. Past the block's
+   end there is no week to name: the next block in blockOrder, which is the
+   picker's order and the order "+ Nuevo bloque" appends in, or the button
+   that makes one when there is none. Takes the week being drawn, which
+   drawApp has already pulled back inside the block. */
+function nextSessionLine(profile, block, days) {
+  if (profile.day < days.length - 1) return 'Siguiente: ' + days[profile.day + 1].name + '.';
+  if (profile.week < blockWeeks(block)) return 'Siguiente: ' + days[0].name + ', semana ' + (profile.week + 1) + '.';
+  const order = profile.blockOrder || [];
+  const at = order.indexOf(block.id);
+  const nextId = at >= 0 ? order[at + 1] : undefined;
+  if (!nextId || !profile.blocks[nextId]) return 'Fin del bloque: crea el siguiente con "+ Nuevo bloque", en Plan.';
+  /* A block with every day retired has no first day to name; drawApp
+     brings one back when it is opened, so the block alone is enough. */
+  const first = dayList(profile.blocks[nextId])[0];
+  return 'Fin del bloque. Siguiente: ' + (first ? first.name + ', ' : '') +
+    'semana 1 de "' + blockPickerLabel(profile, nextId) + '".';
+}
+
 /* The progress bar and the line under the session are sums over the cards,
    not over the log: each card recorded its own contribution as it was built,
    so this costs one pass over dayCards whether it follows a full draw or a
    single card being swapped. */
-function drawSessionFoot(profile, days) {
+function drawSessionFoot(profile, block, days) {
   let total = 0, doneN = 0, tonnage = 0, prs = 0, lastTs = 0;
   dayCards.forEach(c => {
     total += c.n;
@@ -4575,7 +4597,7 @@ function drawSessionFoot(profile, days) {
   if (prs) extra.push(prs === 1 ? '1 récord personal' : prs + ' récords personales');
   if (lastTs) extra.push('último registro ' + new Date(lastTs).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }));
   const head = doneN === total
-    ? 'Sesión completa — ' + total + ' series registradas. Siguiente: ' + days[(profile.day + 1) % days.length].name + (profile.day === days.length - 1 ? ', semana ' + (profile.week + 1) : '') + '.'
+    ? 'Sesión completa — ' + total + ' series registradas. ' + nextSessionLine(profile, block, days)
     : doneN + ' de ' + total + ' series hechas. Llega al tope del rango en todas las series y sube el peso el próximo día.';
   $('note').textContent = head + (extra.length ? ' · ' + extra.join(' · ') + '.' : '');
 }
