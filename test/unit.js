@@ -3750,6 +3750,68 @@ ok('the active block changing changes the key', sk.afterBlock !== sk.base, JSON.
 ok('the active profile changing changes the key', sk.afterProfile !== sk.base, JSON.stringify(sk));
 ok('going back to the same session returns the original key', sk.backToBase === sk.base, JSON.stringify(sk));
 
+console.log('\n== the footer names the next session, and a block ends at its own last week ==');
+/* The last day of an eight-week block used to say "Siguiente: …, semana
+   9": the wrap to the next week never asked how many weeks the block had.
+   Probed against a bare state like sessionOnScreen above, and shortened to
+   five weeks so a hard-coded 8 could not pass for blockWeeks. */
+const nextProbe = call(`
+  (function () {
+    if (typeof nextSessionLine !== 'function') return { missing: true };
+    const saved = state;
+    state = defaultState();
+    migrate();
+    const profile = state.profiles[state.activeProfile];
+    const block = profile.blocks[profile.activeBlock];
+    block.weeks = 5;
+    const days = dayList(block);
+    const last = days.length - 1;
+    const at = (w, d) => { profile.week = w; profile.day = d; return nextSessionLine(profile, block, days); };
+    const out = { names: days.map(d => d.name), weeks: blockWeeks(block) };
+    out.midWeek = at(2, 0);
+    out.lastDay = at(4, last);
+    out.lastWeek = at(5, last);
+    out.lastWeekMidDay = at(5, 0);
+
+    /* A block after this one, the way "+ Nuevo bloque" leaves it: pushed
+       onto blockOrder. Its first live day is named, a retired one is not. */
+    const next = JSON.parse(JSON.stringify(block));
+    next.id = 'block-next';
+    next.name = 'Bloque 2';
+    next.days[0].off = true;
+    profile.blocks[next.id] = next;
+    profile.blockOrder.push(next.id);
+    out.nextFirst = dayList(next)[0].name;
+    out.intoNext = at(5, last);
+    out.beforeEnd = at(4, last);
+    /* The block being trained is the later one: nothing comes after it. */
+    profile.activeBlock = next.id;
+    profile.week = 5;
+    profile.day = dayList(next).length - 1;
+    out.fromNewest = nextSessionLine(profile, next, dayList(next));
+    state = saved;
+    return out;
+  })()
+`);
+if (nextProbe.missing) ok('nextSessionLine exists', false);
+else {
+  const n = nextProbe.names;
+  ok('mid-week, the next day of the same week', nextProbe.midWeek === 'Siguiente: ' + n[1] + '.', nextProbe.midWeek);
+  ok('the last day of a week wraps to the first day of the next',
+     nextProbe.lastDay === 'Siguiente: ' + n[0] + ', semana 5.', nextProbe.lastDay);
+  ok('the last day of the last week names no week past the block',
+     !/semana 6/.test(nextProbe.lastWeek) && nextProbe.lastWeek === 'Fin del bloque: crea el siguiente con "+ Nuevo bloque", en Plan.',
+     nextProbe.lastWeek);
+  ok('the last week still moves day to day before its last day',
+     nextProbe.lastWeekMidDay === 'Siguiente: ' + n[1] + '.', nextProbe.lastWeekMidDay);
+  ok('with a later block in blockOrder, its first live day, week 1',
+     nextProbe.intoNext === 'Fin del bloque. Siguiente: ' + nextProbe.nextFirst + ', semana 1 de "Bloque 2".', nextProbe.intoNext);
+  ok('a later block does not change a week that is not the last',
+     nextProbe.beforeEnd === 'Siguiente: ' + n[0] + ', semana 5.', nextProbe.beforeEnd);
+  ok('the newest block ends with "+ Nuevo bloque", not a wrap to an older one',
+     /^Fin del bloque: crea el siguiente/.test(nextProbe.fromNewest), nextProbe.fromNewest);
+}
+
 console.log('\n== seed plans match their published block files (plans/008 item 12) ==');
 /* js/data.js:6-9 asks whoever edits the seed plans by hand to also
    regenerate blocks/hombre-bloque-1.json and blocks/mujer-bloque-1.json — a

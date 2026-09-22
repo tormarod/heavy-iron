@@ -131,8 +131,8 @@ objetivo, built on the block before it.
   [During the session](#during-the-session).
 - **Weight drops on any set**: record a dropset, or the weight you had to
   strip off to finish the reps, without inventing a set that wasn't there.
-  Marking a drop as *forzado* stops the automatic weight increase next
-  week — see [Weight drops](#weight-drops).
+  Marking a drop as *forzado* makes the [Diagnóstico](#diagnóstico) read
+  that session as one taken to failure — see [Weight drops](#weight-drops).
 - **Light and dark**, following the phone unless you override it under
   **Más → Tema** — a tap cycles automático, claro and oscuro.
 - **Backup / restore**: download a `.json` file with both profiles'
@@ -483,7 +483,12 @@ charge, the line simply isn't there.
   badge is the one you see.
 - **The footer totals the session**: sets done, kilos moved (weight ×
   reps over every completed set), records, and the date you last logged
-  something on this day.
+  something on this day. Once every set is ticked it also names the
+  session after this one: the next day, or after a week's last day the
+  first day of the week after. The last day of the block's last week names
+  no week past the end. If there is a later block in the picker, the line
+  points to its first day, week 1. If there isn't, it points to
+  **+ Nuevo bloque** under **Plan**.
 - **The rest timer** can be nudged with **−30**/**+30** when the machine
   is still busy, and **Aviso sonoro** turns on the alarm at zero for when the phone
   is face-down or you are wearing headphones. One beep is easy to miss
