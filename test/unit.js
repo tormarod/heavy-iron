@@ -944,6 +944,373 @@ const migratedLangEn = call('state = ' + JSON.stringify(okLangProfile) + '; migr
 ok('...while a known one, en, is kept — the hook the English version will read',
    migratedLangEn.prefs.lang === 'en', migratedLangEn.prefs.lang);
 
+console.log('\n== storage no writer produced (plans/067) ==');
+/* localStorage is not an import: nothing checks it the way
+   normalizeImported* checks a file, so migrate() is the only repair between
+   what is on disk and the first draw. Every case here is a shape no writer
+   in the app produces — a hand-edited backup restored long ago, an
+   extension, a bug in some later release — and each one used to cost a
+   training history, another profile's plan, or Object.prototype. Parsed
+   inside the sandbox the way load() parses storage: only JSON.parse makes
+   '__proto__' an own key (case 6), where an object literal would set the
+   prototype instead. The state the section before left is put back at the
+   end, so nothing after this reads a state built here. */
+call('__before067 = state;');
+const fromStorage = (stored, then) => call('state = JSON.parse(' +
+  JSON.stringify(typeof stored === 'string' ? stored : JSON.stringify(stored)) + '); migrate(); ' + then);
+
+/* 1. The "no blocks" branch handed out the seed's own blocks object, and the
+   seed is chosen by name, then by place, so two profiles can land on the
+   same one: `a` in first place shares hombre's with hombre, and `b` in
+   second place shares mujer's with mujer. Each pair held ONE plan between
+   them, so editing either rewrote the other's. The record under the seed's
+   id is kept (decision 1): a blockless profile only comes out of damaged
+   storage, and the seed plan is the one its record still matches. */
+[['a', 'hombre'], ['mujer', 'b']].forEach(([first, second]) => {
+  const pair = first + ' and ' + second;
+  const seedCopy = JSON.parse(fromStorage({
+    activeProfile: first,
+    profiles: {
+      [first]: { blocks: {}, log: { 'block-1': { 'w1-d0': { chestpress: [{ w: '50', r: '8', done: true }] } } } },
+      [second]: { blocks: {} },
+    },
+  }, `(() => {
+    const a = state.profiles[${JSON.stringify(first)}].blocks['block-1'];
+    const h = state.profiles[${JSON.stringify(second)}].blocks['block-1'];
+    const before = h.name + ' | ' + h.days[0].ex[0].n;
+    a.name = 'Editado';
+    a.days[0].ex[0].n = 'Otro nombre';
+    return JSON.stringify({
+      both: !!a && !!h, same: a === h, sameDays: a.days === h.days,
+      before: before, after: h.name + ' | ' + h.days[0].ex[0].n,
+      record: sessionsOf(state.profiles[${JSON.stringify(first)}], { weeks: 'logged' })
+        .map(s => s.block + '/' + s.week + '/' + s.day + '/' + s.lift),
+    });
+  })()`));
+  ok('two blockless profiles on one seed (' + pair + ') each get a copy of its blocks, not one object between them (plans/067)',
+     seedCopy.both && !seedCopy.same && !seedCopy.sameDays, JSON.stringify(seedCopy));
+  ok('...so renaming one plan, or an exercise in it, leaves the other plan as it was (' + pair + ')',
+     seedCopy.after === seedCopy.before, JSON.stringify({ before: seedCopy.before, after: seedCopy.after }));
+  ok('...and the record a blockless profile carried is kept, read against the seed plan it matches (' + pair + ')',
+     JSON.stringify(seedCopy.record) === '["block-1/1/d0/chestpress"]', JSON.stringify(seedCopy.record));
+});
+
+/* 2. An id-less day ahead of the day that holds 'd0' used to be handed 'd0'
+   itself, and the rows filed under it with it, while the day that had
+   logged them was renamed 'd1' and opened empty. */
+const dayClaim = JSON.parse(fromStorage({
+  activeProfile: 'hombre',
+  profiles: { hombre: {
+    blocks: { b1: { name: 'B', weeks: 8, deload: 0, days: [
+      { name: 'Sin id', ex: [{ id: 'e1', n: 'Uno', sets: 3, reps: '10' }] },
+      { id: 'd0', name: 'Con id', ex: [{ id: 'e2', n: 'Dos', sets: 3, reps: '10' }] },
+    ] } },
+    blockOrder: ['b1'], activeBlock: 'b1',
+    log: { b1: { 'w1-d0': { e2: [{ w: '50', r: '8', done: true }] } } },
+  } },
+}, `(() => {
+  const p = state.profiles.hombre, days = p.blocks.b1.days;
+  return JSON.stringify({
+    ids: days.map(d => d.id),
+    filed: Object.keys(p.log.b1),
+    owner: sessionsOf(p, { weeks: 'logged' }).map(s => days.find(d => d.id === s.day).name + '/' + s.lift),
+  });
+})()`));
+ok('a day keeps the id it holds when an id-less day ahead of it would have taken it (plans/067)',
+   dayClaim.ids[1] === 'd0', JSON.stringify(dayClaim.ids));
+ok('...the id-less day gets a fresh id, one no other day claims',
+   !!dayClaim.ids[0] && dayClaim.ids[0] !== 'd0' && new Set(dayClaim.ids).size === 2, JSON.stringify(dayClaim.ids));
+ok('...and the rows filed under d0 are still the history of the day that logged them',
+   JSON.stringify(dayClaim.filed) === '["w1-d0"]' && JSON.stringify(dayClaim.owner) === '["Con id/e2"]',
+   JSON.stringify(dayClaim));
+
+/* 3. The same within a day: an id-less lift took the slug of its name from
+   the lift below it that already held it. The sets tell the two apart. */
+const exClaim = JSON.parse(fromStorage({
+  activeProfile: 'hombre',
+  profiles: { hombre: {
+    blocks: { b1: { name: 'B', weeks: 8, deload: 0, days: [{ id: 'd0', name: 'D', ex: [
+      { n: 'Remo', sets: 3, reps: '10' },
+      { id: 'remo', n: 'Remo', sets: 4, reps: '8' },
+    ] }] } },
+    blockOrder: ['b1'], activeBlock: 'b1',
+    log: { b1: { 'w1-d0': { remo: [{ w: '60', r: '8', done: true }] } } },
+  } },
+}, 'JSON.stringify(state.profiles.hombre.blocks.b1.days[0].ex.map(e => ({ id: e.id, sets: e.sets })))'));
+ok('an exercise keeps the id it holds when an id-less one above it slugs to the same id (plans/067)',
+   exClaim[1].id === 'remo' && exClaim[1].sets === 4, JSON.stringify(exClaim));
+ok('...and the id-less one gets a fresh id instead',
+   !!exClaim[0].id && exClaim[0].id !== 'remo', JSON.stringify(exClaim));
+
+/* 4. What the repair was written for: legacy days carry no id at all, their
+   rows were filed by index, and nothing is claimed, so the ids come out
+   exactly as they always did. */
+const legacyIds = JSON.parse(fromStorage({
+  activeProfile: 'hombre',
+  profiles: { hombre: {
+    blocks: { b1: { name: 'B', weeks: 8, deload: 0, days: [
+      { name: 'A', ex: [{ n: 'Uno', sets: 3, reps: '10' }] },
+      { name: 'B', ex: [{ n: 'Dos', sets: 3, reps: '10' }] },
+      { name: 'C', ex: [{ n: 'Tres', sets: 3, reps: '10' }] },
+    ] } },
+    blockOrder: ['b1'], activeBlock: 'b1',
+    log: { b1: { 'w3-d1': { dos: [{ w: '40', r: '10', done: true }] } } },
+  } },
+}, `JSON.stringify({
+  days: state.profiles.hombre.blocks.b1.days.map(d => d.id),
+  ex: state.profiles.hombre.blocks.b1.days.map(d => d.ex[0].id),
+  sessions: sessionsOf(state.profiles.hombre, { weeks: 'logged' }).map(s => s.week + '/' + s.day + '/' + s.lift),
+})`));
+ok('legacy days with no id at all still come out exactly d0, d1, d2 (plans/067)',
+   JSON.stringify(legacyIds.days) === '["d0","d1","d2"]', JSON.stringify(legacyIds.days));
+ok('...their id-less exercises still take the slug of their name',
+   JSON.stringify(legacyIds.ex) === '["uno","dos","tres"]', JSON.stringify(legacyIds.ex));
+ok('...and a row filed under w3-d1 by index still reads as the second day\'s',
+   JSON.stringify(legacyIds.sessions) === '["3/d1/dos"]', JSON.stringify(legacyIds.sessions));
+
+/* 5. typeof calls a list an object. Every part of the record stored as []
+   was kept as one: a tick then wrote its block onto the array as a string
+   key, which JSON.stringify drops, and the session's sets were gone on the
+   next reload. A phase stored as [] had no week in it, and every week read
+   no RIR. Every part at once, read off the table. */
+const listState = { activeProfile: 'hombre', profiles: { hombre: {
+  blocks: { b1: { name: 'B', weeks: 6, deload: 4, phase: [], days: [
+    { id: 'd0', name: 'D', ex: [{ id: 'e1', n: 'Uno', sets: 3, reps: '10' }] },
+  ] } },
+  blockOrder: ['b1'], activeBlock: 'b1',
+} } };
+call('RECORD_PARTS.map(part => part.name)').forEach(name => { listState.profiles.hombre[name] = []; });
+const listsFixed = JSON.parse(fromStorage(listState, `(() => {
+  const p = state.profiles.hombre, b = p.blocks.b1;
+  const shapes = RECORD_PARTS.map(part => part.name + ':' + (Array.isArray(p[part.name]) ? 'list' : typeof p[part.name]));
+  const row = entry(p, 'b1', 1, 'd0', 'e1', 3)[0];
+  row.w = '50'; row.r = '10'; row.done = true;
+  const saved = JSON.parse(JSON.stringify(p));
+  const generic = { weeks: 6, deload: 4, phase: genericPhase(6, 4) };
+  const rirs = [], want = [];
+  for (let w = 1; w <= 6; w++) { rirs.push(phaseRir(b, w)); want.push(phaseRir(generic, w)); }
+  return JSON.stringify({
+    shapes: shapes, phaseIsList: Array.isArray(b.phase), rirs: rirs, want: want,
+    saved: !!(saved.log && saved.log.b1 && saved.log.b1['w1-d0'] && saved.log.b1['w1-d0'].e1),
+  });
+})()`));
+ok('every part of the record stored as a list comes back a map (plans/067)',
+   listsFixed.shapes.every(s => /:object$/.test(s)), listsFixed.shapes.join(' '));
+ok('...so a set ticked into a log that was stored as [] survives being saved',
+   listsFixed.saved, JSON.stringify(listsFixed.shapes));
+ok('a phase stored as a list is replaced by the generic ramp, and each week reads the RIR it prescribes',
+   !listsFixed.phaseIsList && listsFixed.want.some(v => v != null)
+     && JSON.stringify(listsFixed.rirs) === JSON.stringify(listsFixed.want),
+   JSON.stringify({ rirs: listsFixed.rirs, want: listsFixed.want }));
+
+/* 6. A slot key no plan can hold, beside a real lift. The reader handed
+   '__proto__' out as a lift, strengthByExercise found it "in" the block
+   through its plain {} (muscleOf['__proto__'] is Object.prototype) and
+   wrote the week's best onto Object.prototype itself, so every object in
+   the page grew an index key; 'constructor' did the same to Object. The
+   sweep in `finally` takes back anything this case could leave on either,
+   pass or fail, before another section runs: an index key on the sandbox's
+   Object.prototype would answer every later `{}[0]`, and safeKey would
+   start refusing "0". Written as JSON text: an object literal cannot hold
+   '__proto__' as a key. */
+const protoSlotState = '{"activeProfile":"hombre","profiles":{"hombre":{' +
+  '"blocks":{"b1":{"name":"B","weeks":8,"deload":0,"days":[{"id":"d0","name":"D",' +
+  '"ex":[{"id":"e1","n":"Uno","muscle":"Pecho","sets":3,"reps":"10"}]}]}},' +
+  '"blockOrder":["b1"],"activeBlock":"b1",' +
+  '"log":{"b1":{"w1-d0":{"__proto__":[{"w":"50","r":"5","done":true}],' +
+  '"constructor":[{"w":"60","r":"5","done":true}],"e1":[{"w":"40","r":"5","done":true}]}}}}}}';
+const INDEX_KEYS_ON = '[Object.prototype, Object].map(o => Object.getOwnPropertyNames(o).filter(n => /^\\d+$/.test(n)))';
+let protoRead;
+try {
+  protoRead = JSON.parse(fromStorage(protoSlotState, `(() => {
+    const p = state.profiles.hombre, s = p.log.b1['w1-d0'];
+    const lifts = sessionsOf(p, { weeks: 'logged' }).map(x => x.lift);
+    const byEx = strengthByExercise(p, p.blocks.b1);
+    return JSON.stringify({
+      own: ['__proto__', 'constructor'].every(k => Object.prototype.hasOwnProperty.call(s, k) && Array.isArray(s[k])),
+      lifts: lifts, byEx: Object.keys(byEx),
+      indexKeys: ${INDEX_KEYS_ON}, zero: Object.prototype.hasOwnProperty('0'),
+    });
+  })()`));
+} finally {
+  call(INDEX_KEYS_ON + '.forEach((names, i) => names.forEach(n => { delete [Object.prototype, Object][i][n]; }))');
+}
+ok('the fixture holds "__proto__" and "constructor" as own keys of a logged slot, each with rows',
+   protoRead.own, JSON.stringify(protoRead));
+ok('the session reader never hands out a lift key safeKey refuses, and still reads the real lift beside it (plans/067)',
+   JSON.stringify(protoRead.lifts) === '["e1"]', JSON.stringify(protoRead.lifts));
+ok('...strengthByExercise answers for the real lift only',
+   JSON.stringify(protoRead.byEx) === '["e1"]', JSON.stringify(protoRead.byEx));
+ok('...and writes no index key onto Object.prototype or Object (the ninth audit\'s finding 12)',
+   JSON.stringify(protoRead.indexKeys) === '[[],[]]' && protoRead.zero === false, JSON.stringify(protoRead.indexKeys));
+ok('...and nothing of this case is left on either after it', call('JSON.stringify(' + INDEX_KEYS_ON + ')') === '[[],[]]');
+
+/* 7. Case 5 one level down (decision 3, extended after review of #179): a
+   block's map stored as a list, in any part filed by block, or one slot's,
+   in a part filed by lift, took every write as a string key on the array
+   and lost it on the next reload. Two lists are kept by design and stay:
+   a slot of the session order, whose value IS the list, and an exercise's
+   variants. */
+const listDay = [{ id: 'd0', name: 'D', ex: [{ id: 'e1', n: 'Uno', sets: 3, reps: '10' }] }];
+const listBlocks = () => ({ b1: { name: 'B', weeks: 8, deload: 0, days: listDay } });
+const containerState = { activeProfile: 'hombre', profiles: {
+  hombre: { blocks: listBlocks(), blockOrder: ['b1'], activeBlock: 'b1' },
+  mujer: { blocks: listBlocks(), blockOrder: ['b1'], activeBlock: 'b1',
+    order: { b1: { 'w1-d0': ['e1'] } }, variants: { e1: [{ n: 'Uno', since: '2026-09-01' }] } },
+} };
+call('RECORD_PARTS.filter(part => part.keyedBy !== "exercise").map(part => part.name)')
+  .forEach(name => { containerState.profiles.hombre[name] = { b1: [] }; });
+call('RECORD_PARTS.filter(part => part.keyedBy === "slot+exercise").map(part => part.name)')
+  .forEach(name => { containerState.profiles.mujer[name] = { b1: { 'w1-d0': [] } }; });
+const containers = JSON.parse(fromStorage(containerState, `(() => {
+  const h = state.profiles.hombre, m = state.profiles.mujer;
+  const bySlot = RECORD_PARTS.filter(part => part.keyedBy !== 'exercise').map(part => part.name);
+  const byLift = RECORD_PARTS.filter(part => part.keyedBy === 'slot+exercise').map(part => part.name);
+  const blockLists = bySlot.filter(name => Array.isArray(h[name].b1));
+  const slotLists = byLift.filter(name => Array.isArray(m[name].b1 && m[name].b1['w1-d0']));
+  const tick = (p, w) => { const r = entry(p, 'b1', 1, 'd0', 'e1', 3)[0]; r.w = w; r.r = '8'; r.done = true; };
+  tick(h, '50');
+  tick(m, '60');
+  setNoteText(h, 'b1', 1, 'd0', 'Nota');
+  setEnergy(h, 'b1', 1, 'd0', 'alta');
+  const saved = JSON.parse(JSON.stringify(state)), sh = saved.profiles.hombre, sm = saved.profiles.mujer;
+  const ticked = p => (p.log.b1 && p.log.b1['w1-d0'] && p.log.b1['w1-d0'].e1 || []).filter(r => r.done).map(r => r.w).join();
+  return JSON.stringify({
+    blockLists: blockLists, slotLists: slotLists,
+    saved: { hombre: ticked(sh), mujer: ticked(sm),
+      note: sh.notes.b1 && sh.notes.b1['w1-d0'], energy: sh.energy.b1 && sh.energy.b1['w1-d0'] },
+    order: m.order.b1 && m.order.b1['w1-d0'], variants: Array.isArray(m.variants.e1) && m.variants.e1.length,
+  });
+})()`));
+ok('a block\'s map stored as a list comes back a map, in every part filed by block (plans/067)',
+   containers.blockLists.length === 0, 'still lists: ' + containers.blockLists.join());
+ok('...and so does a slot\'s, in every part filed by lift',
+   containers.slotLists.length === 0, 'still lists: ' + containers.slotLists.join());
+ok('...so a set ticked into either, and a note and an energy written into the first, survive being saved',
+   JSON.stringify(containers.saved) === '{"hombre":"50","mujer":"60","note":"Nota","energy":"alta"}',
+   JSON.stringify(containers.saved));
+ok('...while the lists kept by design stay lists: a slot of the session order, and an exercise\'s variants',
+   JSON.stringify(containers.order) === '["e1"]' && containers.variants === 1,
+   JSON.stringify({ order: containers.order, variants: containers.variants }));
+
+/* 8. A day stored as a list passed for one: the id and the exercises the
+   repair wrote onto it were properties JSON.stringify drops, so it came
+   back on every load with a fresh exercise id, and whatever was logged
+   against the last one was orphaned. An exercise stored as a list lost
+   what the repair gave it the same way. Both are dropped now, like null.
+   The second load is the one the bug showed on. */
+const listDays = JSON.parse(fromStorage({ activeProfile: 'hombre', profiles: { hombre: {
+  blocks: {
+    b1: { name: 'Solo listas', weeks: 8, deload: 0, days: [[]] },
+    b2: { name: 'Mixto', weeks: 8, deload: 0, days: [[], { id: 'd1', name: 'Real', ex: [[], { id: 'e1', n: 'Uno', sets: 3, reps: '10' }] }] },
+  },
+  blockOrder: ['b1', 'b2'], activeBlock: 'b2',
+} } }, `(() => {
+  const ids = days => days.map(d => d.id + ':' + (d.ex || []).map(e => e && e.id).join('+'));
+  const first = ids(state.profiles.hombre.blocks.b1.days);
+  const kept = ids(state.profiles.hombre.blocks.b2.days);
+  const saved = ids(JSON.parse(JSON.stringify(state.profiles.hombre.blocks.b2.days)).map(d => d || {}));
+  state = JSON.parse(JSON.stringify(state));
+  migrate();
+  return JSON.stringify({ first: first, second: ids(state.profiles.hombre.blocks.b1.days), kept: kept, saved: saved });
+})()`));
+ok('a day or an exercise stored as a list is dropped, and the real ones beside it keep their ids (plans/067)',
+   JSON.stringify(listDays.kept) === '["d1:e1"]', JSON.stringify(listDays.kept));
+ok('...so every day and exercise left in memory is one that survives being saved',
+   JSON.stringify(listDays.saved) === JSON.stringify(listDays.kept), JSON.stringify(listDays.saved));
+ok('...and a block whose only day was a list gets one real day, whose exercise keeps its id from one load to the next',
+   listDays.first.length === 1 && /^d0:ex-/.test(listDays.first[0]) && JSON.stringify(listDays.second) === JSON.stringify(listDays.first),
+   JSON.stringify({ first: listDays.first, second: listDays.second }));
+
+/* 9. A week the phase table has no entry for read no RIR and showed no
+   goal: `phase: {}`, or a table that stops short of the block. Each such
+   week gets the generic ramp's entry, the way the plan editor fills a
+   block made longer, and an entry that is there is never touched: not the
+   one written by hand, and not one past the block's length. */
+const phaseDays = [{ id: 'd0', name: 'D', ex: [{ id: 'e1', n: 'Uno', sets: 3, reps: '10' }] }];
+const phaseFill = JSON.parse(fromStorage({ activeProfile: 'hombre', profiles: { hombre: {
+  blocks: {
+    b1: { name: 'Mía', weeks: 6, deload: 4, days: phaseDays,
+      phase: { 2: { r: 'RIR 3', t: 'Mía' }, 9: { r: '1 RIR', t: 'Fuera' } } },
+    b2: { name: 'Vacía', weeks: 6, deload: 4, days: phaseDays, phase: {} },
+  },
+  blockOrder: ['b1', 'b2'], activeBlock: 'b1',
+} } }, `(() => {
+  const b1 = state.profiles.hombre.blocks.b1, b2 = state.profiles.hombre.blocks.b2;
+  const generic = genericPhase(6, 4), ramp = { weeks: 6, deload: 4, phase: generic };
+  const weeks = [1, 2, 3, 4, 5, 6];
+  return JSON.stringify({
+    keys: Object.keys(b1.phase), mine: b1.phase[2], beyond: b1.phase[9],
+    filled: weeks.filter(w => w !== 2).every(w => JSON.stringify(b1.phase[w]) === JSON.stringify(generic[w])),
+    rirs: weeks.map(w => phaseRir(b1, w)),
+    want: weeks.map(w => (w === 2 ? 3 : phaseRir(ramp, w))),
+    empty: JSON.stringify(b2.phase) === JSON.stringify(generic),
+  });
+})()`));
+ok('a phase table missing weeks gets the generic ramp\'s entry for each of them, and each reads the RIR it prescribes (plans/067)',
+   phaseFill.filled && phaseFill.want.some(v => v != null) && JSON.stringify(phaseFill.rirs) === JSON.stringify(phaseFill.want),
+   JSON.stringify({ rirs: phaseFill.rirs, want: phaseFill.want, filled: phaseFill.filled }));
+ok('...while an entry that is there is never touched, including one past the block\'s length',
+   JSON.stringify(phaseFill.mine) === '{"r":"RIR 3","t":"Mía"}' && JSON.stringify(phaseFill.beyond) === '{"r":"1 RIR","t":"Fuera"}'
+     && JSON.stringify(phaseFill.keys) === '["1","2","3","4","5","6","9"]',
+   JSON.stringify({ keys: phaseFill.keys, mine: phaseFill.mine, beyond: phaseFill.beyond }));
+ok('...and a phase stored as {} comes back as the whole generic ramp', phaseFill.empty);
+
+/* 10. Case 7 for everything else that is not a map (the orchestrator's call
+   on what case 7 left open). A block's map, or a slot's in a part filed by
+   lift, stored as a string, a number or `true` took no write at all, and
+   the log's first tick threw inside the draw. null is repaired the same
+   way, so the one rule reads the same at every level. What a slot holds by
+   design is not a map either and must stay as it is: a note's or an
+   energy's string, an order's list, and the variants' lists. A repair that
+   reached them would wipe every note. */
+[['a string', 'x'], ['a number', 5], ['true', true], ['null', null]].forEach(([label, bad]) => {
+  const scalarState = { activeProfile: 'hombre', profiles: {
+    hombre: { blocks: listBlocks(), blockOrder: ['b1'], activeBlock: 'b1' },
+    mujer: { blocks: listBlocks(), blockOrder: ['b1'], activeBlock: 'b1',
+      notes: { b1: { 'w1-d0': 'Nota guardada' } }, energy: { b1: { 'w1-d0': 'baja' } },
+      order: { b1: { 'w1-d0': ['e1'] } }, variants: { e1: [{ n: 'Uno', since: '2026-09-01' }] } },
+  } };
+  call('RECORD_PARTS.filter(part => part.keyedBy !== "exercise").map(part => part.name)')
+    .forEach(name => { scalarState.profiles.hombre[name] = { b1: bad }; });
+  call('RECORD_PARTS.filter(part => part.keyedBy === "slot+exercise").map(part => part.name)')
+    .forEach(name => { scalarState.profiles.mujer[name] = { b1: { 'w1-d0': bad } }; });
+  const got = JSON.parse(fromStorage(scalarState, `(() => {
+    const h = state.profiles.hombre, m = state.profiles.mujer;
+    const bySlot = RECORD_PARTS.filter(part => part.keyedBy !== 'exercise').map(part => part.name);
+    const byLift = RECORD_PARTS.filter(part => part.keyedBy === 'slot+exercise').map(part => part.name);
+    const notEmpty = bySlot.filter(name => JSON.stringify(h[name].b1) !== '{}')
+      .concat(byLift.filter(name => JSON.stringify(m[name].b1 && m[name].b1['w1-d0']) !== '{}').map(name => name + ' (slot)'));
+    const byDesign = p => ({ note: getNote(p, 'b1', 1, 'd0'), energy: getEnergy(p, 'b1', 1, 'd0'),
+      order: p.order.b1 && p.order.b1['w1-d0'], variants: p.variants.e1 });
+    const before = byDesign(m);
+    let threw = '';
+    try {
+      [[h, '50'], [m, '60']].forEach(([p, w]) => { const r = entry(p, 'b1', 1, 'd0', 'e1', 3)[0]; r.w = w; r.r = '8'; r.done = true; });
+      setNoteText(h, 'b1', 1, 'd0', 'Nota');
+      setEnergy(h, 'b1', 1, 'd0', 'alta');
+    } catch (e) { threw = e.message; }
+    state = JSON.parse(JSON.stringify(state));
+    migrate();
+    const lifted = p => sessionsOf(p, { weeks: 'logged' }).map(s => s.lift + ':' + s.sets.map(x => x.wLogged).join()).join();
+    const bh = state.profiles.hombre, bm = state.profiles.mujer;
+    return JSON.stringify({
+      notEmpty: notEmpty, threw: threw, before: before, after: byDesign(bm),
+      reloaded: { hombre: lifted(bh), mujer: lifted(bm), note: getNote(bh, 'b1', 1, 'd0'), energy: getEnergy(bh, 'b1', 1, 'd0') },
+    });
+  })()`));
+  ok('a block\'s map stored as ' + label + ' becomes {} in every part filed by block, and so does a slot\'s in every part filed by lift (plans/067)',
+     got.notEmpty.length === 0, 'not {}: ' + got.notEmpty.join(', '));
+  ok('...and a set ticked into each, and a note and an energy written into the first, land and survive a reload (' + label + ')',
+     !got.threw && JSON.stringify(got.reloaded) === '{"hombre":"e1:50","mujer":"e1:60","note":"Nota","energy":"alta"}',
+     got.threw || JSON.stringify(got.reloaded));
+  const designed = '{"note":"Nota guardada","energy":"baja","order":["e1"],"variants":[{"n":"Uno","since":"2026-09-01"}]}';
+  ok('...while what a slot holds by design is kept, before and after the reload: a note, an energy, an order, the variants (' + label + ')',
+     JSON.stringify(got.before) === designed && JSON.stringify(got.after) === designed,
+     JSON.stringify({ before: got.before, after: got.after }));
+});
+call('state = __before067; __before067 = null;');
+
 console.log('\n== normalizeImportedProfile ==');
 
 /* The most important assertion in this section: a profile the app itself
