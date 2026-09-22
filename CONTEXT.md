@@ -49,6 +49,12 @@ The median of the times a session's sets were ticked, so a set ticked
 days later from memory does not move it.
 _Avoid_: session timestamp, last ticked
 
+**Session start**:
+The moment a lift's slot first holds something the lifter put there, a
+typed value or a tick. That is when the objetivo on screen is kept, and
+browsing a day without touching it never starts one.
+_Avoid_: first tick, session open
+
 **Extra set**:
 A set logged beyond the number of sets the plan now asks for. It is kept
 and still counts as lifted, but the exercise card hides it.

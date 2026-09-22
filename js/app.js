@@ -3682,6 +3682,115 @@ function drawApp() {
   drawSessionFoot(profile, days);
 }
 
+/* ---------- what a card decides ----------
+   The three answers below lived as closures inside buildExCard, where the
+   unit suite cannot reach: its document is inert and builds no card, so the
+   tick's contract — adopt the weight, never the RIR — and which hint wins
+   were pinned only in a browser. Each is an answer from its inputs now,
+   and the card paints what they say. */
+
+/* The two record flags of every set on a card, against `bar` — the heaviest
+   weight ever completed on the lift and its best estimated 1RM, both from
+   before this session (bestForExercise), or nothing for a lift never
+   weighed.
+
+   `pr` is a ticked set heavier than the bar, or any weighed one when there
+   is no bar yet. `prE` is a new best estimated 1RM at a weight already
+   lifted: the rep progress double progression is made of, which the weight
+   badge cannot see. Only against an existing estimate — the first session
+   of an exercise already earns the weight badge, and two badges for one
+   first set would devalue both — and never past EST_MAX_REPS, where the
+   estimate stops being one. The weight badge wins when both apply, and
+   matching the bar is not beating it, for either. */
+function recordFlags(bar, rows) {
+  return rows.map(r => {
+    const pr = !!(r.done && !isNaN(num(r.w)) && (!bar || num(r.w) > bar.w));
+    const prE = !pr && !!r.done && !!bar && bar.e != null && hasReps(r) &&
+      num(r.r) <= EST_MAX_REPS && !isNaN(num(r.w)) && est1RM(num(r.w), num(r.r)) > bar.e;
+    return { pr: pr, prE: prE };
+  });
+}
+
+/* Every greyed number on a card and where it came from: for each set, the
+   weight a tick on its empty box adopts (`hint`), the parenthetical the
+   tick's message names it by (`from`) and what its weight and rep boxes
+   show (`placeholder`); the set you are about to do (`nextAt`, the first
+   not yet ticked); and the rest timer's second line after each set
+   (`next`). The inputs are the three places a weight hint can come from —
+   the objetivo (`est`, targetNow), your own earlier weeks in this block
+   (`own`, priorWeight for each set) and the block before (`prior`,
+   priorBlockSets) — and the plan's rep range (`reps`).
+
+   The objetivo wins: the greyed weight is the target's own weight for THIS
+   set — one rule, one number — so the box's old contract ("tick without
+   typing takes what it shows") adopts the target rather than a copy of
+   last week, and "Rellenar" and the objetivo's own line on the card agree
+   by construction. Without one, last week. With no earlier week in this
+   block either, the previous block's last logged session, same set index,
+   last set when the plan has since grown — the fallback priorWeight
+   applies within a block — in the unit on screen, like the within-block
+   hint and for the same reason (the tick adopts it); the objetivo's weight
+   already is, read through rowWeight. The rep box, one column over, asks
+   what the objetivo asks of THIS set, and without one — the first session
+   of a lift — the plan's own rep range, the only thing there is to ask for.
+
+   One answer read from two places, the box and the "Siguiente" line that
+   prices the set you are walking back to: two copies would disagree the
+   first time the objetivo's rule moved, and the whole point of the line is
+   that it says what the box is about to say. An empty second line under a
+   timer reads as something that failed to load, so the last set says so
+   instead. `nextAt` is -1 without an objetivo: the boxes are empty then,
+   and there is nothing to point at. */
+function setHints(rows, est, own, prior, reps) {
+  const sets = rows.map((r, si) => {
+    const tgt = est && est.sets[si];
+    const prv = (!tgt && !own[si] && prior) ? (prior.sets[si] || prior.sets[prior.sets.length - 1]) : null;
+    const hint = tgt ? loadText(tgt.w) : (own[si] || (prv ? weightText(prv.wLogged, prv.unit) : ''));
+    return {
+      hint: hint,
+      /* The whole parenthetical rather than a noun the line then glues "lo
+         de" in front of: "lo de el objetivo" is not Spanish. */
+      from: tgt ? 'lo que pide el objetivo de esta semana'
+        : own[si] ? 'lo de la semana anterior'
+        : (prv ? 'lo de "' + prior.block.name + '", semana ' + prior.week : ''),
+      placeholder: { w: hint || '—', r: tgt && tgt.r ? String(tgt.r) : (reps || '—') },
+    };
+  });
+  return {
+    sets: sets,
+    nextAt: est ? rows.findIndex(r => !r.done) : -1,
+    next: rows.map((r, si) => !rows[si + 1] ? 'Última serie hecha'
+      : 'Siguiente: serie ' + (si + 2) +
+        (sets[si + 1].hint ? ' · ' + sets[si + 1].hint + ' ' + units() + (reps ? ' × ' + reps : '') : '')),
+  };
+}
+
+/* What a tick does to its set; writeRows does the rest. Ticking a set whose
+   weight box is still empty takes `hint`, the greyed number showing in it
+   (setHints). It is the common case, but it is also a guess, so the answer
+   is what was adopted ('' for nothing) and the handler says so. The adopted
+   weight is a write in the unit on screen like a typed one, so it goes
+   through stampForWrite: the rest of the set is converted, not relabelled.
+
+   Only the weight box has this contract. The RIR box's placeholder is what
+   the week ASKS for, and a reserve nobody reported is not a measurement
+   (plans/035 Step H.4): a blank RIR box stays blank on tick and the set
+   reads as a floor, which is what it always did. The rep box has never
+   adopted either — an unreported rep count would go straight into the
+   objetivo's arithmetic.
+
+   `now` is the caller's clock, so the unit suite can pin the rule without
+   one. An untick keeps the time the set was done at. */
+function tickRow(r, hint, now) {
+  let adopted = '';
+  if (!r.done) {
+    if ((r.w === '' || r.w == null) && hint) { r.w = hint; adopted = hint; stampForWrite(r, r); }
+    r.ts = now;
+  }
+  r.done = !r.done;
+  return adopted;
+}
+
 /* One exercise's card, built detached and handed back for the caller to put
    in place: drawApp appends all of them, drawCard swaps one out. `ctx` is
    everything that is the same for every card in the day, and the two
@@ -3710,17 +3819,9 @@ function buildExCard(ctx, ex, i) {
      "Cargando…" (AGENTS.md). "The bar a set has to clear" is the phrase the
      comment above bestOf already uses. */
   const bar = bestForExercise(profile, ex.id, block.id, slot(profile.week, day.id))[ex.id];
-  const isPr = r => r.done && !isNaN(num(r.w)) && (!bar || num(r.w) > bar.w);
-  /* A new best estimated 1RM at a weight already lifted: the rep progress
-     double progression is made of, which the weight badge cannot see. Only
-     against an existing estimate — the first session of an exercise already
-     earns the weight badge, and two badges for one first set would devalue
-     both — and never past EST_MAX_REPS, where the estimate stops being one.
-     The weight badge wins when both apply. */
-  const isPrE = r => !isPr(r) && r.done && !!bar && bar.e != null && hasReps(r) &&
-    num(r.r) <= EST_MAX_REPS && !isNaN(num(r.w)) && est1RM(num(r.w), num(r.r)) > bar.e;
-  const cardPr = rows.some(isPr);
-  const cardPrE = !cardPr && rows.some(isPrE);
+  const flags = recordFlags(bar, rows);
+  const cardPr = flags.some(f => f.pr);
+  const cardPrE = !cardPr && flags.some(f => f.prE);
 
   /* Everything the line under the session adds up, recorded here on the way
      past. `rows` is the live array, which is also what lets the tick handler
@@ -3768,9 +3869,13 @@ function buildExCard(ctx, ex, i) {
   /* Read off the sessions before this one, so it is the same line all week
      and does not move as you tick sets. */
   const est = targetNow(profile, block, day, ex, profile.week);
-  /* `est` is only drawn here. Recording it is the job of the handlers below
-     that start the session — see recordTargetOnStart for why a draw must
+  /* `est` is only drawn here. Recording it is writeRows's job, on the write
+     that starts the session — see recordTargetOnStart for why a draw must
      never do it. */
+  /* What every write on this card hands writeRows, built once like `here`
+     and for the same reason. Not `card`, writeRows's name for it: that is
+     this card's element, above. */
+  const cardCtx = { profile: profile, block: block, day: day, ex: ex, rows: rows, here: here, est: est };
   const moreOpen = expandedMore.has(setupKey(block, ex));
 
   /* One mono line where three stacked blocks used to be: the sets × reps,
@@ -3935,45 +4040,8 @@ function buildExCard(ctx, ex, i) {
   setHead.innerHTML = '<span>' + esc(units()) + '</span><span>rep</span><span>RIR</span><span></span><span></span>';
   box.appendChild(setHead);
 
-  /* The set you are about to do: the first one not yet ticked, marked only
-     when there is an objetivo to do it against — without one the boxes are
-     empty and there is nothing to point at. */
-  const nextAt = est ? rows.findIndex(r => !r.done) : -1;
-
-  /* One answer for the greyed number in a set's weight box, read from two
-     places: the row that shows it, and the rest timer's "Siguiente" line,
-     which prices the set you are walking back to. Two copies of this would
-     disagree the first time the objetivo's rule moved — and the whole point
-     of the line is that it says what the box is about to say. */
-  function rowHint(si) {
-    const tgt = est && est.sets[si];
-    const own = priorWeight(profile, block.id, profile.week, day.id, ex.id, si);
-    /* No earlier week in this block: the previous block's last logged
-       session, same set index, last set when the plan has since grown —
-       the same fallback priorWeight applies within a block. In the unit on
-       screen, like the within-block hint and for the same reason (the tick
-       adopts it); the objetivo's tgt.w already is, read through rowWeight. */
-    const prv = (!tgt && !own && prior) ? (prior.sets[si] || prior.sets[prior.sets.length - 1]) : null;
-    return {
-      tgt,
-      hint: tgt ? loadText(tgt.w) : (own || (prv ? weightText(prv.wLogged, prv.unit) : '')),
-      /* The whole parenthetical rather than a noun the line then glues "lo
-         de" in front of: "lo de el objetivo" is not Spanish. */
-      from: tgt ? 'lo que pide el objetivo de esta semana'
-        : own ? 'lo de la semana anterior'
-        : (prv ? 'lo de "' + prior.block.name + '", semana ' + prior.week : ''),
-    };
-  }
-
-  /* What the countdown is counting down TO. An empty second line under a
-     timer reads as something that failed to load, so the last set of a card
-     says so instead. */
-  function nextLine(si) {
-    if (!rows[si + 1]) return 'Última serie hecha';
-    const nx = rowHint(si + 1);
-    return 'Siguiente: serie ' + (si + 2) +
-      (nx.hint ? ' · ' + nx.hint + ' ' + units() + (ex.reps ? ' × ' + ex.reps : '') : '');
-  }
+  const hints = setHints(rows, est,
+    rows.map((r, si) => priorWeight(profile, block.id, profile.week, day.id, ex.id, si)), prior, ex.reps);
 
   rows.forEach((r, si) => {
     if (r.done) {
@@ -3982,8 +4050,8 @@ function buildExCard(ctx, ex, i) {
     }
 
     const row = document.createElement('div');
-    row.className = 'set-row' + (r.done ? ' done' : '') + (si === nextAt ? ' next' : '') +
-      (isPr(r) ? ' pr' : '') + (isPrE(r) ? ' pr-e1rm' : '');
+    row.className = 'set-row' + (r.done ? ' done' : '') + (si === hints.nextAt ? ' next' : '') +
+      (flags[si].pr ? ' pr' : '') + (flags[si].prE ? ' pr-e1rm' : '');
     /* No set number: four rows in a column ARE first, second, third,
        fourth, and a 26px column spent saying so was 26px the boxes did not
        have (plans/031 § "The numbers", plans/036). The labels still say
@@ -4002,28 +4070,15 @@ function buildExCard(ctx, ex, i) {
       '<button type="button" class="tick' + (r.done ? ' on' : '') + '" aria-pressed="' + (r.done ? 'true' : 'false') + '">✓</button>';
 
     const [wIn, rIn, rirIn] = row.querySelectorAll('input');
-    /* The greyed number in the weight box is the target's own weight for
-       THIS set — one rule, one number, and the contract the box has always
-       had ("tick without typing takes what it shows") now adopts the
-       target rather than a copy of last week. Which is also what makes
-       "Copiar pesos" and the line above agree by construction instead of
-       by two implementations happening to say the same thing. */
-    const { tgt: tgtRow, hint, from: hintFrom } = rowHint(si);
+    const { hint, from: hintFrom, placeholder } = hints.sets[si];
     wIn.value = r.w; rIn.value = r.r;
     rirIn.value = r.rir == null ? '' : r.rir;
-    wIn.placeholder = hint || '—';
-    /* Same contract as the weight box, one column over: what the objetivo
-       asks of THIS set. Without one — the first session of a lift — the
-       plan's own rep range, which is the only thing there is to ask for. */
-    rIn.placeholder = tgtRow && tgtRow.r ? String(tgtRow.r) : (ex.reps || '—');
+    wIn.placeholder = placeholder.w;
+    rIn.placeholder = placeholder.r;
     rirIn.placeholder = wkRir == null ? '—' : String(wkRir);
     wIn.setAttribute('aria-label', 'Peso, serie ' + (si + 1) + ' de ' + ex.n);
     rIn.setAttribute('aria-label', 'Repeticiones, serie ' + (si + 1) + ' de ' + ex.n);
     rirIn.setAttribute('aria-label', 'RIR, serie ' + (si + 1) + ' de ' + ex.n);
-    /* `wasSession` is read BEFORE the assignment in every one of these, and
-       that order is the whole mechanism: read it after and the row is
-       already used, every keystroke looks like a start, and the draw-time
-       write is back by another route. */
     /* Every weight box of this set, with the object it writes: when a write
        in today's unit converts the rest of the set (stampForWrite), the
        boxes still showing the old numbers are refilled in place rather than
@@ -4032,65 +4087,40 @@ function buildExCard(ctx, ex, i) {
     const refreshWeights = fresh => weightBoxes.forEach(b => {
       if (b.o !== fresh) b.el.value = b.o.w == null ? '' : b.o.w;
     });
+    /* Every box that can put something in the set, and the tick, write
+       through writeRows: it owns the order a write follows, and why. */
     wIn.oninput = e => {
-      const wasSession = rows.some(rowUsed);
-      r.w = e.target.value.replace(/[^0-9.,]/g, ''); if (r.w !== e.target.value) e.target.value = r.w;
-      if (stampForWrite(r, r)) refreshWeights(r);
-      save(here);
-      recordTargetOnStart(profile, block, day, ex, rows, wasSession, est);
+      writeRows(cardCtx, () => {
+        r.w = e.target.value.replace(/[^0-9.,]/g, ''); if (r.w !== e.target.value) e.target.value = r.w;
+        if (stampForWrite(r, r)) refreshWeights(r);
+      });
     };
     rIn.oninput = e => {
-      const wasSession = rows.some(rowUsed);
-      r.r = e.target.value.replace(/[^0-9]/g, ''); if (r.r !== e.target.value) e.target.value = r.r; save(here);
-      recordTargetOnStart(profile, block, day, ex, rows, wasSession, est);
+      writeRows(cardCtx, () => {
+        r.r = e.target.value.replace(/[^0-9]/g, ''); if (r.r !== e.target.value) e.target.value = r.r;
+      });
     };
     /* One digit, 0-5, and the box refuses anything else rather than
        storing it and hoping a reader copes — the fourth place that spells
        RIR_MAX's range out as a literal, for the same reason as the other
        three (rowRir, rirNumber, normalizeImportedLog): a regex is what is
        needed here and building one from the constant would be the harder
-       thing to read. Raising RIR_MAX means editing all four.
-
-       `wasSession` first, and recordTargetOnStart after, exactly as the
-       weight and rep boxes do: a reserve typed into an otherwise-empty row
-       starts the session, because rowUsed counts r.rir since plans/035 —
-       without the first half pruneLog would delete it, without the second
-       typing an RIR first would suppress that session's objetivo record
-       (plans/035 § "One thing 036 must not undo"). */
+       thing to read. Raising RIR_MAX means editing all four. */
     rirIn.oninput = e => {
-      const wasSession = rows.some(rowUsed);
-      const v = e.target.value.replace(/[^0-5]/g, '').slice(0, 1);
-      if (v !== e.target.value) e.target.value = v;
-      if (v) r.rir = v; else delete r.rir;
-      dropLegacyRir(profile, block.id, profile.week, day.id, ex.id);
-      save(here);
-      recordTargetOnStart(profile, block, day, ex, rows, wasSession, est);
+      writeRows(cardCtx, () => {
+        const v = e.target.value.replace(/[^0-5]/g, '').slice(0, 1);
+        if (v !== e.target.value) e.target.value = v;
+        if (v) r.rir = v; else delete r.rir;
+        dropLegacyRir(profile, block.id, profile.week, day.id, ex.id);
+      });
     };
 
     const tick = row.querySelector('.tick');
     tick.setAttribute('aria-label', (r.done ? 'Desmarcar' : 'Marcar') + ' serie ' + (si + 1) + ' de ' + ex.n);
     tick.onclick = () => {
-      /* Read first, before the adoption below can put a weight in the row:
-         after it, every tick would look like the start of a session. */
-      const wasSession = rows.some(rowUsed);
       let adopted = '';
-      if (!r.done) {
-        /* Ticking a set whose weight box is still empty takes the greyed
-           number showing in it — last week's weight for this same set. It
-           is the common case, but it is also a guess, so it says so.
-
-           Only the weight box has this contract. The RIR box's placeholder
-           is what the week ASKS for, and a reserve nobody reported is not a
-           measurement (plans/035 Step H.4): a blank RIR box stays blank on
-           tick and the set reads as a floor, which is what it always did.
-           The rep box has never adopted either — an unreported rep count
-           would go straight into the objetivo's arithmetic. */
-        if ((r.w === '' || r.w == null) && hint) { r.w = hint; adopted = hint; stampForWrite(r, r); }
-        r.ts = Date.now();
-      }
-      r.done = !r.done;
-      recordTargetOnStart(profile, block, day, ex, rows, wasSession, est);
-      if (r.done && ex.rest) startRest(ex.rest, ex.n + ' · serie ' + (si + 1), nextLine(si));
+      writeRows(cardCtx, () => { adopted = tickRow(r, hint, Date.now()); });
+      if (r.done && ex.rest) startRest(ex.rest, ex.n + ' · serie ' + (si + 1), hints.next[si]);
       if (r.done && !ex.rest) stopRest();
       /* The tick that finishes the whole day counts as a session — see
          maybeNagBackup. dayCards holds every card's rows by live reference,
@@ -4100,14 +4130,20 @@ function buildExCard(ctx, ex, i) {
         state.prefs.sessionsSinceBackup++;
         maybeNagBackup();
       }
-      save(here); drawCard(ex.id);
+      drawCard(ex.id);
       if (adopted) mark('Serie ' + (si + 1) + ' anotada con ' + adopted + ' ' + units() + ' (' + hintFrom + ') — cámbialo si no fue eso');
     };
 
     /* ↓ adds a segment rather than opening a panel: there is nothing to
        configure before you have one, and mid-set — rest timer running,
        hand on the stack — one tap and a cursor in the weight box is the
-       whole interaction. The segments are the panel. */
+       whole interaction. The segments are the panel.
+
+       It, the ✕ on a segment and the kind chips save their slot directly
+       rather than through writeRows: adding an empty segment, taking one
+       away or picking a kind never makes a set used that was not — rowUsed
+       counts neither an empty segment nor `dk` — so none of the three can
+       start a session, and there is no objetivo for them to keep. */
     const dropAdd = row.querySelector('.drop-add');
     dropAdd.setAttribute('aria-label', drops.length >= MAX_DROPS
       ? 'Máximo de bajadas de peso alcanzado en la serie ' + (si + 1) + ' de ' + ex.n
@@ -4147,20 +4183,18 @@ function buildExCard(ctx, ex, i) {
       const where = 'bajada ' + (di + 1) + ', serie ' + (si + 1) + ' de ' + ex.n;
       dwIn.setAttribute('aria-label', 'Peso tras bajar, ' + where);
       drIn.setAttribute('aria-label', 'Repeticiones tras bajar, ' + where);
-      /* A typed drop weight makes the row used too — rowUsed counts
-         dropsOf(r).some(dropUsed) — so a session can start here, and
-         `wasSession` is read before the assignment for the same reason. */
+      /* A typed drop makes the set used too, so a session can start here:
+         through writeRows like the set's own boxes. */
       dwIn.oninput = e => {
-        const wasSession = rows.some(rowUsed);
-        d.w = e.target.value.replace(/[^0-9.,]/g, ''); if (d.w !== e.target.value) e.target.value = d.w;
-        if (stampForWrite(r, d)) refreshWeights(d);
-        save(here);
-        recordTargetOnStart(profile, block, day, ex, rows, wasSession, est);
+        writeRows(cardCtx, () => {
+          d.w = e.target.value.replace(/[^0-9.,]/g, ''); if (d.w !== e.target.value) e.target.value = d.w;
+          if (stampForWrite(r, d)) refreshWeights(d);
+        });
       };
       drIn.oninput = e => {
-        const wasSession = rows.some(rowUsed);
-        d.r = e.target.value.replace(/[^0-9]/g, ''); if (d.r !== e.target.value) e.target.value = d.r; save(here);
-        recordTargetOnStart(profile, block, day, ex, rows, wasSession, est);
+        writeRows(cardCtx, () => {
+          d.r = e.target.value.replace(/[^0-9]/g, ''); if (d.r !== e.target.value) e.target.value = d.r;
+        });
       };
 
       const del = dRow.querySelector('.drop-x');
@@ -4533,12 +4567,17 @@ $('copyPrev').onclick = () => {
      block is simply a week with six sessions behind it like any other, and
      what goes in the boxes is the objetivo the card is already showing. */
   let written = 0, up = 0, down = 0, back = 0;
+  /* What the loop wrote, recorded after the commit below rather than inside
+     the loop: save, then record, the order writeRows keeps on a card, and
+     what lets the record's own save('view') claim nothing a session reads —
+     the rows it is made of were claimed by the commit already. */
+  const started = [];
   exList(day).forEach(ex => {
     const t = targetNow(profile, block, day, ex, profile.week);
     if (!t) return;
     const to = entry(profile, block.id, profile.week, day.id, ex.id, setsFor(ex, profile.week, block));
-    /* Before the loop writes a single weight, for the same reason the card
-       handlers read it first: this button starts a session with no tick. */
+    /* Before the loop writes a single weight, for the same reason writeRows
+       reads it first: this button starts a session with no tick. */
     const wasSession = to.some(rowUsed);
     to.forEach((r, i) => {
       if (r.done) return;
@@ -4550,7 +4589,7 @@ $('copyPrev').onclick = () => {
       r.w = loadText(from.w);
       stampForWrite(r, r);
     });
-    recordTargetOnStart(profile, block, day, ex, to, wasSession, t);
+    started.push({ ex: ex, rows: to, wasSession: wasSession, est: t });
     written++;
     if (t.kind === 'vuelta') back++;
     /* Counted independently, not as a chain: the common shape of a v3
@@ -4562,6 +4601,7 @@ $('copyPrev').onclick = () => {
   });
   if (!written) { mark('Todavía no hay historial de estos ejercicios: el objetivo empieza con la primera sesión registrada'); return; }
   commit();
+  started.forEach(s => recordTargetOnStart(profile, block, day, s.ex, s.rows, s.wasSession, s.est));
   mark('Objetivo escrito en ' + written + (written === 1 ? ' ejercicio' : ' ejercicios') +
     (up ? ' — ' + up + (up === 1 ? ' sube' : ' suben') + ' de peso en alguna serie' : '') +
     (down ? ' — ' + down + (down === 1 ? ' baja' : ' bajan') + ' de peso en alguna serie' : '') +
@@ -4943,21 +4983,67 @@ function recordVariant(profile, exId, oldName, newName, ts) {
   return true;
 }
 
-/* The record is written by the handlers that can turn an empty session into
-   a started one — the tick, the weight and rep boxes, the drop boxes, and
-   "Rellenar con el objetivo" — and by nothing else. It used to be written
+/* ---------- one way to write a set ----------
+   Every write a card makes that can start a session comes through here —
+   the weight, rep and RIR boxes, both drop boxes and the tick — in five
+   steps whose order is the whole mechanism:
+
+     1. `wasSession`, whether the lift's rows already counted as a session,
+        is read BEFORE anything is written. Read after, the row is already
+        used, every keystroke looks like a start, and the draw-time write
+        recordTargetOnStart replaced is back by another route; on a tick it
+        is the adopted weight that does it. Reading it late has shipped
+        twice (plans/021, plans/035).
+     2. `mutate` writes the set, field by field and literally (`r.w = …`),
+        so the row codec's guard in test/unit.js still sees every field a
+        set can carry.
+     3. The unit stamp, when a weight was written: inside `mutate`, through
+        stampForWrite, because only the write knows which weight is the new
+        one and which boxes to refill when the rest of the set is converted.
+     4. save(card.here): this lift's rows in this slot, the narrow claim a
+        card's boxes make (logChanged).
+     5. recordTargetOnStart, after the save: its own save('view') says that
+        nothing a session reads changed, which is only true once step 4 has
+        claimed the rows the start is made of.
+
+   A session starts in whichever box its first value lands in, because
+   rowUsed counts every one of them — a reserve since plans/035, a drop's
+   weight or reps — so none of them may write on its own. One that did would
+   be a start nobody records, after which every write reads as the same
+   session: typing an RIR first would lose that session's objetivo record
+   for good (plans/035 § "One thing 036 must not undo").
+
+   Only the write is here. The redraw, the rest timer, the backup nag and
+   the messages stay with each handler, after it.
+
+   `card` is what buildExCard builds once for this: the rows, their save
+   scope (`here`), the objetivo on screen (`est`), and the profile, block,
+   day and exercise its record is filed under. Top-level rather than inside
+   the card so the unit suite can call it. Answers whether this write
+   started the session. */
+function writeRows(card, mutate) {
+  const wasSession = card.rows.some(rowUsed);
+  mutate();
+  save(card.here);
+  recordTargetOnStart(card.profile, card.block, card.day, card.ex, card.rows, wasSession, card.est);
+  return !wasSession && card.rows.some(rowUsed);
+}
+
+/* The record is written on a session start, by writeRows for a card and by
+   "Rellenar con el objetivo", and by nothing else. It used to be written
    by the draw, for whatever week was on screen, as soon as that week had a
    row in it: every week logged before v3 got a rebuilt target the first
    time anyone scrolled past it, stamped with today's clock, so a week from
    two months ago was filed as a "vuelta de parón". `wasSession` is whether
-   the exercise's rows already counted as a session when the handler began;
+   the exercise's rows already counted as a session when the write began;
    only the transition from "not yet" to "yes" records, so browsing writes
    nothing and a session that already has its record keeps it. */
 function recordTargetOnStart(profile, block, day, ex, rows, wasSession, est) {
   if (wasSession || !est || !rows.some(rowUsed)) return false;
   if (!recordTarget(profile, block.id, profile.week, day.id, ex.id, est)) return false;
   /* `obj` is not read by any session: the rows this start is made of were
-     already claimed by the handler's own save. */
+     already claimed by the save that wrote them — both callers record after
+     it. */
   save('view');
   return true;
 }
