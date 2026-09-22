@@ -2245,9 +2245,10 @@ ok('...and a row that already carries a value is never overwritten',
    case goes in whenever a bug turns out to have been invisible from the
    outside; these are arithmetic and data repair, so they go here rather
    than in smoke.js — the visible round trip is pinned there). The box that
-   writes it is the RIR box in the set row since plans/036; the two lines
-   below are its handler's write, which is all the handler does to the
-   log. */
+   writes it is the RIR box in the set row since plans/036, and it writes
+   through writeRows (plans/048): what each writeRows below is handed is
+   that box's own write, which is all the box does to the log. `est` is
+   null because the record is the next case's business, not this one's. */
 const untouchedDay = call(`
   (function () {
     state = defaultState(); migrate();
@@ -2257,8 +2258,13 @@ const untouchedDay = call(`
     p.log['block-1'] = {};
     /* Exactly what opening a day does: pad the rows out, tick nothing. */
     const rows = entry(p, 'block-1', 1, day.id, 'chestpress', 3);
-    rows[2].rir = '1';
-    dropLegacyRir(p, 'block-1', 1, day.id, 'chestpress');
+    const card = { profile: p, block: block, day: day, rows: rows, est: null,
+                   ex: day.ex.filter(function (e) { return e.id === 'chestpress'; })[0],
+                   here: { profile: p, block: 'block-1', week: 1, day: day.id, lift: 'chestpress' } };
+    writeRows(card, function () {
+      rows[2].rir = '1';
+      dropLegacyRir(p, 'block-1', 1, day.id, 'chestpress');
+    });
     const read = getRir(p, 'block-1', 1, day.id, 'chestpress');
     const used = rows.some(rowUsed);
     const shared = blockShareLog(p, block);
@@ -2280,8 +2286,10 @@ const untouchedDay = call(`
        what would have wiped it — and the session's own reading is still the
        last working set's. */
     live[0].w = '60'; live[0].r = '10'; live[0].done = true;
-    live[0].rir = '0';
-    dropLegacyRir(p, 'block-1', 1, day.id, 'chestpress');
+    writeRows(card, function () {
+      live[0].rir = '0';
+      dropLegacyRir(p, 'block-1', 1, day.id, 'chestpress');
+    });
     const beside = live.map(function (r) { return r.rir == null ? 'x' : r.rir; }).join(',') +
                    '|' + getRir(p, 'block-1', 1, day.id, 'chestpress');
     delete live[0].rir; delete live[2].rir;
@@ -2300,7 +2308,8 @@ ok('...and emptying the boxes clears it', untouchedDay.cleared === '', JSON.stri
 
 /* Writing an RIR is starting the session, so the objetivo record has to be
    written on it exactly as it is on a weight or a rep — which is only true
-   because rowUsed counts one. The order here is the RIR box's handler. */
+   because rowUsed counts one. Through writeRows, as the RIR box writes,
+   with the objetivo the card would show. */
 const rirStarts = call(`
   (function () {
     state = defaultState(); migrate();
@@ -2319,9 +2328,11 @@ const rirStarts = call(`
     const rows = entry(p, 'block-1', 4, day.id, ex.id, 3);
     const est = targetNow(p, block, day, ex, 4);
     const wasSession = rows.some(rowUsed);
-    rows[0].rir = '1';
-    dropLegacyRir(p, 'block-1', 4, day.id, ex.id);
-    recordTargetOnStart(p, block, day, ex, rows, wasSession, est);
+    writeRows({ profile: p, block: block, day: day, ex: ex, rows: rows, est: est,
+                here: { profile: p, block: 'block-1', week: 4, day: day.id, lift: ex.id } }, function () {
+      rows[0].rir = '1';
+      dropLegacyRir(p, 'block-1', 4, day.id, ex.id);
+    });
     return (est ? 'est' : 'no-est') + '|' + wasSession + '|' +
            !!(p.obj['block-1'] && p.obj['block-1'][slot(4, day.id)] && p.obj['block-1'][slot(4, day.id)][ex.id]);
   })()
@@ -3279,6 +3290,188 @@ ok('...a weight already in the unit on screen is offered exactly as typed',
    priorProbe.inLb[1] === '22,5' && priorProbe.inKg[0] === '100', JSON.stringify(priorProbe));
 ok('...and it converts the other way too (22,5 lb read in kg)',
    priorProbe.inKg[1] === '10,21', JSON.stringify(priorProbe));
+
+console.log('\n== one way to write a set, and what a card decides, outside the card (plans/048) ==');
+/* writeRows is the order every write to a set follows, and the card's
+   handlers are closures over it, so it is pinned here as the function
+   they all call: fixture rows, a hand-built objetivo, and save() watched
+   rather than run, because which claim comes first is half the contract —
+   the record's 'view' claim is only true once the slot's has been made.
+   `typeof` first in every probe below, as in the stamp probe above, so a
+   missing function fails its cases instead of taking the suite down. */
+const writeProbe = call(`
+  (function () {
+    if (typeof writeRows !== 'function') return { missing: true };
+    const p = { week: 2, obj: {} };
+    const block = { id: 'B' }, day = { id: 'D' }, ex = { id: 'E' };
+    const est = { kind: 'objetivo', conf: 'alta', hold: false, brake: false, rirWeek: 2,
+                  sets: [{ w: 40, r: 10, move: '' }, { w: 42.5, r: 9, move: '\\u2191' }] };
+    const card = (rows, week) => ({ profile: p, block: block, day: day, ex: ex, rows: rows, est: est,
+                                    here: { profile: p, block: 'B', week: week, day: 'D', lift: 'E' } });
+    const rec = w => (p.obj.B && p.obj.B[slot(w, 'D')] && p.obj.B[slot(w, 'D')].E) || null;
+    const realSave = save, claims = [];
+    save = function (s) { claims.push(s === 'view' ? 'view' : s && s.lift === 'E' ? 'slot' : 'all'); };
+    try {
+      const out = {};
+      /* Week 2 as a draw leaves it, padded and empty; a box typed into and
+         emptied again. */
+      const rows = [{ w: '', r: '', done: false }, { w: '', r: '', done: false }];
+      out.emptied = { started: writeRows(card(rows, 2), () => { rows[1].w = ''; }), rec: !!rec(2), claims: claims.splice(0) };
+      out.first = { started: writeRows(card(rows, 2), () => { rows[0].w = '40'; }), claims: claims.splice(0) };
+      out.first.rec = rec(2) && rec(2).sets.map(x => x.w).join('/');
+      /* The record taken away, so a second write that wrote it again would
+         show. Guarded: with no record kept above there is none to take. */
+      if (rec(2)) delete p.obj.B[slot(2, 'D')].E;
+      out.second = { started: writeRows(card(rows, 2), () => { rows[0].r = '10'; }), rec: !!rec(2), claims: claims.splice(0) };
+      /* A week logged before there were records, browsed to and corrected:
+         a record written here would be the draw-time write back by another
+         route, stamped with today's clock. */
+      p.week = 1;
+      const old = [{ w: '38', r: '10', done: true }, { w: '38', r: '9', done: true }];
+      out.browsed = { started: writeRows(card(old, 1), () => { old[1].r = '10'; }), rec: !!rec(1), claims: claims.splice(0) };
+      p.week = 3;
+      const fresh = [{ w: '', r: '', done: false }];
+      out.rir = { started: writeRows(card(fresh, 3), () => { fresh[0].rir = '2'; }), rec: !!rec(3), claims: claims.splice(0) };
+      return out;
+    } finally { save = realSave; }
+  })()
+`);
+ok('writeRows: a write that leaves every set empty starts nothing and keeps no record',
+   !writeProbe.missing && writeProbe.emptied.started === false && writeProbe.emptied.rec === false &&
+   writeProbe.emptied.claims.join() === 'slot', JSON.stringify(writeProbe));
+ok('...the first value starts the session and keeps the objetivo on screen, the slot saved before the record',
+   !writeProbe.missing && writeProbe.first.started === true && writeProbe.first.rec === '40/42.5' &&
+   writeProbe.first.claims.join() === 'slot,view', JSON.stringify(writeProbe));
+ok('...a second value is the same session: no start, and the record is not written again',
+   !writeProbe.missing && writeProbe.second.started === false && writeProbe.second.rec === false &&
+   writeProbe.second.claims.join() === 'slot', JSON.stringify(writeProbe));
+ok('...a week logged before, browsed to and corrected, is no start and gets no record',
+   !writeProbe.missing && writeProbe.browsed.started === false && writeProbe.browsed.rec === false &&
+   writeProbe.browsed.claims.join() === 'slot', JSON.stringify(writeProbe));
+ok('...and a reserve typed first starts the session like any other value',
+   !writeProbe.missing && writeProbe.rir.started === true && writeProbe.rir.rec === true &&
+   writeProbe.rir.claims.join() === 'slot,view', JSON.stringify(writeProbe));
+
+/* The tick's contract, which lived only in the smoke suite while it was a
+   closure: an empty weight box takes the greyed weight, the RIR box never
+   takes its placeholder (plans/035 Step H.4), and the weight taken is a
+   write in the unit on screen, so the rest of the set is converted rather
+   than relabelled (stampForWrite). */
+const tickProbe = call(`
+  (function () {
+    if (typeof tickRow !== 'function') return { missing: true };
+    const prev = state.prefs.units;
+    const now = 1726000000000;
+    const copy = r => JSON.parse(JSON.stringify(r));
+    state.prefs.units = 'kg';
+    const a = { w: '', r: '', done: false };
+    const adoptedA = tickRow(a, '47,25', now);
+    const tickedA = copy(a);
+    const unticked = tickRow(a, '47,25', now + 60000);
+    const b = { w: '50', r: '8', done: false, rir: '1' };
+    const adoptedB = tickRow(b, '47,25', now);
+    const e = { w: '', r: '10', done: false };
+    const adoptedE = tickRow(e, '', now);
+    state.prefs.units = 'lb';
+    const c = { w: '', r: '', done: false, d: [{ w: '100', r: '5' }] };
+    const adoptedC = tickRow(c, '220', now);
+    state.prefs.units = prev;
+    return { adoptedA: adoptedA, tickedA: tickedA, unticked: unticked, untickedA: copy(a),
+             adoptedB: adoptedB, b: b, adoptedE: adoptedE, e: e, adoptedC: adoptedC, c: c };
+  })()
+`);
+ok('tickRow: an empty weight box takes the greyed weight, marks the set done at the tick\'s time, and says what it took',
+   !tickProbe.missing && tickProbe.adoptedA === '47,25' &&
+   JSON.stringify(tickProbe.tickedA) === '{"w":"47,25","r":"","done":true,"ts":1726000000000}', JSON.stringify(tickProbe));
+ok('...and never the RIR: a blank reserve stays blank, a typed one stays as it was',
+   !tickProbe.missing && !('rir' in tickProbe.tickedA) && tickProbe.b.rir === '1', JSON.stringify(tickProbe));
+ok('...a weight already typed is kept, and with no hint there is nothing to take',
+   !tickProbe.missing && tickProbe.adoptedB === '' && tickProbe.b.w === '50' && tickProbe.b.done === true &&
+   tickProbe.adoptedE === '' && tickProbe.e.w === '' && tickProbe.e.done === true, JSON.stringify(tickProbe));
+ok('...unticking keeps the weight and the time the set was done at',
+   !tickProbe.missing && tickProbe.unticked === '' && tickProbe.untickedA.done === false &&
+   tickProbe.untickedA.w === '47,25' && tickProbe.untickedA.ts === 1726000000000, JSON.stringify(tickProbe));
+ok('...and a weight taken after a switch to lb converts the set\'s kg drop instead of relabelling it',
+   !tickProbe.missing && tickProbe.adoptedC === '220' && tickProbe.c.w === '220' && tickProbe.c.u === 'lb' &&
+   tickProbe.c.d[0].w === '220,46', JSON.stringify(tickProbe));
+
+/* Which hint each set gets and what it says it came from, the set to do
+   next, and the rest timer's line: one answer that the boxes and
+   "Siguiente" both read. Three sets, the first already ticked. */
+const hintProbe = call(`
+  (function () {
+    if (typeof setHints !== 'function') return { missing: true };
+    const prev = state.prefs.units;
+    state.prefs.units = 'kg';
+    const rows = [{ w: '', r: '', done: true }, { w: '', r: '', done: false }, { w: '', r: '', done: false }];
+    /* The objetivo prices two of the three sets, and asks no reps of the second. */
+    const est = { sets: [{ w: 47.25, r: 10, move: '' }, { w: 45, r: null, move: '' }] };
+    const prior = { block: { name: 'Bloque 1' }, week: 7, sets: [{ wLogged: '100', unit: 'lb' }] };
+    const out = {
+      est: setHints(rows, est, ['50', '', '52,5'], prior, '8–12'),
+      own: setHints(rows, null, ['50', '', ''], prior, '8–12'),
+      none: setHints(rows, null, ['', '', ''], null, ''),
+    };
+    state.prefs.units = prev;
+    return out;
+  })()
+`);
+const hintOf = s => s && s.placeholder ? [s.hint, s.from, s.placeholder.w, s.placeholder.r].join(' | ') : JSON.stringify(s);
+ok('setHints: the objetivo wins, with its own reps, and the rep box falls back to the plan\'s range without them',
+   !hintProbe.missing &&
+   hintOf(hintProbe.est.sets[0]) === '47,25 | lo que pide el objetivo de esta semana | 47,25 | 10' &&
+   hintOf(hintProbe.est.sets[1]) === '45 | lo que pide el objetivo de esta semana | 45 | 8–12',
+   JSON.stringify(hintProbe));
+ok('...then your own last week, for a set the objetivo did not price or with no objetivo at all',
+   !hintProbe.missing &&
+   hintOf(hintProbe.est.sets[2]) === '52,5 | lo de la semana anterior | 52,5 | 8–12' &&
+   hintOf(hintProbe.own.sets[0]) === '50 | lo de la semana anterior | 50 | 8–12', JSON.stringify(hintProbe));
+ok('...then the block before, in the unit on screen, named with its week, its last set for a set it did not have',
+   !hintProbe.missing &&
+   hintOf(hintProbe.own.sets[1]) === '45,36 | lo de "Bloque 1", semana 7 | 45,36 | 8–12' &&
+   hintOf(hintProbe.own.sets[2]) === hintOf(hintProbe.own.sets[1]), JSON.stringify(hintProbe));
+ok('...and with none of the three, both boxes say — and a tick has nothing to take',
+   !hintProbe.missing && hintProbe.none.sets.every(s => hintOf(s) === ' |  | — | —'), JSON.stringify(hintProbe));
+ok('"Siguiente" prices the next set with what its box shows, and the last set says it was the last',
+   !hintProbe.missing &&
+   hintProbe.est.next.join(' / ') === 'Siguiente: serie 2 · 45 kg × 8–12 / Siguiente: serie 3 · 52,5 kg × 8–12 / Última serie hecha' &&
+   hintProbe.own.next[0] === 'Siguiente: serie 2 · 45,36 kg × 8–12' &&
+   hintProbe.none.next.join(' / ') === 'Siguiente: serie 2 / Siguiente: serie 3 / Última serie hecha',
+   JSON.stringify(hintProbe));
+ok('the set to do next is the first not ticked, and it is marked only against an objetivo',
+   !hintProbe.missing && hintProbe.est.nextAt === 1 && hintProbe.own.nextAt === -1 && hintProbe.none.nextAt === -1,
+   JSON.stringify(hintProbe));
+
+/* The two badges of each set, against the bar from before this session:
+   heaviest weight, best estimated 1RM. 'P' is the weight record, 'E' the
+   1RM one. */
+const flagProbe = call(`
+  (function () {
+    if (typeof recordFlags !== 'function') return { missing: true };
+    const set = (w, r, done) => ({ w: w, r: r, done: done });
+    const read = fl => fl.map(f => (f.pr ? 'P' : '.') + (f.prE ? 'E' : '.')).join(' ');
+    return {
+      bar: read(recordFlags({ w: 60, e: est1RM(60, 10) }, [
+        set('72,5', '10', true),  /* heavier, and a better estimate as well */
+        set('60', '12', true),    /* the same weight for more reps */
+        set('60', '10', true),    /* the bar exactly, on both counts */
+        set('55', '16', true),    /* a better "estimate" past EST_MAX_REPS */
+        set('70', '5', false),    /* not ticked */
+        set('', '10', true),      /* no weight */
+      ])),
+      first: read(recordFlags(undefined, [set('40', '10', true), set('x', '10', true)])),
+      noEstimate: read(recordFlags({ w: 60, e: null }, [set('60', '12', true)])),
+    };
+  })()
+`);
+ok('recordFlags: a heavier ticked set is a record, and its weight badge wins over the 1RM one',
+   !flagProbe.missing && flagProbe.bar.split(' ')[0] === 'P.', JSON.stringify(flagProbe));
+ok('...the same weight for more reps is a new estimated 1RM',
+   !flagProbe.missing && flagProbe.bar.split(' ')[1] === '.E', JSON.stringify(flagProbe));
+ok('...matching the bar beats it on neither count, and nor does a set past EST_MAX_REPS, an unticked one or one with no weight',
+   !flagProbe.missing && flagProbe.bar === 'P. .E .. .. .. ..', JSON.stringify(flagProbe));
+ok('...and the first weighed set of a lift is a record but never a 1RM one: there is no estimate to beat',
+   !flagProbe.missing && flagProbe.first === 'P. ..' && flagProbe.noEstimate === '..', JSON.stringify(flagProbe));
 
 console.log('\n== the CSV is safe to open in a spreadsheet and says which unit each row is in (plans/011) ==');
 ok('csvCell prefixes a leading = so a name out of an imported file cannot be a formula',
