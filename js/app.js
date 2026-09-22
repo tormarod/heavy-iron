@@ -661,7 +661,11 @@ function moveExerciseRecord(profile, blockId, fromDayId, toDayId, exId) {
    missing, or not an object, starts empty rather than failing the load. */
 function ensureRecord(profile) {
   RECORD_PARTS.forEach(part => {
-    if (!profile[part.name] || typeof profile[part.name] !== 'object') profile[part.name] = {};
+    /* A list is not a map, though typeof calls it an object. Kept, a
+       `log: []` took every tick as a string key on the array, which
+       JSON.stringify drops: the session's sets were gone on the next
+       reload (plans/067). */
+    if (!profile[part.name] || typeof profile[part.name] !== 'object' || Array.isArray(profile[part.name])) profile[part.name] = {};
   });
   RECORD_PARTS.forEach(part => { if (part.repair) part.repair(profile); });
 }
@@ -832,7 +836,20 @@ function migrate() {
       });
     }
     if (!profile.blocks || typeof profile.blocks !== 'object' || !Object.keys(profile.blocks).length) {
-      profile.blocks = seed.blocks;
+      /* A copy of the seed's blocks, never the seed's own object. The seed
+         chosen above is hombre's for more than one profile — the one named
+         hombre, and, under a name neither seed has, the first profile and
+         every one past the second — so two blockless profiles were handed
+         the SAME blocks, and editing one plan rewrote the other's. JSON
+         rather than the browser's structured clone, which is Safari 15.4,
+         above the floor.
+
+         The record is kept, not purged. From the first commit every profile
+         has had blocks, with its log filed per block, so a profile with none
+         only comes out of damaged storage, and its likeliest owner is exactly
+         the seed plan whose ids that record still matches. Keeping it loses
+         nothing; a purge would lose it for good (plans/067). */
+      profile.blocks = JSON.parse(JSON.stringify(seed.blocks));
       profile.blockOrder = seed.blockOrder.slice();
     }
 
@@ -896,7 +913,11 @@ function migrate() {
       if (block.deload == null) block.deload = block.weeks === 8 ? 8 : 0;
       block.deload = clampInt(block.deload, 0, MAX_WEEKS, 0);
       if (block.deload > block.weeks) block.deload = 0;
-      if (!block.phase || typeof block.phase !== 'object') block.phase = genericPhase(block.weeks, block.deload);
+      /* A list is no phase table, though typeof calls it an object. Every
+         writer — the seed, the import, the plan editor — builds the phase as
+         a map keyed by week, so a list is damage, and one kept as it was
+         (`[]`) had no week in it: every week read no RIR (plans/067). */
+      if (!block.phase || typeof block.phase !== 'object' || Array.isArray(block.phase)) block.phase = genericPhase(block.weeks, block.deload);
       /* Absent by default, like `share`/`ss`: a block nobody has marked
          priorities on carries no field at all rather than an empty list. */
       if (block.priority != null) {
@@ -910,30 +931,59 @@ function migrate() {
       /* Log rows are filed under a day's *id*, so every day needs one and no
          two days may share it. Legacy data was keyed by index ('w3-d1'), so
          the old days get the ids 'd0', 'd1', … — the keys come out identical
-         and nothing has to be rewritten. */
-      const usedDays = new Set();
+         and nothing has to be rewritten.
+
+         Two passes: every id already held is claimed before any is handed
+         out. One pass gave an id-less day 'd' + its index even when a LATER
+         day held that id — days [no id, 'd0'] made the first one 'd0', and
+         every row filed under 'd0' went with it, while the day that had
+         logged them was renamed 'd1' and opened empty (the ninth audit's
+         finding 5, plans/067). A fresh id now never names a day that claims
+         it. Legacy data claims nothing, so it still comes out 'd0', 'd1', …
+         exactly. A duplicate still goes to its FIRST holder, as it always
+         did, and the later ones get fresh ids: the record cannot say which
+         of two days a row under a shared id was logged on. */
+      const claimedDays = new Set();
+      const keepDay = block.days.map(day => {
+        const id = safeKey(day.id);
+        if (!id || claimedDays.has(id)) return null;
+        claimedDays.add(id);
+        return id;
+      });
       block.days.forEach((day, i) => {
-        let id = safeKey(day.id);
-        if (!id || usedDays.has(id)) {
+        let id = keepDay[i];
+        if (!id) {
           id = 'd' + i;
-          while (usedDays.has(id)) id = uid('d');
+          while (claimedDays.has(id)) id = uid('d');
+          claimedDays.add(id);
         }
         day.id = id;
-        usedDays.add(id);
         if (!day.name) day.name = 'Día ' + (i + 1);
         if (!Array.isArray(day.ex)) day.ex = [];
         day.ex = day.ex.filter(e => e && typeof e === 'object');
         if (!day.ex.length) day.ex = [newExercise()];
-        const usedEx = new Set();
+        /* The same two passes for one day's exercises, for the same reason:
+           an id-less lift took the slug of its name from a lift further
+           down that already held it, and that lift's history with it. */
+        const claimedEx = new Set();
+        const keepEx = day.ex.map(ex => {
+          const id2 = safeKey(ex.id);
+          if (!id2 || claimedEx.has(id2)) return null;
+          claimedEx.add(id2);
+          return id2;
+        });
         day.ex.forEach((ex, j) => {
-          let id2 = safeKey(ex.id);
+          let id2 = keepEx[j];
           /* safeKey on the slug too: a name can slug straight to a reserved
              word — "Constructor" to `constructor` — and an id safeKey
              refuses is one recordVariant and the import's variants block
              silently drop, so that lift could never carry a rename cut. */
-          if (!id2 || usedEx.has(id2)) { id2 = safeKey(slugify(ex.n)) || ('ex-' + i + '-' + j); while (usedEx.has(id2)) id2 = uid('ex'); }
+          if (!id2) {
+            id2 = safeKey(slugify(ex.n)) || ('ex-' + i + '-' + j);
+            while (claimedEx.has(id2)) id2 = uid('ex');
+            claimedEx.add(id2);
+          }
           ex.id = id2;
-          usedEx.add(id2);
           /* Every other field by its own entry: what a stored exercise may
              hold is EX_FIELDS', the same table the import reads. */
           repairExercise(ex, block.weeks);
@@ -3219,6 +3269,15 @@ function readSessions(profile, q, ids) {
         : match ? Object.keys(match[dayId] || {})
         : Object.keys(s);
       exIds.forEach(exId => {
+        /* A slot key safeKey refuses — '__proto__', 'constructor' — is no
+           lift any plan can hold: migrate() and every import refuse such an
+           id. Handed out as one, it made the plain {} maps downstream answer
+           with Object.prototype, and strengthByExercise wrote its weekly
+           best onto Object.prototype itself (the ninth audit's finding 12,
+           plans/067). Only the walk over a whole slot can meet one, and the
+           test costs nothing on the other two. The rows stay on disk and in
+           every backup; they are only not read. */
+        if (!safeKey(exId)) return;
         const rows = Object.prototype.hasOwnProperty.call(s, exId) ? s[exId] : null;
         if (!Array.isArray(rows)) return;
         const sess = readSession(profile, block, w, dayId, exId, rows, day);
@@ -5423,7 +5482,11 @@ function strengthByExercise(profile, block) {
      reads the weeks either side of it straight out of this. */
   sessionsOf(profile, { weeks: 'plan', blocks: [block.id] }).forEach(sess => {
     const exId = sess.lift, w = sess.week;
-    if (!muscleOf[exId]) return;
+    /* An own key, not a truthy read: muscleOf is a plain {}, which answers
+       '__proto__' with Object.prototype, and `out[exId][w - 1] = best` below
+       then wrote onto Object.prototype itself. The session reader no longer
+       hands out such an id (readSessions); this is the second line. */
+    if (!Object.prototype.hasOwnProperty.call(muscleOf, exId)) return;
     /* Same rep ceiling as the trend: past it Epley is inventing a number
        rather than reading one, and one 20-rep back-off set would move a
        muscle's whole index. Each set's weight is already converted to the

@@ -944,6 +944,203 @@ const migratedLangEn = call('state = ' + JSON.stringify(okLangProfile) + '; migr
 ok('...while a known one, en, is kept — the hook the English version will read',
    migratedLangEn.prefs.lang === 'en', migratedLangEn.prefs.lang);
 
+console.log('\n== storage no writer produced (plans/067) ==');
+/* localStorage is not an import: nothing checks it the way
+   normalizeImported* checks a file, so migrate() is the only repair between
+   what is on disk and the first draw. Every case here is a shape no writer
+   in the app produces — a hand-edited backup restored long ago, an
+   extension, a bug in some later release — and each one used to cost a
+   training history, another profile's plan, or Object.prototype. Parsed
+   inside the sandbox the way load() parses storage: only JSON.parse makes
+   '__proto__' an own key (case 6), where an object literal would set the
+   prototype instead. The state the section before left is put back at the
+   end, so nothing after this reads a state built here. */
+call('__before067 = state;');
+const fromStorage = (stored, then) => call('state = JSON.parse(' +
+  JSON.stringify(typeof stored === 'string' ? stored : JSON.stringify(stored)) + '); migrate(); ' + then);
+
+/* 1. The "no blocks" branch handed out the seed's own blocks object, and the
+   seed chosen for a profile is hombre's for more than one of them: the one
+   named hombre, and one under any other name in first place. These two
+   held ONE plan between them, so editing either rewrote the other's. The
+   record under the seed's id is kept (decision 1): a blockless profile only
+   comes out of damaged storage, and the seed plan is the one its record
+   still matches. */
+const seedCopy = JSON.parse(fromStorage({
+  activeProfile: 'a',
+  profiles: {
+    a: { blocks: {}, log: { 'block-1': { 'w1-d0': { chestpress: [{ w: '50', r: '8', done: true }] } } } },
+    hombre: { blocks: {} },
+  },
+}, `(() => {
+  const a = state.profiles.a.blocks['block-1'], h = state.profiles.hombre.blocks['block-1'];
+  const before = h.name + ' | ' + h.days[0].ex[0].n;
+  a.name = 'Editado';
+  a.days[0].ex[0].n = 'Otro nombre';
+  return JSON.stringify({
+    both: !!a && !!h, same: a === h, sameDays: a.days === h.days,
+    before: before, after: h.name + ' | ' + h.days[0].ex[0].n,
+    record: sessionsOf(state.profiles.a, { weeks: 'logged' }).map(s => s.block + '/' + s.week + '/' + s.day + '/' + s.lift),
+  });
+})()`));
+ok('two blockless profiles each get a copy of the seed\'s blocks, not one object between them (plans/067)',
+   seedCopy.both && !seedCopy.same && !seedCopy.sameDays, JSON.stringify(seedCopy));
+ok('...so renaming one plan, or an exercise in it, leaves the other plan as it was',
+   seedCopy.after === seedCopy.before, JSON.stringify({ before: seedCopy.before, after: seedCopy.after }));
+ok('...and the record a blockless profile carried is kept, read against the seed plan it matches',
+   JSON.stringify(seedCopy.record) === '["block-1/1/d0/chestpress"]', JSON.stringify(seedCopy.record));
+
+/* 2. An id-less day ahead of the day that holds 'd0' used to be handed 'd0'
+   itself, and the rows filed under it with it, while the day that had
+   logged them was renamed 'd1' and opened empty. */
+const dayClaim = JSON.parse(fromStorage({
+  activeProfile: 'hombre',
+  profiles: { hombre: {
+    blocks: { b1: { name: 'B', weeks: 8, deload: 0, days: [
+      { name: 'Sin id', ex: [{ id: 'e1', n: 'Uno', sets: 3, reps: '10' }] },
+      { id: 'd0', name: 'Con id', ex: [{ id: 'e2', n: 'Dos', sets: 3, reps: '10' }] },
+    ] } },
+    blockOrder: ['b1'], activeBlock: 'b1',
+    log: { b1: { 'w1-d0': { e2: [{ w: '50', r: '8', done: true }] } } },
+  } },
+}, `(() => {
+  const p = state.profiles.hombre, days = p.blocks.b1.days;
+  return JSON.stringify({
+    ids: days.map(d => d.id),
+    filed: Object.keys(p.log.b1),
+    owner: sessionsOf(p, { weeks: 'logged' }).map(s => days.find(d => d.id === s.day).name + '/' + s.lift),
+  });
+})()`));
+ok('a day keeps the id it holds when an id-less day ahead of it would have taken it (plans/067)',
+   dayClaim.ids[1] === 'd0', JSON.stringify(dayClaim.ids));
+ok('...the id-less day gets a fresh id, one no other day claims',
+   !!dayClaim.ids[0] && dayClaim.ids[0] !== 'd0' && new Set(dayClaim.ids).size === 2, JSON.stringify(dayClaim.ids));
+ok('...and the rows filed under d0 are still the history of the day that logged them',
+   JSON.stringify(dayClaim.filed) === '["w1-d0"]' && JSON.stringify(dayClaim.owner) === '["Con id/e2"]',
+   JSON.stringify(dayClaim));
+
+/* 3. The same within a day: an id-less lift took the slug of its name from
+   the lift below it that already held it. The sets tell the two apart. */
+const exClaim = JSON.parse(fromStorage({
+  activeProfile: 'hombre',
+  profiles: { hombre: {
+    blocks: { b1: { name: 'B', weeks: 8, deload: 0, days: [{ id: 'd0', name: 'D', ex: [
+      { n: 'Remo', sets: 3, reps: '10' },
+      { id: 'remo', n: 'Remo', sets: 4, reps: '8' },
+    ] }] } },
+    blockOrder: ['b1'], activeBlock: 'b1',
+    log: { b1: { 'w1-d0': { remo: [{ w: '60', r: '8', done: true }] } } },
+  } },
+}, 'JSON.stringify(state.profiles.hombre.blocks.b1.days[0].ex.map(e => ({ id: e.id, sets: e.sets })))'));
+ok('an exercise keeps the id it holds when an id-less one above it slugs to the same id (plans/067)',
+   exClaim[1].id === 'remo' && exClaim[1].sets === 4, JSON.stringify(exClaim));
+ok('...and the id-less one gets a fresh id instead',
+   !!exClaim[0].id && exClaim[0].id !== 'remo', JSON.stringify(exClaim));
+
+/* 4. What the repair was written for: legacy days carry no id at all, their
+   rows were filed by index, and nothing is claimed, so the ids come out
+   exactly as they always did. */
+const legacyIds = JSON.parse(fromStorage({
+  activeProfile: 'hombre',
+  profiles: { hombre: {
+    blocks: { b1: { name: 'B', weeks: 8, deload: 0, days: [
+      { name: 'A', ex: [{ n: 'Uno', sets: 3, reps: '10' }] },
+      { name: 'B', ex: [{ n: 'Dos', sets: 3, reps: '10' }] },
+      { name: 'C', ex: [{ n: 'Tres', sets: 3, reps: '10' }] },
+    ] } },
+    blockOrder: ['b1'], activeBlock: 'b1',
+    log: { b1: { 'w3-d1': { dos: [{ w: '40', r: '10', done: true }] } } },
+  } },
+}, `JSON.stringify({
+  days: state.profiles.hombre.blocks.b1.days.map(d => d.id),
+  ex: state.profiles.hombre.blocks.b1.days.map(d => d.ex[0].id),
+  sessions: sessionsOf(state.profiles.hombre, { weeks: 'logged' }).map(s => s.week + '/' + s.day + '/' + s.lift),
+})`));
+ok('legacy days with no id at all still come out exactly d0, d1, d2 (plans/067)',
+   JSON.stringify(legacyIds.days) === '["d0","d1","d2"]', JSON.stringify(legacyIds.days));
+ok('...their id-less exercises still take the slug of their name',
+   JSON.stringify(legacyIds.ex) === '["uno","dos","tres"]', JSON.stringify(legacyIds.ex));
+ok('...and a row filed under w3-d1 by index still reads as the second day\'s',
+   JSON.stringify(legacyIds.sessions) === '["3/d1/dos"]', JSON.stringify(legacyIds.sessions));
+
+/* 5. typeof calls a list an object. Every part of the record stored as []
+   was kept as one: a tick then wrote its block onto the array as a string
+   key, which JSON.stringify drops, and the session's sets were gone on the
+   next reload. A phase stored as [] had no week in it, and every week read
+   no RIR. Every part at once, read off the table. */
+const listState = { activeProfile: 'hombre', profiles: { hombre: {
+  blocks: { b1: { name: 'B', weeks: 6, deload: 4, phase: [], days: [
+    { id: 'd0', name: 'D', ex: [{ id: 'e1', n: 'Uno', sets: 3, reps: '10' }] },
+  ] } },
+  blockOrder: ['b1'], activeBlock: 'b1',
+} } };
+call('RECORD_PARTS.map(part => part.name)').forEach(name => { listState.profiles.hombre[name] = []; });
+const listsFixed = JSON.parse(fromStorage(listState, `(() => {
+  const p = state.profiles.hombre, b = p.blocks.b1;
+  const shapes = RECORD_PARTS.map(part => part.name + ':' + (Array.isArray(p[part.name]) ? 'list' : typeof p[part.name]));
+  const row = entry(p, 'b1', 1, 'd0', 'e1', 3)[0];
+  row.w = '50'; row.r = '10'; row.done = true;
+  const saved = JSON.parse(JSON.stringify(p));
+  const generic = { weeks: 6, deload: 4, phase: genericPhase(6, 4) };
+  const rirs = [], want = [];
+  for (let w = 1; w <= 6; w++) { rirs.push(phaseRir(b, w)); want.push(phaseRir(generic, w)); }
+  return JSON.stringify({
+    shapes: shapes, phaseIsList: Array.isArray(b.phase), rirs: rirs, want: want,
+    saved: !!(saved.log && saved.log.b1 && saved.log.b1['w1-d0'] && saved.log.b1['w1-d0'].e1),
+  });
+})()`));
+ok('every part of the record stored as a list comes back a map (plans/067)',
+   listsFixed.shapes.every(s => /:object$/.test(s)), listsFixed.shapes.join(' '));
+ok('...so a set ticked into a log that was stored as [] survives being saved',
+   listsFixed.saved, JSON.stringify(listsFixed.shapes));
+ok('a phase stored as a list is replaced by the generic ramp, and each week reads the RIR it prescribes',
+   !listsFixed.phaseIsList && listsFixed.want.some(v => v != null)
+     && JSON.stringify(listsFixed.rirs) === JSON.stringify(listsFixed.want),
+   JSON.stringify({ rirs: listsFixed.rirs, want: listsFixed.want }));
+
+/* 6. A slot key no plan can hold, beside a real lift. The reader handed
+   '__proto__' out as a lift, strengthByExercise found it "in" the block
+   through its plain {} (muscleOf['__proto__'] is Object.prototype) and
+   wrote the week's best onto Object.prototype itself, so every object in
+   the page grew an index key; 'constructor' did the same to Object. The
+   sweep in `finally` takes back anything this case could leave on either,
+   pass or fail, before another section runs: an index key on the sandbox's
+   Object.prototype would answer every later `{}[0]`, and safeKey would
+   start refusing "0". Written as JSON text: an object literal cannot hold
+   '__proto__' as a key. */
+const protoSlotState = '{"activeProfile":"hombre","profiles":{"hombre":{' +
+  '"blocks":{"b1":{"name":"B","weeks":8,"deload":0,"days":[{"id":"d0","name":"D",' +
+  '"ex":[{"id":"e1","n":"Uno","muscle":"Pecho","sets":3,"reps":"10"}]}]}},' +
+  '"blockOrder":["b1"],"activeBlock":"b1",' +
+  '"log":{"b1":{"w1-d0":{"__proto__":[{"w":"50","r":"5","done":true}],' +
+  '"constructor":[{"w":"60","r":"5","done":true}],"e1":[{"w":"40","r":"5","done":true}]}}}}}}';
+const INDEX_KEYS_ON = '[Object.prototype, Object].map(o => Object.getOwnPropertyNames(o).filter(n => /^\\d+$/.test(n)))';
+let protoRead;
+try {
+  protoRead = JSON.parse(fromStorage(protoSlotState, `(() => {
+    const p = state.profiles.hombre, s = p.log.b1['w1-d0'];
+    const lifts = sessionsOf(p, { weeks: 'logged' }).map(x => x.lift);
+    const byEx = strengthByExercise(p, p.blocks.b1);
+    return JSON.stringify({
+      own: ['__proto__', 'constructor'].every(k => Object.prototype.hasOwnProperty.call(s, k) && Array.isArray(s[k])),
+      lifts: lifts, byEx: Object.keys(byEx),
+      indexKeys: ${INDEX_KEYS_ON}, zero: Object.prototype.hasOwnProperty('0'),
+    });
+  })()`));
+} finally {
+  call(INDEX_KEYS_ON + '.forEach((names, i) => names.forEach(n => { delete [Object.prototype, Object][i][n]; }))');
+}
+ok('the fixture holds "__proto__" and "constructor" as own keys of a logged slot, each with rows',
+   protoRead.own, JSON.stringify(protoRead));
+ok('the session reader never hands out a lift key safeKey refuses, and still reads the real lift beside it (plans/067)',
+   JSON.stringify(protoRead.lifts) === '["e1"]', JSON.stringify(protoRead.lifts));
+ok('...strengthByExercise answers for the real lift only',
+   JSON.stringify(protoRead.byEx) === '["e1"]', JSON.stringify(protoRead.byEx));
+ok('...and writes no index key onto Object.prototype or Object (the ninth audit\'s finding 12)',
+   JSON.stringify(protoRead.indexKeys) === '[[],[]]' && protoRead.zero === false, JSON.stringify(protoRead.indexKeys));
+ok('...and nothing of this case is left on either after it', call('JSON.stringify(' + INDEX_KEYS_ON + ')') === '[[],[]]');
+call('state = __before067; __before067 = null;');
+
 console.log('\n== normalizeImportedProfile ==');
 
 /* The most important assertion in this section: a profile the app itself
