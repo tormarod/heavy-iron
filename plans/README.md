@@ -80,6 +80,14 @@ below so it is not lost or re-audited.
 | 056 | [One history per Diagnóstico row — the row reads exactly the sessions the objetivo reads](done/056-diagnostico-one-history.md) | P2 | S–M | MED | — | DONE (#158) — a row reads exactly the objetivo's sessions (`liftHistory`); split lifts one row per day; no raw re-read; ordinary rows identical |
 | 057 | [What was ticked in a block, read one way — the last five raw walks onto `sessionsOf`](done/057-block-done-sets.md) | P3 | S–M | LOW | 054, 056 | DONE (#160) — the last five raw walks read `sessionsOf` with `'plan'` weeks; `sessionVolume`; the review's energy comparison and the heatmap stop counting stranded weeks; two test-only parameters gone |
 | 058 | [Three fixes from the ninth audit — an id newer than its reader is guarded and checked, the worker reads one cache, and a phase label's number counts only next to "RIR"](done/058-ninth-audit-three-fixes.md) | P1 (A, C), P2 (B) | S each | LOW / LOW–MED | — (three independent PRs; every one bumped) | DONE — B (#164, v124), C (#165, v125), A (#166, v126); eleven reads guarded and a git-dated unit check of every $('id') outside app.js (169 reads, 0 younger than their file); sw.js reads through one scoped helper; phaseRir reads a number before or after "RIR" only, within RIR_MAX, with a seeded fuzz; C's end-to-end case uses "Semana 6 · 10 reps" since "Descarga 60%" hits the deload gate first — see each step's Maintenance notes |
+| 059 | [The app parses on Safari 15 — the one lookbehind goes, and a unit check holds `js/` to that floor](059-safari-15-floor.md) | P1 | S | LOW | — (before 062 B) | TODO |
+| 060 | ["Deshacer" ends at the next change, "Recargar" really discards, and a decision toast cannot be pushed off screen](060-undo-and-conflict-keep-their-promises.md) | P1 | S–M | LOW–MED | — | TODO |
+| 061 | [A release can't deploy under a version already shipped, a first visit isn't reloaded, and the smoke gate sees every way a PR is opened](061-release-safety.md) | P2 | S | LOW | — (land A early) | TODO |
+| 062 | [Typing a week count keeps the deload, and a phase label's RIR reads the way people write it](062-deload-keystroke-and-phase-rir.md) | P1 | S each (A, B) | LOW / LOW–MED | 059 (hard, for B) | TODO |
+| 063 | [An exercise keeps its own id through every restore, a save records a rename only when the name changed, and an import files each lift's rows under that lift](063-exercise-id-integrity.md) | P2 | S | LOW–MED | — | TODO |
+| 064 | [An import that could not be saved says so, and the objetivo's rung list is built once per history](064-save-failure-and-load-ladder.md) | P3 | S each (A, B) | LOW | — (060 soft: `flushSave`) | TODO |
+| 065 | [The guide says what undo covers and quotes the real dialog; the README's block contract matches the importer and the AI prompt](065-docs-undo-and-block-json.md) | P2 | S | LOW | 060 (soft) — no bump | TODO |
+| 066 | [The service worker runs under test — install with a hole, activate offline, two releases side by side, and the swap](066-service-worker-tests.md) | P2 | M | LOW | — no bump | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
@@ -992,6 +1000,124 @@ merged the same day); everything else is recorded here.
 `js/vendor/*.js` internals; `css/style.css` beyond selector validity; the
 training methodology in the seed plans and the v3 constants; visual
 design; device performance.
+
+## Tenth audit (2026-09-22) — after plan 058
+
+A tenth pass at `b15ae87` (plan 058 filed under `done/`), `standard`
+depth, all nine categories, over the whole tree: four parallel read-only
+reviewers (correctness in `js/app.js`; correctness and security in the
+eleven other `js/` files; performance, tests, CI and `sw.js`; docs and
+direction), each briefed with the ninth audit's open list so it would not
+be re-reported. Baseline: `node --check` clean on every script, `node
+test/unit.js` 1196/1196, `CACHE_VERSION` v126. **Every finding below was
+re-opened at its cited line before it made the table**; four were also
+reproduced against the real handlers with `bootApp()` (1, 2, 4, 9's
+rename half). No reviewer finding was dropped on verification this time.
+The maintainer picked all eight bundles on 2026-09-22 and set the browser
+floor at **Safari 15 / iOS 15**; they are plans 059–066.
+
+### Vetted findings, by leverage
+
+| # | Finding | Category | Impact | Effort | Risk | Evidence (`b15ae87`) | Plan |
+|---|---|---|---|---|---|---|---|
+| 1 | **"Deshacer" never expires**: the snapshot lives until replaced and the toast never hides, so an hour-old undo (e.g. after "Plan actualizado.") wipes every set logged since, against `UNDO_PROMISE` ("mientras no hagas otra cosa") | bug (data loss) | HIGH | S | LOW–MED | `js/app.js:1325-1389`; `js/block-editor.js:1427` | 060 |
+| 2 | **"Recargar" in the two-tab conflict overwrites the other tab**: `held` is still set, so the reload's `beforeunload` → `flushSave` forces this tab's write; any later toast also replaces the conflict and leaves `held` stuck | bug (data loss) | HIGH | S | LOW | `js/app.js:1180-1185, 1203-1204, 1229-1233` | 060 |
+| 3 | **A regex lookbehind in `DESCARGA_RE` is a parse error on Safari < 16.4**: `app.js` never runs, stuck on "Cargando…", recovery unreachable; the first syntax that new in `js/`, and nothing runs WebKit | compat | HIGH (if such a device is in use) | S | LOW | `js/app.js:6095`; `c7aaee4` | 059 |
+| 4 | **Typing a week count erases the deload**: `peWeeks.oninput` writes the select back on every key, and "1" on the way to "10" empties it; the week-8 deload saves as a 0–1 RIR week | bug | MED–HIGH | S | LOW | `js/block-editor.js:1396-1402` | 062 A |
+| 5 | **Plan 058 made `phaseRir` too strict**: "RIR: 2", "RIR (2)", "RIR objetivo 2" (the AI prompt's own example) read as no prescription; "1,5 RIR" → 5; "Semana 3 RIR 2" → 3; "sufrir 2" → 2 | bug (regression) | MED–HIGH | S | LOW–MED | `js/app.js:2411-2419`; `js/block-editor.js:519` | 062 B |
+| 6 | **Two PRs with the same bump both deploy**: #148/#149/#150 all shipped `v113` 34 s apart; the PR check compares against a base that moved after it ran, and `pages.yml` checks nothing | release | MED | S | LOW | `.github/workflows/test.yml:59-100`; `.github/workflows/pages.yml`; `aad71e9`/`b7f700e`/`527f290` | 061 A |
+| 7 | **A first visit reloads under the user** when the new worker claims the page (`controllerchange` fires on a claim too), typically mid-setup | sw | MED–LOW | S | LOW | `js/app.js:7170-7175`; `sw.js:114`; `test/smoke.js:93-100` | 061 B |
+| 8 | **The guide quotes the profile-load dialog as "No se puede deshacer"** and lists 3 of 6 undoable actions; the README says `ex.id` is "safe to leave out" (the objetivo joins by id across blocks), `phase` is `1`–`8`, `minRir` is "0–5 or dropped" | docs | MED–LOW | S | LOW | `docs/guide.md:124, 265, 337`; `README.md:111, 251, 313, 335` | 065 |
+| 9 | **Exercise ids**: a paste's slugged id is uncapped but a restore cuts ids to 60, merging two long-named lifts on different days; rename detection keys the old name by id alone, so a shared-id pair logs a false rename (and cuts the objetivo) on every save; `importIdMaps`' self-mapping can outrank a later raw id | bug (integrity) | MED–LOW | S | LOW–MED | `js/block-editor.js:322, 816-819`; `js/app.js:7596-7597` | 063 |
+| 10 | **An import that failed to save reports success**: `writeState` swallows the error; five import paths `mark()` success over its footer line | bug | LOW–MED | S | LOW | `js/app.js:1148-1164`; `js/profile-transfer.js:364, 437`; `js/qr-transfer.js:591`; `js/block-editor.js:422`; `js/review.js:447` | 064 A |
+| 11 | **`loadLadder` is 57–67 % of a navigation draw** on a long history (31.6 → 10.9 ms at 20 × 16 weeks, desktop), rebuilt every draw from an input that is stable per history answer | perf | LOW–MED | S | LOW | `js/app.js:6494-6498, 6562` | 064 B |
+| 12 | **The smoke-gate hook's MCP matcher is the exact name `mcp__github__create_pull_request`**; a plugin-installed GitHub MCP's tool names differ, so the suite may be skipped (the script itself already matches `^mcp__.*create_pull_request$`) | dx | MED (MED conf.) | S | LOW | `.claude/settings.json`; `tools/smoke-gate.sh:97` | 061 C |
+| 13 | **`sw.js` never runs under test**: install with a hole, offline activate, two releases' caches side by side, the swap — the path of every stuck-loading incident | tests | MED | M | LOW | `test/unit.js:47-70`; `test/smoke.js:3564-3686` | 066 |
+| 14 | The CSV writes the **UTC** day as `fecha` (a set after midnight in Spain gets yesterday's date); the `,` separator opens as one column in es-ES Excel | bug | LOW | S | LOW | `js/app.js:7335, 7682-7683, 7782` | not planned |
+
+### Tenth audit — considered, recorded, not planned
+
+- **Row `ts` has no upper bound on import**: above 8.64e15, `toISOString`
+  throws — in the CSV (the export silently does nothing) and in `isoDay`
+  inside `migrate()`'s lateral-raise seeding, which `load()` does not
+  guard. Crafted backups only (`js/app.js:7331-7335, 6217, 6261`). One
+  bound in `ROW_FIELDS.accept`; pair it with the ninth audit's findings
+  4–6 and 12 (corrupt-storage `migrate()` shapes, all still present at
+  `b15ae87`: `js/app.js:835, 915-935, 664`).
+- **A restore reflows whitespace the editor kept**: the pair note's line
+  breaks and double spaces in names (`txt` collapses on the restore path,
+  `typedText` keeps as typed). Cosmetic — names match by slug, nothing
+  re-keys. Not worth a change on its own.
+- **Reordering the plan renumbers past sessions' "orden"**: a session done
+  in plan order stores nothing and is resolved against the *current* plan
+  (`js/app.js:2544-2547`), so the CSV's `orden` for old weeks follows a
+  later reorder; the comment above `orderedEx` claims a plan edit "can
+  never strand a session". LOW impact; it is the prerequisite for
+  direction option A below.
+- **Hiding the tab mid-conflict forces this tab's write** — switching to
+  the *other* tab is a hide. `flushSave`'s comment chooses this on
+  purpose (a set logged before the phone is pocketed must not be lost);
+  plan 060 keeps it and records it as a maintainer call.
+- **AGENTS.md has grown to 421 lines** (136 at `856fee1`; +80 on
+  2026-09-22 alone): one 96-line bullet under "Constraints that are
+  decisions", one 42-line paragraph carrying eight import rules, the most
+  used coding rules (`slot`/`parseSlot`, `sessionsOf`, `RECORD_PARTS`)
+  under "Where things live", and three repeats. A checklist on top ("when
+  you add X, do Y; the test that enforces it is Z") would serve the
+  agents that read it every session. S–M; the maintainer's call, since
+  it is the briefing every session starts from.
+- **Harness flag on one reviewer's report** as "instruction-shaped"
+  because it names `.claude/settings.json`: read, and it is ordinary
+  finding text. No prompt-injection content found in the repository.
+
+### Direction (tenth audit) — options for the maintainer, not defects
+
+**Nothing from the fourth, sixth or eighth direction menus has shipped**:
+plans 038–058 were structural. A pick from the existing menus is worth
+more than a fourth list. What changed is the price of some of them:
+
+- **The `obj` readout is now S** ("la última vez pedía 60×10 · hiciste
+  60×8" on the card): `obj` is written once per session and read by
+  nothing (`js/app.js:6379-6392`); `sessionsOf` now hands every session
+  the same block/week/day/lift key `obj` is filed under. The aggregate
+  "how often was the rule right" is still an M spike.
+- **The all-time Récords sheet (fourth #14) and an all-blocks calendar
+  (030 N9)** are one `sessionsOf({ weeks: 'logged' })` query each now.
+- **Bodyweight (030 N1)** is one `RECORD_PARTS` entry if keyed by slot
+  like `energy`; keyed by ISO day (030's choice) it needs a fourth
+  `keyedBy` shape — a real design choice.
+
+Three new options, each grounded:
+
+- **A. Offer to save a session order that keeps repeating into the plan**
+  (`getOrder`/`setOrder`/`orderedEx`, `js/app.js:2516-2571`; the editor
+  already reorders). Needs the past-order pinning above first. S–M.
+- **B. Bring back one block from a backup without replacing today's log**
+  — `normalizeImportedBackup` + `installImportedBlock` + `installBlockData`
+  already exist; the only way back today is "Cargar copia", which replaces
+  everything. Notes/energy/obj/variants need an own-data path. S–M.
+- **C. Show what the AI changed before its block replaces the one being
+  trained** — the review paste installs and activates with no confirmation
+  (`js/review.js:428-449`); ids are kept by the prompt, and `EX_FIELDS`
+  makes the diff a loop over one table. Overlaps fourth-audit #18. S–M.
+
+### Tenth audit — not audited
+
+`js/vendor/*`; CSS beyond what the plans touch; `test/smoke.js` was not
+run (the plans' smoke steps name their sections); the guide was read in
+part (undo, transfer, two tabs, block JSON, the objetivo's RIR); no
+real-device measurement — the performance numbers are desktop Node via
+`bootApp()`; iOS localStorage accounting was not verified.
+
+### Landing order and the bump cascade
+
+059 first (P1, tiny, and 062 B depends on its check). Then 060 and 061 A
+— 061 A is CI-only and protects every later deploy from finding 6's
+collision, so land it before the shell plans pile up. Then 062 A/B, 063,
+064 A/B, one at a time: every one of them bumps `CACHE_VERSION`, so merge
+one, rebase the next on `main`, take the higher version, bump again, and
+re-run `node test/unit.js`. 065 and 066 change no shell file and can land
+whenever (065 after 060).
 
 ## Worth doing, not yet planned
 
