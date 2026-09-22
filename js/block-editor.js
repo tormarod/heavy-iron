@@ -187,9 +187,16 @@ async function newBlock(skipReview) {
      next one — which is exactly when the app used to say nothing at all.
      Asked before the name, so choosing to read it costs nothing you have
      already typed, and the flow picks up where it left off when the review
-     closes rather than dead-ending on a sheet. Offered, never forced. */
+     closes rather than dead-ending on a sheet. Offered, never forced.
+
+     And offered only when js/review.js is on the page. It was split out
+     after the licence this file has (AGENTS.md), so a precache hole can
+     leave this file without it, and "Ver la revisión" then threw a
+     ReferenceError out of this function and the block was never made.
+     Without the review there is nothing to ask: this goes straight on to
+     the name, as newBlock(true) does. */
   const doneSets = blockDoneSets(profile, current.id);
-  if (!skipReview && doneSets > 0) {
+  if (!skipReview && doneSets > 0 && typeof openReview === 'function') {
     const look = await ask({
       title: '¿Repasas "' + current.name + '" antes?',
       body: 'Llevas ' + setsLabel(doneSets) + ' en él. La revisión resume qué músculo se movió, a cuántas sesiones llegaste y cómo quedó el volumen — y se copia como prompt para que tu IA escriba el siguiente bloque contra eso.',

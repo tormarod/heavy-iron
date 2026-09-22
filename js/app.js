@@ -4710,6 +4710,60 @@ function drawSessionNote(profile, block, day) {
   }
 }
 
+/* ---------- best e1RM per exercise per week ----------
+   Both of these are the Diagnóstico's (its strength index and frequency
+   view read them) and lived in js/diagnostics.js, but deloadCheck below
+   reads strengthByExercise on every draw, and a symbol app.js reads stays
+   in app.js (AGENTS.md rule 1). Loaded without that file — a precache
+   hole — the week after a mid-block deload threw a ReferenceError inside
+   the draw and landed on the recovery screen. Not stubbed: an empty answer
+   here would draw no deload check at all and look like there was nothing
+   to compare. */
+
+/* Every exercise the block has ever carried, retired ones included, mapped
+   to its muscle. Retired exercises are excluded from the *plan* side of the
+   frequency view (plannedMuscleDays, js/diagnostics.js) — they are not
+   scheduled any more — but the sessions they were logged in still
+   happened, and dropping them would invent gaps that were not there. */
+function muscleOfBlock(block) {
+  const map = {};
+  (block.days || []).forEach(day => {
+    (day.ex || []).forEach(ex => { map[ex.id] = muscleTag(ex); });
+  });
+  return map;
+}
+
+/* Best estimated 1RM per exercise per week of this block, as
+   { exId: [w1, w2, …] } with null for a week it was not logged. A muscle
+   trained on two days in the same week keeps the better of the two — the
+   week's best, same rule the progress chart uses within a session. */
+function strengthByExercise(profile, block) {
+  const muscleOf = muscleOfBlock(block);
+  const weeks = blockWeeks(block);
+  const out = {};
+  /* The block's own weeks, and the deload week KEPT: this is the series
+     the chart draws, and those sets happened. It is strengthRows, in
+     js/diagnostics.js, that refuses to measure to or from it — and
+     deloadCheck, below, reads the weeks either side of it straight out of
+     this. */
+  sessionsOf(profile, { weeks: 'plan', blocks: [block.id] }).forEach(sess => {
+    const exId = sess.lift, w = sess.week;
+    if (!muscleOf[exId]) return;
+    /* Same rep ceiling as the trend: past it Epley is inventing a number
+       rather than reading one, and one 20-rep back-off set would move a
+       muscle's whole index. Each set's weight is already converted to the
+       unit on screen, so a row logged in the other unit is not blended in
+       raw — see rowWeight(). */
+    const done = sess.sets.filter(x => x.worked && x.r <= EST_MAX_REPS);
+    if (!done.length) return;
+    let best = 0;
+    done.forEach(x => { const v = est1RM(x.w, x.r); if (v > best) best = v; });
+    if (!out[exId]) out[exId] = new Array(weeks).fill(null);
+    if (out[exId][w - 1] == null || best > out[exId][w - 1]) out[exId][w - 1] = best;
+  });
+  return out;
+}
+
 /* ---------- did the deload work? ----------
    Nothing checked whether the week after a deload actually came back up,
    which is the only evidence there is about whether your deloads are the
