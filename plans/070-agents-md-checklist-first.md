@@ -193,4 +193,39 @@ and the unit suite's link check.
 
 - A new rule goes in its section **and** gets a checklist line if it is
   something an agent must do when making a kind of change.
-- *(Executor: record deviations here.)*
+- The checklist's pointers are markdown links, so the unit suite's "docs
+  cross-links resolve" section fails on a heading renamed under them.
+  Keep `_` out of a heading that a link targets: that section's slugger
+  strips `_` and GitHub's keeps it, so no anchor could satisfy both. This
+  is why the `RECORD_PARTS` and `EX_FIELDS` subsections are named in
+  words.
+- Executor, 2026-09-23 (branch `claude/070-agents-md`, from `360b611`):
+  - Drift since `c9114bc`: only 068 B's "Spanish only" clause (`bd1059b`),
+    a rule added. It is kept word for word under Documented limits (third
+    STOP condition: included, and reported in the PR).
+  - The table's "a destructive action → `snapshotForUndo` before its
+    writes, no `await` between" row is left out and listed in the PR. It
+    could not be confirmed, and decision 5 bars it anyway. AGENTS.md never
+    stated the rule. It lives in `js/app.js`'s comment above `undoArmed`
+    and in plan 060's Maintenance notes. Plan 060's unit cases test
+    undo's expiry only through "Borrar este día", and nothing tests a new
+    destructive action's shape.
+  - The "reader of logged sets" row names what the tests hold: the
+    history-cache section pins every `save('view')` and scoped save and
+    freezes the answers. Reading through `sessionsOf` has no source
+    guard, so that half says "review".
+  - Rows beyond the table, each an existing rule of this file with its
+    test checked: rule 2, folded into the symbol row; "a log key, or a
+    walk over a block's slots" (unit "the log key has one reader as well
+    as one builder"); "anything a user sees" and "a code comment"
+    (review).
+  - `wireBlockEditor()`'s missing guard is stated once, in the pre-split
+    exception. The ids subsection links to it for the consequence (a
+    throw there takes `load()` with it). The second `SHELL_SCRIPTS`
+    sentence under How to verify is folded into the split recipe.
+  - Length 440 → 587 lines. The growth is the checklist (73 lines) and
+    17 new headings; the prose is within a few lines of its old length.
+    116 of the old file's 132 prose sentences survive word for word
+    (whitespace collapsed). The other 16 were re-cut for the new headings
+    or links (four only by a bullet marker or a heading now beside them),
+    and the PR lists each.
