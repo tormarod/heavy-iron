@@ -4793,7 +4793,7 @@ blockIndex.forEach(entry => {
      JSON.stringify(statedIds) === JSON.stringify(keptIds));
 });
 
-console.log('\n== phaseRir: the number next to "RIR" wins, not the lowest digit anywhere (plans/008 item 17, plans/058 item 3) ==');
+console.log('\n== phaseRir: the number before or after "RIR" wins, not the lowest digit anywhere (plans/008 item 17, plans/058 item 3) ==');
 ok('a week number ahead of the RIR phrase no longer wins',
    call('phaseRir({ phase: [{ r: "Semana 1: 2-3 RIR" }] }, 0)') === 2);
 ok('a one-off number elsewhere no longer wins over the RIR range',
@@ -4814,27 +4814,43 @@ ok('0 RIR is a real prescription, not falsy-null',
    call('phaseRir({ phase: [{ r: "0 RIR" }] }, 0)') === 0);
 ok('5 RIR is at RIR_MAX and still counts',
    call('phaseRir({ phase: [{ r: "5 RIR" }] }, 0)') === 5);
+ok('the postfix form reads too — "RIR 2" is as natural in Spanish as "2 RIR"',
+   call('phaseRir({ phase: [{ r: "RIR 2" }] }, 0)') === 2);
+ok('...with a range after it, still the lower end',
+   call('phaseRir({ phase: [{ r: "RIR 2-3" }] }, 0)') === 2);
+ok('an em dash in the range still reads its lower end, not the digit RIR sits next to',
+   call('phaseRir({ phase: [{ r: "2—3 RIR" }] }, 0)') === 2);
+ok('...and so does a minus sign',
+   call('phaseRir({ phase: [{ r: "2−3 RIR" }] }, 0)') === 2);
 
 /* A fuzz rather than a fixed table: phaseRir takes free text a human typed,
    so the invariant that matters is the shape of every possible answer, not
    a handful of hand-picked ones. Labels are built from the same vocabulary
-   real phase text uses — digits, dashes, "RIR", "Semana", "%" and a few
-   Spanish words — glued together with and without spaces so both "2-3 RIR"
-   and stray digit-word runs like "60Descarga" get exercised. The seed is
-   fixed so a failure reproduces; it is not read for anything else. */
+   real phase text uses — digits, every dash the regex accepts, "RIR" in
+   both the "N RIR" and "RIR N" shapes, "Semana", "%" and a few Spanish
+   words — glued together with and without spaces so "2-3 RIR", "RIR 2-3"
+   and stray digit-word runs like "60Descarga" all get exercised. Digits are
+   drawn mostly from 0–9 (three draws in four) rather than 0–99, because a
+   RIR-adjacent 0–99 draw lands in [0, RIR_MAX] only 6% of the time and the
+   positive path — an actual prescription, not just null — needs exercising
+   too. `Math.imul` keeps the multiply inside 32 bits: plain `seed * k`
+   overflows 2^53 on this multiplier and the generator collapses into a
+   short cycle with most labels repeated. The seed is fixed so a failure
+   reproduces; it is not read for anything else. */
 const phaseRirFuzzProbe = `
   (function() {
     let seed = 20260922;
-    function rnd() { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }
+    function rnd() { seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff; return seed / 0x7fffffff; }
     function pick(arr) { return arr[Math.floor(rnd() * arr.length)]; }
+    function digit() { return String(Math.floor(rnd() * (rnd() < 0.75 ? 10 : 100))); }
     const words = ['Semana', 'de', 'tecnica', 'Descarga', 'Top', 'set', 'back-offs',
-      'reps', 'fase', 'RIR', '%', '-', '–', 'proxima', 'bloque'];
+      'reps', 'fase', 'RIR', '%', '-', '–', '—', '−', 'proxima', 'bloque'];
     const failures = [];
     for (let i = 0; i < 2000; i++) {
       const tokenCount = 1 + Math.floor(rnd() * 6);
       const tokens = [];
       for (let j = 0; j < tokenCount; j++) {
-        tokens.push(rnd() < 0.35 ? String(Math.floor(rnd() * 100)) : pick(words));
+        tokens.push(rnd() < 0.35 ? digit() : pick(words));
       }
       const label = tokens.join(rnd() < 0.5 ? ' ' : '');
       const block = { phase: [{ r: label }] };
@@ -4843,14 +4859,14 @@ const phaseRirFuzzProbe = `
         failures.push({ label: label, v: v, kind: 'phaseRir' });
       const minRir = Math.floor(rnd() * 6), lastRho = Math.floor(rnd() * 6);
       const wv = weekRir(block, { minRir: minRir }, 0, lastRho);
-      if (!(wv <= RIR_MAX))
+      if (!(Number.isInteger(wv) && wv >= 0 && wv <= RIR_MAX))
         failures.push({ label: label, wv: wv, minRir: minRir, lastRho: lastRho, kind: 'weekRir' });
     }
     return { checked: 2000, failCount: failures.length, sample: failures.slice(0, 3) };
   })()
 `;
 const phaseRirFuzz = call(phaseRirFuzzProbe);
-ok('2,000 random phase labels: phaseRir is always null or an integer in [0, RIR_MAX], and weekRir (minRir, lastRho in [0, 5]) never exceeds it',
+ok('2,000 random phase labels: phaseRir is always null or an integer in [0, RIR_MAX], and weekRir (minRir, lastRho in [0, 5]) is always an integer in [0, RIR_MAX]',
    phaseRirFuzz.failCount === 0, JSON.stringify(phaseRirFuzz));
 
 /* trainedDays had no test of its own (plans/057): it fed the calendar

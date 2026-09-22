@@ -310,12 +310,18 @@ written, no deviation.
 there (decision 3 held, STOP condition did not fire):
 - `ex.minRir` goes through `EX_FIELDS`'s `{ key: 'minRir', lo: 0, hi: 5,
   accept(v) { … clampInt(v, this.lo, this.hi, 0) … } }` (`js/app.js`,
-  `:3583`) — `hi: 5` is `RIR_MAX` as a literal (the file's own comment
-  at `:4678` names this as deliberate: raising `RIR_MAX` means editing
-  all four literals, this one among them).
-- `lastRho` is `rhoOf(raw)`, and `rhoOf` (`:6044`) is
+  `:3591`). *Correction after review:* `hi: 5` here is **not** one of the
+  "four" literal spellings of `RIR_MAX`'s range the file's own comment at
+  `:4686-4689` tracks — that comment names the RIR input box's regex,
+  `rowRir`, `rirNumber` and `normalizeImportedLog`, and `minRir` is not
+  among them, in either place the four are listed. The `hi: 5` cap is a
+  fifth, independent literal that happens to equal `RIR_MAX` today by
+  coincidence, not by the tracked convention — raising `RIR_MAX` would
+  leave `minRir`'s ceiling at 5 unless this call site is also found and
+  edited by hand.
+- `lastRho` is `rhoOf(raw)`, and `rhoOf` (`:6052`) is
   `rirNumber(raw) ?? 0`; `rirNumber` already refuses any digit past
-  `RIR_MAX` (`test/unit.js:2595`, "...including a digit past RIR_MAX",
+  `RIR_MAX` (`test/unit.js:2628`, "...including a digit past RIR_MAX",
   pre-existing and unchanged), so `rhoOf` can only return `0`–`5`.
 
 **C.3 — tests.** The `phaseRir` section's `"Semana 3 de 5"` case now
@@ -378,3 +384,40 @@ section matching "objetivo" — **"objetivo de peso y diagnóstico"** — ran
 `--only "objetivo"`: 33 passed, 0 failed, 30 sections skipped by
 `--only`. Server stopped afterward. The full smoke suite was left to
 the PreToolUse hook on PR open, per instructions.
+
+**Review round.** A PR review on #165 found three real gaps, addressed
+on the same branch:
+1. `phaseRir` only matched a number *before* "RIR". "RIR 2" — as natural
+   in Spanish as "2 RIR", and a shape the AI prompt's free text invites —
+   read `null` once the digits-anywhere fallback was gone. Added a
+   postfix form (`RIR\s*(\d+)(?:\s*[dash]\s*(\d+))?`), still the lower
+   end of a range, still clamped to `RIR_MAX`; when both a prefix and a
+   postfix match exist in one label, the earlier one in the string wins
+   (compared by match `.index`).
+2. The dash class (`[–-]`) missed the em dash (U+2014) and the minus
+   sign (U+2212): "2—3 RIR" matched neither half of the range as a pair,
+   fell through to matching the lone "3 RIR", and read the *high* end —
+   against the "lowest number wins" rule. Widened to `[-–—−]` in both
+   the prefix and postfix forms.
+3. The fuzz's PRNG (`seed * 1103515245`) overflowed `2^53`, degenerating
+   into a ~10,466-step cycle with only ~1,059 distinct labels out of
+   2,000 and almost no label landing an in-range RIR value — so it barely
+   exercised the positive path. Switched to `Math.imul(seed, 1103515245)`
+   to keep the multiply inside 32 bits, and biased digit draws toward
+   0–9 (three draws in four, vs. uniform 0–99 before) so a RIR-adjacent
+   digit lands in range far more often. Also added a lower-bound and
+   integer check on `weekRir`'s fuzzed result (previously only `<=
+   RIR_MAX` was asserted), and added `"RIR 2"`, `"RIR 2-3"`, `"2—3 RIR"`
+   (em dash) and `"2−3 RIR"` (minus sign) to the fixed-case table
+   (all → 2), plus the em dash, minus sign and the postfix `"RIR N"`
+   shape to the fuzz's own vocabulary.
+
+No STOP condition fired for the review round: no v3 `objetivo` rule
+assertion other than `"Semana 3 de 5"` changed outcome, and no route was
+found where `lastRho` or `minRir` themselves exceed `RIR_MAX` (the
+`minRir` correction above is about which literal *tracks* the cap, not
+about the cap being absent). Re-verified: `node --check js/app.js`
+clean; `node test/unit.js` — **1194 passed, 0 failed** (1190 after the
+rebase onto main's Step B + 4 new assertions: the postfix, postfix-range,
+em-dash and minus-sign cases); `node test/smoke.js --only "objetivo de
+peso y diagnóstico"` — 33 passed, 0 failed, unchanged.
