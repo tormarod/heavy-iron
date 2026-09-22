@@ -105,9 +105,15 @@ _Avoid_: movement
 
 **Deload week**:
 A week the block prescribes lighter work in, whether it was set as the
-block's deload week or written into the phase text by hand. Screens that
+block's deload week or written into the phase text by hand. A goal that
+says there is no deload ("sin descarga") does not make one. Screens that
 look for a trend leave it out; screens that show what happened keep it.
 _Avoid_: descarga (in code comments), rest week
+
+**Deload span**:
+Consecutive deload weeks, taken as one deload. Whether a deload worked is
+read from the week before the span to the week after it.
+_Avoid_: deload block, double deload
 
 **Stranded week**:
 A week logged in a block that has since been shortened below it. Its sets

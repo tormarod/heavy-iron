@@ -75,6 +75,8 @@ below so it is not lost or re-audited.
 | 051 | [The profile's record says how each part is accepted — one import loop over `RECORD_PARTS`, and unknown keys stay out](done/051-record-parts-accept.md) | P2 | M | MED | 046 (merged) | DONE (#147) — every part has `accept`; import loops over `RECORD_PARTS`; unknown profile and backup keys stripped; one-id orders now survive import |
 | 052 | [A unit harness that boots the app and keeps its handlers — `test/harness.js`, `bootApp()`, one history fixture](done/052-booted-test-harness.md) | P2 | M | LOW | — | DONE — PR 1 (#152: `test/harness.js`, `bootApp()`, real-handler tests, a precache section that boots) and PR 2 (#155: six history builders onto one `sessionFixture`) |
 | 053 | [The plan draft is one object, and saving it erases exactly what the dialog promised](done/053-plan-draft.md) | P1 | M | LOW–MED | — | DONE (#154) — one `peDraft`; erasures resolved to where the sets sit (exercises before the moves, days after); stale drafts refused; 0 failures in 20,000 random editor sessions |
+| 052 | [A unit harness that boots the app and keeps its handlers — `test/harness.js`, `bootApp()`, one history fixture](052-booted-test-harness.md) | P2 | M | LOW | — | IN PROGRESS — PR 1 (`test/harness.js`, `bootApp()`, real-handler tests, a precache section that boots) #152; PR 2 (one history fixture) next |
+| 054 | [The deload week, read one way — `deloadWeeks(block)` for every screen, spans for "¿funcionó la descarga?", and "sin descarga" is not a deload](054-deload-read-one-way.md) | P2 | S | LOW–MED | — | IN PROGRESS |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
