@@ -358,4 +358,179 @@ function bootApp({ omit = [], state } = {}) {
   };
 }
 
-module.exports = { inert, SHELL_SCRIPTS, loadApp, bootApp, BOOT_TIME };
+/* ---------- loadWorker: sw.js run for real ----------
+   sw.js decides which release of the app a phone runs, and every serious
+   incident this repo has had was in its upgrade path: the stuck loading
+   screen twice (commit 5ed2906, then the js/chart.js split — a page and
+   scripts from two releases), and an old worker serving a newer release's
+   file into a hole in its own cache through the global caches.match
+   (plan 058 B). All of them were found by reading the file. The unit suite
+   only ever read sw.js as text, and test/smoke.js runs one real worker at
+   one version, with stand-ins for the swap.
+
+   loadWorker() runs the real sw.js in a vm context over a fake cache store
+   and a fake network, both plain enough for a test to look inside and to
+   change between events (plans/066):
+
+     loadWorker({ version, network, caches, scope, transform, globalMatch }) → {
+       ctx, call, self, caches, network, clients, url(), version,
+       SHELL, VENDOR, SHELL_CACHE, RUNTIME_CACHE, VENDOR_CACHE,
+       install(), activate(), message(data, ports), fetch(url, { mode, method }) }
+
+   `version` rewrites the file's CACHE_VERSION line, and a second call
+   handed the first one's `caches` and `network` shares its store: two
+   releases on one phone, side by side. `transform` edits the source after
+   that, for the suite's mutation checks, and `globalMatch` gives this
+   worker the cross-cache caches.match the real store has — only for the
+   mutation that proves a regression to it would be caught. Without it the
+   fake has no caches.match at all, so a regression throws. */
+const SW_VERSION_LINE = /^const CACHE_VERSION = '[^']*';$/gm;
+const ACROSS = Symbol('match across every cache');
+
+/* The fake CacheStorage. Every key — a Request, 'index.html', './', an
+   absolute URL — becomes one absolute URL against the scope, so './' and
+   the scope itself are one entry, the way they are one URL to a browser.
+   A hit is handed back as a clone, or the second read of an entry would
+   find its body already used. `network` and `scope` are kept on the store
+   so a second worker sharing it cannot quietly disagree about either. */
+function fakeCacheStorage({ abs, fetch, network, scope }) {
+  const named = new Map();
+  const cacheOf = entries => ({
+    match: key => Promise.resolve(entries.has(abs(key)) ? entries.get(abs(key)).clone() : undefined),
+    put: (key, response) => { entries.set(abs(key), response); return Promise.resolve(); },
+    /* What the real cache.add does with anything but a 2xx: rejects, and
+       stores nothing. precache's .catch is what turns that into a hole. */
+    add: request => fetch(request).then(response => {
+      if (!response.ok) throw new TypeError('cache.add: status ' + response.status);
+      entries.set(abs(request), response);
+    }),
+    keys: () => Promise.resolve([...entries.keys()]),
+    delete: key => Promise.resolve(entries.delete(abs(key))),
+  });
+  return {
+    network, scope,
+    open: name => {
+      if (!named.has(name)) named.set(name, new Map());
+      return Promise.resolve(cacheOf(named.get(name)));
+    },
+    has: name => Promise.resolve(named.has(name)),
+    keys: () => Promise.resolve([...named.keys()]),
+    delete: name => Promise.resolve(named.delete(name)),
+    /* Test-only: every cache's URLs, by name, in creation order. */
+    dump: () => {
+      const out = {};
+      named.forEach((entries, name) => { out[name] = [...entries.keys()]; });
+      return out;
+    },
+    [ACROSS]: key => {
+      for (const entries of named.values()) {
+        if (entries.has(abs(key))) return Promise.resolve(entries.get(abs(key)).clone());
+      }
+      return Promise.resolve(undefined);
+    },
+  };
+}
+
+function loadWorker({ version, network, caches, scope = 'https://example.test/app/', transform, globalMatch = false } = {}) {
+  let src = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+  if (version !== undefined) {
+    const lines = src.match(SW_VERSION_LINE) || [];
+    if (lines.length !== 1) throw new Error('loadWorker: sw.js has ' + lines.length + ' CACHE_VERSION lines, expected 1');
+    src = src.replace(SW_VERSION_LINE, "const CACHE_VERSION = '" + version + "';");
+  }
+  if (transform) src = transform(src);
+
+  const abs = key => new URL(typeof key === 'string' ? key : key.url, scope).href;
+  if (caches && caches.scope !== scope) throw new Error('loadWorker: a shared store needs the same scope');
+  if (caches && network && caches.network !== network) throw new Error('loadWorker: a shared store needs its own network');
+  network = network || (caches && caches.network) || { online: true, files: null };
+  if (network.online === undefined) network.online = true;
+  if (!network.calls) network.calls = [];
+
+  /* Every URL asked for is recorded, offline or not: that is how a test
+     tells a cache hit from a trip to the network that failed. */
+  const fetch = input => {
+    const url = abs(input);
+    network.calls.push(url);
+    if (!network.online) return Promise.reject(new TypeError('offline'));
+    const file = network.files[url];
+    return Promise.resolve(file
+      ? new Response(file.body, { status: file.status || 200 })
+      : new Response('', { status: 404 }));
+  };
+  const store = caches || fakeCacheStorage({ abs, fetch, network, scope });
+  const workerCaches = globalMatch ? Object.assign(Object.create(store), { match: store[ACROSS] }) : store;
+
+  /* Node's own Request refuses the relative URLs fromServer() passes it
+     ('index.html'), so the worker gets one that resolves them against the
+     scope, the way a worker's Request resolves against its location. */
+  class Request {
+    constructor(input, init = {}) {
+      this.url = new URL(typeof input === 'string' ? input : input.url, scope).href;
+      this.mode = init.mode || (input && input.mode) || 'no-cors';
+      this.method = init.method || (input && input.method) || 'GET';
+      this.cache = init.cache;
+    }
+  }
+
+  const clients = {
+    claimed: false,
+    claim() { clients.claimed = true; return Promise.resolve(); },
+    matchAll: () => Promise.resolve([]),
+  };
+  /* An origin has no path: sw.js tests sameOrigin against location.origin
+     and the app page against registration.scope, and a test that set both
+     to the scope would skip every same-origin branch without a word. */
+  const self = listening({
+    location: { origin: new URL(scope).origin },
+    registration: { scope },
+    clients,
+    skipped: false,
+    skipWaiting() { self.skipped = true; return Promise.resolve(); },
+  });
+
+  const ctx = vm.createContext({
+    self, caches: workerCaches, fetch, Request, Response, Headers, URL, setTimeout, console,
+  });
+  vm.runInContext(src, ctx, { filename: 'sw.js' });
+  const call = expr => vm.runInContext(expr, ctx);
+  const SHELL = call('SHELL');
+  const VENDOR = call('VENDOR');
+  const ownVersion = call('CACHE_VERSION');
+
+  /* Every shell and vendor file, its body naming the release that served
+     it, so a test can tell whose copy it was handed. */
+  if (!network.files) {
+    network.files = {};
+    SHELL.concat(VENDOR).forEach(u => { network.files[abs(u)] = { status: 200, body: u + '@' + ownVersion }; });
+  }
+
+  /* install and activate hand back what the handler passed to waitUntil,
+     so a test awaits the same promise the browser would. */
+  const extendable = type => {
+    const held = [];
+    fire(self, type, { waitUntil(p) { held.push(p); } });
+    return Promise.all(held);
+  };
+  return {
+    ctx, call, self, caches: store, network, clients, url: abs, version: ownVersion,
+    SHELL, VENDOR,
+    SHELL_CACHE: call('SHELL_CACHE'), RUNTIME_CACHE: call('RUNTIME_CACHE'), VENDOR_CACHE: call('VENDOR_CACHE'),
+    install: () => extendable('install'),
+    activate: () => extendable('activate'),
+    message: (data, ports) => { fire(self, 'message', { data, ports }); },
+    /* Resolves to what the handler answered with, or null when it let the
+       request go to the network by not answering at all. A listener that
+       throws does so out of this call, synchronously, as one does out of
+       install(), activate() and message(), where a browser would only log
+       it: a caller that has to outlive a broken sw.js makes the call under
+       a guard (attempt() in test/unit.js). */
+    fetch: (url, { mode = 'no-cors', method = 'GET' } = {}) => {
+      let answer = null;
+      fire(self, 'fetch', { request: { url: abs(url), mode, method }, respondWith(p) { answer = Promise.resolve(p); } });
+      return answer || Promise.resolve(null);
+    },
+  };
+}
+
+module.exports = { inert, SHELL_SCRIPTS, loadApp, bootApp, loadWorker, BOOT_TIME };

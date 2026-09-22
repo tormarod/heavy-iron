@@ -229,8 +229,8 @@ same order — and is the fastest full check. A new file under `js/` goes
 into `SHELL_SCRIPTS` in `test/harness.js` too, in the position its
 `<script>` tag has.
 
-`test/harness.js` loads the shell two ways, and a test picks by what it
-touches (plans/052):
+`test/harness.js` loads the shell two ways, and the worker a third, and a
+test picks by what it touches (plans/052, plans/066):
 
 - **`loadApp()`, for pure logic** — `migrate()`, the validators, the
   statistics, called directly. It is the one context most of
@@ -248,6 +248,14 @@ touches (plans/052):
   or swap out `render`/`save` to get at one, boots instead. It is still
   not a DOM — `innerHTML` is never parsed — so what a person sees stays in
   `test/smoke.js`.
+- **`loadWorker({ version, caches, network })`, for `sw.js`.** The real
+  worker over a fake cache store and a fake network, with `install()`,
+  `activate()`, `message()` and `fetch()` to fire its events. `version`
+  rewrites its `CACHE_VERSION`, and two calls sharing one store (pass the
+  first one's `caches` and `network`) are two releases side by side on one
+  phone — the upgrade path, where this repo's worst bugs were. The fake
+  store has no global `caches.match`, so a read that strays outside a
+  worker's own cache throws.
 
 **Testing policy** (`test/smoke.js:10-11`): *"Add a case here whenever a bug
 turns out to have been invisible from the outside."* Arithmetic and data
