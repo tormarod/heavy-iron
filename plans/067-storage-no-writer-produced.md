@@ -421,7 +421,6 @@ existing `migrate()`, import and two-tab case stays green unchanged.
   entry for an object inside a discarded candidate is unreachable once
   `state = prev` runs, not a stale wrong answer — so the third STOP
   condition did not fire.
-- *(Executor: record deviations here.)*
 - **Step A (`claude/067-a`), deviations and findings:**
   - **Case 1's fixture names.** Profiles `a` and `b` never shared a seed:
     `a` (first place) gets hombre's and `b` (second place) mujer's. The
@@ -453,10 +452,12 @@ existing `migrate()`, import and two-tab case stays green unchanged.
     only touch the slot's own key or a row of its array. `weeksBeyondEnd`,
     `countSets` and `weekHasLog` only count. `buildCsv` reads through
     own-key tests, and the import path's maps are `Object.create(null)`.
-  - **Outside A.4's pattern, not fixed (out of Scope), follow-up
-    candidates:** `buildCsv`'s `byDay` is a plain `{}` indexed by a slot's
-    *day* id. A slot keyed `w1-__proto__` makes "Exportar CSV" throw
+  - **Outside A.4's pattern, not fixed (out of Scope):** `buildCsv`'s
+    `byDay` is a plain `{}` indexed by a slot's *day* id. A slot keyed
+    `w1-__proto__` makes "Exportar CSV" throw
     (`byDay[dayId].push is not a function`); the fix is one line,
-    `Object.create(null)`. Separately, a `__proto__` lift on a planned day
-    prints `[object Object]` in the CSV's `orden` column. It is read-only
-    and writes nothing.
+    `Object.create(null)`. The orchestrator handed this to plan 068 step
+    B, which was editing `buildCsv` at the time. Separately, a `__proto__`
+    lift on a planned day prints `[object Object]` in the CSV's `orden`
+    column. It is read-only and writes nothing.
+- *(Executor: record deviations here.)*
