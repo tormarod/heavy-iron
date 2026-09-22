@@ -947,7 +947,7 @@ const ok = (name, cond, extra) => {
     ok('the plan+log payload carries the sets actually logged', await page.evaluate(async () => {
       const payload = await buildQrPayload('blocklog', getProfile(), getBlock());
       return payload.kind === 'blocklog' &&
-             countShareLog(payload.log) === blockLoggedSets(getProfile(), getBlock().id);
+             countSets(payload.log) === blockLoggedSets(getProfile(), getBlock().id);
     }));
     ok('empty padding rows are not shipped', await page.evaluate(async () => {
       const p = getProfile(), b = getBlock();
@@ -964,6 +964,26 @@ const ok = (name, cond, extra) => {
       const shared = blockSharePlan(b).days.find(d => d.id === day.id);
       ex.off = 0;
       return shared.ex.every(e => e.id !== ex.id);
+    }));
+    /* drawQrShow's own numbers (plans/050): blockLoggedSets/blockDoneSets
+       used to feed the "block" segmented control's description, and those
+       walk every stored set including a retired one. Reading #qrShowDesc
+       straight after the synchronous half of drawQrShow needs no QR
+       library and no sheet actually open — the same shortcut the plan-only
+       payload test above takes. */
+    ok('the send sheet shows what the payload carries, not the raw storage, when something is retired', await page.evaluate(() => {
+      const p = getProfile(), b = getBlock();
+      const day = dayList(b)[0], ex = exList(day)[1];
+      rowsFor(p, b.id, 2, day.id, ex.id)[0] = { w: '50', r: '5', done: true };
+      ex.off = 1;
+      qrKind = 'blocklog';
+      drawQrShow();
+      const withRetired = document.getElementById('qrShowDesc').textContent;
+      const wantPayload = setsWithDoneLabel(countSets(blockShareLog(p, b)), countSets(blockShareLog(p, b), true));
+      const wantRaw = setsWithDoneLabel(blockLoggedSets(p, b.id), blockDoneSets(p, b.id));
+      ex.off = 0;
+      drawQrShow();
+      return withRetired.includes(wantPayload) && wantPayload !== wantRaw;
     }));
     ok('a whole profile can be sent, shaped like the file export', await page.evaluate(async () => {
       const payload = await buildQrPayload('profile', getProfile(), getBlock());

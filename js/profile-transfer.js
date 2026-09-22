@@ -279,38 +279,19 @@ function normalizeImportedProfile(p) {
   return p;
 }
 
+/* A profile's total, over every block it has. countSets (js/app.js) is the
+   one counter that walks a single block's log; this sums it across
+   whatever blocks a profile carries. */
 function countProfileSets(p) {
-  let n = 0;
   const log = p && p.log;
   if (!log || typeof log !== 'object') return 0;
-  Object.keys(log).forEach(bId => {
-    const blk = log[bId];
-    if (!blk || typeof blk !== 'object') return;
-    Object.keys(blk).forEach(k => {
-      const sl = blk[k];
-      if (!sl || typeof sl !== 'object') return;
-      Object.keys(sl).forEach(exId => { if (Array.isArray(sl[exId])) n += sl[exId].filter(rowUsed).length; });
-    });
-  });
-  return n;
+  return Object.keys(log).reduce((n, bId) => n + countSets(log[bId]), 0);
 }
 
+/* Every profile's total, for the "you have this much, the file has that
+   much" line a restore shows before it overwrites everything. */
 function countBackupSets(data) {
-  let n = 0;
-  Object.keys(data.profiles).forEach(pk => {
-    const log = data.profiles[pk].log;
-    if (!log || typeof log !== 'object') return;
-    Object.keys(log).forEach(bId => {
-      const blk = log[bId];
-      if (!blk || typeof blk !== 'object') return;
-      Object.keys(blk).forEach(k => {
-        const s = blk[k];
-        if (!s || typeof s !== 'object') return;
-        Object.keys(s).forEach(exId => { if (Array.isArray(s[exId])) n += s[exId].filter(rowUsed).length; });
-      });
-    });
-  });
-  return n;
+  return Object.keys(data.profiles).reduce((n, pk) => n + countProfileSets(data.profiles[pk]), 0);
 }
 
 async function restoreFromText(text) {

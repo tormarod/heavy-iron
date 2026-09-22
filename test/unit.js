@@ -5360,6 +5360,47 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
      qrPayload.kind === 'profile' && !!qrPayload.profile && qrPayload.key === call('state.activeProfile'),
      JSON.stringify({ kind: qrPayload.kind, key: qrPayload.key, hasProfile: !!qrPayload.profile }));
 
+  /* The bug the stock-take found: blockLoggedSets/blockDoneSets walk every
+     stored set, retired or not, but blockShareLog — what the send sheet is
+     actually about to hand over — leaves a retired day or exercise out
+     (plans/025). A block with sets parked under either used to show more
+     on the sender than the payload, or the receiver, ever had. One set
+     stays live; one is under a retired exercise on the same day, one under
+     a whole retired day — both logged and done, so a fix that merely
+     swapped rowUsed for done would not have caught this. */
+  console.log('\n== the send sheet counts what the payload carries, not the raw storage (plans/050) ==');
+  const shareCountProbe = call(`
+    (function() {
+      state = defaultState(); migrate();
+      const pr = state.profiles.hombre;
+      const block = pr.blocks['block-1'];
+      const liveDay = block.days[0], retiredDay = block.days[1];
+      const liveEx = liveDay.ex[0], retiredEx = liveDay.ex[1];
+      pr.log['block-1'] = {};
+      pr.log['block-1'][slot(1, liveDay.id)] = {
+        [liveEx.id]: [{ w: '60', r: '8', done: true }],
+        [retiredEx.id]: [{ w: '20', r: '10', done: true }],
+      };
+      pr.log['block-1'][slot(1, retiredDay.id)] = {
+        [retiredDay.ex[0].id]: [{ w: '40', r: '6', done: true }],
+      };
+      retiredEx.off = 1;
+      retiredDay.off = 1;
+      const payload = blockShareLog(pr, block);
+      const result = {
+        payloadUsed: countSets(payload), payloadDone: countSets(payload, true),
+        rawUsed: blockLoggedSets(pr, block.id), rawDone: blockDoneSets(pr, block.id),
+      };
+      retiredEx.off = 0;
+      retiredDay.off = 0;
+      return result;
+    })()
+  `);
+  ok('the payload leaves out sets under a retired day and a retired exercise, unlike the raw block counters',
+     shareCountProbe.payloadUsed === 1 && shareCountProbe.payloadDone === 1 &&
+     shareCountProbe.rawUsed === 3 && shareCountProbe.rawDone === 3,
+     JSON.stringify(shareCountProbe));
+
   console.log('\n== the round-trip text carries the app\'s own context (plans/016) ==');
   call('state = defaultState(); migrate(); state.setupDone = true; state.prefs.units = "kg";');
   call('getBlock().name = "Bloque «raro» 2"; getBlock().priority = ["Pecho «x»", "Espalda"];');
@@ -5778,6 +5819,44 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
     app.document.createElement = realCreate;
     call('peDraftBlock = null; peDraftPurge = []; peDraftOriginalDay = new Map();');
   }
+
+  /* blockDoneSets, a raw storage count, used to answer buildBlockReview's
+     "sets" field — so a week logged after the block was shortened (a
+     stranded week, CONTEXT.md) counted here while blockTonnageByWeek,
+     right beside it, already stopped at the block's own weeks. The two
+     numbers on the review disagreed about which weeks they covered. */
+  console.log('\n== buildBlockReview counts done sets over the block\'s own weeks, matching tonnage (plans/050) ==');
+  const strandedReviewProbe = call(`
+    (function() {
+      state = defaultState(); migrate();
+      const pr = state.profiles.hombre;
+      const block = pr.blocks[pr.blockOrder[0]];   /* 8 weeks */
+      const day = block.days[0], ex = day.ex[0];
+      pr.log[block.id] = {};
+      pr.log[block.id][slot(1, day.id)] = { [ex.id]: [{ w: '60', r: '8', done: true }] };
+      pr.log[block.id][slot(2, day.id)] = { [ex.id]: [{ w: '62.5', r: '8', done: true }, { w: '62.5', r: '7', done: true }] };
+      pr.week = 2;
+      const inBounds = buildBlockReview(pr, block);
+      /* Week 9 is past this block's own 8 weeks — stranded on purpose. */
+      pr.log[block.id][slot(9, day.id)] = {
+        [ex.id]: [{ w: '999', r: '1', done: true }, { w: '999', r: '1', done: true }, { w: '999', r: '1', done: true }],
+      };
+      logChanged();
+      const withStranded = buildBlockReview(pr, block);
+      return {
+        sets: inBounds.sets, tonnage: inBounds.tonnage,
+        setsWithStranded: withStranded.sets, tonnageWithStranded: withStranded.tonnage,
+        weeksLoggedWithStranded: withStranded.weeksLogged,
+      };
+    })()
+  `);
+  ok('a stranded week\'s sets are not in the review\'s count',
+     strandedReviewProbe.sets === 3 && strandedReviewProbe.setsWithStranded === 3,
+     JSON.stringify(strandedReviewProbe));
+  ok('the tonnage and the count still agree on which weeks they cover, stranded week or not',
+     strandedReviewProbe.tonnageWithStranded === strandedReviewProbe.tonnage &&
+     strandedReviewProbe.weeksLoggedWithStranded === 2,
+     JSON.stringify(strandedReviewProbe));
 
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);

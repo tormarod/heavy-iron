@@ -356,8 +356,15 @@ function drawQr() {
 /* ---- show ---- */
 function drawQrShow() {
   const profile = getProfile(), block = getBlock();
-  const logged = blockLoggedSets(profile, block.id);
-  const doneSets = blockDoneSets(profile, block.id);
+  /* What blockShareLog is actually about to send, not blockLoggedSets/
+     blockDoneSets' raw storage count: those walk every stored set,
+     including ones under a retired day or exercise, but blockShareLog
+     leaves retired items out (plans/025) — so a block with sets parked
+     under one of those used to show a bigger number here than the payload,
+     or the receiving phone, ever had (plans/050). */
+  const payloadLog = blockShareLog(profile, block);
+  const logged = countSets(payloadLog);
+  const doneSets = countSets(payloadLog, true);
 
   $('qrKind').querySelectorAll('.seg-btn').forEach(b => {
     b.setAttribute('aria-pressed', b.dataset.kind === qrKind ? 'true' : 'false');
@@ -553,8 +560,8 @@ async function applyQrPayload(payload) {
       mark('Ese bloque no se puede usar: ' + e.message, true);
       return;
     }
-    const sets = log ? countShareLog(log) : 0;
-    const doneSets = log ? countShareLog(log, true) : 0;
+    const sets = log ? countSets(log) : 0;
+    const doneSets = log ? countSets(log, true) : 0;
     const profile = getProfile();
     const from = txt(payload.from, IMPORT_LIMITS.name);
 
