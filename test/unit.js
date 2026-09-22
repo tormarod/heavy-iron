@@ -8136,18 +8136,24 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
       pr.log[block.id] = {};
       pr.log[block.id][slot(1, day.id)] = { [ex.id]: [{ w: '60', r: '8', done: true }] };
       pr.log[block.id][slot(2, day.id)] = { [ex.id]: [{ w: '62.5', r: '8', done: true }, { w: '62.5', r: '7', done: true }] };
+      /* Tagged 'alta' on both its in-bounds slot and the stranded one below
+         (plans/057): the energy comparison used to walk profile.log raw,
+         with no bound to match doneSets'/tonnage's — a stranded week's kilos
+         landed in the same bucket as this one. */
+      pr.energy[block.id] = { [slot(1, day.id)]: 'alta' };
       pr.week = 2;
       const inBounds = buildBlockReview(pr, block);
       /* Week 9 is past this block's own 8 weeks — stranded on purpose. */
       pr.log[block.id][slot(9, day.id)] = {
         [ex.id]: [{ w: '999', r: '1', done: true }, { w: '999', r: '1', done: true }, { w: '999', r: '1', done: true }],
       };
+      pr.energy[block.id][slot(9, day.id)] = 'alta';
       logChanged();
       const withStranded = buildBlockReview(pr, block);
       return {
-        sets: inBounds.sets, tonnage: inBounds.tonnage,
+        sets: inBounds.sets, tonnage: inBounds.tonnage, energyAlta: inBounds.energy.alta,
         setsWithStranded: withStranded.sets, tonnageWithStranded: withStranded.tonnage,
-        weeksLoggedWithStranded: withStranded.weeksLogged,
+        weeksLoggedWithStranded: withStranded.weeksLogged, energyAltaWithStranded: withStranded.energy.alta,
       };
     })()
   `);
@@ -8157,6 +8163,11 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
   ok('the tonnage and the count still agree on which weeks they cover, stranded week or not',
      strandedReviewProbe.tonnageWithStranded === strandedReviewProbe.tonnage &&
      strandedReviewProbe.weeksLoggedWithStranded === 2,
+     JSON.stringify(strandedReviewProbe));
+  ok('a stranded week tagged with the same energy is not in that bucket\'s mean either (plans/057)',
+     strandedReviewProbe.energyAlta.n === 1 &&
+     strandedReviewProbe.energyAltaWithStranded.n === 1 &&
+     strandedReviewProbe.energyAltaWithStranded.kg === strandedReviewProbe.energyAlta.kg,
      JSON.stringify(strandedReviewProbe));
 
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
