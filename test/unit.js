@@ -3789,6 +3789,90 @@ console.log('\n== the plan draft: saving erases exactly what "Borrar registro" c
      !heldBack.threw && heldBack.kept && JSON.stringify(heldBack.rows) === JSON.stringify(['dA:60', 'dA:62']) &&
      heldBack.counted === 4 && heldBack.erased === 4, JSON.stringify(heldBack));
 
+  /* The copies moved round, nothing erased: A's copy to C, then B's onto
+     A. The save lifts every moving copy's record onto a day of its own
+     before it puts any down, so B's does not land in A's sessions on A and
+     leave with them (plans/053's second follow-up). The days it lifts
+     through are ones nothing is filed under: the record here already holds
+     a session of e1 under each day spareDayIds would have handed out, and
+     those stay as they were. */
+  const crowded = tryCall(`(function () {
+    ${FIXTURE}
+    const p = fixture(true);
+    const draft = openPlanDraft(p, p.blocks.B);
+    const [dA, dB, dC] = draft.block.days;
+    moveExToDay(dA.ex[0], dA, dC);
+    moveExToDay(dB.ex[0], dB, dA);
+    const taken = spareDayIds(p, draft, 2);
+    taken.forEach((d, i) => { p.log.B[slot(3, d)] = { e1: [done(90 + i)] }; });
+    applyPlanDraft(p, draft);
+    const rows = [];
+    forEachSlot(p.log, 'B', (k, w, d, s) => ((s && s.e1) || []).forEach(r => {
+      if (rowUsed(r)) rows.push(w + ':' + (taken.indexOf(d) >= 0 ? 'taken' + taken.indexOf(d) : d) + ':' + r.w);
+    }));
+    const at = (part, d) => ((p[part].B || {})[slot(1, d)] || {}).e1;
+    return { rows: rows.sort(), chips: [at('rir', 'dA'), at('rir', 'dC')], records: [at('obj', 'dA'), at('obj', 'dC')].map(r => r && r.sets[0].w) };
+  })()`);
+  ok('the same id on two days, A\'s copy sent to C and then B\'s onto A: each copy\'s sets, chip and objetivo record land where it went, and sessions filed under the days the save would lift them through stay put',
+     !crowded.threw && JSON.stringify(crowded.rows) === JSON.stringify(['1:dA:60', '1:dA:62', '1:dC:50', '2:dC:52', '3:taken0:90', '3:taken1:91']) &&
+     JSON.stringify(crowded.chips) === JSON.stringify(['2+', '1']) && JSON.stringify(crowded.records) === JSON.stringify([60, 50]),
+     JSON.stringify(crowded));
+
+  /* Nor is a spare day ever a day of the draft, even one nothing is filed
+     under: a copy lifted onto the very day it is going to would be put
+     down from that day onto itself, and moveExerciseRecord from a day to
+     the same day adds the rows to themselves and then deletes them. The
+     day A's copy is sent to here has nothing logged and the name
+     spareDayIds hands out first. */
+  const namedLikeSpare = tryCall(`(function () {
+    ${FIXTURE}
+    const p = fixture(true);
+    const spare = spareDayIds(p, openPlanDraft(p, p.blocks.B), 1)[0];
+    p.blocks.B.days.push({ id: spare, name: 'D', ex: [lift('k', 'Curl')] });
+    const draft = openPlanDraft(p, p.blocks.B);
+    const dA = draft.block.days[0], dD = draft.block.days[3];
+    moveExToDay(dA.ex[0], dA, dD);
+    applyPlanDraft(p, draft);
+    const rows = [];
+    forEachSlot(p.log, 'B', (k, w, d, s) => ((s && s.e1) || []).forEach(r => { if (rowUsed(r)) rows.push(w + ':' + (d === spare ? 'D' : d) + ':' + r.w); }));
+    return { rows: rows.sort() };
+  })()`);
+  ok('...and a copy sent to a day with nothing logged, named the way the first spare day would have been, keeps its sets there',
+     !namedLikeSpare.threw && JSON.stringify(namedLikeSpare.rows) === JSON.stringify(['1:D:50', '1:dB:60', '1:dB:62', '2:D:52']),
+     JSON.stringify(namedLikeSpare));
+
+  /* The point of lifting everything first: the same moves file the record
+     the same way whichever order the plan lists the days in. A's copy to
+     C and B's onto A, as above, and two lifts crossing between B and C.
+     Moved one at a time in the plan's order, B's copy reached A before
+     A's had left when A came first, and after it when the days were the
+     other way round. */
+  const anyOrder = tryCall(`(function () {
+    ${FIXTURE}
+    const save = reversed => {
+      const p = fixture(true);
+      if (reversed) p.blocks.B.days.reverse();
+      const draft = openPlanDraft(p, p.blocks.B);
+      const [dA, dB, dC] = ['dA', 'dB', 'dC'].map(id => draft.block.days.find(d => d.id === id));
+      const [eb, v] = dB.ex, [z] = dC.ex;
+      moveExToDay(dA.ex[0], dA, dC);
+      moveExToDay(eb, dB, dA);
+      moveExToDay(v, dB, dC);
+      moveExToDay(z, dC, dB);
+      applyPlanDraft(p, draft);
+      return flat(p);
+    };
+    const listed = save(false), reversed = save(true);
+    /* e1's sessions as "slot: the weights of its used rows". */
+    const e1 = listed.filter(l => field(l, 0) === 'log' && field(l, 2) === 'e1')
+      .map(l => field(l, 3) + ': ' + JSON.parse(l.split(' ').slice(4).join(' ')).filter(rowUsed).map(r => r.w).join(' '));
+    return { same: JSON.stringify(listed) === JSON.stringify(reversed), e1: e1,
+             differ: listed.filter(l => reversed.indexOf(l) < 0).concat(reversed.filter(l => listed.indexOf(l) < 0)) };
+  })()`);
+  ok('the same moves file the record the same way whichever order the plan lists the days in, each copy\'s sets on the day it went to',
+     !anyOrder.threw && anyOrder.same && JSON.stringify(anyOrder.e1) === JSON.stringify(['w1-dA: 60 62', 'w1-dC: 50', 'w2-dC: 52']),
+     JSON.stringify(anyOrder));
+
   /* Bug 3. Another tab's write is adopted by replacing the profile objects
      (the 'storage' handler in js/app.js), and a draft cut from the old one
      used to be saved straight over it. */
@@ -5425,6 +5509,45 @@ console.log('\n== RECORD_PARTS: one table for the profile\'s record (plans/046) 
     });`);
   ok('moveExerciseRecord carries the lift across in every part keyed by it, merging by each part\'s rule, and leaves the rest',
      moved.length === 0, JSON.stringify(moved));
+
+  /* applyPlanDraft lifts every copy "Enviar a…" moved onto a day of its own
+     before it puts any down (plans/053's second follow-up), so a part's
+     move has to compose: from the source to a day nothing is filed under,
+     then on to the destination, ends where the one move does. The session
+     order is the part with a move of its own, and three more slots give it
+     what the fixture leaves out: a destination order without the id in a
+     week the source's has it, a destination order in a week the source has
+     none, and a source order the move empties. The other parts get the
+     same slots. */
+  const composed = check(`
+    const build = () => {
+      const p = fixture();
+      RECORD_PARTS.forEach(part => {
+        if (!byBlock(part)) return;
+        const put = (w, day, ids) => {
+          p[part.name].b1[slot(w, day)] = part.name === 'order' ? ids : part.keyedBy === 'slot' ? slotV(part)
+            : ids.reduce((o, id) => Object.assign(o, { [id]: srcV(part, id, w) }), {});
+        };
+        put(2, 'd2', ['e3']);
+        put(3, 'd2', ['e3']);
+        put(4, 'd1', ['e1']);
+      });
+      return p;
+    };
+    const sorted = v => JSON.stringify(v, (k, val) => (val && typeof val === 'object' && !Array.isArray(val))
+      ? Object.keys(val).sort().reduce((o, key) => { o[key] = val[key]; return o; }, {}) : val);
+    const direct = build(), through = build();
+    moveExerciseRecord(direct, 'b1', 'd1', 'd2', 'e1');
+    moveExerciseRecord(through, 'b1', 'd1', 'de-paso', 'e1');
+    moveExerciseRecord(through, 'b1', 'de-paso', 'd2', 'e1');
+    RECORD_PARTS.forEach(part => {
+      if (sorted(through[part.name]) !== sorted(direct[part.name])) {
+        bad.push(part.name + ' ended as ' + sorted(through[part.name]) + ', the one move as ' + sorted(direct[part.name]));
+      }
+      if (byBlock(part)) forEachSlot(through[part.name], 'b1', (k, w, d) => { if (d === 'de-paso') bad.push(part.name + ' left ' + k); });
+    });`);
+  ok('moveExerciseRecord through a day nothing is filed under ends where the one move does, in every part, and leaves nothing on that day',
+     composed.length === 0, JSON.stringify(composed));
 
   const installed = check(`
     const src = fixture(), p = {}, data = {};
@@ -7157,6 +7280,106 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
       boot.clock.advance(1000);
       const back = read(reopen(boot));
       ok('...which the next open reads the same way, the one copy keeping its id', JSON.stringify(back) === JSON.stringify(after), JSON.stringify(back));
+    }
+  }
+
+  /* One lift on two days, and "Enviar a…" moving the copies round. The
+     record is filed by day and id, and the save used to catch it up one
+     copy at a time, in the plan's order of days: a copy sent onto a day
+     whose own copy had not left yet was merged into that copy's sessions
+     there, and the two then left together. Both copies' sets came out on
+     one day, two sessions a week folded into one, and one of the two
+     objetivo records was dropped. Every send here is one the check above
+     lets through: each lands on a day the other copy has already left.
+     Press banca is on Monday and Thursday: Monday's copy has three sets
+     (two in week 1, one in week 2), Thursday's two, and each the objetivo
+     record its week 1 kept. The profile stands on week 3, so no logged
+     session is the one the draw pads out. */
+  console.log('\n== "Enviar a…" moving one lift\'s copies round: each copy\'s record goes where that copy went (plans/053\'s second follow-up) ==');
+  {
+    const lift = (id, n) => ({ id: id, n: n, sets: 2, reps: '8-10', rest: 90 });
+    const done = (w, daysAgo) => ({ w: String(w), r: '10', done: true, ts: BOOT_TIME - daysAgo * 864e5 });
+    const target = (w, daysAgo) => ({ v: 3, at: BOOT_TIME - daysAgo * 864e5, conf: 'media', sets: [{ w: w, r: 10, m: '' }] });
+    const twoDays = () => ({
+      setupDone: true, activeProfile: 'hombre',
+      profiles: { hombre: {
+        label: 'Hombre', activeBlock: 'B', blockOrder: ['B'], week: 3, day: 0,
+        blocks: { B: { id: 'B', name: 'Bloque', weeks: 4, deload: 0, days: [
+          { id: 'dA', name: 'Lunes', ex: [lift('press', 'Press banca'), lift('remo', 'Remo')] },
+          { id: 'dB', name: 'Jueves', ex: [lift('press', 'Press banca'), lift('curl', 'Curl')] },
+          { id: 'dC', name: 'Sábado', ex: [lift('sent', 'Sentadilla')] },
+        ] } },
+        log: { B: {
+          'w1-dA': { press: [done(50, 15), done(50, 15)], remo: [done(40, 15)] },
+          'w1-dB': { press: [done(60, 12), done(60, 12)], curl: [done(15, 12)] },
+          'w2-dA': { press: [done(52, 8)] },
+        } },
+        obj: { B: { 'w1-dA': { press: target(50, 15) }, 'w1-dB': { press: target(60, 12) } } },
+      } },
+    });
+    /* The plan as day: ids; every slot's used rows as [week, day, id, their
+       weights]; every objetivo record as [week, day, id, its first set's
+       weight]. */
+    const read = booted => JSON.parse(booted.call(`JSON.stringify((function () {
+      const p = getProfile(), b = getBlock(), used = [], records = [];
+      forEachSlot(p.log, b.id, (k, w, d, s) => Object.keys(s || {}).forEach(id => {
+        const ws = (Array.isArray(s[id]) ? s[id] : []).filter(rowUsed).map(r => r.w);
+        if (ws.length) used.push([w, d, id, ws.join(' ')]);
+      }));
+      forEachSlot(p.obj, b.id, (k, w, d, s) => Object.keys(s || {}).forEach(id => records.push([w, d, id, s[id].sets[0].w])));
+      return { plan: b.days.map(d => d.id + ': ' + d.ex.map(e => e.id).join(', ')), used: used.sort(), records: records.sort() };
+    })())`));
+    const AT = { dA: 0, dB: 1, dC: 2 }, NAME = { dA: 'Lunes', dB: 'Jueves', dC: 'Sábado' };
+    /* Each send is [the day the copy is on now, the day it goes to], through
+       the row's own "Enviar a…". `lands` is the day each copy ends on, by
+       the day it started on. */
+    for (const [how, sends, lands] of [
+      ['Monday\'s copy sent to Sábado, then Thursday\'s to Lunes', [['dA', 'dC'], ['dB', 'dA']], { dA: 'dC', dB: 'dA' }],
+      ['Thursday\'s copy sent to Sábado, then Monday\'s to Jueves', [['dB', 'dC'], ['dA', 'dB']], { dA: 'dB', dB: 'dC' }],
+      ['the two swapped through Sábado: Monday\'s there, Thursday\'s to Lunes, then Monday\'s on to Jueves',
+       [['dA', 'dC'], ['dB', 'dA'], ['dC', 'dB']], { dA: 'dB', dB: 'dA' }],
+    ]) {
+      const boot = settled(twoDays());
+      const before = read(boot);
+      /* The record as it has to read after the save: each copy's entries
+         under the day it went to, everything else where it was. */
+      const moved = list => list.map(([w, d, id, v]) => [w, id === 'press' ? lands[d] : d, id, v]).sort();
+      const counted = {};
+      let err = '', saving = 'not pressed';
+      try {
+        const ed = planEditor(boot);
+        boot.$('editPlan').onclick();
+        sends.forEach(([on, to]) => {
+          const send = ed.row(AT[on], 'Press banca').querySelector('.pe-move-sel');
+          send.value = to;
+          send.onchange();
+        });
+        /* What the editor says each copy has, on the row it now sits on. */
+        Object.keys(lands).forEach(start => {
+          const tag = ed.row(AT[lands[start]], 'Press banca').querySelector('.pe-log-tag').textContent;
+          counted[start] = Number((/^(\d+) series? registradas?$/.exec(tag) || [])[1]);
+        });
+        saving = await pressAnswering(boot, () => boot.$('peSave').onclick(), 'askOk');
+      } catch (e) { err = e.message; }
+      const after = read(boot);
+      const copies = Object.keys(lands).map(start => {
+        const own = moved(before.used.filter(([w, d, id]) => id === 'press' && d === start));
+        const got = after.used.filter(([w, d, id]) => id === 'press' && d === lands[start]);
+        return { start: start, counted: counted[start], landed: got.reduce((n, e) => n + e[3].split(' ').length, 0),
+                 own: JSON.stringify(got) === JSON.stringify(own) };
+      });
+      const [mon, thu] = copies;
+      ok(how + ': Monday\'s ' + mon.counted + ' sets land on ' + NAME[lands.dA] + ' and Thursday\'s ' + thu.counted + ' on ' + NAME[lands.dB] +
+         ', as many as each copy\'s row counted in the editor, and none folded into the other copy\'s sessions',
+         !err && saving === null && copies.every(c => c.own && c.landed > 0 && c.landed === c.counted),
+         err || JSON.stringify({ saving, copies, used: after.used }));
+      ok('...every other set stays where it was, and each copy\'s objetivo record goes with its sets',
+         JSON.stringify(after.used) === JSON.stringify(moved(before.used)) &&
+         JSON.stringify(after.records) === JSON.stringify(moved(before.records)),
+         JSON.stringify({ used: after.used, records: after.records }));
+      boot.clock.advance(1000);
+      const back = read(reopen(boot));
+      ok('...and the next open reads it the same way', JSON.stringify(back) === JSON.stringify(after), JSON.stringify(back));
     }
   }
 

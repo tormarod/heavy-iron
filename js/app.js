@@ -611,7 +611,12 @@ function purgeRecord(profile, blockId, scope) {
    side (a 'concat' value that is not a list of rows is treated the same
    way). Either way nothing is ever destroyed by calling this, including
    calling it twice, which applyPlanDraft cannot do today but a future bug
-   easily could. */
+   easily could.
+
+   applyPlanDraft makes each move in two calls, through a day nothing is
+   filed under (plans/053's second follow-up), so a part's own `move` has
+   to compose: onto that day and then on to the destination has to end
+   where the one call does. test/unit.js holds every part to it. */
 function moveExerciseRecord(profile, blockId, fromDayId, toDayId, exId) {
   RECORD_PARTS.forEach(part => {
     const map = profile[part.name];
