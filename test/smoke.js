@@ -1938,7 +1938,9 @@ const ok = (name, cond, extra) => {
       localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
     });
     await page.reload({ waitUntil: 'networkidle' });
-    /* Shown by clearing the `hidden` attribute it ships with, not by an inline display, since plans/041 — the old style.display read timed out on the new code. */
+    /* Shown by clearing the `hidden` attribute it ships with, not by an
+       inline display, since plans/041 — the old style.display read timed
+       out on the new code. */
     await page.waitForFunction(() => {
       const el = document.getElementById('brakeNote');
       return el && !el.hidden;

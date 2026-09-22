@@ -4295,7 +4295,7 @@ function drawDeloadCheck(profile, block) {
   /* The week test before the comparison rather than after it: deloadCheck
      walks every logged set of the block, drawCard calls this after every
      tick, and on any week that is not the one after the deload the only
-     thing that walk can produce is display:none. */
+     thing that walk can produce is the hidden attribute. */
   const dl = deloadWeek(block);
   if (!dl || profile.week !== dl + 1) { el.hidden = true; return; }
   const d = deloadCheck(profile, block);
