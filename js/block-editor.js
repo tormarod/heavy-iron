@@ -469,8 +469,9 @@ function weeksPhrase(weeks) {
 
 /* Builds a self-contained prompt for a third party's AI agent, describing
    the block JSON shape from the same limits the importer itself enforces
-   (IMPORT_LIMITS, MUSCLE_LIMIT, PATTERN_LIMIT, TYPE_LIMIT, MAX_WEEKS) so it can't quietly drift out of
-   sync with what normalizeImportedBlock actually accepts. The worked
+   (IMPORT_LIMITS, MAX_WEEKS, and for an exercise each field's own line in
+   EX_FIELDS) so it can't quietly drift out of sync with what
+   normalizeImportedBlock actually accepts. The worked
    example is fetched from blocks/ejemplo-plantilla.json — the same file the
    download button offers — rather than duplicated inline, for the same
    reason. Works with no network too: the example is just left out. Once the
@@ -493,22 +494,10 @@ async function buildAiPrompt(opts) {
     '      "pair": string opcional (máx ' + L.pair + ' car.) — nota para una sesión conjunta de pareja ese día,',
     '      "ex": [ // obligatorio, 1-' + L.ex + ' ejercicios',
     '        {',
-    '          "n": string OBLIGATORIO — nombre del ejercicio (máx ' + L.exName + ' car.),',
-    '          "id": string opcional (máx 60 car.) — identificador estable del ejercicio. Si abajo te paso mi bloque actual, conserva el id de cada ejercicio que mantengas, para que su historial siga unido; un ejercicio nuevo puede ir sin id. El mismo ejercicio en dos días lleva el mismo nombre (no repitas el id en dos días: se renombraría),',
-    '          "reps": string OBLIGATORIO — rango de reps, p.ej. "8-12" (máx ' + L.reps + ' car.),',
-    '          "sets": número opcional 1-12 (por defecto 3),',
-    '          "rest": número opcional — segundos de descanso 0-900 (por defecto 90; usa 0 si el ejercicio va encadenado en superserie),',
-    '          "add": número entero opcional 1-weeks — desde esa semana se añade una serie extra (progresión de series; tiene que ser un entero o se rechaza todo el bloque),',
-    '          "inc": número opcional (en ' + units() + '), admite decimales, ' + INC_MIN + '-' + INC_MAX + ' — el escalón de peso más pequeño que se puede cargar en ese ejercicio: lo que sube el objetivo cuando una serie llega al tope del rango, y el paso que se usa mientras no haya pesos registrados de los que leer la pila real de la máquina. Si falta, se usa el incremento por defecto de los ajustes. Pon uno realista por ejercicio (mancuernas y poleas suelen subir de 1-2,5 en 2,5; prensas y hacks, de 5 en 5),',
-    '          "minRir": número entero opcional 0-5 — el RIR mínimo de ese ejercicio: nunca se le pide menos reserva que esta, aunque la semana pida menos. Ponlo (1) en los ejercicios que no se llevan al fallo — sentadilla, peso muerto rumano, hip thrust pesado — y déjalo fuera en máquinas y aislamiento,',
-    '          "alt": string opcional — alternativa (máx ' + L.alt + ' car.),',
-    '          "cue": string opcional — indicación técnica, para todas las series (máx ' + L.cue + ' car.),',
-    '          "setup": string opcional — ajustes de la máquina (altura de asiento, posición del respaldo…), no técnica (máx ' + SETUP_LIMIT + ' car.),',
-    '          "muscle": string opcional — músculo principal, libre, p.ej. Pecho/Espalda/Hombro/Bíceps/Tríceps/Cuádriceps/Isquios/Glúteo/Gemelos/Core (máx ' + MUSCLE_LIMIT + ' car.),',
-    '          "pattern": string opcional — patrón de movimiento, libre, p.ej. Empuje horizontal/Empuje vertical/Tirón horizontal/Tirón vertical/Rodilla dominante/Cadera dominante (máx ' + PATTERN_LIMIT + ' car.),',
-    '          "type": string opcional — tipo de ejercicio, libre, p.ej. Compuesto/Aislamiento (máx ' + TYPE_LIMIT + ' car.),',
-    '          "share": 1 opcional — marca el ejercicio como estación compartida en pareja ("JUNTOS"),',
-    '          "ss": 1 opcional — marca el ejercicio como parte de una superserie ("SS")',
+    /* One line per field, from its entry: the prompt says what the
+       importer takes because both read the same table. */
+    ...EX_PROMPT_ORDER.map((key, i) => '          "' + key + '": ' + exField(key).prompt() +
+      (i < EX_PROMPT_ORDER.length - 1 ? ',' : '')),
     '        }',
     '      ]',
     '    }',

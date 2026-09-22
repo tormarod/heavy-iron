@@ -6113,6 +6113,12 @@ console.log('\n== EX_FIELDS: what a plan exercise may hold, in one table (plans/
   const keys = fields.map(f => f.key);
   ok('every field but the id says how it is accepted and how migrate() repairs it; the id is identity, left to the code that files the exercise',
      fields.length === 17 && fields.every(f => (f.key === 'id' ? !f.accept && !f.repair : f.accept && f.repair)), JSON.stringify(fields));
+  const promptOrder = JSON.parse(call('JSON.stringify(EX_PROMPT_ORDER)'));
+  const prompted = fields.filter(f => f.prompt).map(f => f.key);
+  ok('EX_PROMPT_ORDER names every field with a prompt line exactly once, and nothing else',
+     promptOrder.length === prompted.length && new Set(promptOrder).size === promptOrder.length &&
+     prompted.every(k => promptOrder.includes(k)), JSON.stringify({ promptOrder, prompted }));
+
   const made = JSON.parse(call(`JSON.stringify((function () {
     const every = { id: 'e', n: 'Ex', reps: '8', sets: 3, rest: 60, alt: 'a', cue: 'c', setup: 's', add: 2,
                     inc: 2.5, minRir: 1, share: 1, ss: 1, muscle: 'm', pattern: 'p', type: 't', off: 1, extra: 'x' };
@@ -7704,6 +7710,45 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
     ok('"Guardar cambios" writes what the boxes held, each cut at its cap, and leaves the old cue nobody touched whole',
        !!saved && saved.name === L.name && saved.day === L.name && saved.pair === L.pair && saved.n === L.exName && saved.oldCue,
        JSON.stringify(saved));
+  }
+
+  /* Decision 5 of plans/055: the prompt's field list is generated from
+     EX_FIELDS and says exactly what it said when it was written out by
+     hand. These are those lines as js/block-editor.js had them at 8142e33,
+     over the same constants — so a limit that moves still moves the
+     prompt, and a word that moves fails here. In both units, since one
+     line names it. */
+  console.log('\n== the AI prompt\'s field list comes from EX_FIELDS, byte for byte what it was (plans/055) ==');
+  {
+    const handWritten = `[
+      '        {',
+      '          "n": string OBLIGATORIO — nombre del ejercicio (máx ' + L.exName + ' car.),',
+      '          "id": string opcional (máx 60 car.) — identificador estable del ejercicio. Si abajo te paso mi bloque actual, conserva el id de cada ejercicio que mantengas, para que su historial siga unido; un ejercicio nuevo puede ir sin id. El mismo ejercicio en dos días lleva el mismo nombre (no repitas el id en dos días: se renombraría),',
+      '          "reps": string OBLIGATORIO — rango de reps, p.ej. "8-12" (máx ' + L.reps + ' car.),',
+      '          "sets": número opcional 1-12 (por defecto 3),',
+      '          "rest": número opcional — segundos de descanso 0-900 (por defecto 90; usa 0 si el ejercicio va encadenado en superserie),',
+      '          "add": número entero opcional 1-weeks — desde esa semana se añade una serie extra (progresión de series; tiene que ser un entero o se rechaza todo el bloque),',
+      '          "inc": número opcional (en ' + units() + '), admite decimales, ' + INC_MIN + '-' + INC_MAX + ' — el escalón de peso más pequeño que se puede cargar en ese ejercicio: lo que sube el objetivo cuando una serie llega al tope del rango, y el paso que se usa mientras no haya pesos registrados de los que leer la pila real de la máquina. Si falta, se usa el incremento por defecto de los ajustes. Pon uno realista por ejercicio (mancuernas y poleas suelen subir de 1-2,5 en 2,5; prensas y hacks, de 5 en 5),',
+      '          "minRir": número entero opcional 0-5 — el RIR mínimo de ese ejercicio: nunca se le pide menos reserva que esta, aunque la semana pida menos. Ponlo (1) en los ejercicios que no se llevan al fallo — sentadilla, peso muerto rumano, hip thrust pesado — y déjalo fuera en máquinas y aislamiento,',
+      '          "alt": string opcional — alternativa (máx ' + L.alt + ' car.),',
+      '          "cue": string opcional — indicación técnica, para todas las series (máx ' + L.cue + ' car.),',
+      '          "setup": string opcional — ajustes de la máquina (altura de asiento, posición del respaldo…), no técnica (máx ' + SETUP_LIMIT + ' car.),',
+      '          "muscle": string opcional — músculo principal, libre, p.ej. Pecho/Espalda/Hombro/Bíceps/Tríceps/Cuádriceps/Isquios/Glúteo/Gemelos/Core (máx ' + MUSCLE_LIMIT + ' car.),',
+      '          "pattern": string opcional — patrón de movimiento, libre, p.ej. Empuje horizontal/Empuje vertical/Tirón horizontal/Tirón vertical/Rodilla dominante/Cadera dominante (máx ' + PATTERN_LIMIT + ' car.),',
+      '          "type": string opcional — tipo de ejercicio, libre, p.ej. Compuesto/Aislamiento (máx ' + TYPE_LIMIT + ' car.),',
+      '          "share": 1 opcional — marca el ejercicio como estación compartida en pareja ("JUNTOS"),',
+      '          "ss": 1 opcional — marca el ejercicio como parte de una superserie ("SS")',
+      '        }',
+    ].join('\\n')`;
+    for (const u of ['kg', 'lb']) {
+      call('state = defaultState(); migrate(); state.setupDone = true; state.prefs.units = "' + u + '"; L = IMPORT_LIMITS;');
+      const want = call(handWritten);
+      const prompt = await call('buildAiPrompt({ withBlock: true })');
+      ok('the prompt describes every exercise field in the words and order it always did (' + u + ')',
+         prompt.indexOf('      "ex": [ // obligatorio, 1-' + call('IMPORT_LIMITS.ex') + ' ejercicios\n' + want + '\n      ]\n') >= 0,
+         want.slice(0, 120) + ' … not found in … ' + prompt.slice(prompt.indexOf('"ex"'), prompt.indexOf('"ex"') + 300));
+    }
+    call('delete globalThis.L;');
   }
 
   /* plans/010's promise, one level up from the block. A restore reads every
