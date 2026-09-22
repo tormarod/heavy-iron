@@ -79,11 +79,19 @@ the planned RIR ramp is ignored:
 | `reps 2 RIR` | 2 | 2 | 2 |
 | `2 series, 2 RIR` | 2 | 2 | 2 |
 | `RIR 10 · 2 RIR` | 2 | **null** | 2 (a number above `RIR_MAX` is passed over) |
+| `3x10 a 2 RIR` | 2 | 2 | 2 (the "a" is "at", not a range going down) |
+| `4x8 a 2 RIR` | 2 | 2 | 2 |
+| `Semana 3 a 2 RIR` | 2 | 2 | 2 |
+| `máx 2 RIR` | 2 | 2 | 2 (the "x" of "máx" has no digit in front) |
+| `Pausa 2 s 1 RIR` | 1 | 1 | 1 (an "s" after a number is seconds) |
+| `2 ó 3 RIR` | 3 | **3** | 2 |
+| `series x 5 RIR 2` | 5 | 5 | 5 — the known limit: an "x" with no digit in front refuses nothing |
 
-The rows from `3×10 RIR 2` down were added in the review of #174 (see
-Maintenance notes); where "now" is not bold the row is a guard, a label
-the widened rule must not move. "before 058" is the function at
-`98602ad^`, "now" the one at `b15ae87`.
+The rows from `3×10 RIR 2` down were added in the review of #174, over
+two rounds (see Maintenance notes). Where "now" is not bold the row is a
+guard, a label the widened rule must not move; the last row pins a known
+limit instead. "before 058" is the function at `98602ad^`, "now" the one
+at `b15ae87`.
 
 The AI prompt that writes these labels says, word for word, that `r` is
 `"string corto, p.ej. RIR objetivo"` (`js/block-editor.js`, search
@@ -444,3 +452,39 @@ two mutations.
   RIR 2", which would read 5. Also still read the old way: "2 ó 3 RIR"
   → 3. The accented "ó" is the traditional spelling between numerals,
   and adding it would mean `[aoó]`.
+- Review of #174, second round: the tech lead's decisions on the list
+  above, applied by the executor.
+  (1) "a", "o" and "ó" join a range only going up (the second number
+  greater than the first). A dash still joins either way, so no seed
+  label moves. The side before a marker now finds the number next to
+  the marker first, then looks left for a range it closes, so a pair
+  going down leaves that number standing alone.
+  (2) The sets×reps rule needs a digit in front of the x
+  (`\d\s*[x×]\s*$`). "series x 5 RIR 2" → 5 is the accepted cost, pinned
+  by its own case, named as the known limit.
+  (3) A lone `s`, `w` or `wk` right after a number is a unit, not the
+  week: a lead matching `/\d\s*(?:s|w|wk)\.?\s*$/i` is exempt.
+  (4) The Spanish separator is `[aoó]`.
+
+  Seven new cases: the five former regressions ("3x10 a 2 RIR", "4x8 a
+  2 RIR" and "Semana 3 a 2 RIR" → 2, "máx 2 RIR" → 2, "Pausa 2 s 1 RIR"
+  → 1), "2 ó 3 RIR" → 2 and the known limit. The fuzz draws "ó" too.
+  The seed check passes unchanged.
+
+  Mutations: dropping the ascending check FAILed the three labels where
+  "a" means "at" (null). Dropping the digit in front of the x FAILed
+  "máx 2 RIR" (null) and the known limit (2). Dropping the
+  after-a-number exception FAILed "Pausa 2 s 1 RIR" (null). The five
+  earlier mutations were re-run on the restructured function and still
+  bite: the week-word check FAILs "Semana 3 RIR 2", "semana3 RIR 2",
+  "S3 RIR 2" and "W3 RIR 2"; the whole-token check FAILs "sufrir 2";
+  continue-on-over-max FAILs "RIR 10 · 2 RIR"; the × refusal FAILs
+  "3x5 RIR 2"; the Spanish separator FAILs "2 a 3", "de 2 a 3", "2 o 3"
+  and "2 ó 3". All reverted.
+
+  `node test/unit.js` on `b1c3ac8`: 1277 before this round, 1284 after,
+  0 failed. Two made-up labels still read differently from `b15ae87`, as
+  the decided rules say they should: "2 sem 3 RIR" → null (was 3; "sem"
+  after a number is still the week, since only `s`, `w` and `wk` are
+  exempt) and "RIR 2 a 3,5" → null (was 2; the range ends in a decimal,
+  as with "RIR 2-3,5").
