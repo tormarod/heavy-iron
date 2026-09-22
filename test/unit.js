@@ -3494,6 +3494,52 @@ ok('the session being drawn keeps its padding, handlers are holding those rows',
    pruneLiveResult.liveKept === 2, 'kept ' + pruneLiveResult.liveKept);
 ok('every other session is still pruned', pruneLiveResult.otherPruned === false);
 
+console.log('\n== sessionOnScreen: the key drawApp compares draw to draw (plans/049) ==');
+/* The pure helper behind "the draw notices" (plans/049 decision 2): drawApp
+   calls stopRest() when this key differs from the one it got last time.
+   Probed directly against a bare state rather than through a draw, the way
+   the pruneLog probes above use defaultState() rather than the DOM. */
+const sessionKeyProbe = `
+  (function() {
+    state = defaultState();
+    migrate();  /* assigns day ids ('d0', 'd1', …) — a fresh block has none */
+    const profile = state.profiles[state.activeProfile];
+    const blockId = profile.activeBlock;
+    const base = sessionOnScreen(state);
+    const sameAgain = sessionOnScreen(state) === base;
+
+    profile.week = 2;
+    const afterWeek = sessionOnScreen(state);
+    profile.week = 1;
+
+    profile.day = 1;
+    const afterDay = sessionOnScreen(state);
+    profile.day = 0;
+
+    /* A second block with the same days: only its id is meant to matter. */
+    profile.blocks['block-2'] = { id: 'block-2', days: profile.blocks[blockId].days };
+    profile.activeBlock = 'block-2';
+    const afterBlock = sessionOnScreen(state);
+    profile.activeBlock = blockId;
+    delete profile.blocks['block-2'];
+
+    state.activeProfile = 'mujer';
+    const afterProfile = sessionOnScreen(state);
+    state.activeProfile = 'hombre';
+
+    const backToBase = sessionOnScreen(state);
+
+    return { base, sameAgain, afterWeek, afterDay, afterBlock, afterProfile, backToBase };
+  })()
+`;
+const sk = call(sessionKeyProbe);
+ok('a redraw of the same session returns the same key', sk.sameAgain, JSON.stringify(sk));
+ok('the week changing changes the key', sk.afterWeek !== sk.base, JSON.stringify(sk));
+ok('the day changing changes the key', sk.afterDay !== sk.base, JSON.stringify(sk));
+ok('the active block changing changes the key', sk.afterBlock !== sk.base, JSON.stringify(sk));
+ok('the active profile changing changes the key', sk.afterProfile !== sk.base, JSON.stringify(sk));
+ok('going back to the same session returns the original key', sk.backToBase === sk.base, JSON.stringify(sk));
+
 console.log('\n== seed plans match their published block files (plans/008 item 12) ==');
 /* js/data.js:6-9 asks whoever edits the seed plans by hand to also
    regenerate blocks/hombre-bloque-1.json and blocks/mujer-bloque-1.json — a
