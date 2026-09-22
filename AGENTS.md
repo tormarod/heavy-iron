@@ -65,10 +65,11 @@ or CI job fails, and a reviewer is the only check. How to run the checks is
   unit "EX_FIELDS: what a plan exercise may hold, in one table".
   → [What a plan exercise may hold](#what-a-plan-exercise-may-hold)
 - **A destructive action** — `ask` first; then `snapshotForUndo` before
-  its first write, with no `await` between; its dialog promises
-  `UNDO_PROMISE`; and a booted test presses its real button, then
-  "Deshacer". Held by unit "\"Deshacer\" on every action that offers it,
-  through its real button", which pins the list of actions.
+  its first write, with no `await` between; its dialog never says "No se
+  puede deshacer" (the promise it may make is `UNDO_PROMISE`); and a
+  booted test presses its real button, then "Deshacer". Held by unit
+  "\"Deshacer\" on every action that offers it, through its real button",
+  which pins the list of actions.
   → [Destructive actions and Deshacer](#destructive-actions-and-deshacer)
 - **Code that reads or writes logged sets** — read through `sessionsOf`,
   and copy an answer before changing it; after a write to `log`, `rir` or
@@ -529,19 +530,25 @@ fails when the code writes an exercise field the table does not declare.
 
 ### Destructive actions and Deshacer
 
-Every destructive action asks first, then takes one snapshot of the whole
-state before its first write (`snapshotForUndo`, `js/app.js`), and
-"Deshacer" on the toast it leaves puts that snapshot back. The snapshot
-must come before the action's writes with no `await` between them, or the
-action must arm it itself — those writes land while it is still unarmed,
-and the first `save()` after it is armed ends the undo (`undoArmed`,
-`js/app.js`, says why). Undo ends there, at the next change of any kind
-or a write adopted from another tab (plans/060); depth and reload limits
-are in [Documented limits](#documented-limits--settled-decisions-not-bugs).
-Its dialog always promises `UNDO_PROMISE` — the one that still says "No
-se puede deshacer" is deleting a retired exercise's log in the plan
-editor, which is right to, since nothing snapshots that path until the
-editor's own save.
+Every destructive action asks first — "Guardar cambios" in the plan
+editor is the exception: it only `tell`s on an error, before the
+snapshot, and snapshots on every save regardless, because what it
+erases was already confirmed inside the editor, row by row — then takes
+one snapshot of the whole state before its first write
+(`snapshotForUndo`, `js/app.js`), and "Deshacer" on the toast it leaves
+puts that snapshot back. The snapshot must come before the action's
+writes with no `await` between them, or the action must arm it itself —
+those writes land while it is still unarmed, and the first `save()`
+after it is armed ends the undo (`undoArmed`, `js/app.js`, says why).
+Undo ends there, at the next change of any kind or a write adopted from
+another tab (plans/060); depth and reload limits are in [Documented
+limits](#documented-limits--settled-decisions-not-bugs). A dialog in
+front of a snapshot never says "No se puede deshacer". The promise it
+may make instead is `UNDO_PROMISE`, and five do: each of the three ways
+to delete a block, "Cargar copia" and loading a profile file. The one
+dialog that still says "No se puede deshacer" is deleting a retired
+exercise's log in the plan editor, which is right to, since nothing
+snapshots that path until the editor's own save.
 
 The six, each tested through its real button with "Deshacer" pressed
 after: "Borrar este día" and "Guardar cambios" in the plan editor (unit
