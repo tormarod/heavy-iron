@@ -79,7 +79,7 @@ below so it is not lost or re-audited.
 | 055 | [One table for what a plan exercise may hold — `EX_FIELDS` — and your own backup gives back exactly what you typed](done/055-exercise-fields.md) | P2 | M | MED | — | DONE (#159) — `EX_FIELDS` declares each exercise field once; the editor caps new text; your own backup restores text up to 2,000 characters exactly; one `cleanPlates()` |
 | 056 | [One history per Diagnóstico row — the row reads exactly the sessions the objetivo reads](done/056-diagnostico-one-history.md) | P2 | S–M | MED | — | DONE (#158) — a row reads exactly the objetivo's sessions (`liftHistory`); split lifts one row per day; no raw re-read; ordinary rows identical |
 | 057 | [What was ticked in a block, read one way — the last five raw walks onto `sessionsOf`](done/057-block-done-sets.md) | P3 | S–M | LOW | 054, 056 | DONE (#160) — the last five raw walks read `sessionsOf` with `'plan'` weeks; `sessionVolume`; the review's energy comparison and the heatmap stop counting stranded weeks; two test-only parameters gone |
-| 058 | [Three fixes from the ninth audit — an id newer than its reader is guarded and checked, the worker reads one cache, and a phase label's number counts only next to "RIR"](058-ninth-audit-three-fixes.md) | P1 (A, C), P2 (B) | S each | LOW / LOW–MED | — (three independent PRs; every one bumps) | IN PROGRESS |
+| 058 | [Three fixes from the ninth audit — an id newer than its reader is guarded and checked, the worker reads one cache, and a phase label's number counts only next to "RIR"](done/058-ninth-audit-three-fixes.md) | P1 (A, C), P2 (B) | S each | LOW / LOW–MED | — (three independent PRs; every one bumped) | DONE — B (#164, v124), C (#165, v125), A (#166, v126); eleven reads guarded and a git-dated unit check of every $('id') outside app.js (169 reads, 0 younger than their file); sw.js reads through one scoped helper; phaseRir reads a number before or after "RIR" only, within RIR_MAX, with a seeded fuzz; C's end-to-end case uses "Semana 6 · 10 reps" since "Descarga 60%" hits the deload gate first — see each step's Maintenance notes |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
@@ -936,8 +936,8 @@ shell, every `innerHTML` with a user string through `esc`/`textContent`.
 it made the table, and one of the reviewers' HIGH items was dropped on
 that check (see "considered, recorded").
 
-The three highest became plan 058, one PR each; everything else is
-recorded here.
+The three highest became plan 058, one PR each (#164, #165, #166, all
+merged the same day); everything else is recorded here.
 
 ### Vetted findings, by leverage
 
