@@ -226,18 +226,48 @@ function forEachSlot(map, blockId, fn, filter) {
                       under any block, so no purge or move reaches it.
 
    `travelsWithBlock` is what installBlockData files when a block arrives
-   by paste or QR. A hook (`move`, `purgeExercise`, `install`, `repair`)
-   only where a part is special, and its comment says why.
+   by paste or QR. `accept` is how a value of the part that came from
+   outside — a backup, a profile file, a QR — is checked and re-keyed to
+   the ids its block landed with: normalizeImportedProfile loops over the
+   table with it, and the normalizeImported* names the QR path and the
+   tests call are thin calls to it (plans/051). A part filed by block
+   hands its check to reKeyImportedSlots, which owns the slot rules they
+   all share. A hook (`move`, `purgeExercise`, `install`, `repair`) only
+   where a part is special, and its comment says why; `clean`, on the two
+   parts migrate() repairs by content, is the one rule that repair and
+   `accept` both read (and setOrder, for the order), so the load, the
+   restore and the app's own write cannot disagree about what the part
+   may hold.
 
-   Adding an eighth part is one entry here. The operations below, the guard
-   test in test/unit.js and the tests that loop over this table pick it up.
-   Import, share and restore still validate each part by hand (plans/046
-   left them out), so a new part needs its own step there; only the orphan
-   pass in normalizeImportedProfile takes its list from this table. */
+   Adding an eighth part is one entry here. The operations below, the
+   restore, the guard test in test/unit.js and the tests that loop over
+   this table pick it up. Only the block share still builds its parts by
+   hand (blockShareLog, blockShareRir, blockShareOrder): its keys are a
+   contract with phones on older shells, and test/unit.js fails if they
+   stop being the parts with `travelsWithBlock`. */
 const RECORD_PARTS = Object.freeze([
   /* The sets logged, every row of every session. The record itself; every
      other part describes something about it. */
-  { name: 'log', keyedBy: 'slot+exercise', merge: 'concat', travelsWithBlock: true },
+  {
+    name: 'log', keyedBy: 'slot+exercise', merge: 'concat', travelsWithBlock: true,
+    /* Which fields a row keeps, and on what terms, is the row codec's
+       (ROW_FIELDS): the same list the sender builds from. A row array past
+       LOG_ROW_HARD_CAP is refused, not trimmed (that constant says why),
+       and that refusal is the one thing any part's accept throws, which is
+       what `rejects` says: the import reports it under the block's name,
+       while the QR path, which is handed one block, reports it bare. */
+    rejects: true,
+    accept(raw, rawBlock, normalized) {
+      return reKeyImportedSlots(raw, rawBlock, normalized, eachExercise(rows => {
+        if (!Array.isArray(rows)) return undefined;
+        if (rows.length > LOG_ROW_HARD_CAP) {
+          throw new Error('trae ' + rows.length + ' series para un solo ejercicio en una sesión — demasiadas para ser un registro real.');
+        }
+        const kept = rows.slice(0, LOG_LIMITS.rows).map(rowFromImport);
+        return kept.length ? kept : undefined;
+      }));
+    },
+  },
 
   /* The legacy one-chip RIR, one value per session, read as a fallback and
      never written a value again since plans/035. It still travels with a
@@ -251,6 +281,15 @@ const RECORD_PARTS = Object.freeze([
      picking a side. */
   {
     name: 'rir', keyedBy: 'slot+exercise', merge: 'keep-destination', travelsWithBlock: true,
+    /* Unchanged by plans/035 on purpose: the map is still valid input — an
+       old phone sends one with every QR, and every backup written before
+       that plan has one — and the fold that moves it onto the rows runs
+       afterwards (`install`, `repair`). The three chips stay its enum; a
+       row's own digit is the log's to validate. */
+    accept(raw, rawBlock, normalized) {
+      return reKeyImportedSlots(raw, rawBlock, normalized,
+        eachExercise(v => (RIR_OPTIONS.indexOf(v) >= 0 ? v : undefined)));
+    },
     install: (profile, blockId) => foldRirMap(profile, blockId),
     /* On every load rather than behind a version gate: the fold is
        idempotent and costs one pass over a map most profiles barely have,
@@ -270,9 +309,24 @@ const RECORD_PARTS = Object.freeze([
      They do not travel with a block: the block share builds a log, the
      legacy chips and an order (blockShareLog, blockShareRir,
      blockShareOrder) and nothing for these, so no caller of
-     installBlockData has them to pass. */
-  { name: 'notes', keyedBy: 'slot' },
-  { name: 'energy', keyedBy: 'slot' },
+     installBlockData has them to pass.
+
+     Their checks on the way in are the ones the restore has run since
+     plans/008 item 4: a note capped to NOTE_LIMIT, an energy inside
+     ENERGY_OPTIONS, and a slot left with nothing valid dropped like any
+     other. */
+  {
+    name: 'notes', keyedBy: 'slot',
+    accept(raw, rawBlock, normalized) {
+      return reKeyImportedSlots(raw, rawBlock, normalized, v => txt(v, NOTE_LIMIT) || undefined);
+    },
+  },
+  {
+    name: 'energy', keyedBy: 'slot',
+    accept(raw, rawBlock, normalized) {
+      return reKeyImportedSlots(raw, rawBlock, normalized, v => (ENERGY_OPTIONS.indexOf(v) >= 0 ? v : undefined));
+    },
+  },
 
   /* The session order: the ids of a slot's exercises in the order they were
      actually done, kept only when that differs from the plan's. Absent
@@ -312,6 +366,44 @@ const RECORD_PARTS = Object.freeze([
         if (Array.isArray(toIds) && toIds.indexOf(exId) < 0) toIds.push(exId);
       });
     },
+    /* What one recorded order may hold, whoever is writing it: the import,
+       migrate()'s repair and setOrder used to carry three copies of this
+       that disagreed at the edges (plans/051). A list, of which the first
+       ORDER_LIMIT entries are read, each resolved to an id this phone has
+       (by `resolve`: the import's goes through the sender's id map, and
+       the default takes any string safeKey allows), each id once.
+       Undefined when nothing is left, which every caller reads as "the
+       plan's order".
+
+       The cap comes before the ids are resolved, as the import always had
+       it. Nothing the app writes holds more than ORDER_LIMIT ids or any it
+       would refuse, so this only bites on a list padded with junk.
+
+       One id is still an order, as the repair always had it. The import
+       used to want two, but "Enviar a otra sesión" leaves one behind (the
+       move below takes the lift out of the source day's order and keeps
+       the rest), and it still says what came first once the plan has put
+       another lift ahead of it; wanting two dropped it from every backup
+       and would have had the repair drop it on the next load. */
+    clean(ids, resolve) {
+      if (!Array.isArray(ids)) return undefined;
+      const toId = resolve || (id => (typeof id === 'string' && safeKey(id)) || '');
+      const seen = new Set();
+      const kept = [];
+      ids.slice(0, ORDER_LIMIT).forEach(raw => {
+        const id = toId(raw);
+        if (id && !seen.has(id)) { seen.add(id); kept.push(id); }
+      });
+      return kept.length ? kept : undefined;
+    },
+    /* Ids the sender's block does not account for are dropped rather than
+       carried through as strings that would never resolve on this phone.
+       An element, not a key, so it can be an object, and a lookup by it
+       would convert it to a key (see isObj). */
+    accept(raw, rawBlock, normalized) {
+      return reKeyImportedSlots(raw, rawBlock, normalized,
+        (ids, exFor) => this.clean(ids, id => (isObj(id) ? '' : exFor[id])));
+    },
     /* A slot that is not a list of distinct, usable ids cannot be drawn in
        any order, so it goes: the plan's order is the safe reading. */
     repair(profile) {
@@ -319,11 +411,8 @@ const RECORD_PARTS = Object.freeze([
         const blk = profile.order[bk];
         if (!blk || typeof blk !== 'object' || Array.isArray(blk)) { delete profile.order[bk]; return; }
         Object.keys(blk).forEach(k => {
-          const ids = blk[k];
-          if (!Array.isArray(ids)) { delete blk[k]; return; }
-          const seen = new Set();
-          blk[k] = ids.filter(id => typeof id === 'string' && safeKey(id) && !seen.has(id) && seen.add(id)).slice(0, ORDER_LIMIT);
-          if (!blk[k].length) delete blk[k];
+          const ids = this.clean(blk[k]);
+          if (ids) blk[k] = ids; else delete blk[k];
         });
       });
     },
@@ -342,7 +431,41 @@ const RECORD_PARTS = Object.freeze([
      phone recomputes the objetivo from the log it is sent, and a record it
      did not show is not its record to hold. It moves only with a whole
      profile. */
-  { name: 'obj', keyedBy: 'slot+exercise', merge: 'keep-destination' },
+  {
+    name: 'obj', keyedBy: 'slot+exercise', merge: 'keep-destination',
+    /* A record of what the rule put on the screen, so nothing in it is
+       trusted past its own shape, and a file that lost it entirely (every
+       backup written before v3) restores with none, which is exactly what
+       a session nobody had a target for looks like anyway. */
+    accept(raw, rawBlock, normalized) {
+      return reKeyImportedSlots(raw, rawBlock, normalized, eachExercise(rec => {
+        if (!rec || typeof rec !== 'object' || !Array.isArray(rec.sets)) return undefined;
+        const sets = rec.sets.slice(0, LOG_LIMITS.rows).map(x => ({
+          w: clampNum(x && x.w, 0, 9999, 0),
+          r: clampInt(x && x.r, 0, 999, 0),
+          m: (x && (x.m === '↑' || x.m === '↓')) ? x.m : '',
+        }));
+        if (!sets.length) return undefined;
+        /* A record written before plans/021 has no `kind`, and it stays
+           absent rather than being given a default: the missing field is
+           the only thing that tells the two generations apart, and some of
+           the older ones are reconstructions. `hold`/`brake` are stored
+           only when true, the same convention the log uses for
+           `share`/`ss`/`u`. */
+        const keep = { v: 3, at: clampInt(rec.at, 0, Number.MAX_SAFE_INTEGER, 0),
+                       conf: TARGET_CONF_OPTIONS.indexOf(rec.conf) >= 0 ? rec.conf : 'baja', sets: sets };
+        if (TARGET_KIND_OPTIONS.indexOf(rec.kind) >= 0) keep.kind = rec.kind;
+        if (rec.hold === true) keep.hold = true;
+        if (rec.brake === true) keep.brake = true;
+        /* The week's RIR the reps were solved for, when the record has
+           one: an integer inside the same range a row can hold, dropped
+           otherwise like `kind`. A descarga or a vuelta was never solved
+           for one, so a record without it is not a record that lost it. */
+        if (Number.isInteger(rec.rir) && rec.rir >= 0 && rec.rir <= RIR_MAX) keep.rir = rec.rir;
+        return keep;
+      }));
+    },
+  },
 
   /* The variants: the names an exercise has had, each with the date it
      started (exId → [{ n, since }]). Keyed by exercise id rather than by
@@ -355,22 +478,55 @@ const RECORD_PARTS = Object.freeze([
      variant thrown away cannot be rebuilt. */
   {
     name: 'variants', keyedBy: 'exercise',
+    /* What one exercise's list may hold, on every load and on every
+       import: the import used to carry a copy of this, character for
+       character (plans/051). Anything that is not a plain YYYY-MM-DD is
+       dropped, because a malformed date would cut a history at a moment
+       nobody can name; an exercise left with no dated variant reads as one
+       unbroken variant, which is the reading it had before v3. Always a
+       list, empty when nothing is left. */
+    clean(list) {
+      if (!Array.isArray(list)) return [];
+      return list.filter(v => v && typeof v === 'object' && !isObj(v.since) && VARIANT_SINCE_RE.test(String(v.since)))
+        .map(v => ({ n: txt(v.n, IMPORT_LIMITS.exName) || '', since: String(v.since) }))
+        .slice(-VARIANT_LIMIT);
+    },
+    /* Keyed by exercise id and not by block, so the block-by-block
+       re-keying cannot reach them: `exIds` is the union of every block's
+       id map that normalizeImportedProfile leaves behind for exactly this.
+       An id the importer renamed (a duplicate, or a blocked key like
+       `__proto__`) follows its exercise here, the same way every part
+       filed by block does; without that the rename history stayed attached
+       to an id nothing trains any more, or to the wrong lift. An id the
+       file never mentions is kept on safeKey alone: harmless, because
+       nothing asks for it. */
+    accept(raw, exIds) {
+      const out = {};
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+      Object.keys(raw).slice(0, IMPORT_LIMITS.days * IMPORT_LIMITS.ex).forEach(rawExId => {
+        const exId = exIds.get(rawExId) || safeKey(rawExId);
+        const list = this.clean(raw[rawExId]);
+        if (exId && list.length) out[exId] = list;
+      });
+      return out;
+    },
     /* After the blocks are repaired (ensureRecord runs last in migrate),
        because the lateral-raise seed reads the name each of its three
        slots is carrying right now. */
     repair(profile) {
       Object.keys(profile.variants).forEach(exId => {
-        const list = profile.variants[exId];
-        if (!Array.isArray(list)) { delete profile.variants[exId]; return; }
-        const clean = list.filter(v => v && typeof v === 'object' && !isObj(v.since) && VARIANT_SINCE_RE.test(String(v.since)))
-          .map(v => ({ n: txt(v.n, IMPORT_LIMITS.exName) || '', since: String(v.since) }))
-          .slice(-VARIANT_LIMIT);
-        if (clean.length) profile.variants[exId] = clean; else delete profile.variants[exId];
+        const list = this.clean(profile.variants[exId]);
+        if (list.length) profile.variants[exId] = list; else delete profile.variants[exId];
       });
       seedLateralVariants(profile);
     },
   },
 ].map(part => Object.freeze(part)));
+
+/* One part by name, for the few callers that mean one part in particular:
+   the normalizeImported* names and setOrder. Everything that means every
+   part loops over the table instead. */
+const recordPart = name => RECORD_PARTS.find(part => part.name === name);
 
 /* Clear part of the profile's record, the one way every "borrar" does it:
 
@@ -1981,20 +2137,21 @@ function repRangeBottom(reps) {
    the censoring note) — and it is precisely what the one chip used to do to
    every set of the session. */
 /* The three values the retired chip offered. No control draws them any
-   more (plans/036); they survive as the legacy map's own enum, which
-   normalizeImportedRir and blockShareRir still have to validate against,
-   and as the buckets js/review.js counts sessions into. */
+   more (plans/036); they survive as the legacy map's own enum, which the
+   rir part's accept (RECORD_PARTS) and blockShareRir still have to
+   validate against, and as the buckets js/review.js counts sessions into. */
 const RIR_OPTIONS = ['2+', '1', '0'];
 /* Past five reps in reserve the number stops saying anything a lifter can
    feel: it says "easy", which '5' already says. One digit, so the box in
    the set row is one keypress and maxlength="1" is most of the validation.
 
-   Read by normalizeImportedObj only. The four places that validate a row's
-   own value spell the range out as a literal — rowRir, rirNumber and
-   normalizeImportedLog as /^[0-5]$/, and the box's own oninput as
-   /[^0-5]/g — because a regex is what they need and building one from the
-   constant would be the harder thing to read. Raising this number means
-   editing those four as well; grep for the literal. */
+   Read by the objetivo record's accept only (RECORD_PARTS). The four
+   places that validate a row's own value spell the range out as a literal
+   — rowRir, rirNumber and the row codec's accept as /^[0-5]$/, and the
+   box's own oninput as /[^0-5]/g — because a regex is what they need and
+   building one from the constant would be the harder thing to read.
+   Raising this number means editing those four as well; grep for the
+   literal. */
 const RIR_MAX = 5;
 
 /* The row's own value as a number, or null when the row has none. Nothing
@@ -2259,11 +2416,15 @@ function getOrder(profile, blockId, w, dayId) {
   return Array.isArray(ids) ? ids : null;
 }
 
+/* Through the order part's own rule (RECORD_PARTS), the one migrate() and
+   the import read too. Its callers hand it the day's own ids, which the
+   rule passes as they are; it used to apply the cap alone. */
 function setOrder(profile, blockId, w, dayId, ids) {
   const k = slot(w, dayId);
-  if (ids && ids.length) {
+  const kept = recordPart('order').clean(ids);
+  if (kept) {
     if (!profile.order[blockId]) profile.order[blockId] = {};
-    profile.order[blockId][k] = ids.slice(0, ORDER_LIMIT);
+    profile.order[blockId][k] = kept;
   } else if (profile.order[blockId]) {
     delete profile.order[blockId][k];
   }
@@ -5934,10 +6095,12 @@ $('pUpload').addEventListener('change', e => {
    also read by js/block-editor.js's own export and delete dialogs (not by
    js/review.js any more — plans/050 gave the block review its own
    week-bounded count instead, in js/review.js itself), and countSets and
-   the normalizeImported* validators are also read by
-   js/profile-transfer.js, which runs a restored backup through the same
-   per-row checks the camera path has — countProfileSets and
-   countBackupSets there are one-liners over countSets (plans/050). */
+   the checks on what arrives are also read by js/profile-transfer.js,
+   which runs a restored backup through the same per-row checks the camera
+   path has — countProfileSets and countBackupSets there are one-liners
+   over countSets (plans/050). Those checks are each part's `accept` in
+   RECORD_PARTS now (plans/051); the normalizeImported* names at the end
+   of this section only name them, for the camera path. */
 
 /* Rows arrive from a camera or from a restored backup file, so they get the
    same treatment as any other imported data: bounded, coerced, never trusted
@@ -6226,15 +6389,16 @@ function setsWithDoneLabel(total, done) {
    a log keyed by the *sender's* ids has to be re-keyed to the ids the block
    actually ended up with. `normalizeImportedBlock` maps days and exercises
    one-to-one and in order, so position is a reliable bridge between the two. */
-/* Read by reKeyImportedSlots below, for all six slot-keyed normalizers:
-   each needs to re-key a payload from the
-   sender's day/exercise ids to whatever `normalizeImportedBlock` renamed
-   them to. First occurrence wins, both here and for days. A sender whose
-   block had the same id on two exercises *of one day* leaves a mapping that
-   is genuinely ambiguous — but `normalizeImportedBlock` renames the *later*
-   duplicate and leaves the first one's id alone, so rows filed under that
-   id belong to the first. Letting the duplicate overwrite the mapping would
-   quietly move somebody's sets onto a different exercise. */
+/* Read by reKeyImportedSlots below, for the `accept` of every part of the
+   record filed by block (RECORD_PARTS): each needs to re-key a payload
+   from the sender's day/exercise ids to whatever `normalizeImportedBlock`
+   renamed them to. First occurrence wins, both here and for days. A
+   sender whose block had the same id on two exercises *of one day* leaves
+   a mapping that is genuinely ambiguous — but `normalizeImportedBlock`
+   renames the *later* duplicate and leaves the first one's id alone, so
+   rows filed under that id belong to the first. Letting the duplicate
+   overwrite the mapping would quietly move somebody's sets onto a
+   different exercise. */
 function importIdMaps(rawBlock, normalized) {
   /* Object.create(null), not {}: every key below is a raw, untrusted id.
      A plain object answers `map['__proto__']` with the real Object.prototype
@@ -6270,14 +6434,15 @@ function importIdMaps(rawBlock, normalized) {
   return { dayMap, exMap };
 }
 
-/* The skeleton all six slot-keyed normalizers share: which keys are slots
-   at all, the week bound, the slot cap, and the day id re-keyed through
-   importIdMaps. Only what a slot holds differs, so that is all `keep` is
-   asked — it gets the slot's raw value and that day's exercise map, and
-   returns what to file or undefined to drop the slot. Notes and energy
-   hold no exercise ids and ignore the second argument, but their key still
-   carries a day id: they used to be copied across under it untouched, so a
-   renamed day lost its notes and energy on every restore. */
+/* The skeleton every part filed by block plugs its check into (its
+   `accept`, RECORD_PARTS): which keys are slots at all, the week bound,
+   the slot cap, and the day id re-keyed through importIdMaps. Only what a
+   slot holds differs, so that is all `keep` is asked — it gets the slot's
+   raw value and that day's exercise map, and returns what to file or
+   undefined to drop the slot. Notes and energy hold no exercise ids and
+   ignore the second argument, but their key still carries a day id: they
+   used to be copied across under it untouched, so a renamed day lost its
+   notes and energy on every restore. */
 function reKeyImportedSlots(raw, rawBlock, normalized, keep) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
   const { dayMap, exMap } = importIdMaps(rawBlock, normalized);
@@ -6296,111 +6461,45 @@ function reKeyImportedSlots(raw, rawBlock, normalized, keep) {
   return out;
 }
 
+/* The `keep` for a part keyed by exercise under the slot — the log, the
+   legacy chips, the objetivo record — so each of them is only asked what
+   one exercise's value keeps: the slot has to be a map, each exercise id in
+   it is re-keyed through that day's map (an id the sender's block does not
+   account for is dropped), `check` returns what to file or undefined to
+   drop it, and a slot left with nothing is dropped like any other. */
+function eachExercise(check) {
+  return (slotVal, exFor) => {
+    if (!slotVal || typeof slotVal !== 'object' || Array.isArray(slotVal)) return undefined;
+    const kept = {};
+    Object.keys(slotVal).forEach(rawExId => {
+      const exId = exFor[rawExId];
+      if (!exId) return;
+      const v = check(slotVal[rawExId]);
+      if (v !== undefined) kept[exId] = v;
+    });
+    return Object.keys(kept).length ? kept : undefined;
+  };
+}
+
+/* The names the QR "blocklog" path (js/qr-transfer.js) and the tests call,
+   one block at a time. What each accepts, and on what terms, is its part's
+   `accept` in RECORD_PARTS; these only name it. A refusal comes back bare
+   here: the QR path puts "Ese bloque no se puede usar" in front of it, and
+   normalizeImportedProfile, which walks many blocks, the block's name. */
 function normalizeImportedLog(rawLog, rawBlock, normalized) {
-  return reKeyImportedSlots(rawLog, rawBlock, normalized, (slotLog, exFor) => {
-    if (!slotLog || typeof slotLog !== 'object' || Array.isArray(slotLog)) return;
-    const kept = {};
-    Object.keys(slotLog).forEach(rawExId => {
-      const exId = exFor[rawExId];
-      if (!exId || !Array.isArray(slotLog[rawExId])) return;
-      if (slotLog[rawExId].length > LOG_ROW_HARD_CAP) {
-        throw new Error('trae ' + slotLog[rawExId].length + ' series para un solo ejercicio en una sesión — demasiadas para ser un registro real.');
-      }
-      /* Which fields are accepted, and on what terms, is the row codec's
-         (ROW_FIELDS): the same list the sender builds from. */
-      const rows = slotLog[rawExId].slice(0, LOG_LIMITS.rows).map(rowFromImport);
-      if (rows.length) kept[exId] = rows;
-    });
-    if (Object.keys(kept).length) return kept;
-  });
+  return recordPart('log').accept(rawLog, rawBlock, normalized);
 }
 
-/* The legacy RIR map's twin of normalizeImportedLog, re-keyed the same way.
-   Unchanged by plans/035 on purpose: the map is still valid input — an old
-   phone sends one with every QR, and every backup written before that plan
-   has one — and the fold that moves it onto the rows runs afterwards, in
-   installBlockData. The three chips stay its enum; a row's own digit is
-   validated by normalizeImportedLog instead. */
 function normalizeImportedRir(rawRir, rawBlock, normalized) {
-  return reKeyImportedSlots(rawRir, rawBlock, normalized, (slotRir, exFor) => {
-    if (!slotRir || typeof slotRir !== 'object' || Array.isArray(slotRir)) return;
-    const kept = {};
-    Object.keys(slotRir).forEach(rawExId => {
-      const exId = exFor[rawExId];
-      if (exId && RIR_OPTIONS.indexOf(slotRir[rawExId]) >= 0) kept[exId] = slotRir[rawExId];
-    });
-    if (Object.keys(kept).length) return kept;
-  });
+  return recordPart('rir').accept(rawRir, rawBlock, normalized);
 }
 
-/* The objetivo twin, re-keyed the same way. A record of what the rule put
-   on the screen — so nothing here is trusted past its own shape, and a
-   file that lost it entirely (every backup written before v3) restores
-   with none, which is exactly what a session nobody had a target for
-   looks like anyway. */
-function normalizeImportedObj(rawObj, rawBlock, normalized) {
-  return reKeyImportedSlots(rawObj, rawBlock, normalized, (slotObj, exFor) => {
-    if (!slotObj || typeof slotObj !== 'object' || Array.isArray(slotObj)) return;
-    const kept = {};
-    Object.keys(slotObj).forEach(rawExId => {
-      const exId = exFor[rawExId];
-      const rec = slotObj[rawExId];
-      if (!exId || !rec || typeof rec !== 'object' || !Array.isArray(rec.sets)) return;
-      const sets = rec.sets.slice(0, LOG_LIMITS.rows).map(x => ({
-        w: clampNum(x && x.w, 0, 9999, 0),
-        r: clampInt(x && x.r, 0, 999, 0),
-        m: (x && (x.m === '↑' || x.m === '↓')) ? x.m : '',
-      }));
-      if (!sets.length) return;
-      /* A record written before plans/021 has no `kind`, and it stays
-         absent rather than being given a default: the missing field is the
-         only thing that tells the two generations apart, and some of the
-         older ones are reconstructions. `hold`/`brake` are stored only when
-         true, the same convention the log uses for `share`/`ss`/`u`. */
-      const keep = { v: 3, at: clampInt(rec.at, 0, Number.MAX_SAFE_INTEGER, 0),
-                     conf: TARGET_CONF_OPTIONS.indexOf(rec.conf) >= 0 ? rec.conf : 'baja', sets: sets };
-      if (TARGET_KIND_OPTIONS.indexOf(rec.kind) >= 0) keep.kind = rec.kind;
-      if (rec.hold === true) keep.hold = true;
-      if (rec.brake === true) keep.brake = true;
-      /* The week's RIR the reps were solved for, when the record has one:
-         an integer inside the same range a row can hold, dropped otherwise
-         like `kind`. A descarga or a vuelta was never solved for one, so a
-         record without it is not a record that lost it. */
-      if (Number.isInteger(rec.rir) && rec.rir >= 0 && rec.rir <= RIR_MAX) keep.rir = rec.rir;
-      kept[exId] = keep;
-    });
-    if (Object.keys(kept).length) return kept;
-  });
-}
-
-/* The session-order twin, re-keyed the same way. Ids the sender's block
-   does not account for are dropped rather than carried through as strings
-   that would never resolve on this phone. */
 function normalizeImportedOrder(rawOrder, rawBlock, normalized) {
-  return reKeyImportedSlots(rawOrder, rawBlock, normalized, (ids, exFor) => {
-    if (!Array.isArray(ids)) return;
-    const seen = new Set();
-    const kept = [];
-    ids.slice(0, ORDER_LIMIT).forEach(rawExId => {
-      /* Array elements, not Object.keys: an id here can be an object, and
-         a lookup by it converts it to a key (see isObj). */
-      const exId = isObj(rawExId) ? '' : exFor[rawExId];
-      if (exId && !seen.has(exId)) { seen.add(exId); kept.push(exId); }
-    });
-    if (kept.length > 1) return kept;
-  });
+  return recordPart('order').accept(rawOrder, rawBlock, normalized);
 }
 
-/* The per-session twins. Their value checks are the ones the restore path
-   has run since plans/008 item 4 — a note capped to NOTE_LIMIT, an energy
-   inside ENERGY_OPTIONS — and a slot left with nothing valid is dropped
-   like any other. */
-function normalizeImportedNotes(rawNotes, rawBlock, normalized) {
-  return reKeyImportedSlots(rawNotes, rawBlock, normalized, v => txt(v, NOTE_LIMIT) || undefined);
-}
-
-function normalizeImportedEnergy(rawEnergy, rawBlock, normalized) {
-  return reKeyImportedSlots(rawEnergy, rawBlock, normalized, v => ENERGY_OPTIONS.indexOf(v) >= 0 ? v : undefined);
+function normalizeImportedObj(rawObj, rawBlock, normalized) {
+  return recordPart('obj').accept(rawObj, rawBlock, normalized);
 }
 
 /* ---------- CSV export ----------

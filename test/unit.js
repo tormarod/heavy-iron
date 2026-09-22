@@ -796,7 +796,12 @@ const orderRekey = call(`
     const block = profile.blocks[profile.blockOrder[0]];
     const day = block.days[0];
     day.ex[0].id = '__proto__';
-    setOrder(profile, block.id, 1, day.id, ['__proto__', day.ex[1].id, day.ex[2].id]);
+    /* Straight into the map, not through setOrder: that writes through the
+       order part's rule now, which refuses a blocked id on the way in
+       (plans/051). A file carries one anyway when it was written before
+       migrate() refused the name, or edited by hand. */
+    profile.order[block.id] = {};
+    profile.order[block.id][slot(1, day.id)] = ['__proto__', day.ex[1].id, day.ex[2].id];
 
     const after = normalizeImportedProfile(JSON.parse(JSON.stringify(profile)));
     const ab = after.blocks[after.blockOrder[0]];
