@@ -8001,9 +8001,11 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
      and its toast never hid, so pressing it an hour into a session put back
      the state from before the action, every set logged since gone. And the
      conflict's "Recargar" reloaded into flushSave's forced write, which
-     overwrote the other tab's data the user had just chosen to keep. Each
-     case boots week 1, where seeded()'s log is, so "Borrar este día" has a
-     day to clear. */
+     overwrote the other tab's data the user had just chosen to keep. And
+     the one toast box went to whichever toast came last, so the question
+     could be pushed off the screen with every save still held behind it.
+     Each case boots week 1, where seeded()'s log is, so "Borrar este día"
+     has a day to clear. */
   console.log('\n== undo ends at the next change; "Recargar" discards; a decision toast is not pushed off (plans/060) ==');
   {
     const usedOnDay = booted => {
@@ -8101,8 +8103,9 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
         noX = boot.$('toastDismiss').hidden === true;
         boot.$('toastAct2').onclick();
         /* What used to land between the press and the unload: a late
-           save(), then the unload's own forced flush. */
-        boot.call('save()');
+           change (a box losing focus writes into state and saves), then the
+           unload's own forced flush. */
+        boot.call('state.prefs.barWeight = 33, save()');
         boot.fire(boot.ctx.window, 'beforeunload');
         boot.fire(boot.ctx.window, 'pagehide');
         boot.clock.advance(1000);
@@ -8111,6 +8114,51 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
          !err && asked === 'Recargar' && noX && !!c && boot.store[c.key] === c.raw && boot.ctx.location.reloads === 1,
          err || JSON.stringify({ asked, noX, kept: !!c && boot.store[c.key] === c.raw, bar: boot.saved() && boot.saved().prefs.barWeight, reloads: boot.ctx.location.reloads }));
     }
+
+    /* The reload "Recargar" asks for can be stopped (Esc, the browser's ✕);
+       the harness's location.reload() is one that never happens. The page
+       left standing has to be on the other tab's data at once, and has to
+       save again once it has plainly not gone. */
+    {
+      const boot = settled(seeded({ week: 1, day: 0 }));
+      let err = '', adopted = null, written = null;
+      try {
+        conflict(boot);
+        boot.$('toastAct2').onclick();
+        adopted = boot.call('state.prefs.barWeight');
+        boot.clock.advance(3000);
+        boot.call('state.prefs.barWeight = 44, save()');
+        boot.clock.advance(1000);
+        written = boot.saved().prefs.barWeight;
+      } catch (e) { err = e.message; }
+      ok('"Recargar" takes the other tab\'s data in at once, so a page whose reload was stopped is on it, not on the change it dropped',
+         !err && adopted === 22, err || 'barWeight in state: ' + adopted);
+      ok('...and saves again a few seconds on, instead of refusing every write for the rest of the session',
+         !err && written === 44, err || 'barWeight on disk: ' + written);
+    }
+
+    /* Hiding or closing the tab while the question is up forces this tab's
+       write (flushSave's own choice: a set logged just before the phone is
+       pocketed is never lost), which is "Quedarme con lo mío" answered. */
+    {
+      const boot = settled(seeded({ week: 1, day: 0 }));
+      let err = '', asking = false;
+      try {
+        conflict(boot);
+        asking = !boot.$('toast').hidden && boot.$('toastAct2').textContent === 'Recargar';
+        boot.fire(boot.ctx.window, 'pagehide');
+      } catch (e) { err = e.message; }
+      const after = { hidden: boot.$('toast').hidden === true, held: boot.call('held'), bar: boot.saved().prefs.barWeight };
+      ok('a forced write mid-question keeps this tab\'s change and takes the answered question off the screen, "held" cleared with it',
+         !err && asking && after.hidden && after.held === false && after.bar === 11, err || JSON.stringify({ asking, after }));
+    }
+
+    /* What is on screen: its message and its action's label, or null. */
+    const showing = booted => (booted.$('toast').hidden ? null : {
+      msg: booted.$('toastMsg').textContent,
+      act: booted.$('toastAct').hidden ? '' : booted.$('toastAct').textContent,
+    });
+    const offerUpdate = booted => booted.call("toast('Hay una versión nueva de la app.', 'Actualizar', () => {}, null, null, 'update')");
 
     {
       const boot = settled(seeded({ week: 1, day: 0 }));
@@ -8128,9 +8176,122 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
       } catch (e) { err = e.message; }
       ok('the conflict toast is not replaced by a later toast, and "held" stays set until it is answered',
          !err && !!during && during.same && during.held === true, err || JSON.stringify(during));
-      ok('...answering it shows the queued "Actualizar" first, with its ✕, then the note',
-         !err && !!next && next.msg === 'y' && next.x && !!last && last.msg === 'x' && last.shown,
+      ok('...answering it shows the note that waited first, with its ✕, then "Actualizar"',
+         !err && !!next && next.msg === 'x' && next.x && !!last && last.msg === 'y' && last.shown,
          err || JSON.stringify({ next, last }));
+    }
+
+    /* "Actualizar" is offered on every load while a new worker waits, so it
+       can be up for a whole session: it must never be what keeps an undo
+       or a warning off the screen, and never be lost to one either. */
+    {
+      const boot = settled(seeded({ week: 1, day: 0 }));
+      let err = '', undo = null, back = null;
+      try {
+        offerUpdate(boot);
+        await clearDay(boot);
+        undo = showing(boot);
+        boot.$('toastDismiss').onclick();
+        back = showing(boot);
+      } catch (e) { err = e.message; }
+      ok('"Borrar este día" with "Actualizar" up shows its Deshacer at once',
+         !err && !!undo && undo.act === 'Deshacer', err || JSON.stringify(undo));
+      ok('...and "Actualizar" comes back when the undo toast is dismissed',
+         !err && !!back && back.act === 'Actualizar', err || JSON.stringify(back));
+    }
+
+    {
+      const boot = settled(seeded({ week: 1, day: 0 }));
+      let err = '', still = null, back = null;
+      try {
+        await clearDay(boot);
+        offerUpdate(boot);
+        still = showing(boot);
+        boot.$('toastDismiss').onclick();
+        back = showing(boot);
+      } catch (e) { err = e.message; }
+      ok('"Actualizar" arriving over the undo toast waits its turn instead of taking the box, and shows once it is dismissed',
+         !err && !!still && still.act === 'Deshacer' && !!back && back.act === 'Actualizar', err || JSON.stringify({ still, back }));
+    }
+
+    {
+      const boot = settled(seeded({ week: 1, day: 0 }));
+      let err = '', asking = null, back = null;
+      try {
+        offerUpdate(boot);
+        conflict(boot);
+        asking = showing(boot);
+        boot.$('toastAct').onclick();
+        back = showing(boot);
+      } catch (e) { err = e.message; }
+      ok('the question takes the box from "Actualizar", and "Actualizar" is back once "Quedarme con lo mío" answers it',
+         !err && !!asking && asking.act === 'Quedarme con lo mío' && !!back && back.act === 'Actualizar',
+         err || JSON.stringify({ asking, back }));
+    }
+
+    {
+      const boot = settled(seeded({ week: 1, day: 0 }));
+      let err = '', warned = null, back = null;
+      try {
+        offerUpdate(boot);
+        boot.ctx.localStorage.setItem = () => { throw new Error('QuotaExceededError'); };
+        boot.call('state.prefs.barWeight = 11, save()');
+        boot.clock.advance(1000);
+        warned = showing(boot);
+        boot.$('toastDismiss').onclick();
+        back = showing(boot);
+      } catch (e) { err = e.message; }
+      ok('a failed save\'s warning shows at once over "Actualizar" — it fires once per load, so one held back is one never seen',
+         !err && !!warned && warned.act === 'Copia de seguridad' && /^No se han podido guardar/.test(warned.msg),
+         err || JSON.stringify(warned));
+      ok('...and "Actualizar" comes back after it', !err && !!back && back.act === 'Actualizar', err || JSON.stringify(back));
+    }
+
+    /* Another tab's write inside the 400 ms before "Borrar este día"'s own
+       save lands: the question takes the box from the undo toast, and the
+       undo is still good once the question is answered — unless something
+       changed while it was up. */
+    const clearedThenAsked = async boot => {
+      const key = boot.call('STORAGE_KEY');
+      await clearDay(boot);
+      boot.clock.advance(1);
+      const raw = theirsFrom(boot, s => { s.prefs.barWeight = 22; });
+      boot.store[key] = raw;
+      boot.fire(boot.ctx.window, 'storage', { key: key, newValue: raw });
+      return showing(boot);
+    };
+
+    {
+      const boot = settled(seeded({ week: 1, day: 0 }));
+      const before = usedOnDay(boot);
+      let err = '', asking = null, back = null, cleared = null;
+      try {
+        asking = await clearedThenAsked(boot);
+        boot.$('toastAct').onclick();
+        cleared = usedOnDay(boot);
+        back = showing(boot);
+        boot.$('toastAct').onclick();
+        boot.clock.advance(1000);
+      } catch (e) { err = e.message; }
+      ok('a write from another tab inside "Borrar este día"\'s save delay raises the question over its undo toast',
+         !err && !!asking && asking.act === 'Quedarme con lo mío', err || JSON.stringify(asking));
+      ok('..."Quedarme con lo mío" writes the cleared day and brings Deshacer back, and Deshacer still restores the day\'s sets',
+         !err && cleared === 0 && !!back && back.act === 'Deshacer' && before > 0 && usedOnDay(boot) === before,
+         err || JSON.stringify({ cleared, back, before, after: usedOnDay(boot) }));
+    }
+
+    {
+      const boot = settled(seeded({ week: 1, day: 0 }));
+      let err = '', asking = null, after = null;
+      try {
+        asking = await clearedThenAsked(boot);
+        boot.card(0).set(0).tick.onclick();
+        boot.$('toastAct').onclick();
+        after = showing(boot);
+      } catch (e) { err = e.message; }
+      ok('a set ticked while the question is up ends that undo: "Quedarme con lo mío" brings back no Deshacer with nothing behind it, and keeps the set',
+         !err && !!asking && asking.act === 'Quedarme con lo mío' && after === null && boot.call('undoSnapshot') === null && usedOnDay(boot) === 1,
+         err || JSON.stringify({ asking, after, undo: boot.call('undoSnapshot') !== null, sets: usedOnDay(boot) }));
     }
   }
 

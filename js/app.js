@@ -1131,15 +1131,16 @@ function pruneLog() {
   });
 }
 /* Set while a two-tab conflict toast is up (see the 'storage' handler below)
-   and cleared by whichever of its two actions the user picks. The debounced
-   path respects it so the write that caused the conflict cannot land behind
-   the user's back while the toast is still asking; flushSave always passes
-   force so closing the tab never silently drops a logged set — see its own
-   comment below. */
+   and cleared by whichever of its two actions the user picks, or by a forced
+   write. The debounced path respects it so the write that caused the
+   conflict cannot land behind the user's back while the toast is still
+   asking; flushSave always passes force so closing the tab never silently
+   drops a logged set — see its own comment below. */
 let held = false;
 /* Set by the conflict's "Recargar" for the moment before the page goes:
    the change here is being thrown away, so nothing may write it — not the
-   unload's forced flush, not a save() that sneaks in first. */
+   unload's forced flush, not a save() that sneaks in first. Cleared again if
+   the page is still there a few seconds later (see the handler). */
 let discarding = false;
 
 /* A failed setItem (quota, private-mode limits) used to be reported only in
@@ -1152,7 +1153,15 @@ let quotaToastShown = false;
 function writeState(force) {
   if (frozen || discarding) return;
   if (held && !force) return;
-  held = false;
+  if (held) {
+    held = false;
+    /* A forced write while the conflict is asking — the tab being hidden or
+       closed, a backup, profile or block loaded — keeps this tab's change,
+       which is "Quedarme con lo mío" answered. Left on screen, the toast
+       would go on asking a question that no longer exists: the other tab's
+       write it offers to reload into has just been overwritten. */
+    if (toastKind === 'conflict') hideToast();
+  }
   try {
     pruneLog();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -1186,9 +1195,11 @@ function save(scope) {
    must never be the reason a set logged right before closing the tab is
    lost. The conflict itself was never about *whether* to keep local
    changes — only about not overwriting the other tab's newer ones out from
-   under the user without asking first. The one exception is the answer
-   that says the opposite: after "Recargar", writeState refuses everything
-   (`discarding`), this forced write included. */
+   under the user without asking first. So a flush mid-conflict is taken as
+   "Quedarme con lo mío", and writeState takes the question off the screen
+   with it. The one exception is the answer that says the opposite: after
+   "Recargar", writeState refuses everything (`discarding`), this forced
+   write included. */
 function flushSave() {
   if (!saveT && !held) return;
   clearTimeout(saveT);
@@ -1245,20 +1256,39 @@ window.addEventListener('storage', e => {
          beforeunload/pagehide ran flushSave, which forces through a held
          write — so it overwrote the very data the user had just chosen to
          keep. `discarding` stops every write from here to the unload,
-         including a save() that lands in between (a box losing focus). */
+         including a save() that lands in between (a box losing focus).
+
+         The other tab's data is taken in first, the way a write with
+         nothing pending here is, because the reload can be stopped (Esc,
+         the browser's ✕). Without that, a page still standing kept the
+         change it was told to drop, and `discarding` refused every write
+         it would ever make — a session logged into a tab that silently
+         saved nothing. So it is cleared again once the page has plainly
+         not gone, and whatever is written from then on starts from the
+         other tab's data, which is what "Recargar" chose. */
       'Recargar', () => {
+        adoptStored(readRaw());
         discarding = true;
         held = false;
         clearTimeout(saveT);
         saveT = null;
+        setTimeout(() => { discarding = false; }, 3000);
         location.reload();
       },
       'conflict'
     );
     return;
   }
+  adoptStored(e.newValue);
+});
+
+/* Another tab's write, taken in as this tab's state: the 'storage' event's
+   answer when nothing is pending here, and "Recargar"'s when something was.
+   Bytes that do not parse, or that are not the app's, are left where they
+   are — this tab carries on with what it has. */
+function adoptStored(raw) {
   let next;
-  try { next = JSON.parse(e.newValue); } catch (err) { return; }
+  try { next = JSON.parse(raw); } catch (err) { return; }
   if (!next || !next.profiles) return;
   state = next;
   /* A snapshot taken before this would put back the other tab's sets as
@@ -1268,7 +1298,7 @@ window.addEventListener('storage', e => {
   applyTheme();
   render();
   mark('Actualizado desde otra pestaña');
-});
+}
 
 /* ---------- keeping the log ----------
    There is no server: the only copy of a year of training is the string in
@@ -1350,40 +1380,47 @@ function setNote(el, text, err) {
    choices rather than one action and a dismiss — today only the two-tab
    conflict, above. Omit them for the common one-action-or-none toast. */
 /* There is one toast box, and any later toast() used to take it over. Two
-   toasts cannot afford that, so they are pinned: the two-tab conflict,
-   which leaves `held` set — every save waiting — until one of its buttons is
-   pressed, so replacing it by the undo toast, the backup nag on the tick
-   that finishes a day or the quota warning left the app holding with no
-   way to answer; and "Actualizar", which the browser never offers again in
-   this session once it is gone (updatefound does not re-fire for a worker
-   that is already waiting). The conflict outranks the update.
+   toasts cannot simply be replaced. The two-tab conflict leaves `held` set
+   — every save waiting — until one of its buttons is pressed, so the undo
+   toast, the backup nag on the tick that finishes a day or the quota
+   warning taking its place left the app holding with no way to answer. And
+   "Actualizar" is never offered again in this session once it is gone
+   (updatefound does not re-fire for a worker that is already waiting).
 
-   While a pinned toast is showing, anything that would have replaced it
-   waits in `queuedToast` instead — a pinned one in its own slot, anything
-   else in `note`, the latest of each winning — and hideToast shows the
-   pinned slot first. A pinned toast displaced by one of the same kind is
-   simply superseded (it asks the same question), so the slot is never
-   overwritten by a stale copy of it. An ordinary toast a pinned one pushes
-   aside waits in `note` too: the undo it may be offering is still good. */
-const TOAST_RANK = { conflict: 2, update: 1 };
-const queuedToast = { pinned: null, note: null };
+   Only the conflict holds other toasts back. "Actualizar" is never lost
+   but never blocks: it yields to everything and comes back after. It is
+   offered on every load while a new worker waits, so it can sit on screen
+   for a whole session after each deploy — and when it outranked the rest,
+   it held back exactly the ones that cannot wait: "Borrar este día" with
+   "Actualizar" up never showed its Deshacer, and the next tick expired it
+   unseen; a quota warning queued behind it was overwritten by the next
+   undo and, fired once per load (quotaToastShown), never came back.
+
+   So there is one waiting place for each of `note` (every toast that is
+   neither — the undo toast among them) and `update`, the latest of each
+   winning. The conflict never waits: it always takes the box, and a note
+   takes it from the update. Whatever either pushes aside waits in its own
+   place, the undo toast included: an undo shown inside the 400 ms before
+   its own action's save lands, when another tab's write arrives, is still
+   good once the conflict is answered. hideToast shows a waiting note
+   first, then the update. A second toast of the kind already showing
+   replaces it, as every toast used to. */
+const queuedToast = { note: null, update: null };
 let toastKind = null;
 let toastArgs = null;
+const toastPlace = kind => (kind === 'conflict' || kind === 'update' ? kind : 'note');
 
 function toast(msg, actionLabel, fn, actionLabel2, fn2, kind) {
   kind = kind || 'note';
   const args = [msg, actionLabel, fn, actionLabel2, fn2, kind];
-  const showing = !$('toast').hidden && toastArgs;
-  const rank = TOAST_RANK[kind] || 0;
-  if (showing) {
-    const shownRank = TOAST_RANK[toastKind] || 0;
-    if (shownRank && rank < shownRank) {
-      if (rank) queuedToast.pinned = args;
-      else queuedToast.note = args;
+  const incoming = toastPlace(kind);
+  const shown = !$('toast').hidden && toastArgs ? toastPlace(toastKind) : null;
+  if (shown && shown !== incoming) {
+    if (shown === 'conflict' || incoming === 'update') {
+      queuedToast[incoming] = args;
       return;
     }
-    if (shownRank && toastKind !== kind) queuedToast.pinned = toastArgs;
-    else if (!shownRank && rank) queuedToast.note = toastArgs;
+    queuedToast[shown] = toastArgs;
   }
   toastKind = kind;
   toastArgs = args;
@@ -1414,13 +1451,15 @@ function hideToast() {
   $('toast').hidden = true;
   toastKind = null;
   toastArgs = null;
-  const slot = queuedToast.pinned ? 'pinned' : 'note';
-  const next = queuedToast[slot];
-  queuedToast[slot] = null;
-  if (!next) return;
+  let next = queuedToast.note;
+  queuedToast.note = null;
   /* An undo that expired while it waited has nothing left to offer. */
-  if (next[5] === 'undo' && !undoSnapshot) { hideToast(); return; }
-  toast.apply(null, next);
+  if (next && next[5] === 'undo' && !undoSnapshot) next = null;
+  if (!next) {
+    next = queuedToast.update;
+    queuedToast.update = null;
+  }
+  if (next) toast.apply(null, next);
 }
 $('toastDismiss').onclick = hideToast;
 
