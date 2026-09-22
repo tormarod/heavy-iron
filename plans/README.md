@@ -78,6 +78,7 @@ below so it is not lost or re-audited.
 | 054 | [The deload week, read one way — `deloadWeeks(block)` for every screen, spans for "¿funcionó la descarga?", and "sin descarga" is not a deload](done/054-deload-read-one-way.md) | P2 | S | LOW–MED | — | DONE (#157) — `deloadWeeks(block)` for every screen; deload spans for \"¿funcionó la descarga?\"; \"sin descarga\" no longer a deload; field-only blocks identical |
 | 055 | [One table for what a plan exercise may hold — `EX_FIELDS` — and your own backup gives back exactly what you typed](done/055-exercise-fields.md) | P2 | M | MED | — | DONE (#159) — `EX_FIELDS` declares each exercise field once; the editor caps new text; your own backup restores text up to 2,000 characters exactly; one `cleanPlates()` |
 | 056 | [One history per Diagnóstico row — the row reads exactly the sessions the objetivo reads](done/056-diagnostico-one-history.md) | P2 | S–M | MED | — | DONE (#158) — a row reads exactly the objetivo's sessions (`liftHistory`); split lifts one row per day; no raw re-read; ordinary rows identical |
+| 057 | [What was ticked in a block, read one way — the last five raw walks onto `sessionsOf`](done/057-block-done-sets.md) | P3 | S–M | LOW | 054, 056 | DONE (#160) — the last five raw walks read `sessionsOf` with `'plan'` weeks; `sessionVolume`; the review's energy comparison and the heatmap stop counting stranded weeks; two test-only parameters gone |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)

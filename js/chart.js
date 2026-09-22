@@ -55,22 +55,16 @@ function bestSet(done, metric) {
    exactly the sets the old filter kept. */
 const chartableSets = sets => sets.filter(s => s.wLogged !== '' && !isNaN(s.w));
 
-/* One block, one day, one exercise id — sessionsOf's narrowest query. Every
-   production caller (drawChart) passes `weeks` as blockWeeks(block), but
-   this function's own callers in test/ pass an arbitrary bound instead, so
-   'plan' (which stops at the block's *current* length) is not always the
-   same question: a week logged past that length is still inside `weeks`
-   when a caller asks for more of them. Reading 'logged' (stranded weeks
-   included) and then applying the same upper bound the old `for (w = 1; w
-   <= (weeks || MAX_WEEKS); w++)` loop enforced reproduces every caller
-   exactly, whichever bound it passed — MAX_WEEKS (js/app.js) is the same
-   ceiling the old loop fell back to when no bound was given at all. */
-function collectHistory(profile, blockId, dayId, exId, weeks, metric) {
-  const cap = weeks || MAX_WEEKS;
-  const sessions = sessionsOf(profile, { weeks: 'logged', lift: { id: exId }, day: dayId, blocks: [blockId] });
+/* One block, one day, one exercise id — sessionsOf's narrowest query, the
+   block's own weeks. The only production caller (drawChart) ever asked for
+   that; a `weeks` parameter here once let test/ ask for an arbitrary bound
+   instead, which is gone along with the parameter (plans/057, decision 4)
+   — collectHistoryAll, below, is the reader for a lift's history past the
+   current block's own length. */
+function collectHistory(profile, blockId, dayId, exId, metric) {
+  const sessions = sessionsOf(profile, { weeks: 'plan', lift: { id: exId }, day: dayId, blocks: [blockId] });
   const points = [];
   sessions.forEach(sess => {
-    if (sess.week > cap) return;
     const done = chartableSets(sess.sets);
     if (!done.length) return;
     const best = bestSet(done, metric);
@@ -269,7 +263,7 @@ function drawChart() {
   const multi = liftSlots(block, ex).length > 1;
   const points = multi
     ? collectHistoryDays(profile, block, ex, weeks, chartMetric)
-    : collectHistory(profile, block.id, dayId, ex.id, weeks, chartMetric);
+    : collectHistory(profile, block.id, dayId, ex.id, chartMetric);
   const per = multi ? 'de cada sesión registrada' : 'por semana';
   $('chartSub').textContent = block.name + ' — ' + (isE1rm ? '1RM estimado (Epley) ' + per + ', en ' + units() + '.' :
     'mejor peso registrado ' + per + ', en ' + units() + ' (× repeticiones de esa serie).');

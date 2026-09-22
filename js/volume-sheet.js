@@ -91,10 +91,10 @@ function buildBarSVG(rows) {
 function drawVolumeTonnage(profile, block, week) {
   /* Every week of the block added together, so this is a cross-session
      reader like the review and diagnostics — not like the card, which shows
-     one session's numbers as typed. Hence convertedSetVolume: without it a
-     block trained partly in lb would be summed in two units and printed
-     through fmtKg as if it were all one. */
-  const byWeek = blockTonnageByWeek(profile, block, convertedSetVolume);
+     one session's numbers as typed. blockTonnageByWeek always converts for
+     exactly that reason: without it a block trained partly in lb would be
+     summed in two units and printed through fmtKg as if it were all one. */
+  const byWeek = blockTonnageByWeek(profile, block);
   const total = byWeek.reduce((t, v) => t + v, 0);
   const thisWeek = byWeek[week - 1] || 0;
   const logged = byWeek.filter(v => v > 0).length;

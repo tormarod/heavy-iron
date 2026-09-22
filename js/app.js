@@ -2992,6 +2992,22 @@ function readSession(profile, block, week, dayId, exId, rows, day) {
   };
 }
 
+/* convertedSetVolume, over a session's own sets instead of a slot's stored
+   rows: a session's `w` is already rowWeight(r) — the exact conversion
+   convertedSetVolume applies to `r.w` itself — and its drops are already the
+   ones dropUsed kept, converted the same way. Summing here is
+   convertedSetVolume term for term over the rows the session was built from
+   (test/unit.js proves it over random rows, drops and lb included), so every
+   walk that used to sum convertedSetVolume over a slot's raw rows can sum
+   this over sessionsOf's sessions instead (plans/057). */
+function sessionVolume(sets) {
+  return sets.reduce((t, s) => {
+    const own = (isNaN(s.w) || isNaN(s.r)) ? 0 : s.w * s.r;
+    const drops = s.drops.reduce((dt, d) => dt + ((isNaN(d.w) || isNaN(d.r)) ? 0 : d.w * d.r), 0);
+    return t + own + drops;
+  }, 0);
+}
+
 /* ---------- the history cache ----------
    Reading a lift's whole history is ~20 µs a session, and a draw asks for
    it once per card, once per exercise of the block for the brake, and —
@@ -6853,9 +6869,11 @@ function blockTagsFor(dim, block) {
 /* Set counts by tag for one dimension and scope: 'plan' goes through the
    same setsFor() the session view uses, so deload halving and "+1 serie
    desde semana N" are already respected; 'log' counts sets actually ticked
-   done this week. Both are seeded from blockTagsFor() first so toggling
-   between them never adds or drops a bar — only the numbers move, which is
-   the point of a plan-vs-adherence comparison. */
+   done this week, one sessionsOf query per exercise the plan still shows —
+   like the plan side, a retired exercise's old sets are not this week's
+   adherence. Both are seeded from blockTagsFor() first so toggling between
+   them never adds or drops a bar — only the numbers move, which is the
+   point of a plan-vs-adherence comparison. */
 function volumeTotals(scope, profile, block, week, dim) {
   const tagFn = VOLUME_DIMENSIONS[dim].tag;
   const totals = {};
@@ -6864,9 +6882,9 @@ function volumeTotals(scope, profile, block, week, dim) {
     exList(day).forEach(ex => {
       const t = tagFn(ex);
       if (scope === 'log') {
-        const s = profile.log[block.id] && profile.log[block.id][slot(week, day.id)];
-        const rows = s && s[ex.id];
-        if (Array.isArray(rows)) totals[t] += rows.filter(r => r && r.done).length;
+        const sess = sessionsOf(profile, { weeks: 'plan', blocks: [block.id], lift: { id: ex.id }, day: day.id })
+          .find(s => s.week === week);
+        totals[t] += sess ? sess.sets.length : 0;
       } else {
         totals[t] += setsFor(ex, week, block);
       }
@@ -6887,28 +6905,23 @@ function volumeRows(totals) {
 
 /* Kilos moved in this block, week by week — index 0 is week 1, and a week
    with nothing ticked stays at zero rather than disappearing.
-   The log is walked raw here instead of through dayList/exList, unlike the
-   set counts above: a retired exercise's sets were still lifted, and rows
-   parked past an exercise's current set count were still lifted too.
-   Hiding them from the plan doesn't unlift them. Weeks past the block's
-   current length are left out for the same reason the session view hides
-   them — the "series en semanas por encima" notice is what speaks for
-   those. */
-/* `volumeOf` defaults to setVolume (raw, unconverted — the session view's
-   own definition), but every reader that spans sessions passes
-   convertedSetVolume (above) instead: see the comment by rowWeight for why
-   the two must stay separate functions. */
-function blockTonnageByWeek(profile, block, volumeOf) {
-  const vol = volumeOf || setVolume;
+   sessionsOf is asked for every lift here, unlike the set counts above, so
+   a retired exercise's sets still count — hiding them from the plan
+   doesn't unlift them — and so do rows parked past an exercise's current
+   set count, since a session carries every ticked set regardless of what
+   `extra` says about it. `weeks: 'plan'` is what leaves out weeks past the
+   block's current length, for the same reason the session view hides them
+   — the "series en semanas por encima" notice is what speaks for those.
+   Always the converted reading (sessionVolume, plans/057): every reader
+   that spans sessions needs one, since a block trained partly in another
+   unit would otherwise be summed as if every row were in the one on screen
+   — see the comment by rowWeight. The session view is the one screen that
+   still wants setVolume, raw, and it never reads a whole week at once. */
+function blockTonnageByWeek(profile, block) {
   const weeks = blockWeeks(block);
   const out = new Array(weeks).fill(0);
-  forEachSlot(profile.log, block.id, (k, w, d, slotRows) => {
-    if (w < 1 || w > weeks) return;
-    const s = slotRows || {};
-    Object.keys(s).forEach(exId => {
-      const rows = s[exId];
-      if (Array.isArray(rows)) out[w - 1] += rows.reduce((t, r) => t + vol(r), 0);
-    });
+  sessionsOf(profile, { weeks: 'plan', blocks: [block.id] }).forEach(sess => {
+    out[sess.week - 1] += sessionVolume(sess.sets);
   });
   return out;
 }
@@ -7189,15 +7202,18 @@ function landingNote(profile) {
   if (!block) return '';
   const week = clampInt(profile.week, 1, MAX_WEEKS, 1);
   let inWeek = 0, earlier = 0;
+  /* One sessionsOf query per exercise the plan still shows, weeks:'plan'
+     (plans/057) — a retired exercise's old sets are not what this note
+     warns about, same reasoning as volumeTotals. `week` is clamped only to
+     MAX_WEEKS above, not to blockWeeks(block) — a profile can land on a
+     week past a block that has since been shortened — so a session's own
+     week is compared to it exactly as the raw loop did, not re-bounded. */
   dayList(block).forEach(day => {
     exList(day).forEach(ex => {
-      for (let w = 1; w <= blockWeeks(block); w++) {
-        const s = profile.log[block.id] && profile.log[block.id][slot(w, day.id)];
-        const rows = s && s[ex.id];
-        if (!Array.isArray(rows)) continue;
-        const n = rows.filter(r => r && r.done).length;
-        if (w === week) inWeek += n; else if (w < week) earlier += n;
-      }
+      sessionsOf(profile, { weeks: 'plan', blocks: [block.id], lift: { id: ex.id }, day: day.id }).forEach(sess => {
+        if (sess.week === week) inWeek += sess.sets.length;
+        else if (sess.week < week) earlier += sess.sets.length;
+      });
     });
   });
   if (inWeek || !earlier) return '';

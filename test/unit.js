@@ -2262,6 +2262,49 @@ ok('setsFor does not halve a week whose goal says "sin descarga"',
 ok('...nor does volumeWeeksInPlay exclude it from the typical',
    call(`volumeWeeksInPlay('plan', { deload: 0, weeks: 3, phase: { 2: { r: 'Sin descarga' } } }, [10, 10, 10]).join(',')`) === '0,1,2');
 
+/* volumeTotals('log', …) moved onto sessionsOf (plans/057), one query per
+   exercise the plan still shows — so unlike blockTonnageByWeek, a retired
+   exercise's sets stay out of it, the same as the 'plan' side right next to
+   it in the toggle. */
+console.log('\n== volumeTotals(\'log\', …) reads sessionsOf: exactly the week\'s ticked sets, and a retired exercise still does not count (plans/057) ==');
+const volumeTotalsProbe = call(`
+  (function() {
+    const block = {
+      id: 'vt', weeks: 2,
+      days: [{ id: 'd0', ex: [{ id: 'live', muscle: 'Pecho', sets: 3 }, { id: 'dead', muscle: 'Pecho', sets: 3, off: 1 }] }],
+    };
+    const profile = { blocks: { vt: block }, log: { vt: {
+      'w1-d0': { live: [{ done: true, w: '60', r: '8' }, { done: true, w: '60', r: '8' }, { w: '60', r: '8' }],
+                 dead: [{ done: true, w: '99', r: '1' }] },
+    } } };
+    return volumeTotals('log', profile, block, 1, 'muscle');
+  })()
+`);
+ok('volumeTotals(\'log\') counts exactly the week\'s ticked sets of a still-planned exercise, not a retired one\'s',
+   volumeTotalsProbe.Pecho === 2, JSON.stringify(volumeTotalsProbe));
+
+/* landingNote moved onto sessionsOf too (plans/057), same dayList/exList
+   scope as volumeTotals just above — smoke already covers the message
+   itself (test/smoke.js, "landing on an untrained week"), so this pins the
+   one thing that check cannot see: a retired exercise's earlier sets must
+   not excuse a week the still-planned exercise has nothing in. */
+console.log('\n== landingNote reads sessionsOf: a retired exercise\'s old sets are not the history the note points at (plans/057) ==');
+const landingNoteProbe = call(`
+  (function() {
+    const block = {
+      id: 'ln', weeks: 3,
+      days: [{ id: 'd0', ex: [{ id: 'live', sets: 3 }, { id: 'dead', sets: 3, off: 1 }] }],
+    };
+    const profile = {
+      week: 2, activeBlock: 'ln', blocks: { ln: block },
+      log: { ln: { 'w1-d0': { dead: [{ w: '60', r: '8', done: true }] } } },
+    };
+    return landingNote(profile);
+  })()
+`);
+ok('a retired exercise\'s earlier sets do not count as history for a live exercise with nothing logged',
+   landingNoteProbe === '', landingNoteProbe);
+
 console.log('\n== decision 1 (plans/054): deloadWeek is read nowhere but app.js\'s own deloadWeeks and the editor\'s field ==');
 {
   /* The scanner on a case it exists to tell apart, so it cannot pass the
@@ -3920,6 +3963,11 @@ const diagUnitProbe = call(`
 `);
 ok('the Diagnóstico converts a lb-stamped week back to kg instead of reading 220 kg on the trend line',
    JSON.stringify(diagUnitProbe) === JSON.stringify([100, 100, 500, 500]), JSON.stringify(diagUnitProbe));
+ok('setVolume, the session view\'s own reading, is untouched — still blends the lb number in as if it were kg',
+   Math.round(call(`setVolume({ w: '220.462262185', r: '5', done: true, u: 'lb' })`)) === Math.round(220.462262185 * 5));
+/* blockTonnageByWeek lost its raw mode along with the walk that used to
+   feed it stored rows (plans/057): it always converts now, the one mode an
+   app caller ever asked for (decision 4) — asked for exactly that way. */
 const reviewUnitProbe = call(`
   (function() {
     const profile = defaultState().profiles.hombre;
@@ -3931,19 +3979,59 @@ const reviewUnitProbe = call(`
     profile.log[blockId][slot(1, day.id)] = { [exId]: [{ w: '100', r: '5', done: true }] };
     profile.log[blockId][slot(2, day.id)] = { [exId]: [{ w: '220.462262185', r: '5', done: true, u: 'lb' }] };
     state.prefs.units = 'kg';
-    const byWeekRaw = blockTonnageByWeek(profile, block);
-    const byWeekConverted = blockTonnageByWeek(profile, block, convertedSetVolume);
+    const byWeek = blockTonnageByWeek(profile, block);
     state.prefs.units = 'kg';
-    return { raw: byWeekRaw.slice(0, 2), converted: byWeekConverted.slice(0, 2) };
+    return byWeek.slice(0, 2);
   })()
 `);
-ok('the raw setVolume() the session view uses is untouched — still blends the lb number in as if it were kg',
-   Math.round(reviewUnitProbe.raw[1]) === Math.round(220.462262185 * 5), JSON.stringify(reviewUnitProbe));
-ok('convertedSetVolume converts that same week to kg instead — both weeks read as the 500 kg actually lifted',
-   Math.abs(reviewUnitProbe.converted[0] - 500) < 1e-6 && Math.abs(reviewUnitProbe.converted[1] - 500) < 1e-6,
+ok('blockTonnageByWeek converts that same week to kg instead — both weeks read as the 500 kg actually lifted',
+   Math.abs(reviewUnitProbe[0] - 500) < 1e-6 && Math.abs(reviewUnitProbe[1] - 500) < 1e-6,
    JSON.stringify(reviewUnitProbe));
 ok('convertedSetVolume reads a single lb-stamped set as the kilos it really moved',
    Math.abs(call(`(function(){ state.prefs.units = 'kg'; return convertedSetVolume({ w: '220.462262185', r: '5', done: true, u: 'lb' }); })()`) - 500) < 1e-6);
+
+/* sessionVolume sums a session's own sets (readSession) rather than a
+   slot's stored rows, so the walks that move onto sessionsOf (plans/057)
+   need it to be convertedSetVolume term for term — proven here over random
+   rows rather than trusted from the one arithmetic reading above, since a
+   session's `w` and its drops are already a separate conversion
+   (rowWeight/convertWeight) that could in principle drift from
+   convertedSetVolume's own. */
+console.log('\n== sessionVolume matches convertedSetVolume over the same rows, term for term (plans/057) ==');
+const sessionVolumeProbe = call(`
+  (function() {
+    const rnd = (lo, hi) => Math.round((lo + Math.random() * (hi - lo)) * 100) / 100;
+    /* Mostly a real number, sometimes empty (nothing typed), sometimes
+       garbage (num() reads either as NaN) — the same three shapes a stored
+       weight or rep count actually comes in. */
+    const field = () => {
+      const r = Math.random();
+      return r < 0.15 ? '' : r < 0.25 ? 'nope' : String(rnd(1, 200));
+    };
+    let maxDiff = 0;
+    for (let trial = 0; trial < 200; trial++) {
+      const n = 1 + Math.floor(Math.random() * 4);
+      const rows = [];
+      for (let i = 0; i < n; i++) {
+        const row = { done: Math.random() < 0.9, w: field(), r: field() };
+        if (Math.random() < 0.5) row.u = 'lb';
+        const dropN = Math.floor(Math.random() * 3);
+        if (dropN) row.d = Array.from({ length: dropN }, () => ({ w: field(), r: field() }));
+        rows.push(row);
+      }
+      /* profile/block/day are stand-ins readSession never reads for volume:
+         only the RIR fallback and the extra-set flag touch them, and
+         sessionVolume reads neither. */
+      const sess = readSession({ rir: {} }, { id: 'b' }, 1, 'd', 'e', rows, undefined);
+      const viaSession = sess ? sessionVolume(sess.sets) : 0;
+      const viaRows = rows.reduce((t, r) => t + convertedSetVolume(r), 0);
+      maxDiff = Math.max(maxDiff, Math.abs(viaSession - viaRows));
+    }
+    return maxDiff;
+  })()
+`);
+ok('sessionVolume matches convertedSetVolume over 200 random trials, drops/lb/empty/NaN included',
+   sessionVolumeProbe < 1e-6, String(sessionVolumeProbe));
 
 /* The chart is the third cross-session reader and the one that says "en kg"
    on its own axis, so it converts too (plans/011). Same fixture as above: a
@@ -3959,7 +4047,7 @@ const chartUnitProbe = call(`
     profile.log[blockId][slot(1, day.id)] = { [exId]: [{ w: '100', r: '5', done: true }] };
     profile.log[blockId][slot(2, day.id)] = { [exId]: [{ w: '220.462262185', r: '5', done: true, u: 'lb' }] };
     state.prefs.units = 'kg';
-    const points = collectHistory(profile, blockId, day.id, exId, 8, 'weight');
+    const points = collectHistory(profile, blockId, day.id, exId, 'weight');
     const all = collectHistoryAll(profile, exId, 'weight');
     state.prefs.units = 'kg';
     const round = ps => ps.map(p => Math.round(p.weight * 100) / 100);
@@ -4677,6 +4765,29 @@ ok('no RIR phrase falls back to the lowest digit anywhere',
    call('phaseRir({ phase: [{ r: "Semana 3 de 5" }] }, 0)') === 3);
 ok('no digits at all returns null',
    call('phaseRir({ phase: [{ r: "Deload" }] }, 0)') === null);
+
+/* trainedDays had no test of its own (plans/057): it fed the calendar
+   straight off a raw walk of the whole log, no week bound at all — wider
+   even than the bug decision 3 names for the review's energy comparison,
+   since that one at least stopped at the block's own weeks by hand
+   elsewhere on the same screen (doneSets, js/review.js). */
+console.log('\n== trainedDays reads sessionsOf: a stranded week never reaches the calendar (plans/057) ==');
+const trainedDaysProbe = call(`
+  (function() {
+    state = defaultState(); migrate();
+    const pr = state.profiles.hombre;
+    const block = pr.blocks[pr.blockOrder[0]];   /* 8 weeks */
+    const day = block.days[0], ex = day.ex[0];
+    pr.log[block.id] = {};
+    pr.log[block.id][slot(1, day.id)] = { [ex.id]: [{ w: '60', r: '8', done: true, ts: Date.UTC(2026, 0, 5, 12) }] };
+    /* Week 9 is past this block's own 8 weeks — stranded on purpose. */
+    pr.log[block.id][slot(9, day.id)] = { [ex.id]: [{ w: '999', r: '1', done: true, ts: Date.UTC(2026, 2, 2, 12) }] };
+    return trainedDays(pr, block);
+  })()
+`);
+ok('a stranded week\'s ticked day never reaches the calendar',
+   Object.keys(trainedDaysProbe).length === 1 && Object.values(trainedDaysProbe)[0] === 1,
+   JSON.stringify(trainedDaysProbe));
 
 console.log('\n== buildHeatmapSVG: week count is calendar days, not milliseconds (plans/008 item 16) ==');
 const heatWeeks = heat => {
@@ -8293,18 +8404,24 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
       pr.log[block.id] = {};
       pr.log[block.id][slot(1, day.id)] = { [ex.id]: [{ w: '60', r: '8', done: true }] };
       pr.log[block.id][slot(2, day.id)] = { [ex.id]: [{ w: '62.5', r: '8', done: true }, { w: '62.5', r: '7', done: true }] };
+      /* Tagged 'alta' on both its in-bounds slot and the stranded one below
+         (plans/057): the energy comparison used to walk profile.log raw,
+         with no bound to match doneSets'/tonnage's — a stranded week's kilos
+         landed in the same bucket as this one. */
+      pr.energy[block.id] = { [slot(1, day.id)]: 'alta' };
       pr.week = 2;
       const inBounds = buildBlockReview(pr, block);
       /* Week 9 is past this block's own 8 weeks — stranded on purpose. */
       pr.log[block.id][slot(9, day.id)] = {
         [ex.id]: [{ w: '999', r: '1', done: true }, { w: '999', r: '1', done: true }, { w: '999', r: '1', done: true }],
       };
+      pr.energy[block.id][slot(9, day.id)] = 'alta';
       logChanged();
       const withStranded = buildBlockReview(pr, block);
       return {
-        sets: inBounds.sets, tonnage: inBounds.tonnage,
+        sets: inBounds.sets, tonnage: inBounds.tonnage, energyAlta: inBounds.energy.alta,
         setsWithStranded: withStranded.sets, tonnageWithStranded: withStranded.tonnage,
-        weeksLoggedWithStranded: withStranded.weeksLogged,
+        weeksLoggedWithStranded: withStranded.weeksLogged, energyAltaWithStranded: withStranded.energy.alta,
       };
     })()
   `);
@@ -8314,6 +8431,11 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
   ok('the tonnage and the count still agree on which weeks they cover, stranded week or not',
      strandedReviewProbe.tonnageWithStranded === strandedReviewProbe.tonnage &&
      strandedReviewProbe.weeksLoggedWithStranded === 2,
+     JSON.stringify(strandedReviewProbe));
+  ok('a stranded week tagged with the same energy is not in that bucket\'s mean either (plans/057)',
+     strandedReviewProbe.energyAlta.n === 1 &&
+     strandedReviewProbe.energyAltaWithStranded.n === 1 &&
+     strandedReviewProbe.energyAltaWithStranded.kg === strandedReviewProbe.energyAlta.kg,
      JSON.stringify(strandedReviewProbe));
 
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
