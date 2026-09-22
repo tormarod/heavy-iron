@@ -683,10 +683,47 @@ function draftDayLogged(profile, day) {
 
 /* Move an exercise to another session, keeping its id (and so its log)
    intact. The real log entries only move once the draft is saved — see
-   the catch-up in applyPlanDraft. */
+   the catch-up in applyPlanDraft. "Enviar a…" asks moveExRefusal first. */
 function moveExToDay(ex, fromDay, toDay) {
   fromDay.ex.splice(fromDay.ex.indexOf(ex), 1);
   toDay.ex.push(ex);
+}
+
+/* Why "Enviar a…" will not put `ex` on `day`, as the words its option
+   shows after the day's name, or '' when it will.
+
+   A day holds an id once. One lift on two days shares its id on purpose,
+   but the record is filed by slot and id, so two copies on one day are
+   one record. While this road was open, the save folded the sent copy's
+   sets into the other copy's sessions, two a week becoming one, and the
+   next load's migrate() gave the second copy a new id, and so no history
+   (plans/053's follow-up).
+
+   Refused, not repaired, because two copies of one lift on one day is
+   almost never what was meant, and neither repair keeps the record true.
+   Merging them into one row still folds two sessions a week into one and
+   keeps only one copy's plan. A fresh id for the sent copy keeps the
+   second row nobody wanted, and splits one lift's history, objetivo and
+   variants across two ids. What was meant is one step away: "Quitar" on
+   the copy being sent, if only the other day should have the lift (its
+   sets stay filed and still count for it), or "Borrar registro" on the
+   other copy, if this one should take its place.
+
+   A retired copy counts: it is still in the day, migrate() renames beside
+   it all the same, and "Restaurar" would put both in the session. An
+   erased one does not. It has left the draft, and applyPlanDraft purges
+   its sets before any move lands, so the copy sent after it arrives on
+   clean slots and the save still erases what the dialog counted
+   (plans/053).
+
+   A full day takes no more by this road either: a move is an exercise
+   added to the day it lands on, past the ceiling its own "+ Añadir
+   ejercicio" keeps (planFullNote). The id is asked first, since making
+   room would not change that answer. */
+function moveExRefusal(ex, day) {
+  const twin = day.ex.find(e => e.id === ex.id);
+  if (twin) return twin.off ? 'lo tiene retirado' : 'ya lo tiene';
+  return dayFullNote(day) ? 'completo' : '';
 }
 
 /* A confirmed erase in "Retirados": the item leaves the draft for good,
@@ -1139,15 +1176,13 @@ function buildExRow(profile, day, ex, pos, liveCount) {
       const o = document.createElement('option');
       o.value = d.id;
       o.textContent = d.name;
-      /* A full day takes no more by this road either: a move is an
-         exercise added to the day it lands on, past the ceiling its own
-         "+ Añadir ejercicio" keeps (planFullNote). */
-      if (dayFullNote(d)) { o.disabled = true; o.textContent = d.name + ' (completo)'; }
+      const why = moveExRefusal(ex, d);
+      if (why) { o.disabled = true; o.textContent = d.name + ' (' + why + ')'; }
       moveSel.appendChild(o);
     });
     moveSel.onchange = () => {
       const target = otherDays.find(d => d.id === moveSel.value);
-      if (!target || dayFullNote(target)) return;
+      if (!target || moveExRefusal(ex, target)) return;
       moveExToDay(ex, day, target);
       renderPlanEditor();
       mark('"' + (ex.n || 'Ejercicio') + '" enviado a ' + target.name + ' — el registro se conserva');
