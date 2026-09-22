@@ -88,10 +88,10 @@ below so it is not lost or re-audited.
 | 064 | [An import that could not be saved says so, and the objetivo's rung list is built once per history](done/064-save-failure-and-load-ladder.md) | P3 | S each (A, B) | LOW | — (060 soft: `flushSave`) | DONE — B (#175, v131): `loadLadder` memoised per history answer (300 warm day switches over a never-repeating ladder: 164 ms → 1.4 ms each, desktop); A (#177, v134): `writeState`/`flushSave` return whether they wrote, and the five import paths report success only on `!== false` (an old cached `app.js` answers `undefined`) |
 | 065 | [The guide says what undo covers and quotes the real dialog; the README's block contract matches the importer and the AI prompt](done/065-docs-undo-and-block-json.md) | P2 | S | LOW | 060 (soft) — no bump | DONE (#176, no bump) — the guide names all six undoable actions and quotes the real dialog; the README’s `ex.id`, `phase`, `minRir` and § Tests match the code |
 | 066 | [The service worker runs under test — install with a hole, activate offline, two releases side by side, and the swap](done/066-service-worker-tests.md) | P2 | M | LOW | — no bump | DONE (#172, no bump) — `loadWorker()` runs the real `sw.js` over a fake cache store and network; 11 cases and 2 mutation checks, every case guarded so a throw is a FAIL, not a crash; README and AGENTS.md name the third loader |
-| 067 | [Storage no writer produced is repaired without stealing, sharing or polluting — and another tab's data is taken in whole or not at all](067-storage-no-writer-produced.md) | P2 | S / S–M | LOW | — (A and B are independent PRs) | TODO |
-| 068 | [A set's date is the day it was trained, a timestamp no clock can read is refused, and the CSV follows a language preference](068-timestamps-and-csv-by-language.md) | P2 | S each | LOW / LOW–MED | — (A owns the `ts` row field; B must not touch it) | TODO |
-| 069 | [What an AI round trip hands back keeps its lifts' ids, and "series x 5 RIR 2" reads 2](069-ai-round-trip-keeps-long-ids.md) | P3 | S | LOW | — | TODO |
-| 070 | [AGENTS.md opens with the checklist an agent needs before it changes code, and says each rule once](070-agents-md-checklist-first.md) | P3 | S–M | LOW (code) / MED (reader) | 067, 068, 069 merged first — no bump | TODO |
+| 067 | [Storage no writer produced is repaired without stealing, sharing or polluting — and another tab's data is taken in whole or not at all](done/067-storage-no-writer-produced.md) | P2 | S / S–M | LOW | — (A and B are independent PRs) | DONE — B (#178, v135): `adoptStored` keeps this tab's state, and returns false, when `migrate()` throws on another tab's bytes; A (#179, v139): a blockless profile gets a copy of its seed's blocks and keeps its record, the id repair claims valid ids before it hands out fresh ones, a place that should hold a map holds one at the part, block and slot levels (anything else becomes `{}`), a day or an exercise stored as a list is dropped, a phase fills its missing weeks from the generic ramp, and the session reader skips a prototype-named lift. **Decision 3 was widened twice in review** (lists one level down, then "not a map"). A differential probe of old against new `migrate()` found every writer-shaped state byte-identical (3,000 per kind over all seven record parts, plus restore and paste/QR); the full browser suite (587) ran on the final head. Known, not done: the leaf level (below) |
+| 068 | [A set's date is the day it was trained, a timestamp no clock can read is refused, and the CSV follows a language preference](done/068-timestamps-and-csv-by-language.md) | P2 | S each | LOW / LOW–MED | — (A owns the `ts` row field; B must not touch it) | DONE — A (#180, v137): `fecha` is the local day the set was trained (`localDay`), and a `ts` no `Date` can hold is refused on every path and can no longer stop `migrate()` (`validTs`); review fixed the CSV fixture, which only held from UTC+1 down. B (#182, v138): `state.prefs.lang` (`es`, or `en`; nothing on screen sets it yet) and the CSV separator follows it (`;` / `,`); review found `buildCsv`'s `byDay` threw on a day id named `__proto__` or `constructor` (now `Object.create(null)`) |
+| 069 | [What an AI round trip hands back keeps its lifts' ids, and "series x 5 RIR 2" reads 2](done/069-ai-round-trip-keeps-long-ids.md) | P3 | S | LOW | — | DONE (#181, v136) — a paste keeps a stated id longer than 60 when the profile already holds that exercise (`knownExerciseIds`, passed by all three strict callers), the AI prompt asks for a given id to be copied exactly, and a sets word before the "x" reads as sets×reps (`series x 5 RIR 2` → 2) |
+| 070 | [AGENTS.md opens with the checklist an agent needs before it changes code, and says each rule once](done/070-agents-md-checklist-first.md) | P3 | S–M | LOW (code) / MED (reader) | 067, 068, 069 merged first — no bump | DONE (#183, no bump) — AGENTS.md opens with a checklist (each kind of change: what moves with it, what holds it, where the reasons are), and each rule is stated once under its own subsection; a 141-rule inventory maps old lines to new sections. Review corrected five statements of fact the old file carried: the hook's matcher, the gate's skip list, what the unit suite holds `SHELL` to, which files the slot-regex scan reads, and which contrast pairs are computed |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
@@ -1182,7 +1182,63 @@ Not planned, and why: `2 sem 3 RIR` → null and `RIR 2 a 3,5` → null are
 readings plan 062 chose by rule; an old-shell phone cutting ids on a QR
 "perfil" cannot be fixed from here (it updates on its next release).
 
-### Tenth audit — follow-ups, recorded not planned
+### Tenth audit — follow-ups executed (2026-09-23)
+
+Plans 067–070 landed in six PRs (#178–#183), executed and reviewed the
+same way as the audit's own eight (v135 → v139); the deploy guard passed
+on every merge. Everything the tenth audit's recorded list (the last
+section below) carried is done, except what the plan list above set
+aside: the two readings plan 062 chose by rule, and an old-shell phone
+cutting ids on a QR "perfil".
+
+Review changed plan 067 twice, and both times the plan's rule was too
+narrow rather than the code wrong: decision 3 ("a list is not a map")
+held at the part level only, so `log: { b1: [] }` still lost a tick, a
+day stored as `[]` got a fresh exercise id on every load, and
+`phase: {}` read no RIR for any week; widened to every level, it then
+missed a string or a number where a map goes, which made the first tick
+throw. The reviewer's differential probe — old `migrate()` against new
+over generated states — is what made widening safe to merge: every state
+a writer produces came out byte-identical each time.
+
+### Follow-ups found while executing 067–070 — recorded, not planned
+
+All six come from storage or files no writer produces, or from the docs
+and tests themselves; none is a regression.
+
+- **The log's leaf level** (067's known limit): a lift's rows stored as
+  something other than a list (`'x'`, `5`, `{}`), or a row stored as
+  `null`, still throws inside `entry()` when the card draws, and
+  `migrate()` leaves it as stored. The repair belongs to the log part
+  (a `repair` in `RECORD_PARTS`), and it walks every row on every load.
+- **`migrate()` folds the legacy RIR map before it sets up `prefs`**:
+  `ensureRecord` runs inside the profile loop (`js/app.js`, "ensureRecord(profile)"),
+  and the rir part's repair reaches `units()` through `rirRowFor` →
+  `rowWorked` → `rowWeight`, before `state.prefs` is defaulted further
+  down. A stored state, or a backup, with no `prefs` and a foldable map
+  throws in `migrate()`, and `restoreFromText` assigns `state = data`
+  before it calls `migrate()`. Every backup the app writes carries
+  `prefs` (`BACKUP_FIELDS`), and `prefs` predates the RIR map, so only a
+  hand-made or damaged file reaches it.
+- **Stale "AGENTS.md rule (a)" comments** at `js/app.js` (two) and
+  `test/unit.js` (two): the rules have always been numbered 1 and 2.
+- **The unit suite's heading slugger drops `_`**, GitHub's keeps it, so
+  no AGENTS.md link can point at a heading with `RECORD_PARTS` in it.
+- **Three unit checks are narrower than AGENTS.md used to say** (070
+  corrected the wording, not the checks): `SHELL` is held for membership,
+  not order; the slot-regex scan reads four named files, not `js/*.js`
+  (`js/block-editor.js` walks slots through `forEachSlot` and is not one
+  of them); the contrast check computes the pairs it names, not every
+  token pair. Widening the first two is a few lines each. AGENTS.md's
+  "read in four files" for the log key is stale too: `slot`,
+  `parseSlot` and `forEachSlot` are called from `js/app.js`,
+  `js/review.js` and `js/block-editor.js`.
+- **"A destructive action takes `snapshotForUndo` before its writes"**
+  lives only in the comment above `undoArmed` in `js/app.js`, and plan
+  060's tests drive one such action; AGENTS.md does not state it, and
+  070 did not add policy.
+
+### Tenth audit — follow-ups, recorded not planned (worked by 067–070)
 
 - **Long exercise ids across an AI round trip** (063): ids longer than 60
   written before 063 now survive a restore, but a paste still cuts a

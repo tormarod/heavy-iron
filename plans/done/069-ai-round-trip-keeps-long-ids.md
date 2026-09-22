@@ -208,4 +208,10 @@ mutations.
 ## Maintenance notes
 
 - A future import path for AI-written blocks passes `{ profile }` too.
-- *(Executor: record deviations here.)*
+- Steps A and B landed together as PR #181 (v136). One deviation, in the
+  PR body: B.2's `"Serie x 8 · 1 RIR"` → 1 passes with or without the
+  sets-word branch (8 is already above `RIR_MAX`), so `"Serie x 5 RIR 1"`
+  was added beside it to exercise the singular, capitalised form. Both
+  mutation checks fail the cases they target. The setup import
+  (`setupSave`) still calls `normalizeImportedBlock(raw)` with no
+  profile, by design: there is no history yet to keep.
