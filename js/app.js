@@ -585,6 +585,51 @@ function stampRowUnit(r) {
   if (units() === 'lb') r.u = 'lb'; else delete r.u;
 }
 
+/* A logged weight as text in the unit on screen: exactly as typed when it
+   was typed in that unit, converted (and written the way the card writes a
+   weight, loadText) when it was not. Anything that does not read as a
+   positive number is handed back untouched — a half-typed "," is not a 0. */
+function weightText(raw, unit) {
+  if (raw === '' || raw == null) return '';
+  const v = num(raw);
+  return unit === units() || !(v > 0) ? String(raw) : loadText(convertWeight(v, unit, units()));
+}
+
+/* The stamp for a write into a set, where `fresh` is the set or drop whose
+   `w` was just typed (or adopted). A set carries ONE stamp for itself and
+   its drops, and stampRowUnit alone relabels the whole row: 100 kg logged,
+   the preference switched to lb, a drop typed — and the set's 100 read as
+   100 lb from then on. The same the other way round, typing the set over
+   drops written in the old unit.
+
+   So when the row's stamp is not the unit on screen, the row's OTHER
+   weights are converted into it before the new stamp goes on. Converting
+   rather than keeping the old stamp because the card has exactly one unit
+   in it — the column heading, units() — and it is the unit anything typed
+   now was typed in; keeping the kg stamp would file the new lb drop as kg,
+   which is the same bug on the other half of the row. It is the one place
+   the app rewrites a number somebody typed, and only a number in the set
+   being written to, which after the switch the card was already showing
+   under the wrong heading. Empty weights stay empty, so rowUsed and
+   pruneLog see exactly what they saw, and `w` stays a comma string with
+   `u` as 'lb' or nothing, which is all ROW_FIELDS carries.
+
+   Answers whether anything was converted, so a handler can refresh the
+   boxes that still show the old numbers. */
+function stampForWrite(r, fresh) {
+  const from = rowUnit(r);
+  let moved = false;
+  if (from !== units()) {
+    [r].concat(dropsOf(r)).forEach(x => {
+      if (x === fresh || !x || typeof x !== 'object') return;
+      const t = weightText(x.w, from);
+      if (t !== '' && t !== String(x.w)) { x.w = t; moved = true; }
+    });
+  }
+  stampRowUnit(r);
+  return moved;
+}
+
 /* Writes are debounced so typing a weight doesn't serialise the whole log on
    every keystroke — but a debounce you never flush is a debounce that loses
    the last set of the session when the phone goes in your pocket. Every path
@@ -3267,14 +3312,20 @@ function bestForExercise(profile, exId, skipBlockId, skipSlot) {
 
 /* What you put on the bar for this set last time round, used as the greyed
    placeholder in the empty weight box. Walks back week by week and falls
-   back to the last set of that week when the plan has since grown. */
+   back to the last set of that week when the plan has since grown.
+
+   In the unit on screen, not as typed: the box sits under a units()
+   heading and a tick on an empty box adopts this text and stamps it with
+   units(), so last week's 100 kg read after a switch to lb was a "100"
+   under "lb" and, ticked, 100 lb in the log. Converted with weightText,
+   which leaves a weight already in today's unit exactly as it was typed. */
 function priorWeight(profile, blockId, w, dayId, exId, idx) {
   for (let k = w - 1; k >= 1; k--) {
     const s = profile.log[blockId] && profile.log[blockId][slot(k, dayId)];
     const rows = s && s[exId];
     if (!Array.isArray(rows) || !rows.length) continue;
     const r = rows[idx] || rows[rows.length - 1];
-    if (r && r.w !== '' && r.w != null) return String(r.w);
+    if (r && r.w !== '' && r.w != null) return weightText(r.w, rowUnit(r));
   }
   return '';
 }
@@ -3774,12 +3825,13 @@ function buildExCard(ctx, ex, i) {
     const own = priorWeight(profile, block.id, profile.week, day.id, ex.id, si);
     /* No earlier week in this block: the previous block's last logged
        session, same set index, last set when the plan has since grown —
-       the same fallback priorWeight applies within a block. As typed
-       (wLogged), like the within-block hint, not converted. */
+       the same fallback priorWeight applies within a block. In the unit on
+       screen, like the within-block hint and for the same reason (the tick
+       adopts it); the objetivo's tgt.w already is, read through rowWeight. */
     const prv = (!tgt && !own && prior) ? (prior.sets[si] || prior.sets[prior.sets.length - 1]) : null;
     return {
       tgt,
-      hint: tgt ? loadText(tgt.w) : (own || (prv ? prv.wLogged : '')),
+      hint: tgt ? loadText(tgt.w) : (own || (prv ? weightText(prv.wLogged, prv.unit) : '')),
       /* The whole parenthetical rather than a noun the line then glues "lo
          de" in front of: "lo de el objetivo" is not Spanish. */
       from: tgt ? 'lo que pide el objetivo de esta semana'
@@ -3847,9 +3899,19 @@ function buildExCard(ctx, ex, i) {
        that order is the whole mechanism: read it after and the row is
        already used, every keystroke looks like a start, and the draw-time
        write is back by another route. */
+    /* Every weight box of this set, with the object it writes: when a write
+       in today's unit converts the rest of the set (stampForWrite), the
+       boxes still showing the old numbers are refilled in place rather than
+       by a redraw, which would take the cursor out of the box being typed in. */
+    const weightBoxes = [{ el: wIn, o: r }];
+    const refreshWeights = fresh => weightBoxes.forEach(b => {
+      if (b.o !== fresh) b.el.value = b.o.w == null ? '' : b.o.w;
+    });
     wIn.oninput = e => {
       const wasSession = rows.some(rowUsed);
-      r.w = e.target.value.replace(/[^0-9.,]/g, ''); if (r.w !== e.target.value) e.target.value = r.w; stampRowUnit(r); save(here);
+      r.w = e.target.value.replace(/[^0-9.,]/g, ''); if (r.w !== e.target.value) e.target.value = r.w;
+      if (stampForWrite(r, r)) refreshWeights(r);
+      save(here);
       recordTargetOnStart(profile, block, day, ex, rows, wasSession, est);
     };
     rIn.oninput = e => {
@@ -3898,7 +3960,7 @@ function buildExCard(ctx, ex, i) {
            tick and the set reads as a floor, which is what it always did.
            The rep box has never adopted either — an unreported rep count
            would go straight into the objetivo's arithmetic. */
-        if ((r.w === '' || r.w == null) && hint) { r.w = hint; adopted = hint; stampRowUnit(r); }
+        if ((r.w === '' || r.w == null) && hint) { r.w = hint; adopted = hint; stampForWrite(r, r); }
         r.ts = Date.now();
       }
       r.done = !r.done;
@@ -3955,6 +4017,7 @@ function buildExCard(ctx, ex, i) {
       dwIn.value = d.w == null ? '' : d.w;
       drIn.value = d.r == null ? '' : d.r;
       dwIn.placeholder = '—';
+      weightBoxes.push({ el: dwIn, o: d });
       drIn.placeholder = '—';
       const where = 'bajada ' + (di + 1) + ', serie ' + (si + 1) + ' de ' + ex.n;
       dwIn.setAttribute('aria-label', 'Peso tras bajar, ' + where);
@@ -3964,7 +4027,9 @@ function buildExCard(ctx, ex, i) {
          `wasSession` is read before the assignment for the same reason. */
       dwIn.oninput = e => {
         const wasSession = rows.some(rowUsed);
-        d.w = e.target.value.replace(/[^0-9.,]/g, ''); if (d.w !== e.target.value) e.target.value = d.w; stampRowUnit(r); save(here);
+        d.w = e.target.value.replace(/[^0-9.,]/g, ''); if (d.w !== e.target.value) e.target.value = d.w;
+        if (stampForWrite(r, d)) refreshWeights(d);
+        save(here);
         recordTargetOnStart(profile, block, day, ex, rows, wasSession, est);
       };
       drIn.oninput = e => {
@@ -4358,7 +4423,7 @@ $('copyPrev').onclick = () => {
          set's. */
       const from = t.sets[i] || t.sets[t.sets.length - 1];
       r.w = loadText(from.w);
-      stampRowUnit(r);
+      stampForWrite(r, r);
     });
     recordTargetOnStart(profile, block, day, ex, to, wasSession, t);
     written++;
