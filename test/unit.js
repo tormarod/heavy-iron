@@ -2283,6 +2283,28 @@ const volumeTotalsProbe = call(`
 ok('volumeTotals(\'log\') counts exactly the week\'s ticked sets of a still-planned exercise, not a retired one\'s',
    volumeTotalsProbe.Pecho === 2, JSON.stringify(volumeTotalsProbe));
 
+/* landingNote moved onto sessionsOf too (plans/057), same dayList/exList
+   scope as volumeTotals just above — smoke already covers the message
+   itself (test/smoke.js, "landing on an untrained week"), so this pins the
+   one thing that check cannot see: a retired exercise's earlier sets must
+   not excuse a week the still-planned exercise has nothing in. */
+console.log('\n== landingNote reads sessionsOf: a retired exercise\'s old sets are not the history the note points at (plans/057) ==');
+const landingNoteProbe = call(`
+  (function() {
+    const block = {
+      id: 'ln', weeks: 3,
+      days: [{ id: 'd0', ex: [{ id: 'live', sets: 3 }, { id: 'dead', sets: 3, off: 1 }] }],
+    };
+    const profile = {
+      week: 2, activeBlock: 'ln', blocks: { ln: block },
+      log: { ln: { 'w1-d0': { dead: [{ w: '60', r: '8', done: true }] } } },
+    };
+    return landingNote(profile);
+  })()
+`);
+ok('a retired exercise\'s earlier sets do not count as history for a live exercise with nothing logged',
+   landingNoteProbe === '', landingNoteProbe);
+
 console.log('\n== decision 1 (plans/054): deloadWeek is read nowhere but app.js\'s own deloadWeeks and the editor\'s field ==');
 {
   /* The scanner on a case it exists to tell apart, so it cannot pass the

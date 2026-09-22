@@ -7197,15 +7197,18 @@ function landingNote(profile) {
   if (!block) return '';
   const week = clampInt(profile.week, 1, MAX_WEEKS, 1);
   let inWeek = 0, earlier = 0;
+  /* One sessionsOf query per exercise the plan still shows, weeks:'plan'
+     (plans/057) — a retired exercise's old sets are not what this note
+     warns about, same reasoning as volumeTotals. `week` is clamped only to
+     MAX_WEEKS above, not to blockWeeks(block) — a profile can land on a
+     week past a block that has since been shortened — so a session's own
+     week is compared to it exactly as the raw loop did, not re-bounded. */
   dayList(block).forEach(day => {
     exList(day).forEach(ex => {
-      for (let w = 1; w <= blockWeeks(block); w++) {
-        const s = profile.log[block.id] && profile.log[block.id][slot(w, day.id)];
-        const rows = s && s[ex.id];
-        if (!Array.isArray(rows)) continue;
-        const n = rows.filter(r => r && r.done).length;
-        if (w === week) inWeek += n; else if (w < week) earlier += n;
-      }
+      sessionsOf(profile, { weeks: 'plan', blocks: [block.id], lift: { id: ex.id }, day: day.id }).forEach(sess => {
+        if (sess.week === week) inWeek += sess.sets.length;
+        else if (sess.week < week) earlier += sess.sets.length;
+      });
     });
   });
   if (inWeek || !earlier) return '';
