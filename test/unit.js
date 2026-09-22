@@ -8834,9 +8834,30 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
   {
     const HOLE = 'js/chart.js';
     const textOf = res => (res && typeof res.text === 'function' ? res.text() : Promise.resolve(null));
-    /* A fetch the worker answers by rejecting is a failed case, not a
-       crashed suite: the rejection comes back as text the case can compare. */
-    const answerOf = p => p.then(textOf, e => 'rejected: ' + (e && e.message));
+    /* Every call into the worker is made under attempt(). A regression in
+       sw.js does not always reject: a fetch listener that calls something
+       the fakes do not have throws synchronously, straight out of the
+       harness's fetch(), before there is a promise to reject — and in
+       review, one hand-applied mutation did exactly that in case 8 and took
+       every case after it down with the suite. Thrown or rejected, the
+       failure comes back as { error }, a value a case can fail on. */
+    const attempt = async fn => {
+      try { return { value: await fn() }; } catch (e) { return { error: (e && e.message) || String(e) }; }
+    };
+    /* What a call answered, as text — the body, or what went wrong — for a
+       case to compare like any other body. */
+    const answerOf = fn => attempt(async () => textOf(await fn()))
+      .then(r => ('error' in r ? 'failed: ' + r.error : r.value));
+    /* Each case is a function answering { pass, extra }, run under
+       attempt(): whatever it throws is a FAIL of that case, with the error
+       after the arrow, and the next case still runs. What the case answered
+       comes back (null if it threw) for a later case to carry on from. */
+    const swCase = async (name, run) => {
+      const r = await attempt(run);
+      if ('error' in r) { ok(name, false, 'threw: ' + r.error); return null; }
+      ok(name, !!(r.value && r.value.pass), r.value && r.value.extra);
+      return r.value;
+    };
     const inCache = (w, name) => w.caches.dump()[name] || [];
     const hasAll = (w, name, urls) => urls.length > 0 && urls.every(u => inCache(w, name).includes(w.url(u)));
     /* networkFirst and cacheFirst put into the cache without waiting, and
@@ -8856,38 +8877,47 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
       return src.replace(from, to);
     };
 
-    const w1 = loadWorker({ version: 'v900' });
-    await w1.install();
-    ok('1. install precaches every SHELL file in heavy-iron-shell-<v> and every VENDOR file in the vendor cache',
-       w1.SHELL_CACHE === 'heavy-iron-shell-v900' &&
-       hasAll(w1, w1.SHELL_CACHE, w1.SHELL) && hasAll(w1, w1.VENDOR_CACHE, w1.VENDOR),
-       JSON.stringify(w1.caches.dump()));
+    await swCase('1. install precaches every SHELL file in heavy-iron-shell-<v> and every VENDOR file in the vendor cache', async () => {
+      const w = loadWorker({ version: 'v900' });
+      await w.install();
+      return {
+        pass: w.SHELL_CACHE === 'heavy-iron-shell-v900' &&
+          hasAll(w, w.SHELL_CACHE, w.SHELL) && hasAll(w, w.VENDOR_CACHE, w.VENDOR),
+        extra: JSON.stringify(w.caches.dump()),
+      };
+    });
 
-    /* Case 2, as a function so mutation check (b) can run it again. */
+    /* Case 2, as a function so case 5 and mutation check (b) can run it
+       again. */
     const installWithHole = async opts => {
       const w = loadWorker(Object.assign({ version: 'v900' }, opts));
       const url = w.url(HOLE);
       const file = w.network.files[url];
       delete w.network.files[url];
-      let installFailed = false;
-      try { await w.install(); } catch (e) { installFailed = true; }
+      const installed = await attempt(() => w.install());
+      const installFailed = 'error' in installed;
       const pass = !installFailed &&
         hasAll(w, w.SHELL_CACHE, w.SHELL.filter(u => u !== HOLE)) &&
         !inCache(w, w.SHELL_CACHE).includes(url);
-      return { w, url, file, installFailed, pass };
+      return {
+        w, url, file, installFailed, pass,
+        extra: JSON.stringify({ install: installed.error || 'resolved', shell: inCache(w, w.SHELL_CACHE).length }),
+      };
     };
-    const c2 = await installWithHole();
-    ok('2. a 404 during install does not fail it, and leaves a hole where the file should be',
-       c2.pass, JSON.stringify({ installFailed: c2.installFailed, shell: inCache(c2.w, c2.w.SHELL_CACHE).length }));
+    const c2 = await swCase('2. a 404 during install does not fail it, and leaves a hole where the file should be',
+      () => installWithHole());
 
-    c2.w.network.files[c2.url] = c2.file;
-    c2.w.message('checkShell');
-    await quiet(c2.w);
-    ok('3. checkShell repairs the hole once the file is back on the server',
-       inCache(c2.w, c2.w.SHELL_CACHE).includes(c2.url) &&
-       (await textOf(await (await c2.w.caches.open(c2.w.SHELL_CACHE)).match(HOLE))) === HOLE + '@v900');
+    await swCase('3. checkShell repairs the hole once the file is back on the server', async () => {
+      if (!c2) return { pass: false, extra: 'case 2 threw: nothing to carry on from' };
+      c2.w.network.files[c2.url] = c2.file;
+      c2.w.message('checkShell');
+      await quiet(c2.w);
+      const body = await answerOf(async () => (await c2.w.caches.open(c2.w.SHELL_CACHE)).match(HOLE));
+      return { pass: body === HOLE + '@v900', extra: JSON.stringify({ body }) };
+    });
 
-    {
+    await swCase('4. activate deletes the old shell cache, keeps the vendor cache and its files, and claims — ' +
+      'and (as decided so far — ninth audit #7) the old runtime cache goes too', async () => {
       const old = loadWorker({ version: 'v900' });
       await old.install();
       await (await old.caches.open('heavy-iron-runtime-v900')).put(old.url('blocks/index.json'), new Response('blocks@v900'));
@@ -8896,40 +8926,43 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
       await neu.install();
       await neu.activate();
       const after = Object.keys(neu.caches.dump());
-      ok('4. activate deletes the old shell cache, keeps the vendor cache and its files, and claims — ' +
-         'and (as decided so far — ninth audit #7) the old runtime cache goes too',
-         before.includes('heavy-iron-shell-v900') && before.includes('heavy-iron-runtime-v900') &&
-         !after.includes('heavy-iron-shell-v900') && !after.includes('heavy-iron-runtime-v900') &&
-         neu.VENDOR_CACHE === 'heavy-iron-vendor-' + neu.call('VENDOR_VERSION') &&
-         hasAll(neu, neu.VENDOR_CACHE, neu.VENDOR) && hasAll(neu, neu.SHELL_CACHE, neu.SHELL) &&
-         neu.clients.claimed === true,
-         JSON.stringify({ before, after, claimed: neu.clients.claimed }));
-    }
+      return {
+        pass: before.includes('heavy-iron-shell-v900') && before.includes('heavy-iron-runtime-v900') &&
+          !after.includes('heavy-iron-shell-v900') && !after.includes('heavy-iron-runtime-v900') &&
+          neu.VENDOR_CACHE === 'heavy-iron-vendor-' + neu.call('VENDOR_VERSION') &&
+          hasAll(neu, neu.VENDOR_CACHE, neu.VENDOR) && hasAll(neu, neu.SHELL_CACHE, neu.SHELL) &&
+          neu.clients.claimed === true,
+        extra: JSON.stringify({ before, after, claimed: neu.clients.claimed }),
+      };
+    });
 
-    {
-      /* With a hole, so activate's repair really does go to a network that
-         is not there: a fully cached install would never fetch at all. */
-      const c5 = await installWithHole();
-      c5.w.network.online = false;
-      const from = c5.w.network.calls.length;
-      let threw = null;
-      try { await c5.w.activate(); } catch (e) { threw = String(e); }
-      ok('5. activate offline still claims, and a repair that cannot reach the network does not throw',
-         threw === null && c5.w.clients.claimed === true && c5.w.network.calls.slice(from).includes(c5.url),
-         JSON.stringify({ threw, claimed: c5.w.clients.claimed, asked: c5.w.network.calls.slice(from) }));
-    }
+    /* With a hole, so activate's repair really does go to a network that is
+       not there: a fully cached install would never fetch at all. */
+    await swCase('5. activate offline still claims, and a repair that cannot reach the network does not throw', async () => {
+      const { w, url } = await installWithHole();
+      w.network.online = false;
+      const from = w.network.calls.length;
+      const activated = await attempt(() => w.activate());
+      const asked = w.network.calls.slice(from);
+      return {
+        pass: !('error' in activated) && w.clients.claimed === true && asked.includes(url),
+        extra: JSON.stringify({ activate: activated.error || 'resolved', claimed: w.clients.claimed, asked }),
+      };
+    });
 
-    {
+    await swCase('6. a navigation to the app page is answered with the shell cache\'s own index.html, without asking the network', async () => {
       const w = loadWorker({ version: 'v900' });
       await w.install();
       w.network.online = false;
       const from = w.network.calls.length;
-      const cached = await textOf(await (await w.caches.open(w.SHELL_CACHE)).match('index.html'));
-      const page = await answerOf(w.fetch(w.url('./'), { mode: 'navigate' }));
-      ok('6. a navigation to the app page is answered with the shell cache\'s own index.html, without asking the network',
-         cached === 'index.html@v900' && page === cached && w.network.calls.length === from,
-         JSON.stringify({ cached, page, asked: w.network.calls.slice(from) }));
-    }
+      const cached = await answerOf(async () => (await w.caches.open(w.SHELL_CACHE)).match('index.html'));
+      const page = await answerOf(() => w.fetch(w.url('./'), { mode: 'navigate' }));
+      const asked = w.network.calls.slice(from);
+      return {
+        pass: cached === 'index.html@v900' && page === cached && asked.length === 0,
+        extra: JSON.stringify({ cached, page, asked }),
+      };
+    });
 
     /* Case 7, as a function so mutation check (a) can run it again, and so
        case 10 can carry on from the two workers it leaves behind. */
@@ -8950,67 +8983,79 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
       const newComplete = hasAll(neu, neu.SHELL_CACHE, neu.SHELL);
       net.online = false;
       const from = net.calls.length;
-      let served = null, rejected = false;
-      try { served = await textOf(await old.fetch(url)); } catch (e) { rejected = true; }
+      const got = await attempt(async () => textOf(await old.fetch(url)));
+      const served = 'error' in got ? null : got.value;
       /* The old worker has to have taken the request (cacheFirst, SHELL)
-         and, missing it in its own cache, gone to the network for it. */
+         and, missing it in its own cache, gone to the network for it — a
+         handler that threw before getting that far never asked. */
       const asked = net.calls.slice(from).includes(url);
-      const pass = oldHasHole && newComplete && (rejected || served !== null) &&
+      const pass = oldHasHole && newComplete && ('error' in got || served !== null) &&
         served !== HOLE + '@v901' && asked;
-      return { old, neu, net, served, rejected, asked, oldHasHole, newComplete, pass };
+      return {
+        old, neu, served, pass,
+        extra: JSON.stringify({ served, failed: got.error || null, asked, oldHasHole, newComplete }),
+      };
     };
-    const c7 = await twoReleases();
-    ok('7. two releases side by side: the old worker with a hole does not serve the new release\'s copy',
-       c7.pass,
-       JSON.stringify({ served: c7.served, rejected: c7.rejected, asked: c7.asked, oldHasHole: c7.oldHasHole, newComplete: c7.newComplete }));
+    const c7 = await swCase('7. two releases side by side: the old worker with a hole does not serve the new release\'s copy',
+      () => twoReleases());
 
-    {
+    await swCase('8. cacheFirst passes a 500 on but does not keep it: offline, the request goes to the network again and fails', async () => {
       const w = loadWorker({ version: 'v900' });
       await w.install();
       const url = w.url('js/not-in-shell.js');
       w.network.files[url] = { status: 500, body: 'server error' };
-      const first = await w.fetch(url);
+      const first = await attempt(() => w.fetch(url));
       await quiet(w);
       const kept = Object.values(w.caches.dump()).some(list => list.includes(url));
       w.network.online = false;
-      let second = null;
-      try { second = await w.fetch(url); } catch (e) { second = 'rejected'; }
+      const second = await attempt(() => w.fetch(url));
       const asks = w.network.calls.filter(u => u === url).length;
-      ok('8. cacheFirst passes a 500 on but does not keep it: offline, the request goes to the network again and fails',
-         first && first.status === 500 && !kept && second === 'rejected' && asks === 2,
-         JSON.stringify({ status: first && first.status, kept, second: second && (second.status || second), asks }));
-    }
+      const status = first.value ? first.value.status : null;
+      return {
+        pass: status === 500 && !kept && 'error' in second && asks === 2,
+        extra: JSON.stringify({
+          first: first.error || status, kept,
+          second: second.error || (second.value ? second.value.status : null), asks,
+        }),
+      };
+    });
 
-    {
+    await swCase('9. blocks are network-first into the runtime cache, and served from it offline', async () => {
       const w = loadWorker({ version: 'v900' });
       const url = w.url('blocks/index.json');
       w.network.files[url] = { status: 200, body: 'blocks@online' };
-      const online = await answerOf(w.fetch(url));
+      const online = await answerOf(() => w.fetch(url));
       await quiet(w);
       const kept = inCache(w, w.RUNTIME_CACHE).includes(url);
       w.network.online = false;
-      const offline = await answerOf(w.fetch(url));
+      const offline = await answerOf(() => w.fetch(url));
       const asks = w.network.calls.filter(u => u === url).length;
-      ok('9. blocks are network-first into the runtime cache, and served from it offline',
-         online === 'blocks@online' && kept && offline === 'blocks@online' && asks === 2,
-         JSON.stringify({ online, kept, offline, asks }));
-    }
+      return {
+        pass: online === 'blocks@online' && kept && offline === 'blocks@online' && asks === 2,
+        extra: JSON.stringify({ online, kept, offline, asks }),
+      };
+    });
 
-    c7.neu.message('skipWaiting');
-    await c7.neu.activate();
-    ok('10. the swap: skipWaiting, then activate leaves only the new shell cache, complete and the new release\'s',
-       c7.neu.self.skipped === true &&
-       !(await c7.neu.caches.has('heavy-iron-shell-v900')) &&
-       hasAll(c7.neu, 'heavy-iron-shell-v901', c7.neu.SHELL) &&
-       (await textOf(await (await c7.neu.caches.open('heavy-iron-shell-v901')).match(HOLE))) === HOLE + '@v901',
-       JSON.stringify(Object.keys(c7.neu.caches.dump())));
+    await swCase('10. the swap: skipWaiting, then activate leaves only the new shell cache, complete and the new release\'s', async () => {
+      if (!c7) return { pass: false, extra: 'case 7 threw: nothing to carry on from' };
+      const { neu } = c7;
+      neu.message('skipWaiting');
+      await neu.activate();
+      const oldGone = !(await neu.caches.has('heavy-iron-shell-v900'));
+      const complete = hasAll(neu, 'heavy-iron-shell-v901', neu.SHELL);
+      const body = await answerOf(async () => (await neu.caches.open('heavy-iron-shell-v901')).match(HOLE));
+      return {
+        pass: neu.self.skipped === true && oldGone && complete && body === HOLE + '@v901',
+        extra: JSON.stringify({ skipped: neu.self.skipped, caches: Object.keys(neu.caches.dump()), body }),
+      };
+    });
 
-    {
+    await swCase('11. "version" answers with the worker\'s own CACHE_VERSION', async () => {
       const w = loadWorker({ version: 'v907' });
       const port = { postMessage(v) { this.got = v; } };
       w.message('version', [port]);
-      ok('11. "version" answers with the worker\'s own CACHE_VERSION', port.got === 'v907', String(port.got));
-    }
+      return { pass: port.got === 'v907', extra: String(port.got) };
+    });
 
     /* The mutation checks: each puts a bug back through loadWorker's
        transform — never by editing sw.js on disk — and runs its case again,
@@ -9018,17 +9063,19 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
        the plan 058 B regression: cacheFirst reading the global
        caches.match. Only cacheFirst's read is swapped; the same call in
        networkFirst comes first in the file. */
-    const mA = await twoReleases({
-      globalMatch: true,
-      transform: mutate('return fromCache(cacheName, request).then(hit => {', 'return caches.match(request).then(hit => {'),
+    await swCase('mutation check (a): with cacheFirst on the global caches.match, case 7 fails — the old worker serves the v901 copy', async () => {
+      const m = await twoReleases({
+        globalMatch: true,
+        transform: mutate('return fromCache(cacheName, request).then(hit => {', 'return caches.match(request).then(hit => {'),
+      });
+      return { pass: !m.pass && m.served === HOLE + '@v901', extra: m.extra };
     });
-    ok('mutation check (a): with cacheFirst on the global caches.match, case 7 fails — the old worker serves the v901 copy',
-       !mA.pass && mA.served === HOLE + '@v901', JSON.stringify({ served: mA.served, pass: mA.pass }));
-    const mB = await installWithHole({
-      transform: mutate('urls.map(url => cache.add(fromServer(url)).catch(() => null))', 'urls.map(url => cache.add(fromServer(url)))'),
+    await swCase('mutation check (b): without precache\'s .catch, case 2 fails — one 404 fails the whole install', async () => {
+      const m = await installWithHole({
+        transform: mutate('urls.map(url => cache.add(fromServer(url)).catch(() => null))', 'urls.map(url => cache.add(fromServer(url)))'),
+      });
+      return { pass: !m.pass && m.installFailed, extra: m.extra };
     });
-    ok('mutation check (b): without precache\'s .catch, case 2 fails — one 404 fails the whole install',
-       !mB.pass && mB.installFailed, JSON.stringify({ installFailed: mB.installFailed, pass: mB.pass }));
   }
 
   console.log('\n' + pass + ' passed, ' + fail + ' failed');

@@ -520,7 +520,11 @@ function loadWorker({ version, network, caches, scope = 'https://example.test/ap
     activate: () => extendable('activate'),
     message: (data, ports) => { fire(self, 'message', { data, ports }); },
     /* Resolves to what the handler answered with, or null when it let the
-       request go to the network by not answering at all. */
+       request go to the network by not answering at all. A listener that
+       throws does so out of this call, synchronously, as one does out of
+       install(), activate() and message(), where a browser would only log
+       it: a caller that has to outlive a broken sw.js makes the call under
+       a guard (attempt() in test/unit.js). */
     fetch: (url, { mode = 'no-cors', method = 'GET' } = {}) => {
       let answer = null;
       fire(self, 'fetch', { request: { url: abs(url), mode, method }, respondWith(p) { answer = Promise.resolve(p); } });

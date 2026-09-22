@@ -329,10 +329,20 @@ Eleven cases and two mutation checks, all in `test/unit.js`.
     cache names, read off the loaded worker. `transform` edits are made
     through a `mutate(from, to)` helper that throws unless its target
     occurs exactly once.
-  - Every fetch whose answer a case compares goes through `answerOf()`,
-    which turns a rejection into text: an ad hoc mutation that made
-    `networkFirst` stop caching crashed the suite on an unhandled
-    rejection before this, instead of failing case 9.
+  - Every case (and both mutation checks) runs as a function under
+    `swCase()`, built on `attempt()`, which turns a throw — synchronous,
+    or a rejection — into a FAIL of that case with the error after the
+    arrow, and the next case still runs; a case that carries on from
+    another (3 from 2, 10 from 7) fails on its own if that one threw. Fetch
+    answers a case compares go through `answerOf()`, on the same guard.
+    From the review of #172: with `cacheFirst` hand-edited to
+    `caches.match(request)` and no `globalMatch`, the harness's `fetch()`
+    threw synchronously out of the listener, case 8 made that call
+    unguarded, and the whole suite crashed before cases 8–11 and the
+    mutation checks ran. `test/harness.js` says, beside `fetch()`, that
+    its event helpers throw that way.
+- `README.md`'s layout table names `loadWorker()` in the `test/harness.js`
+  and `test/unit.js` rows (from the same review).
 - Beyond the two mutation checks in the suite, each case was spot-checked
   red against a temporary `sw.js` edit (restored byte for byte): no
   `checkShell` → 3; activate keeps every cache → 4, 10; no `claim` → 4, 5;
