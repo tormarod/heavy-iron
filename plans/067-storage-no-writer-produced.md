@@ -495,10 +495,49 @@ existing `migrate()`, import and two-tab case stays green unchanged.
       byte-identical: the seed, random ticks, notes, energy, orders and
       objetivo records, imports, new and empty blocks, editor phases,
       unit switches, restores, reloads and legacy id-less blocks.
-  - **Found, not fixed (outside the extension, which covers lists):** a
-    block's or a slot's map stored as a truthy scalar, such as
-    `log: { b1: 'x' }` or `{ 'w1-d0': 5 }`, makes the first tick on it
-    throw in `rowsFor`/`entry()` (`Cannot read properties of undefined`).
-    A draw of that session lands on the recovery screen. Widening the
-    same loop from "a list" to "not a map" would cover it.
+  - **Widened from "a list" to "not a map" (the orchestrator's call on the
+    finding above, 2026-09-23).** A block's or a slot's map stored as a
+    string, a number or `true` took no write at all, and the log's first
+    tick threw in `rowsFor`/`entry()` (`Cannot read properties of
+    undefined`), so a draw of that session landed on the recovery screen.
+    - `ensureRecord` now asks one test at all three levels,
+      `notMap = v => !v || typeof v !== 'object' || Array.isArray(v)`.
+      The block level applies it to every part filed by block, and the
+      slot level to the parts keyed `'slot+exercise'` only. A falsy value
+      becomes `{}` too, on purpose, so the one rule reads the same
+      everywhere. The part keyed by exercise is still skipped, and so are
+      the slot values of the parts keyed by slot alone: a note's or an
+      energy's string, an order's list.
+    - Differences on damaged shapes: `log: { b1: 'x' }` and `{ b1: null }`
+      now store `{ b1: {} }`, and `order: { b1: 'x' }` stays as
+      `{ b1: {} }` where the order part's repair used to delete it.
+    - **The Done criteria's grep** for `Array.isArray(profile\[part.name\])`
+      now finds nothing. The part level reads `notMap(profile[part.name])`,
+      and `Array.isArray(v)` lives in the helper; grep for
+      `notMap(profile\[part.name\])` instead.
+    - **Case 10** covers a string, a number, `true` and `null` at the
+      block level in every part filed by block, and at the slot level in
+      every part filed by lift. Each becomes `{}`, and a tick, a note and
+      an energy written into them land and survive a reload. A note's and
+      an energy's string, an order's list and the variants are kept,
+      before and after the reload.
+    - **Mutations:** the old list-only test at the inner levels fails case
+      10's scalar assertions (7) while case 7 passes. Letting the slot
+      level reach the parts keyed by slot alone wipes every note and
+      energy, which fails the by-design assertions of cases 7 and 10 and
+      crashes a later order test. Case 7's own mutations still fail.
+      `notMap` without `Array.isArray` fails cases 5 and 7 but not 10.
+    - Writer shapes are still unchanged: the differential probe again
+      found 2,556 writer-shaped states byte-identical.
+  - **Known, not done: the leaf level.** A lift's rows stored as a
+    non-list (`'x'`, `5`, `{}`, `{"0": row}`), or a row stored as `null`,
+    still throws inside `entry()` when the card draws, and `migrate()`
+    leaves the value as stored. Reproduced on this branch:
+    - rows `'x'` → "a.push is not a function"
+    - rows `5`, `{}` or `{"0": row}` → "a.slice is not a function"
+    - rows `[null]` → "Cannot set properties of null (setting 'w')"
+
+    That repair belongs to the log part itself: it is part-specific, and
+    a walk over every row on every load. It is left for a later plan,
+    which the orchestrator lists in `plans/README.md`'s follow-ups.
 - *(Executor: record deviations here.)*
