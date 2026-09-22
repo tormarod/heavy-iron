@@ -147,10 +147,11 @@ Two unit tests pin both, and the guide names them. With only those two
 readings changed to the objetivo's in the old code, Step E holds exactly
 as written (below).
 
-**Rebased twice.** Once over #152 (plan 052 PR 1, tests only) at the
-start. Then over #153 after Steps A–D were written: #153 moved the
+**Rebased three times.** Once over #152 (plan 052 PR 1, tests only) at
+the start. Then over #153 after Steps A–D were written: #153 moved the
 Diagnóstico's rows into `js/app.js`, so Steps B–D were re-applied to the
-moved code. The names below are after #153.
+moved code. Last over #154 (plan 053, the plan draft), which only
+conflicted in the index. The names below are after #153.
 
 **The interface.** `liftHistory(profile, block, ex, dayId, beforeWeek,
 onlyBlockId)` is `exHistory`'s old body. It returns `{ sessions, rule }`,
@@ -240,12 +241,14 @@ and smoke tests of `diagPoints`' and `diagLevelTrend`'s old arguments now
 ask `liftHistory` for the row's history: four unit tests and three smoke
 call sites. #153's three new tests in this area pass unchanged.
 
-**Verification.** `node --check` on every `js/` file. `node test/unit.js`:
-1094 passed, 0 failed. `node test/smoke.js --only` on "objetivo de peso y
-diagnóstico", "frecuencia por músculo", "índice de fuerza por músculo",
-"nota, energía y control de descarga" and "revisión del bloque": 104
-passed, 0 failed. `test/smoke.js` was edited, so one full run: 584 passed,
-0 failed.
+**Verification.** On `09582e0` (after #154): `node --check` on every
+`js/` file, and `node test/unit.js` 1097 passed, 0 failed. `node
+test/smoke.js --only` on "objetivo de peso y diagnóstico", "frecuencia por
+músculo", "índice de fuerza por músculo", "nota, energía y control de
+descarga" and "revisión del bloque": 104 passed, 0 failed, the same as on
+`90140b3`. `test/smoke.js` was edited, so it had one full run, on
+`90140b3`: 584 passed, 0 failed. Step E was run again on `09582e0` with the
+same seeds and gave the same numbers.
 
 **Left for the PR.** No `CACHE_VERSION` bump: `js/app.js`,
 `js/diagnostics.js` and `js/review.js` changed, so it needs
