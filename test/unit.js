@@ -3167,6 +3167,78 @@ ok('collectHistory converts the lb-stamped week instead of stepping the line 2,2
 ok('"todos los bloques" converts too — it is the same line over a longer history',
    JSON.stringify(chartUnitProbe.all) === JSON.stringify([100, 100]), JSON.stringify(chartUnitProbe));
 
+/* A set carries one unit stamp for itself and its drops, and every write
+   used to put the unit on screen on the whole row: 100 kg logged, the
+   preference switched to lb, only a drop typed — and the set read as 100 lb
+   from then on. stampForWrite converts the rest of the row into the unit it
+   is stamping instead. The handlers are closures in buildExCard, so the
+   rule is pinned here as the function they all call. `typeof` first so the
+   probe reports a missing rule as a failure rather than taking the suite
+   down with a ReferenceError. */
+console.log('\n== a write in the other unit converts the set rather than relabelling it ==');
+const stampProbe = call(`
+  (function() {
+    if (typeof stampForWrite !== 'function') return { missing: true };
+    const prev = state.prefs.units;
+    /* A drop typed after a switch to lb, over a 100 kg set. */
+    const a = { w: '100', r: '5', done: true, d: [{ w: '', r: '' }] };
+    state.prefs.units = 'lb';
+    a.d[0].w = '150';
+    const movedA = stampForWrite(a, a.d[0]);
+    /* The reverse: the set's weight typed in kg over drops written in lb. */
+    const b = { w: '', r: '', done: false, u: 'lb', d: [{ w: '110', r: '8' }, { w: '', r: '' }] };
+    state.prefs.units = 'kg';
+    b.w = '60';
+    const movedB = stampForWrite(b, b);
+    /* Same unit: nothing is touched, and as typed stays as typed. */
+    const c = { w: '22.5', r: '', d: [{ w: '20', r: '' }] };
+    const movedC = stampForWrite(c, c);
+    state.prefs.units = prev;
+    return {
+      a: { w: a.w, u: a.u, d: a.d[0].w, moved: movedA, kg: Math.round(rowWeight(a, 'kg') * 100) / 100 },
+      b: { w: b.w, u: b.u === undefined ? 'kg' : b.u, d: b.d.map(x => x.w), moved: movedB, used: b.d.map(dropUsed) },
+      c: { w: c.w, d: c.d[0].w, u: c.u === undefined ? 'kg' : c.u, moved: movedC },
+    };
+  })()
+`);
+ok('a drop typed in lb over a 100 kg set converts the set to 220,46 lb instead of calling it 100 lb',
+   !stampProbe.missing && stampProbe.a.w === '220,46' && stampProbe.a.u === 'lb' && stampProbe.a.d === '150' &&
+   stampProbe.a.moved === true && stampProbe.a.kg === 100, JSON.stringify(stampProbe));
+ok('the set typed in kg over lb drops converts the drops, and an empty drop stays empty for rowUsed/pruneLog',
+   !stampProbe.missing && stampProbe.b.w === '60' && stampProbe.b.u === 'kg' && stampProbe.b.moved === true &&
+   JSON.stringify(stampProbe.b.d) === JSON.stringify(['49,9', '']) &&
+   JSON.stringify(stampProbe.b.used) === JSON.stringify([true, false]), JSON.stringify(stampProbe));
+ok('a write in the row’s own unit rewrites nothing',
+   !stampProbe.missing && stampProbe.c.w === '22.5' && stampProbe.c.d === '20' && stampProbe.c.u === 'kg' &&
+   stampProbe.c.moved === false, JSON.stringify(stampProbe));
+
+/* The greyed weight a tick adopts. priorWeight handed back last week's
+   string as typed, the card showed it under the current unit's heading,
+   and the tick stamped it with that unit: 100 kg last week became 100 lb. */
+const priorProbe = call(`
+  (function() {
+    const prev = state.prefs.units;
+    const profile = defaultState().profiles.hombre;
+    const blockId = profile.blockOrder[0];
+    const day = profile.blocks[blockId].days[0];
+    const exId = day.ex[0].id;
+    profile.log[blockId] = {};
+    profile.log[blockId][slot(1, day.id)] = { [exId]: [{ w: '100', r: '5', done: true }, { w: '22,5', r: '5', done: true, u: 'lb' }] };
+    state.prefs.units = 'lb';
+    const inLb = [priorWeight(profile, blockId, 2, day.id, exId, 0), priorWeight(profile, blockId, 2, day.id, exId, 1)];
+    state.prefs.units = 'kg';
+    const inKg = [priorWeight(profile, blockId, 2, day.id, exId, 0), priorWeight(profile, blockId, 2, day.id, exId, 1)];
+    state.prefs.units = prev;
+    return { inLb: inLb, inKg: inKg };
+  })()
+`);
+ok('last week’s 100 kg is offered as 220,46 after a switch to lb, so a tick adopts the real weight',
+   priorProbe.inLb[0] === '220,46', JSON.stringify(priorProbe));
+ok('...a weight already in the unit on screen is offered exactly as typed',
+   priorProbe.inLb[1] === '22,5' && priorProbe.inKg[0] === '100', JSON.stringify(priorProbe));
+ok('...and it converts the other way too (22,5 lb read in kg)',
+   priorProbe.inKg[1] === '10,21', JSON.stringify(priorProbe));
+
 console.log('\n== the CSV is safe to open in a spreadsheet and says which unit each row is in (plans/011) ==');
 ok('csvCell prefixes a leading = so a name out of an imported file cannot be a formula',
    call(`csvCell('=SUM(A1)')`) === "'=SUM(A1)", String(call(`csvCell('=SUM(A1)')`)));

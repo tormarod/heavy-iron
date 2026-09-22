@@ -209,6 +209,15 @@ as typed, and `unidad` next to it says which unit that row is in. The stamp
 travels with the set, too: a backup you restore, a profile you load and a
 block sent by QR all bring an lb set back in lb.
 
+A set and its drops share one stamp, so there is one exception to "never
+touches the number". If you switch units and then type into a set logged
+in the old one — its weight, or one of its drops — whatever else that set
+holds is converted to the new unit (100 kg becomes 220,46 lb), because what
+you just typed is in the unit the card now shows. The greyed weight from a
+past week, and the one a tick takes when the box is empty, is likewise
+shown converted into the unit you use now, so ticking last week's 100 kg
+after switching to lb logs 220,46 lb rather than 100 lb.
+
 **About solo mode.** The second profile is hidden, not deleted. Its plan
 and history stay in storage and in your backups, so turning two-person
 mode back on returns everything exactly as it was.
