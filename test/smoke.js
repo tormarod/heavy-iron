@@ -90,24 +90,29 @@ const dismissSetup = async page => {
   await page.waitForFunction(() => !saveT && !held);
 };
 
-/* On a first visit, the page goto() lands on is not the one a section should
-   start from. The worker installs behind it, its activate claims the page,
-   and app.js reloads on controllerchange (registerServiceWorker) — whenever
-   the precache happens to finish. On a quiet machine that is inside goto's
-   networkidle wait; on a busy one it lands after the section has started,
-   and whatever the section had done to the old page goes with it. With the
-   worker held back 1.3 s, "profile import hardening" ticked a set, the page
-   reloaded under it, and the click on the rest timer's #tskip waited out its
-   30 s for a timer the new page had never started.
+/* On a first visit, the page goto() lands on used to not be the one a section
+   should start from: the worker installed behind it, its activate claimed
+   the page, and app.js reloaded on controllerchange (registerServiceWorker)
+   — whenever the precache happened to finish. On a quiet machine that was
+   inside goto's networkidle wait; on a busy one it landed after the section
+   had started, and whatever the section had done to the old page went with
+   it. With the worker held back 1.3 s, "profile import hardening" ticked a
+   set, the page reloaded under it, and the click on the rest timer's #tskip
+   waited out its 30 s for a timer the new page had never started.
 
-   A navigation the worker answered has a workerStart, so a page with one is
-   past that reload; with no skeleton, it has drawn. keepSetup is for the
-   sections that go through the first-run sheet themselves. Contexts that
-   block the worker never get there, so they do not come through here. */
+   Plan 061 made that reload conditional on the page already having had a
+   controller, so a first visit no longer reloads at all — there is only ever
+   the one navigation, and its workerStart stays 0 forever (a page with a
+   worker behind it from the start never asks that worker to answer its own
+   first request). What actually matters was never the reload, only being
+   past it: wait for the worker to have taken control directly instead. With
+   no skeleton, the app has drawn. keepSetup is for the sections that go
+   through the first-run sheet themselves. Contexts that block the worker
+   never get there, so they do not come through here. */
 const openApp = async (page, { keepSetup = false } = {}) => {
   await page.goto(BASE, { waitUntil: 'networkidle' });
   await page.waitForFunction(() =>
-    performance.getEntriesByType('navigation')[0].workerStart > 0 && !document.querySelector('#list .skel'),
+    !!(navigator.serviceWorker && navigator.serviceWorker.controller) && !document.querySelector('#list .skel'),
   ).catch(async e => {
     /* A bare timeout here says nothing about the page it gave up on. */
     const seen = await page.evaluate(() => ({
@@ -3610,6 +3615,25 @@ const ok = (name, cond, extra) => {
     await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
     await page.waitForTimeout(300);
     ok('coming back much later does', await page.evaluate(() => window.__updates === 1));
+    await ctx.close();
+  });
+
+  // ---------- first visit: taking control is not a swap ----------
+  /* clients.claim() on activate fires controllerchange for a page that never
+     had a controller — a first visit, not a swap — and the old listener
+     (registerServiceWorker) reloaded on it unconditionally, throwing away
+     whatever the first-run sheet held whenever the precache happened to
+     finish. The page is marked as soon as it loads, before the worker can
+     claim it; a reload clears the mark, since it starts the document over. */
+  await section('primera visita: el trabajador toma el control sin recargar la página', async () => {
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    await page.goto(BASE, { waitUntil: 'load' });
+    await page.evaluate(() => { window.__firstPage = true; });
+    await page.waitForFunction(() => !!(navigator.serviceWorker && navigator.serviceWorker.controller));
+    await page.waitForLoadState('networkidle');
+    ok('the page marked before the claim is still the one on screen after it',
+       await page.evaluate(() => window.__firstPage === true));
     await ctx.close();
   });
 

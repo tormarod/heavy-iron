@@ -7175,8 +7175,21 @@ function registerServiceWorker() {
     });
   }).catch(() => { /* offline on first load, or opened from file:// — the app still runs */ });
 
+  /* A first visit's worker claims the page on activate, which fires this too;
+     reloading then threw away whatever the first-run sheet held, whenever the
+     precache happened to finish. Only a swap — a page that already had a
+     controller getting a new one — needs the reload. `controlled` has to be
+     read synchronously, right here, before the listener can fire.
+
+     renderVersion() above found no controller yet and left the footer blank
+     — it is only ever called this once, on the assumption from its own
+     comment that the line "appears by itself once a worker that does answer
+     takes over". That used to come true as a side effect of the reload this
+     listener no longer does, so this is now the thing that makes it true. */
+  let controlled = !!navigator.serviceWorker.controller;
   let reloading = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!controlled) { controlled = true; renderVersion(); return; }
     if (reloading) return;
     reloading = true;
     flushSave();
