@@ -60,6 +60,30 @@ the planned RIR ramp is ignored:
 | `1,5 RIR` | 5 | **5** | null (a decimal is not a whole-number RIR) |
 | `Semana 3 RIR 2` | 3 | **3** | 2 |
 | `sufrir 2` | 2 | **2** | null ("rir" inside a word) |
+| `3×10 RIR 2` | 10 | **null** | 2 |
+| `3x8 RIR 2` | 8 | **null** | 2 |
+| `3x5 RIR 2` | 5 | **5** | 2 (the 5 is reps) |
+| `4x12 RIR 1-2` | 12 | **null** | 1 |
+| `5x5 @ 2 RIR` | 2 | 2 | 2 |
+| `4x8, RIR 1` | 1 | 1 | 1 |
+| `2 a 3 RIR` | 3 | **3** | 2 |
+| `de 2 a 3 RIR` | 3 | **3** | 2 |
+| `2 o 3 RIR` | 3 | **3** | 2 |
+| `RIR 1 a 2` | 1 | 1 | 1 |
+| `1 rep en reserva` | 1 | **null** | 1 |
+| `1 repetición en reserva` | 1 | **null** | 1 |
+| `1 repeticion en reserva` | 1 | **null** | 1 |
+| `S3 RIR 2` | 3 | **3** | 2 |
+| `S 3 · RIR 2` | 2 | 2 | 2 |
+| `W3 RIR 2` | 3 | **3** | 2 |
+| `reps 2 RIR` | 2 | 2 | 2 |
+| `2 series, 2 RIR` | 2 | 2 | 2 |
+| `RIR 10 · 2 RIR` | 2 | **null** | 2 (a number above `RIR_MAX` is passed over) |
+
+The rows from `3×10 RIR 2` down were added in the review of #174 (see
+Maintenance notes); where "now" is not bold the row is a guard, a label
+the widened rule must not move. "before 058" is the function at
+`98602ad^`, "now" the one at `b15ae87`.
 
 The AI prompt that writes these labels says, word for word, that `r` is
 `"string corto, p.ej. RIR objetivo"` (`js/block-editor.js`, search
@@ -376,3 +400,47 @@ two mutations.
   new rows: "S3 RIR 2" reads 3 (`S` is not a week word), "2 a 3 RIR"
   reads 3 (a range written with "a" is not a range), and the singular
   "1 rep en reserva" / "1 repetición en reserva" is not a marker (null).
+- Review of #174 (the plan's author widened the table; executor applied
+  it). Those three candidates became rows, and the rule grew with them:
+  (1) a number that does not count — refused, or above `RIR_MAX` — no
+  longer ends the search; the loop goes on to the number after the
+  marker and to later markers, so "RIR 10 · 2 RIR" reads 2 (and "60 RIR
+  · 2 RIR", null before, reads 2). Rule 6 still bounds what
+  `recordTarget` stores, because nothing above `RIR_MAX` is ever
+  returned, only passed over. (2) A number before a marker whose lead
+  ends in `x`, `X` or `×` (spaces allowed) is refused: it is the reps of
+  sets×reps. (3) `\s+[ao]\s+` joins a range beside the dash class, on
+  both sides. (4) The phrase marker takes
+  `rep|reps|repetici[oó]n|repeticiones`. (5) The week words gained a
+  standalone `s`, `wk` and `w`. 19 fixed cases: the review's 16 plus
+  three expectations its rule text states ("4x8, RIR 1", "1 repeticion
+  en reserva", "S 3 · RIR 2"). The fuzz gained `x`, `×`, `a`, `o`,
+  `rep en reserva`, `S`, `W`, with its assertion unchanged. The seed
+  check passes unchanged. Mutations: dropping the continue-on-over-max
+  FAILed only "RIR 10 · 2 RIR". The review expected "3×10 RIR 2" to fail
+  there too, but its 10 is also refused by the × rule, so it FAILs only
+  with both dropped (checked: five FAILs then). Dropping the ×-lead
+  refusal FAILed "3x5 RIR 2" (read 5). Dropping the a/o separator FAILed
+  "2 a 3 RIR", "de 2 a 3 RIR" and "2 o 3 RIR" (all read 3). All
+  reverted. `node test/unit.js` on `dc56a52`: 1254 before this round,
+  1273 after, 0 failed.
+
+  Found while probing and left for the plan's author, because the table
+  is the contract: the rules as written move five labels that `b15ae87`
+  reads right.
+  - "3x10 a 2 RIR", "4x8 a 2 RIR" and "Semana 3 a 2 RIR" read null
+    (main: 2). The "a" means "at" here, but it joins "10 a 2" into a
+    range whose lead is then refused.
+  - "máx 2 RIR" reads null (main: 2). The × rule refuses the x of
+    "máx".
+  - "Pausa 2 s 1 RIR" reads null (main: 1). The "s" of seconds is read
+    as the week.
+
+  Two fixes were checked in a scratch copy, not applied: an "a"/"o" pair
+  joins a range only when it goes up, and the × rule needs a digit in
+  front of the x (`\d\s*[x×]\s*$`). Together they hold all 49 fixed
+  cases and every seed and generic label, and read the first four of
+  those labels right again. The one label they give up is "series x 5
+  RIR 2", which would read 5. Also still read the old way: "2 ó 3 RIR"
+  → 3. The accented "ó" is the traditional spelling between numerals,
+  and adding it would mean `[aoó]`.
