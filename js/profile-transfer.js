@@ -100,7 +100,7 @@ function normalizeImportedProfile(p) {
      there, and `__proto__` sets its prototype instead of adding a property
      (see safeKey, js/app.js, and plans/008 item 2), so a key like that gets
      a fresh id here. Every other block-id-keyed thing below
-     (log/rir/notes/energy/order, blockOrder, activeBlock) has to follow the
+     (log/rir/notes/energy/order/obj, blockOrder, activeBlock) has to follow the
      same rename, or the block comes back with everything except its own
      history.
 
@@ -112,7 +112,7 @@ function normalizeImportedProfile(p) {
      string is just a key. */
   const keyMap = new Map();
   /* raw exercise id -> the id it ended up with, unioned across every block.
-     The four slot-keyed maps are re-keyed block by block inside the loop
+     The six slot-keyed maps are re-keyed block by block inside the loop
      below, but `variants` is keyed by exercise id alone with no block above
      it, so it has nowhere to look a per-block map up from and needs this
      one flat union instead. First occurrence wins, matching importIdMaps'
@@ -181,31 +181,16 @@ function normalizeImportedProfile(p) {
     const rawObj = ownGet(p.obj, bk);
     if (rawObj) p.obj[bk] = normalizeImportedObj(rawObj, raw, normalized);
 
-    /* Notes and energy carry no such re-keying (they are per-session, not
-       per-exercise, so no id map applies) but were never capped or
-       validated against their own limits on this path either — only
-       migrate()'s generic "is it an object" check ran. */
+    /* Notes and energy are per session, not per exercise, but their key
+       is still slot(week, dayId): a day normalizeImportedBlock renamed
+       (a blocked key, a duplicate, an id past 60 characters) left them
+       filed under a day that no longer exists. Re-keyed through the same
+       day map as the four above, with the same week bound, and their own
+       value checks. */
     const rawNotes = ownGet(p.notes, bk);
-    if (rawNotes && typeof rawNotes === 'object' && !Array.isArray(rawNotes)) {
-      const out = {};
-      Object.keys(rawNotes).slice(0, LOG_LIMITS.slots).forEach(k => {
-        const t = txt(rawNotes[k], NOTE_LIMIT);
-        if (t) out[k] = t;
-      });
-      p.notes[bk] = out;
-    } else if (p.notes) {
-      delete p.notes[bk];
-    }
+    if (rawNotes) p.notes[bk] = normalizeImportedNotes(rawNotes, raw, normalized);
     const rawEnergy = ownGet(p.energy, bk);
-    if (rawEnergy && typeof rawEnergy === 'object' && !Array.isArray(rawEnergy)) {
-      const out = {};
-      Object.keys(rawEnergy).slice(0, LOG_LIMITS.slots).forEach(k => {
-        if (ENERGY_OPTIONS.indexOf(rawEnergy[k]) >= 0) out[k] = rawEnergy[k];
-      });
-      p.energy[bk] = out;
-    } else if (p.energy) {
-      delete p.energy[bk];
-    }
+    if (rawEnergy) p.energy[bk] = normalizeImportedEnergy(rawEnergy, raw, normalized);
   });
   p.blocks = blocks;
 
@@ -216,14 +201,17 @@ function normalizeImportedProfile(p) {
      plans/002-purge-parallel-maps.md). Rebuilding under the mapped key does
      both the rename and the orphan drop in one pass. `out[id] = …` is safe
      even though `bk` is not: `id` only ever comes from keyMap, which never
-     hands back a name safeKey refuses (see safeKey). */
+     hands back a name safeKey refuses (see safeKey). A falsy entry (a
+     null where a block's map should be) is dropped here for all six alike:
+     the loop above leaves it untouched, and notes and energy used to be the
+     only two that deleted it. */
   ['log', 'rir', 'notes', 'energy', 'order', 'obj'].forEach(key => {
     const map = p[key];
     if (!map || typeof map !== 'object') return;
     const out = {};
     Object.keys(map).forEach(bk => {
       const id = keyMap.get(bk);
-      if (id && blocks[id]) out[id] = map[bk];
+      if (id && blocks[id] && map[bk]) out[id] = map[bk];
     });
     p[key] = out;
   });
