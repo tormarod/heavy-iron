@@ -15,7 +15,34 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Refuse a shell that changed under a version already deployed
+        if: github.event_name == 'push'
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          # (comment: why — the 2026-09-22 v113 collision, and that the PR
+          #  check cannot see it because it compares against a base that
+          #  moved after it ran)
+          changed=$(git diff --name-only "$BEFORE" HEAD)
+          if ! echo "$changed" | grep -qE '^(index\.html|css/.*\.css|js/.*\.js)$'; then
+            echo "No app-shell changes since the last deploy."; exit 0
+          fi
+          old=$(git show "$BEFORE":sw.js | grep -m1 'CACHE_VERSION =')
+          new=$(grep -m1 'CACHE_VERSION =' sw.js)
+          echo "deployed: $old"; echo "this push: $new"
+          if [ "$old" = "$new" ]; then
+            echo "::error file=sw.js::The shell changed since the last deploy but CACHE_VERSION did not — two PRs probably made the same bump. Bump again on main."
+            exit 1
+          fi
   deploy:
+    needs: guard
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

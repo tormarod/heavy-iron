@@ -156,7 +156,7 @@ request whose shell changed without a bump, and its second step fails one
 whose `js/*.js` or `css/*.css` file is missing from `SHELL`. `test/unit.js`
 closes the rest of that circle — it asserts `index.html`, `SHELL` and
 `SHELL_SCRIPTS` in `test/harness.js` name the same files in the same order
-(plans/014).
+(plans/014). The deploy workflow (`.github/workflows/pages.yml`) guards the same change against what is live, so if two PRs both bump `CACHE_VERSION` from the same base, the second deploy fails and requires another bump on `main`.
 
 `tools/bump-cache-version.sh` does the bump, so a red `cache-version` run
 costs one command rather than a round-trip: `--dry-run` prints the current
