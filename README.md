@@ -170,7 +170,7 @@ rule, and which of this project's absences are deliberate.
 | `css/style.css` | one stylesheet; all colours are tokens declared at the top, once per theme (light and `[data-theme="dark"]`) |
 | `js/data.js` | the default plans, used only on a device's first run |
 | `js/block-editor.js` | block CRUD/list, importing a block from JSON, and the plan editor |
-| `js/diagnostics.js` | the Diagnóstico screen: e1RM trend per exercise crossed with the log's own signals and with a second slope over kilos per set, real frequency per muscle from the row timestamps, and the indexed strength-per-muscle chart |
+| `js/diagnostics.js` | the Diagnóstico screen: draws the e1RM trend per exercise crossed with the log's own signals and with a second slope over kilos per set, real frequency per muscle from the row timestamps, and the indexed strength-per-muscle chart. The rows it draws are worked out in `js/app.js` |
 | `js/review.js` | the block review and the brief it exports for the next block |
 | `js/profile-transfer.js` | backup/restore and moving one profile between phones as a file |
 | `js/calculator.js` | the warm-up ramp and plate-loading calculator sheet |
@@ -178,7 +178,7 @@ rule, and which of this project's absences are deliberate.
 | `js/chart.js` | the per-exercise progress sheet: the line chart and the table under it |
 | `js/volume-sheet.js` | the volume dashboard — the bars, the trends and the band behind them |
 | `js/qr-transfer.js` | the QR wire format and the sheet that shows and scans it |
-| `js/app.js` | everything else: state, storage and recovery, the session view, the weekly objetivo rule (read by the session, by "Rellenar con el objetivo" and by the Diagnóstico, so it cannot live in a split file), sheets and navigation, settings, the share/import vocabulary, the CSV export |
+| `js/app.js` | everything else: state, storage and recovery, the session view, the weekly objetivo rule (read by the session, by "Rellenar con el objetivo" and by the Diagnóstico, so it cannot live in a split file), the Diagnóstico's rows (drawn by its sheet and exported by the block review, so they cannot either), sheets and navigation, settings, the share/import vocabulary, the CSV export |
 | `js/boot-guard.js` | the one script after `app.js`: if the shell did not boot, it hands over to the worker already waiting with a complete one |
 | `js/vendor/` | the two QR libraries, verbatim from npm — see the README in there |
 | `sw.js` | offline caching; bump `CACHE_VERSION` when releasing |

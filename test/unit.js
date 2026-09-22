@@ -345,22 +345,22 @@ ok('...and the check reaches the reads it lets through (a stubbed openChart, a t
    guardedReads(shellSrc['js/app.js'], 'js/app.js', onlyInGuarded)
      .filter(r => (r.name === 'openChart' && !r.guarded) || (r.name === 'wireReview' && r.guarded)).length >= 2);
 
-/* One standing breach, written down here rather than passed over: the
-   block review builds on the Diagnóstico's rows, and all six of these are
-   defined in js/diagnostics.js alone. A hole that drops diagnostics.js and
-   keeps review.js leaves "Revisión del bloque" throwing when it opens —
-   and "+ Nuevo bloque → Ver la revisión" with it, since the typeof test in
-   newBlock finds openReview and can see no further. The fix is rule 2's
-   own: the six, and what they are built from, move into app.js. The list
-   only shrinks: a new breach fails, and so does an entry that has gone. */
-const RULE2_STANDING = ['DIAG_TRENDS', 'DIAG_WINDOW', 'diagPct', 'diagRows', 'freqRows', 'strengthRows']
-  .map(n => 'js/review.js reads ' + n + ' from js/diagnostics.js');
 const rule2 = [...new Set([].concat(...GUARDED_SPLIT.map(f =>
   guardedReads(shellSrc[f], f, onlyInGuarded).map(r => f + ' reads ' + r.name + ' from ' + r.from))))].sort();
-ok('rule 2: no guarded file reads what only another guarded file defines, beyond the standing list',
-   JSON.stringify(rule2) === JSON.stringify(RULE2_STANDING.slice().sort()),
-   'new: ' + rule2.filter(x => !RULE2_STANDING.includes(x)).join('; ') +
-   ' | gone: ' + RULE2_STANDING.filter(x => !rule2.includes(x)).join('; '));
+ok('rule 2: no guarded file reads what only another guarded file defines',
+   rule2.length === 0, rule2.join('; '));
+/* Rule 2 had one standing breach, listed here by name until it moved: the
+   block review builds on the Diagnóstico's rows, and these six were
+   defined in js/diagnostics.js alone, so a hole that dropped that file and
+   kept js/review.js left "+ Nuevo bloque → Ver la revisión" throwing. They
+   live in app.js now, with everything they are built from — rule 2's own
+   fix. Put back where they were, the check above would name each one
+   again; this says it still can, on the review as it is written today. */
+const ONCE_STANDING = ['DIAG_TRENDS', 'DIAG_WINDOW', 'diagPct', 'diagRows', 'freqRows', 'strengthRows'];
+const standingAgain = [...new Set(guardedReads(shellSrc['js/review.js'], 'js/review.js',
+  new Map([...onlyInGuarded, ...ONCE_STANDING.map(n => [n, 'js/diagnostics.js'])])).map(r => r.name))].sort();
+ok('...and it still sees js/review.js read each of the six it once listed, were they js/diagnostics.js\'s alone again',
+   JSON.stringify(standingAgain) === JSON.stringify(ONCE_STANDING.slice().sort()), standingAgain.join(', '));
 
 /* The same rules, run. js/app.js stubs the entry points of the split files
    it still names, so the app still boots when a worker's precache is
@@ -6018,49 +6018,108 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
        undoErr || JSON.stringify(read(boot)));
   }
 
-  /* The runtime half of rule 2's standing breach (RULE2_STANDING, near the
-     top): js/review.js builds the review on names only js/diagnostics.js
-     defines, so a precache hole that drops the one and keeps the other
-     leaves "Ver la revisión" throwing — and "+ Nuevo bloque" with it, since
-     the review is offered on the way to the new block's name. Every other
-     hole has to end where a whole shell does, with the block made: through
-     the review when js/review.js is there, straight to the name when it is
-     not (newBlock's typeof test). The files the review cannot open without
-     are read off the standing list, so fixing the breach there moves the
-     expectation here: the list only shrinks. */
-  console.log('\n== a precache hole: "+ Nuevo bloque" → "Ver la revisión" still makes the block (AGENTS.md rules 1 and 2) ==');
-  const reviewNeeds = new Set(RULE2_STANDING.filter(s => s.indexOf('js/review.js reads ') === 0).map(s => s.split(' from ')[1]));
+  /* The first day's week-1 sessions filed as weeks 1 to 3, a week apart and
+     the last a week before the boot: three sessions of every lift that day,
+     enough for the Diagnóstico to fit a trend — which is what gives its rows,
+     and the review built on them, something to say. */
+  const threeWeeks = (p, b) => {
+    const day = b.days[0].id, week1 = p.log[b.id]['w1-' + day];
+    [1, 2, 3].forEach(w => {
+      const filed = {};
+      Object.keys(week1).forEach(id => { filed[id] = week1[id].map(r => Object.assign({}, r, { ts: r.ts - (3 - w) * 7 * 864e5 })); });
+      p.log[b.id]['w' + w + '-' + day] = filed;
+    });
+  };
+
+  /* The Diagnóstico's scope toggle, pressed on the real sheet. diagRows
+     takes its scope from the caller, so that the block review cannot
+     inherit the toggle, which leaves the sheet to hand over its own. The
+     block before this one and this one hold the same three weeks. The
+     buttons carry the data-scope index.html gives them. */
+  {
+    const boot = settled(seeded({ week: 4, day: 0 }, (p, b) => {
+      threeWeeks(p, b);
+      const next = JSON.parse(JSON.stringify(b));
+      next.id = 'block-2'; next.name = 'Bloque 2';
+      p.blocks[next.id] = next; p.blockOrder.push(next.id); p.activeBlock = next.id;
+      p.log[next.id] = JSON.parse(JSON.stringify(p.log[b.id]));
+    }));
+    const exId = boot.call('getBlock().days[0].ex[0].id');
+    /* The session count on the row the sheet drew for the lift. */
+    const drawn = () => boot.$('diagHost').children.filter(el => el.dataset.ex === exId)
+      .map(el => +((/(\d+) sesi/.exec(el.querySelector('.diag-num').textContent) || [])[1]));
+    const seen = {};
+    let err = '';
+    try {
+      boot.$('diagBtn').onclick();
+      seen.opened = drawn();
+      const [here, every] = boot.$('diagScope').querySelectorAll('.seg-btn');
+      here.dataset.scope = 'block';
+      every.dataset.scope = 'all';
+      every.onclick();
+      seen.every = drawn();
+      here.onclick();
+      seen.here = drawn();
+    } catch (e) { err = e.message; }
+    /* "More than three" across both blocks rather than six, for the reason
+       the unbooted scope test gives: a change to DIAG_WINDOW is not a
+       change of scope. */
+    ok('the Diagnóstico opens on this block\'s sessions, "Todos los bloques" counts both blocks\' and "Este bloque" goes back: the sheet hands diagRows its own toggle',
+       !err && seen.opened.join() === '3' && seen.here.join() === '3' && seen.every.length === 1 && seen.every[0] > 3,
+       err || JSON.stringify(seen));
+  }
+
+  /* "+ Nuevo bloque" with each guarded file left out. Every hole has to end
+     where a whole shell does, with the block made: through the review when
+     js/review.js is there, straight to the name when it is not (newBlock's
+     typeof test). The review is built on the Diagnóstico's rows, which live
+     in app.js (AGENTS.md rule 2), so it opens without js/diagnostics.js too
+     — where, until they moved, it threw "strengthRows is not defined" and
+     no block was made. And it has to say what a whole shell's review says,
+     word for word: one that opened and said less would be the
+     plausible-looking empty answer rule 2 is there to rule out. Three weeks
+     are logged so that every part of it has something to say. */
+  console.log('\n== a precache hole: "+ Nuevo bloque" → "Ver la revisión" still makes the block, and the review says what a whole shell\'s does (AGENTS.md rules 1 and 2) ==');
+  const reviewState = () => seeded({ week: 4, day: 0 }, threeWeeks);
+  const wholeReview = bootApp({ state: reviewState() }).call('reviewText(buildBlockReview(getProfile(), getBlock()))');
+  ok('the whole shell\'s review, the one each hole is held to, has a trend per lift, a strength change and sessions per muscle to say',
+     /tendencia (subiendo|plano|bajando) /.test(wholeReview) && /fuerza [+−]?[\d,]+ %/.test(wholeReview) &&
+     /sesiones [1-9]\d*\/\d+/.test(wholeReview), wholeReview.slice(0, 800));
+  /* The first line two reviews part at, for a failure to show. */
+  const parting = (a, b) => {
+    const x = a.split('\n'), y = b.split('\n'), i = x.findIndex((l, k) => l !== y[k]);
+    return i < 0 ? x.length + ' lines against ' + y.length : 'line ' + (i + 1) + ': ' + x[i] + ' | whole shell: ' + y[i];
+  };
   for (const file of GUARDED_SPLIT) {
-    const boot = bootApp({ omit: [file], state: seeded({ week: 2, day: 0 }) });
-    let threw = '';
+    const boot = bootApp({ omit: [file], state: reviewState() });
+    let threw = '', review = null;
     const steps = [];
     try {
       const making = boot.$('newBlockBtn').onclick().catch(e => { threw = e.message; });
       /* Whatever is asked answered the way someone who wants the block
-         answers it, and the review, once it is up, closed — which is what
-         resumes the block. */
+         answers it, and the review, once it is up, read the way "Copiar"
+         reads it and closed — which is what resumes the block. */
       for (let i = 0; i < 4; i++) {
         await settle();
         if (boot.call('!!askResolve')) { steps.push(boot.$('askOk').textContent); boot.$('askOk').onclick(); }
-        else if (boot.$('reviewSheet').classList.contains('up')) { steps.push('(revisión)'); boot.$('reviewClose').onclick(); }
-        else break;
+        else if (boot.$('reviewSheet').classList.contains('up')) {
+          steps.push('(revisión)');
+          review = boot.call('reviewText(reviewCache)');
+          boot.$('reviewClose').onclick();
+        } else break;
       }
       await making;
     } catch (e) { threw = threw || e.message; }
     const made = boot.call('getProfile().blockOrder.length === 2 && getBlock().name === "Bloque 2"');
     const how = JSON.stringify({ steps, threw });
-    if (reviewNeeds.has(file)) {
-      /* On one of the standing names and nothing else: any other throw here
-         is a new breach, not the one written down. */
-      const standing = RULE2_STANDING.map(s => s.split(' ')[2] + ' is not defined');
-      ok(file + ' absent: "Ver la revisión" throws and "+ Nuevo bloque" makes nothing — the standing breach, until it moves',
-         standing.indexOf(threw) >= 0 && !made, how);
-    } else if (file === 'js/review.js') {
+    if (file === 'js/review.js') {
       ok(file + ' absent: "+ Nuevo bloque" skips the review it cannot offer and makes the block',
          !threw && made && steps.indexOf('(revisión)') < 0, how);
     } else {
       ok(file + ' absent: "+ Nuevo bloque" → "Ver la revisión" → the review closed makes the block',
          !threw && made && steps.indexOf('(revisión)') >= 0, how);
+      ok(file + ' absent: ...and the review it showed is the whole shell\'s, word for word',
+         review === wholeReview, review == null ? how : parting(review, wholeReview));
     }
   }
 
@@ -6265,13 +6324,19 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
       diagScope = 'all';
     })()
   `);
-  const scoped = call('diagRows(getProfile(), getBlock(), "block").find(r => r.id === getBlock().days[0].ex[0].id).sessions');
-  const global = call('diagRows(getProfile(), getBlock()).find(r => r.id === getBlock().days[0].ex[0].id).sessions');
+  const sessionsIn = scope => call('diagRows(getProfile(), getBlock()' + scope + ').find(r => r.id === getBlock().days[0].ex[0].id).sessions');
+  const scoped = sessionsIn(', "block"'), global = sessionsIn(', "all"'), unsaid = sessionsIn('');
+  const reviewed = call('buildBlockReview(getProfile(), getBlock()).exercises.find(x => x.name === getBlock().days[0].ex[0].n).sessions');
   /* `global` is the two blocks' sessions together (4 + 2), capped by
      DIAG_WINDOW; asserted as "more than the scoped count" rather than as 6
      so a change to that window cannot fail a test about scope. */
   ok('diagRows scoped to the block counts only its own sessions while the sheet is on "Todos los bloques"',
      scoped === 2 && global > scoped, JSON.stringify({ scoped: scoped, global: global }));
+  /* diagRows never reads the toggle: the sheet hands over its own (the
+     booted test of it is with the other handlers, above), so a caller that
+     names no scope cannot inherit it either. */
+  ok('...and the review\'s own row, and a diagRows call that names no scope, count the block\'s whatever the sheet was left on',
+     reviewed === scoped && unsaid === scoped, JSON.stringify({ reviewed: reviewed, unsaid: unsaid }));
   call('diagScope = "block"');
 
   console.log('\n== priorBlockSets: the block before this one, last logged week, deload skipped (plans/018) ==');

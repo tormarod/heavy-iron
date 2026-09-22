@@ -7,7 +7,7 @@
    section comments mark (plans/008 item 13), and split at the seam inside
    the seam: only the drawing came. blockTagsFor, volumeTotals,
    blockTonnageByWeek and volumeTrendRows stayed behind, because
-   js/block-editor.js, js/diagnostics.js and js/review.js all read them —
+   js/block-editor.js, the Diagnóstico and js/review.js all read them —
    they are the app's shared volume vocabulary, not this screen's private
    workings, and a screen going missing must not take the block review's
    numbers with it.

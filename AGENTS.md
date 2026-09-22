@@ -86,18 +86,22 @@ identical to an oversight unless someone writes down which it is:
      stub cannot help there, because a plausible-looking empty answer is
      worse than a dead button. That is why the volume arithmetic, the
      `blockShare*` builders and the `normalizeImported*` validators
-     stayed behind while their screens left.
+     stayed behind while their screens left, and why the Diagnóstico's
+     rows (`diagRows`, `freqRows`, `strengthRows` and what they are built
+     from, which the block review exports) are in `app.js` while its
+     sheet is in `js/diagnostics.js`.
 
   `test/unit.js` holds both rules to the source: it fails on a read that
   breaks either one, naming the file and line, and it boots the shell
   without each guarded file in turn, ticks a set on the real card and
   draws every week of a block with a mid-block deload. That draw is where
   `deloadCheck` used to reach `strengthByExercise` in `js/diagnostics.js`,
-  unstubbed, and fall into recovery; it lives in `app.js` now. One rule-2
-  breach still stands and is listed there by name — `js/review.js` builds
-  on six of the Diagnóstico's names, so without `js/diagnostics.js`
-  "+ Nuevo bloque → Ver la revisión" throws and makes no block — and that
-  list only shrinks.
+  unstubbed, and fall into recovery; it lives in `app.js` now. It also
+  boots each hole to press "+ Nuevo bloque → Ver la revisión", and holds
+  the review each one shows to a whole shell's, word for word. Without
+  `js/diagnostics.js` that review threw and no block was made — the one
+  rule-2 breach that stood, until the Diagnóstico's rows moved into
+  `app.js`. None stands now.
 
   Both rules are about symbols, and **both read the same on ids**: an id
   that is new to `index.html` and looked up by a split file needs a null

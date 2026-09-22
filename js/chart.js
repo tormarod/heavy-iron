@@ -6,7 +6,7 @@
    Split out of js/app.js as the third of the five seams that file's own
    section comments mark (plans/008 item 13). What stayed behind is the
    arithmetic that is not the chart's alone: est1RM and hasReps are read by
-   targetEstimate here and by js/diagnostics.js, which draws its own trend
+   targetEstimate here and by the Diagnóstico, which draws its own trend
    from them. bestSet came along, because nothing but the chart has ever
    asked which set of a session "wins".
 
