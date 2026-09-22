@@ -270,4 +270,25 @@ assertions, two separator cases, two `lang` cases, three smoke sections.
 - When English lands, the language control writes `state.prefs.lang`;
   the CSV needs nothing more. `localDay` is the date to show a person;
   `isoDay` stays the UTC key `variantSince` compares.
+- Step A done as PR #180 (`claude/068-a`, v134 → v135). No deviations from
+  A.1–A.4; the plan's three numbered test cases and its two named
+  mutation checks (cell → toISOString, validTs dropped from accept) all
+  landed as described. Two additions beyond the minimum, both worth
+  knowing about: a direct `isoDay(9e15)` no-throw assertion, and a third
+  mutation check (isoDay's own guard reverted alone) that showed its
+  fallback and seedLateralVariants' `validTs(t)` scan filter are
+  independent layers — reverting either one alone leaves migrate()
+  un-thrown because the other still covers it; only reverting both (or
+  the direct isoDay assertion) catches a regression in just one. While
+  running that extra mutation check by hand, an early version of the
+  direct assertion crashed the whole `node test/unit.js` process instead
+  of failing cleanly: its diagnostic-message argument (the third argument
+  to `ok()`) called the throwing expression a second, unguarded time
+  outside `throws()`'s try/catch — JS evaluates all of a call's arguments
+  before the call runs, so this happened even though the condition
+  argument short-circuited past its own copy of the same call. Fixed by
+  computing the diagnostic only on the safe side of the same `throws()`
+  check. Worth remembering for any future assertion here that both
+  probes a throw and wants to report the thrown value: guard the
+  diagnostic exactly as strictly as the condition, not looser.
 - *(Executor: record deviations here.)*
