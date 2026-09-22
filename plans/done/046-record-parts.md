@@ -278,3 +278,11 @@ produces), three differences exist, and they were probed deliberately:
     because the redrawn session files its empty rows back.
 - **Left alone:** the unit.js fixtures at ~981 and ~4461 that set
   notes/energy/order as filler. They do not test the record.
+
+**Orchestrator's decision on the three differences (2026-09-22).**
+Accepted. None of them is reachable: no write path and no import
+normalizer produces a `null` rir slot, a non-canonical week key like
+`w01-d1`, or a profile missing a top-level map (`migrate` creates them
+all). On such data the new functions do what the purge says, clearing the
+slot or tolerating the missing map, where the old helpers kept the garbage
+or threw.
