@@ -92,6 +92,9 @@ below so it is not lost or re-audited.
 | 068 | [A set's date is the day it was trained, a timestamp no clock can read is refused, and the CSV follows a language preference](done/068-timestamps-and-csv-by-language.md) | P2 | S each | LOW / LOW–MED | — (A owns the `ts` row field; B must not touch it) | DONE — A (#180, v137): `fecha` is the local day the set was trained (`localDay`), and a `ts` no `Date` can hold is refused on every path and can no longer stop `migrate()` (`validTs`); review fixed the CSV fixture, which only held from UTC+1 down. B (#182, v138): `state.prefs.lang` (`es`, or `en`; nothing on screen sets it yet) and the CSV separator follows it (`;` / `,`); review found `buildCsv`'s `byDay` threw on a day id named `__proto__` or `constructor` (now `Object.create(null)`) |
 | 069 | [What an AI round trip hands back keeps its lifts' ids, and "series x 5 RIR 2" reads 2](done/069-ai-round-trip-keeps-long-ids.md) | P3 | S | LOW | — | DONE (#181, v136) — a paste keeps a stated id longer than 60 when the profile already holds that exercise (`knownExerciseIds`, passed by all three strict callers), the AI prompt asks for a given id to be copied exactly, and a sets word before the "x" reads as sets×reps (`series x 5 RIR 2` → 2) |
 | 070 | [AGENTS.md opens with the checklist an agent needs before it changes code, and says each rule once](done/070-agents-md-checklist-first.md) | P3 | S–M | LOW (code) / MED (reader) | 067, 068, 069 merged first — no bump | DONE (#183, no bump) — AGENTS.md opens with a checklist (each kind of change: what moves with it, what holds it, where the reasons are), and each rule is stated once under its own subsection; a 141-rule inventory maps old lines to new sections. Review corrected five statements of fact the old file carried: the hook's matcher, the gate's skip list, what the unit suite holds `SHELL` to, which files the slot-regex scan reads, and which contrast pairs are computed |
+| 071 | [A lift's rows that are not a list are repaired, and a throw inside `migrate()` lands on the recovery screen or leaves this tab's data alone](071-migrate-never-strands-the-app.md) | P2 | S each (A, B) | LOW / LOW–MED | — (A and B are independent PRs, each bumps) | TODO |
+| 072 | [The unit suite's doc checks say what GitHub and AGENTS.md say: headings slug with their underscores, the slot regex is watched in every file](072-unit-checks-match-their-docs.md) | P3 | S | LOW | — no bump | TODO |
+| 073 | ["Deshacer" is tested through the real button of every action that offers it, and AGENTS.md states the rule](073-deshacer-tested-everywhere.md) | P3 | S–M | LOW | — no bump | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
@@ -1200,6 +1203,30 @@ missed a string or a number where a map goes, which made the first tick
 throw. The reviewer's differential probe — old `migrate()` against new
 over generated states — is what made widening safe to merge: every state
 a writer produces came out byte-identical each time.
+
+### Follow-ups found while executing 067–070 — planned (2026-09-23)
+
+The maintainer asked for these to be worked too. Plans 071–073 cover five
+of the six below. The sixth is split: the slot-regex scan is widened by
+072, while `SHELL`'s order and the contrast pairs are left as they are,
+for the reasons 072 records.
+
+- **071** — the log's leaf (A: a repair on the log part; on `8ff9355` a
+  real boot of such data opened on the recovery screen, and a tick on a
+  row stored as a number or a list was silently lost), and every throw
+  inside `migrate()` (B: `prefs` defaulted before the profiles are
+  repaired; `load()` sends a throw to the recovery screen instead of the
+  boot guard's "La app no ha podido arrancar", which reopening cannot
+  fix; "Cargar copia" and loading a profile file keep this tab's data
+  on a throw, as `adoptStored` does since 067 B). B also fixes the two
+  "rule (a)" comments in `js/app.js`.
+- **072** — the heading slugger keeps a literal `_` like GitHub's,
+  pinned by a table of known anchors; the slot-regex check scans every
+  `js/*.js`; the two "rule (a)" citations in `test/unit.js`.
+- **073** — booted "Deshacer" tests for the four undoable actions that
+  had none ("Borrar todos los datos", deleting blocks three ways,
+  "Cargar copia", loading a profile file), a pinned list of every
+  `snapshotForUndo` call, and the rule in AGENTS.md.
 
 ### Follow-ups found while executing 067–070 — recorded, not planned
 
