@@ -80,14 +80,14 @@ below so it is not lost or re-audited.
 | 056 | [One history per Diagnóstico row — the row reads exactly the sessions the objetivo reads](done/056-diagnostico-one-history.md) | P2 | S–M | MED | — | DONE (#158) — a row reads exactly the objetivo's sessions (`liftHistory`); split lifts one row per day; no raw re-read; ordinary rows identical |
 | 057 | [What was ticked in a block, read one way — the last five raw walks onto `sessionsOf`](done/057-block-done-sets.md) | P3 | S–M | LOW | 054, 056 | DONE (#160) — the last five raw walks read `sessionsOf` with `'plan'` weeks; `sessionVolume`; the review's energy comparison and the heatmap stop counting stranded weeks; two test-only parameters gone |
 | 058 | [Three fixes from the ninth audit — an id newer than its reader is guarded and checked, the worker reads one cache, and a phase label's number counts only next to "RIR"](done/058-ninth-audit-three-fixes.md) | P1 (A, C), P2 (B) | S each | LOW / LOW–MED | — (three independent PRs; every one bumped) | DONE — B (#164, v124), C (#165, v125), A (#166, v126); eleven reads guarded and a git-dated unit check of every $('id') outside app.js (169 reads, 0 younger than their file); sw.js reads through one scoped helper; phaseRir reads a number before or after "RIR" only, within RIR_MAX, with a seeded fuzz; C's end-to-end case uses "Semana 6 · 10 reps" since "Descarga 60%" hits the deload gate first — see each step's Maintenance notes |
-| 059 | [The app parses on Safari 15 — the one lookbehind goes, and a unit check holds `js/` to that floor](059-safari-15-floor.md) | P1 | S | LOW | — (before 062 B) | TODO |
-| 060 | ["Deshacer" ends at the next change, "Recargar" really discards, and a decision toast cannot be pushed off screen](060-undo-and-conflict-keep-their-promises.md) | P1 | S–M | LOW–MED | — | TODO |
-| 061 | [A release can't deploy under a version already shipped, a first visit isn't reloaded, and the smoke gate sees every way a PR is opened](061-release-safety.md) | P2 | S | LOW | — (land A early) | TODO |
-| 062 | [Typing a week count keeps the deload, and a phase label's RIR reads the way people write it](062-deload-keystroke-and-phase-rir.md) | P1 | S each (A, B) | LOW / LOW–MED | 059 (hard, for B) | TODO |
-| 063 | [An exercise keeps its own id through every restore, a save records a rename only when the name changed, and an import files each lift's rows under that lift](063-exercise-id-integrity.md) | P2 | S | LOW–MED | — | TODO |
-| 064 | [An import that could not be saved says so, and the objetivo's rung list is built once per history](064-save-failure-and-load-ladder.md) | P3 | S each (A, B) | LOW | — (060 soft: `flushSave`) | TODO |
-| 065 | [The guide says what undo covers and quotes the real dialog; the README's block contract matches the importer and the AI prompt](065-docs-undo-and-block-json.md) | P2 | S | LOW | 060 (soft) — no bump | TODO |
-| 066 | [The service worker runs under test — install with a hole, activate offline, two releases side by side, and the swap](066-service-worker-tests.md) | P2 | M | LOW | — no bump | TODO |
+| 059 | [The app parses on Safari 15 — the one lookbehind goes, and a unit check holds `js/` to that floor](done/059-safari-15-floor.md) | P1 | S | LOW | — (before 062 B) | DONE (#171, v128) — `saysDescarga` replaces the lookbehind, pinned to the old regex over 2,000 seeded labels; `node test/unit.js` fails on eleven known features newer than Safari 15 in `js/` or `sw.js`; the floor is written into README and AGENTS.md |
+| 060 | ["Deshacer" ends at the next change, "Recargar" really discards, and a decision toast cannot be pushed off screen](done/060-undo-and-conflict-keep-their-promises.md) | P1 | S–M | LOW–MED | — | DONE (#170, v133) — undo ends at the first save after the action’s own (any scope, navigation included) or an adopted write; "Recargar" adopts storage first, refuses every write while `discarding`, clears it after 3 s if the reload was stopped and replays a refused change; "Quedarme" writes at once; a forced write hides a stale conflict toast. **Decision 4 was revised in review**: only the conflict holds toasts back — "Actualizar" yields to everything and comes back after (ranked above notes, it hid Deshacer and the quota warning). 26 booted assertions, 22 mutations; the full browser suite (588) run on the final head before merging |
+| 061 | [A release can't deploy under a version already shipped, a first visit isn't reloaded, and the smoke gate sees every way a PR is opened](done/061-release-safety.md) | P2 | S | LOW | — (land A early) | DONE — A+C (#167, no bump): `pages.yml` refuses to deploy a shell that changed under an already-deployed `CACHE_VERSION` (verified live on every merge since), and the hook matcher is `mcp__.*__create_pull_request`; B (#173, v129): no reload on a first visit’s claim. B had to widen past its Scope, correctly: `openApp()`’s old `workerStart` wait hangs without the reload (the plan called it "harmless"), so it waits for the controller, and `renderVersion()` now runs on the first claim |
+| 062 | [Typing a week count keeps the deload, and a phase label's RIR reads the way people write it](done/062-deload-keystroke-and-phase-rir.md) | P1 | S each (A, B) | LOW / LOW–MED | 059 (hard, for B) | DONE — A (#168, v127): the weeks box no longer writes the deload per keystroke; B (#174, v132): `phaseRir` reads the plan’s table and, after two review rounds, sets×reps (`3x5 RIR 2` → 2), ascending `a`/`o`/`ó` ranges, the singular "rep en reserva", `S3`/`W3` week abbreviations, units after a number (`Pausa 2 s 1 RIR` → 1), and keeps looking past a number above `RIR_MAX`; no seed, published or generic label moves (1,667 checked). Known limit, pinned by a case: `series x 5 RIR 2` → 5 |
+| 063 | [An exercise keeps its own id through every restore, a save records a rename only when the name changed, and an import files each lift's rows under that lift](done/063-exercise-id-integrity.md) | P2 | S | LOW–MED | — | DONE (#169, v130) — a paste caps slugged ids at 60, a restore gives stored ids back whole; rename detection keys by (start day, id); `importIdMaps` registers raw ids first. Review added the tests that pin the start-day lookup, the day map’s order and the slug trim (16 assertions) |
+| 064 | [An import that could not be saved says so, and the objetivo's rung list is built once per history](done/064-save-failure-and-load-ladder.md) | P3 | S each (A, B) | LOW | — (060 soft: `flushSave`) | DONE — B (#175, v131): `loadLadder` memoised per history answer (300 warm day switches over a never-repeating ladder: 164 ms → 1.4 ms each, desktop); A (#177, v134): `writeState`/`flushSave` return whether they wrote, and the five import paths report success only on `!== false` (an old cached `app.js` answers `undefined`) |
+| 065 | [The guide says what undo covers and quotes the real dialog; the README's block contract matches the importer and the AI prompt](done/065-docs-undo-and-block-json.md) | P2 | S | LOW | 060 (soft) — no bump | DONE (#176, no bump) — the guide names all six undoable actions and quotes the real dialog; the README’s `ex.id`, `phase`, `minRir` and § Tests match the code |
+| 066 | [The service worker runs under test — install with a hole, activate offline, two releases side by side, and the swap](done/066-service-worker-tests.md) | P2 | M | LOW | — no bump | DONE (#172, no bump) — `loadWorker()` runs the real `sw.js` over a fake cache store and network; 11 cases and 2 mutation checks, every case guarded so a throw is a FAIL, not a crash; README and AGENTS.md name the third loader |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
@@ -1118,6 +1118,56 @@ collision, so land it before the shell plans pile up. Then 062 A/B, 063,
 one, rebase the next on `main`, take the higher version, bump again, and
 re-run `node test/unit.js`. 065 and 066 change no shell file and can land
 whenever (065 after 060).
+
+### Tenth audit — executed (2026-09-22)
+
+All eight plans landed the same evening in eleven PRs (#167–#177), each
+by an executor in its own worktree (Haiku for the docs and CI steps,
+Sonnet for the small code steps, Opus for 060, 062 B, 063 and 066), every
+code PR reviewed before merging — by an Opus or Sonnet reviewer for 060,
+063 and 066, by the orchestrator for the rest — and merged one at a time
+with a rebase and re-bump in between (v126 → v134). The new deploy guard
+(061 A) ran on every one of those merges and passed.
+
+Review changed four plans, and the lesson is the same each time: the
+plan's own rule was wrong or incomplete, not just the code.
+
+- **060, decision 4**: ranking "Actualizar" above ordinary toasts hid
+  Deshacer and the quota warning behind a toast that can sit on screen
+  for a whole session. Revised: only the conflict holds toasts back.
+  Three further edges came out of two review rounds (a throw while
+  adopting left `held` stuck with nothing on screen; a refused change
+  was adopted over; "Quedarme" inside the 3 s window did not write).
+- **062 B's table** missed shapes people write every week (`3×10 RIR 2`,
+  `2 a 3 RIR`, the singular "rep en reserva"); the first widening then
+  broke five labels `main` read correctly (`3x10 a 2 RIR`, `máx 2 RIR`,
+  `Pausa 2 s 1 RIR`), found by the executor and fixed by making "a/o"
+  ranges ascending-only, requiring a digit before an "x", and reading a
+  lone s/w after a number as a unit.
+- **061 B**: the plan called `openApp()`'s old wait "harmless"; it hangs.
+- **063**: the "Enviar a…" test did not guard the start-day lookup it was
+  written for — a reviewer's mutation passed the whole suite.
+
+### Tenth audit — follow-ups, recorded not planned
+
+- **Long exercise ids across an AI round trip** (063): ids longer than 60
+  written before 063 now survive a restore, but a paste still cuts a
+  *stated* id at 60, and the AI prompt exports the current ids — so the
+  next AI-written block comes back with cut ids and the objetivo's
+  cross-block join breaks for those lifts; an old-shell phone receiving a
+  QR "perfil" still cuts them (and can merge two). A fix would let the
+  paste keep a stated id longer than 60 when it matches one already in the
+  profile, or have `migrate()` shorten such ids once, with their record.
+- **`adoptStored` assigns `state` before `migrate()`** (pre-existing, in
+  the storage listener since before 060): if `migrate()` throws partway,
+  a page whose "Recargar" reload was stopped keeps the other tab's partly
+  migrated data and a later change writes it back; the normal reload path
+  lands on the recovery screen instead.
+- **`phaseRir` known limits**: `series x 5 RIR 2` → 5 (pinned by a case),
+  `2 sem 3 RIR` → null and `RIR 2 a 3,5` → null (by rule).
+- Still open from the audit itself: finding 14 (CSV `fecha` is the UTC
+  day; `,` separator in es-ES Excel), the `ts` upper bound, AGENTS.md's
+  restructure, and the ninth audit's findings 4–6 and 12.
 
 ## Worth doing, not yet planned
 
