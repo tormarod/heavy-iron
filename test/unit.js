@@ -3904,6 +3904,72 @@ ok('...and day B\'s — the id-only map used to erase one of them',
    peSaveProbe['w1-d1'] && peSaveProbe['w1-d1'].e1 && peSaveProbe['w1-d1'].e1.length === 1 && peSaveProbe['w1-d1'].e1[0].w === '60',
    JSON.stringify(peSaveProbe));
 
+console.log('\n== plan editor "Guardar cambios": a rename is told by the day an exercise started on (plans/063) ==');
+{
+  /* One id on two days under two names. The old names were kept by id
+     alone, so the last day's name answered for both copies and every save
+     — one that only fixed a cue included — said "1 ejercicio renombrado"
+     and cut the objetivo history again. Pressed on the real buttons; the
+     status line is what the person reads, and `variants` is the cut. */
+  const boot = bootApp({ state: {
+    activeProfile: 'hombre',
+    profiles: { hombre: {
+      label: 'Hombre', activeBlock: 'B', blockOrder: ['B'], week: 1, day: 0,
+      blocks: { B: {
+        id: 'B', name: 'Block', weeks: 8, deload: 0,
+        days: [
+          { id: 'd0', name: 'Lunes', ex: [{ id: 'press', n: 'Press banca', sets: 3, reps: '8-10' },
+                                         { id: 'row', n: 'Remo', sets: 3, reps: '8-10' }] },
+          { id: 'd1', name: 'Jueves', ex: [{ id: 'press', n: 'Press banca (máquina)', sets: 3, reps: '8-10' }] },
+          { id: 'd2', name: 'Sábado', ex: [{ id: 'curl', n: 'Curl', sets: 3, reps: '10-12' }] },
+        ],
+      } },
+      log: { B: {} },
+    } },
+  } });
+  boot.clock.advance(1000);
+  const save = edit => {
+    let problem = '', status = '';
+    try {
+      boot.$('editPlan').onclick();
+      if (!boot.call('peDraft')) return { problem: '"Editar plan" opened no draft' };
+      if (edit) boot.call(edit);
+      boot.$('peSave').onclick().catch(() => {});
+      if (!boot.call('peDraft === null && !askResolve')) problem = 'the save did not run to its end';
+      /* Read before the clock moves: save()'s debounced write lands after
+         and puts "Guardado hh:mm" over the line the handler wrote. */
+      status = boot.$('status').textContent;
+      if (!problem && !/^Plan actualizado/.test(status)) problem = 'the status line is not the save\'s';
+      boot.clock.advance(1000);
+    } catch (e) { problem = e.message; }
+    return {
+      problem, status,
+      press: JSON.stringify(boot.call('getProfile().variants && getProfile().variants.press') || null),
+      names: JSON.stringify(boot.call('getProfile().blocks.B.days.map(d => d.ex.map(e => e.n))')),
+    };
+  };
+  const renamedIn = r => /renombrado/.test(r.status);
+  const cue = save('peDraft.block.days[0].ex[0].cue = "Codos a 45°";');
+  const again = save('');
+  ok('a save that only changes a cue reports no rename when one id sits on two days under two names (plans/063)',
+     !cue.problem && !renamedIn(cue) && cue.press === 'null', JSON.stringify(cue));
+  ok('...nor does the save after it (plans/063)', !again.problem && !renamedIn(again) && again.press === 'null', JSON.stringify(again));
+
+  const real = save('peDraft.block.days[1].ex[0].n = "Press inclinado";');
+  const after = save('');
+  const cuts = JSON.parse(real.press || 'null');
+  ok('renaming one copy for real reports exactly one rename, and records it once (plans/063)',
+     !real.problem && /· 1 ejercicio renombrado/.test(real.status) && Array.isArray(cuts) && cuts.length === 2
+       && cuts[1].n === 'Press inclinado', JSON.stringify(real));
+  ok('...and the save after it reports none, the cut left as it was (plans/063)',
+     !after.problem && !renamedIn(after) && after.press === real.press, JSON.stringify(after));
+
+  const moved = save('moveExToDay(peDraft.block.days[0].ex[1], peDraft.block.days[0], peDraft.block.days[2]);');
+  ok('sending an exercise to another day without renaming it is no rename (plans/063)',
+     !moved.problem && !renamedIn(moved) && moved.press === real.press
+       && moved.names === JSON.stringify([['Press banca'], ['Press inclinado'], ['Curl', 'Remo']]), JSON.stringify(moved));
+}
+
 /* plans/053. "Borrar registro" used to file the erasure under the day the
    item sat on in the draft, while the dialog in front of it counted the
    sets where they actually sit: under the day the exercise started on,

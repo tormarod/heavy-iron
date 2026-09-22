@@ -822,14 +822,28 @@ function applyPlanDraft(profile, draft) {
      where one variant ended is the date written now. See recordVariant
      and variantSince in js/app.js. The log itself is kept either way —
      only the objetivo history is cut — but the status line has to say
-     so, or the next session shows no objetivo with no explanation. */
+     so, or the next session shows no objetivo with no explanation.
+
+     The old name is looked up by the day the exercise STARTED on and its
+     id, not by id alone. One id can sit on two days under two names (a
+     restore of two long names cut to one id, or one copy of a shared-id
+     pair renamed), and keyed by id the last day's name answered for both:
+     every save, even one that only fixed a cue, compared the other copy
+     against the wrong name, said "1 ejercicio renombrado" and cut its
+     objetivo again (plans/063). By the start day, a copy "Enviar a…" moved
+     is compared with the name it had where it came from, so a move is
+     never a rename; and an exercise added in this session has no start
+     day and no old name, so it is not one either. */
   const liveBlock = profile.blocks[block.id];
   let renamed = 0;
   if (liveBlock) {
     const wasNamed = Object.create(null);
-    (liveBlock.days || []).forEach(d => (d.ex || []).forEach(e => { if (e && e.id) wasNamed[e.id] = e.n; }));
+    const at = (dayId, exId) => dayId + '\u0000' + exId;
+    (liveBlock.days || []).forEach(d => (d.ex || []).forEach(e => { if (e && e.id) wasNamed[at(d.id, e.id)] = e.n; }));
     block.days.forEach(d => d.ex.forEach(e => {
-      if (e && e.id && wasNamed[e.id] != null && recordVariant(profile, e.id, wasNamed[e.id], e.n)) renamed++;
+      const from = e && draft.startDay.get(e);
+      const old = from != null ? wasNamed[at(from, e.id)] : undefined;
+      if (old != null && recordVariant(profile, e.id, old, e.n)) renamed++;
     }));
   }
   profile.blocks[block.id] = block;
