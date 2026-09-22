@@ -2196,13 +2196,15 @@ function parkedRows(profile, blockId, w, dayId, exId, n) {
   return a && a.length > n ? a.slice(n).filter(rowUsed).length : 0;
 }
 
-function loggedSets(profile, blockId, dayId, exId, weeks) {
+/* The count the plan editor quotes before "borrar registro", so it walks
+   exactly what purgeExLog/purgeDayLog walk: every week the day has. It used
+   to rebuild keys 1..MAX_WEEKS, and a week filed above the cap was deleted
+   by the purge without ever having been counted in the warning. */
+function loggedSets(profile, blockId, dayId, exId) {
   let n = 0;
-  const last = weeks || MAX_WEEKS;
-  for (let w = 1; w <= last; w++) {
-    const s = profile.log[blockId] && profile.log[blockId][slot(w, dayId)];
-    if (s && s[exId]) n += s[exId].filter(rowUsed).length;
-  }
+  forEachSlot(profile.log, blockId, (k, w, d, s) => {
+    if (s && Array.isArray(s[exId])) n += s[exId].filter(rowUsed).length;
+  }, { dayId: dayId });
   return n;
 }
 
