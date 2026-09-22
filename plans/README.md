@@ -79,6 +79,7 @@ below so it is not lost or re-audited.
 | 055 | [One table for what a plan exercise may hold — `EX_FIELDS` — and your own backup gives back exactly what you typed](done/055-exercise-fields.md) | P2 | M | MED | — | DONE (#159) — `EX_FIELDS` declares each exercise field once; the editor caps new text; your own backup restores text up to 2,000 characters exactly; one `cleanPlates()` |
 | 056 | [One history per Diagnóstico row — the row reads exactly the sessions the objetivo reads](done/056-diagnostico-one-history.md) | P2 | S–M | MED | — | DONE (#158) — a row reads exactly the objetivo's sessions (`liftHistory`); split lifts one row per day; no raw re-read; ordinary rows identical |
 | 057 | [What was ticked in a block, read one way — the last five raw walks onto `sessionsOf`](done/057-block-done-sets.md) | P3 | S–M | LOW | 054, 056 | DONE (#160) — the last five raw walks read `sessionsOf` with `'plan'` weeks; `sessionVolume`; the review's energy comparison and the heatmap stop counting stranded weeks; two test-only parameters gone |
+| 058 | [Three fixes from the ninth audit — an id newer than its reader is guarded and checked, the worker reads one cache, and a phase label's number counts only next to "RIR"](058-ninth-audit-three-fixes.md) | P1 (A, C), P2 (B) | S each | LOW / LOW–MED | — (three independent PRs; every one bumps) | IN PROGRESS |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
@@ -918,6 +919,79 @@ or in its `readSession`-only form after). 041 next (bumps). 042 and 043
 touch no shell file and can land at any time. Rebase every `js/` plan on
 `main` before opening its PR — plan 038 is landing there concurrently —
 and take the highest `CACHE_VERSION` on conflict.
+
+## Ninth audit (2026-09-22) — health check after plans 038–057
+
+A ninth pass at `7791eb9` (the merge of PR #163), correctness-first, over
+the **whole working tree** rather than the day's diff: four parallel
+read-only subagents (`js/app.js` up to the card; `js/app.js` from the
+card to the end; the six editor/diagnostics/transfer files; the shell,
+`sw.js`, the small modules, the suites and the docs). Baseline: `node
+--check` clean on every script, `node test/unit.js` 1180/1180, the full
+browser suite forced (`SMOKE_GATE_FORCE=1`) 586/586, `CACHE_VERSION`
+v123 bumped after the last shell change, no top-level declaration shared
+by two `js/*.js` files, no `TODO`/`console.log`/`debugger`/`eval` in the
+shell, every `innerHTML` with a user string through `esc`/`textContent`.
+**Every finding below was re-verified by opening the cited code** before
+it made the table, and one of the reviewers' HIGH items was dropped on
+that check (see "considered, recorded").
+
+The three highest became plan 058, one PR each; everything else is
+recorded here.
+
+### Vetted findings, by leverage
+
+| # | Finding | Category | Impact | Effort | Risk | Conf. | Evidence (`7791eb9`) | Plan |
+|---|---|---|---|---|---|---|---|---|
+| 1 | **Three files read ids younger than themselves with no null guard.** `renderBlockBar`'s `$('blockBtn')` (id 2026-09-20, file 2026-08-26) is on every draw: a precache hole lands intact data on the recovery screen, which `boot-guard.js` does not rescue. `wireReview`'s `$('reviewImport')` and `wireProfileTransfer`'s `$('storageProtect')` are ahead of `load()`: the stuck loading screen. The same commits guarded `#reviewBtn`, `#newBlockBtn`, `#importBtn`, `#manageBtn`. Invisible to the suite because `test/harness.js`'s fake document answers every id | correctness / shell rule | HIGH (narrow trigger, whole-app outcome) | S | LOW | HIGH | `js/block-editor.js:52-56, 911, 937`; `js/review.js:355, 419-435`; `js/profile-transfer.js:449-450, 478`; `js/diagnostics.js:299`; `test/harness.js:213-221` | 058 A |
+| 2 | **Every read in `sw.js`'s fetch handler is the global `caches.match`**, which searches every cache in creation order; with a new worker installed and waiting, a hole in the old shell is answered by the next release's file — the mixed shell of `5ed2906`. `repairCache` is correctly scoped, the serving path is not | correctness / offline | MED–HIGH | S | LOW | HIGH | `sw.js:157, 161, 204, 206` vs `:91` | 058 B |
+| 3 | **`phaseRir`'s digits-anywhere fallback is unclamped**: "Descarga 60%" → 60, "Semana 6 · 10 reps" → 6; `weekRir` subtracts that many reps and walks the weight down for every exercise that week, and `recordTarget` stores a `rir` the `obj` part's own `accept` drops on restore (`<= RIR_MAX`). Every seed label carries "RIR" or no digit, so no seed moves | correctness (v3) / own-data round trip | HIGH (any hand-written label with a number) | S | LOW–MED | HIGH | `js/app.js:2402, 6139, 6382, 483, 2250`; `test/unit.js:4771` | 058 C |
+| 4 | `migrate()` assigns the seed's `blocks` **by reference** (`profile.blocks = seed.blocks`) and its selector resolves index 0 and every index ≥ 2 to `hombre`: two blockless profiles share one block object, and editing one plan rewrites the other. The "no blocks" branch also skips the `purgeRecord(profile, 'block-1')` the corrupt-block branch beside it does, so a stale log surfaces under the fresh seed | correctness | MED (corrupt storage only; every import path clones) | S | LOW | HIGH | `js/app.js:812, 835, 827-831` | not planned — storage-only reach; pair with 5 and 6 |
+| 5 | `migrate()`'s day-id and exercise-id repairs **rename without re-keying the record**, unlike the block-key repair beside them: day 0 given `d0` adopts day 1's rows | correctness | MED (corrupt storage only) | S | LOW | HIGH | `js/app.js:916-922, 929-932` vs `858-861` | not planned — same reach as 4 |
+| 6 | `ensureRecord` and the phase check accept an **Array** as an object: a `log: []` survives migrate, ticks write string properties on it, and `JSON.stringify` drops every set of the session; an array `phase` disables `genericPhase` and every week's RIR | correctness | MED (corrupt storage only) | S | LOW | HIGH | `js/app.js:664, 842` | not planned — one `Array.isArray` each; same reach as 4 |
+| 7 | `RUNTIME_CACHE` is keyed on `CACHE_VERSION`, so every release discards every previously seen block and font, against the file header's and the guide's offline-import promise; `activate` also deletes the old shell cache **before** `repairAll`, so a hole plus no signal at activation strands the app | offline / docs | MED | S | LOW–MED | HIGH | `sw.js:23, 104-113, 10-14`; `docs/guide.md:430` | not planned — maintainer call on the cache's lifetime |
+| 8 | Nothing gates `VENDOR_VERSION`: the `cache-version` regex matches `js/vendor/*.js` and forces a shell bump that does nothing, since `VENDOR_CACHE` survives every activate; a refreshed `jsQR.js` never reaches returning phones unless the separate constant is remembered | dx / release | MED | S | LOW | HIGH | `.github/workflows/test.yml:79, 107`; `sw.js:24-30` | not planned |
+| 9 | Removing a day or exercise with a note or an energy tag but no ticked set bypasses `eraseFromDraft`: the `logged` count sees rows only, so `notes`/`energy`/`order`/`obj` entries for those slots stay in the profile forever | correctness / record growth | MED–LOW | S | LOW | HIGH | `js/block-editor.js:1011-1019, 1229-1231`; `js/app.js:338, 344, 2720` | not planned |
+| 10 | `startQrScan` has no cancellation token (unlike `drawQrShow`'s): Leer → Mostrar → Leer while the camera prompt is up leaks the first `MediaStream`, and the light stays on after the sheet closes; declining a scanned block leaves the pane on "Comprobando…" with the camera off | correctness | MED–LOW | S | LOW | HIGH | `js/qr-transfer.js:466-529, 587` | not planned |
+| 11 | The rest timer's "Siguiente" line prices the next set with the plan's rep range, not the box's own `placeholder.r`; the unit case named for it uses a fixture whose second target set has `r: null`, so it never fires | correctness | LOW–MED | S | LOW | HIGH | `js/app.js:4335`; `test/unit.js:4283` | not planned |
+| 12 | Prototype-named exercise ids in `profile.log` write onto `Object.prototype` through `strengthByExercise`'s plain `{}` maps — the class plans/040 closed for block ids | hardening | LOW (corrupt storage only) | S | LOW | HIGH | `js/app.js:5109, 5131, 5141` | not planned |
+| 13 | The deload rung walk's fixed 60-iteration cap is sized for `inc = 2.5`: a 100 kg lift with `inc: 0.5` stops at 70 kg, not the 60 % floor | correctness | LOW | S | LOW | HIGH | `js/app.js:6571` | not planned |
+| 14 | `blockShareOrder` drops a one-id session order that the backup path deliberately keeps (`RECORD_PARTS.order.clean`); the 1RM chart plots a set with no reps at its raw weight on the 1RM axis; `docs/guide.md` still documents the greedy plate algorithm `fitPlates` replaced; the README layout table omits `tools/` and `.github/`; AGENTS.md overstates the `SHELL`-order check | docs / small | LOW | S | LOW | HIGH | `js/app.js:7496, 411`; `js/chart.js:231`; `docs/guide.md:999`; `README.md:164-194`; `AGENTS.md:151-153` | not planned |
+| 15 | `test/smoke.js` has 180 fixed sleeps against 47 condition waits; "aviso de versión nueva" waits a flat 1.5 s for a worker-driven toast | tests | LOW–MED (flake) | M | LOW | HIGH | `test/smoke.js:3588` | 008 item 21 bullet 2 (still open) |
+
+### Ninth audit — considered, recorded, not planned
+
+- **"Enviar a otra sesión" can concatenate a slot past `LOG_LIMITS.rows`
+  (24), which the app's own restore truncates** — two reviewers reported
+  it as HIGH from `moveExerciseRecord`'s `merge: 'concat'`
+  (`js/app.js:648`). **Dropped on verification**: `applyPlanDraft` purges
+  every erased exercise *before* it runs the moves, each move is lifted
+  onto a spare day and put down alone, and `moveExRefusal` refuses a
+  landing on any day that already carries the id, retired or not
+  (`js/block-editor.js:685-689, 758-791`). No route through the editor
+  reaches a non-empty destination, so the concat is defence-in-depth for
+  a hand-edited plan only. Left as is.
+- Findings 4–6 and 12 share one reach — storage the import path could
+  never have written — and the file's own principle that "localStorage is
+  not an import". Worth one small plan together, with a unit section that
+  runs `migrate()` over shapes no writer produces; not this round.
+- Finding 7's runtime-cache lifetime is a design call (de-version it as
+  `VENDOR_CACHE` was, or keep the header's promise out of the docs).
+
+### Ninth audit — coverage gaps behind the findings
+
+- `test/harness.js`'s fake document manufactures an element for any id,
+  so AGENTS.md's id rule has no automated check — plan 058 A adds one.
+- Nothing tests `migrate()` against a profile the import path could never
+  produce, and nothing round-trips a profile the app's own writers just
+  produced through restore.
+- Nothing exercises overlapping in-flight `startQrScan`/`drawQrShow`.
+
+### Ninth audit — not audited
+
+`js/vendor/*.js` internals; `css/style.css` beyond selector validity; the
+training methodology in the seed plans and the v3 constants; visual
+design; device performance.
 
 ## Worth doing, not yet planned
 
