@@ -3963,7 +3963,7 @@ const chartUnitProbe = call(`
     profile.log[blockId][slot(1, day.id)] = { [exId]: [{ w: '100', r: '5', done: true }] };
     profile.log[blockId][slot(2, day.id)] = { [exId]: [{ w: '220.462262185', r: '5', done: true, u: 'lb' }] };
     state.prefs.units = 'kg';
-    const points = collectHistory(profile, blockId, day.id, exId, 8, 'weight');
+    const points = collectHistory(profile, blockId, day.id, exId, 'weight');
     const all = collectHistoryAll(profile, exId, 'weight');
     state.prefs.units = 'kg';
     const round = ps => ps.map(p => Math.round(p.weight * 100) / 100);

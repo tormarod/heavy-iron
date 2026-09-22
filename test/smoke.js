@@ -1045,7 +1045,7 @@ const ok = (name, cond, extra) => {
       const landed = np.log[id][slot(1, nd.id)][ne.id];
       return landed[0].done === true && landed[0].w === '100' &&
              landed[1].done === false && landed[1].w === '105' &&
-             collectHistory(np, id, nd.id, ne.id, blockWeeks(nb), 'weight').length === 1;
+             collectHistory(np, id, nd.id, ne.id, 'weight').length === 1;
     }));
     /* A profile opens on the week its owner was on, which is usually one they
        have not trained yet: no ticks, and greyed last-week placeholders in
