@@ -100,4 +100,61 @@ cover. If the guide describes the review's set count, keep it true.
 
 ## Maintenance notes
 
-(Filled in when the PR lands.)
+**Drift.** Clean at the start: `git diff --stat 2805d9c..HEAD` over the
+plan's file list was empty, so `countShareLog`/`blockLoggedSets`/
+`blockDoneSets`/`countProfileSets`/`countBackupSets` were exactly where
+this plan says. Plan 049 landed on `origin/main` (commit `f4d392c`) while
+this was in progress, and the branch was rebased over it. Its only touch
+to `js/app.js` was `drawApp` and the rest timer — nowhere near
+`blockLoggedSets` or the `countSets`/`blockDoneSets` pair — and it left
+`js/profile-transfer.js`/`js/qr-transfer.js` untouched, so all three Step
+commits replayed with no conflicts. The rebase's only conflict was the two
+rows both branches had appended to `plans/README.md`'s table (049 on one
+side, 050/051 on the other); resolved by keeping both, in order.
+
+**Equivalence (Step A).** Run against `origin/main` at `2805d9c`, in two vm
+contexts built the way `loadApp()` builds one (a throwaway script, not
+committed — plan 049's later commits do not touch any of the five
+counters, so the comparison still holds against the rebased tip).
+**1,000 random profiles, 12,200 comparisons, 0 differences** — every one
+of the five counters, both `onlyDone` values where a function takes one,
+over blocks with sparse weeks, a stored key that is not a real slot, and
+an exercise entry that is not an array (everything `countSets` has to
+tolerate, since it still walks every stored key rather than
+`forEachSlot`). A deliberate break planted in `countSets` (counting every
+row instead of only used/done ones) was caught: 12,106 of 12,108
+comparisons then differed.
+
+**Deviations.** None from the Steps or the decisions. Two small additions
+beyond Step A's letter, both housekeeping done while already touching the
+lines in question: the doc comment above `countSets` now says it is the
+one counter the other four reduce to (decision 1), and the "sharing a
+block" section comment in `js/app.js` — which explains why several
+functions stayed there under AGENTS.md's split-file rule 2 — was corrected
+in the Step C commit once `js/review.js` stopped being one of
+`blockDoneSets`' readers; while there, it also started naming a fourth
+reader, `js/qr-transfer.js`, that the original prose had never counted.
+
+**Tests.**
+- **Added:** "the payload leaves out sets under a retired day and a
+  retired exercise, unlike the raw block counters" (unit) — both logged
+  and done, so a fix that merely swapped `rowUsed` for `done` would not
+  have caught it; "the send sheet shows what the payload carries, not the
+  raw storage, when something is retired" (smoke) — reads
+  `js/qr-transfer.js`'s own `#qrShowDesc` text straight after
+  `drawQrShow()`'s synchronous half runs, so no QR library or open sheet
+  is needed, the same shortcut the plan-only-payload test beside it takes;
+  "a stranded week's sets are not in the review's count" and "the tonnage
+  and the count still agree on which weeks they cover" (unit) — the
+  second holds even under the pre-050 code, since `blockTonnageByWeek` was
+  already bounded, so it is the first assertion that pins the fix (checked
+  by hand: reverting Step C's `sets:` line back to `blockDoneSets(...)`
+  turns the first FAIL, the second stays green).
+- **Renamed in place:** the smoke.js assertion at ~950 (`countShareLog` →
+  `countSets`), no behaviour change. Not extended with a retired item —
+  that case now lives in the new smoke test beside it instead, per Step B.
+- **docs/guide.md:** checked for a claim about the review's set count that
+  Step C would make false; found none. The guide's only week-scoped claim
+  near the review is the per-exercise RIR tally, already scoped to the
+  block's own weeks (`sessionsOf(..., { weeks: 'plan', ... })`) before
+  this plan, so it needed no change.
