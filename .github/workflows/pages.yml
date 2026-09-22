@@ -27,9 +27,12 @@ jobs:
         env:
           BEFORE: ${{ github.event.before }}
         run: |
-          # (comment: why — the 2026-09-22 v113 collision, and that the PR
-          #  check cannot see it because it compares against a base that
-          #  moved after it ran)
+          # The PR check compares a branch with the base it was cut from, at
+          # the moment it runs; two PRs cut from the same main each bump to the
+          # same version and each pass. On 2026-09-22 #148, #149 and #150 all
+          # shipped v113 within 34 s, so phones that took the first kept its
+          # copies of the files the other two changed. So compare what is about
+          # to be deployed with what the last push to main deployed.
           changed=$(git diff --name-only "$BEFORE" HEAD)
           if ! echo "$changed" | grep -qE '^(index\.html|css/.*\.css|js/.*\.js)$'; then
             echo "No app-shell changes since the last deploy."; exit 0
@@ -41,6 +44,7 @@ jobs:
             echo "::error file=sw.js::The shell changed since the last deploy but CACHE_VERSION did not — two PRs probably made the same bump. Bump again on main."
             exit 1
           fi
+
   deploy:
     needs: guard
     environment:
