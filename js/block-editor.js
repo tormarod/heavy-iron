@@ -222,6 +222,12 @@ function normalizeImportedBlock(raw, opts) {
      restore turned the backup into a file that could not be restored
      (plans/010). */
   const own = !!(opts && opts.own);
+  /* The two counts, retired items included on both paths. A paste is held
+     to what the editor itself allows; own data gets the headroom OWN_LIMITS
+     explains, because a block the editor let grow past that before it knew
+     better is still somebody's real history, and "Demasiados días (15)" on
+     the app's own backup was the bug. */
+  const most = own ? OWN_LIMITS : IMPORT_LIMITS;
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('El JSON no es un objeto válido.');
   const name = txt(raw.name, IMPORT_LIMITS.name) || 'Bloque importado';
   /* Both optional: a block that says nothing is the eight-week, deload-on-8
@@ -230,7 +236,7 @@ function normalizeImportedBlock(raw, opts) {
   let deload = raw.deload == null ? (weeks === 8 ? 8 : 0) : clampInt(raw.deload, 0, MAX_WEEKS, 0);
   if (deload > weeks) deload = 0;
   if (!Array.isArray(raw.days) || !raw.days.length) throw new Error('Falta "days" (al menos un día de entrenamiento).');
-  if (raw.days.length > IMPORT_LIMITS.days) throw new Error('Demasiados días (' + raw.days.length + '): el máximo es ' + IMPORT_LIMITS.days + '.');
+  if (raw.days.length > most.days) throw new Error('Demasiados días (' + raw.days.length + '): el máximo es ' + most.days + '.');
 
   const usedIds = new Set();
   const usedDayIds = new Set();
@@ -238,7 +244,7 @@ function normalizeImportedBlock(raw, opts) {
     if (!day || typeof day !== 'object') throw new Error('El día ' + (di + 1) + ' no es válido.');
     const dayName = txt(day.name, IMPORT_LIMITS.name) || ('Día ' + (di + 1));
     if (!Array.isArray(day.ex) || !day.ex.length) throw new Error('El día "' + dayName + '" necesita al menos un ejercicio.');
-    if (day.ex.length > IMPORT_LIMITS.ex) throw new Error('El día "' + dayName + '" tiene ' + day.ex.length + ' ejercicios: el máximo es ' + IMPORT_LIMITS.ex + '.');
+    if (day.ex.length > most.ex) throw new Error('El día "' + dayName + '" tiene ' + day.ex.length + ' ejercicios: el máximo es ' + most.ex + '.');
     /* Ids are unique per block for a paste and per day for own data: two
        days sharing one id is how the app records the same lift twice a
        week (migrate() dedupes within a day only, on purpose), so renaming
@@ -637,6 +643,42 @@ function newExercise() {
   return { id: uid('ex'), n: '', alt: '', cue: '', sets: 3, reps: '10–15', rest: 90, share: 0, ss: 0 };
 }
 
+/* The editor stops where the importers stop: IMPORT_LIMITS.days days in a
+   block, IMPORT_LIMITS.ex exercises in a day, counted the way
+   normalizeImportedBlock counts them — retired ones included, because they
+   are part of the block a backup carries and a restore reads back. With no
+   ceiling here a block restructured a few times grew past it, and its own
+   backup would not restore (plans/010's promise). Counting only the live
+   ones would not have closed that: retire, add, retire again, and the
+   stored block grows without end. Counted this way, nothing added here can
+   take a block past any door back in — the restore, and "Importar JSON"
+   and the QR too, since a share carries only the live part. A block saved
+   over the limit before this existed still trains and still restores
+   (OWN_LIMITS, js/app.js); it just cannot grow.
+
+   Returns the line shown under the disabled "+ Añadir …", or '' while
+   there is room. It names the retired ones when they are part of why:
+   nothing else on the screen shows them taking up room. */
+function planFullNote(list, max, holder, noun) {
+  if (list.length < max) return '';
+  const retired = list.filter(x => x.off).length;
+  return holder + ' ya tiene ' + list.length + ' ' + noun +
+    (retired ? ', contando ' + (retired === 1 ? 'el retirado' : 'los ' + retired + ' retirados') : '') +
+    '; el máximo es ' + max + '.' +
+    (retired ? ' Para añadir otro, borra alguno en "Retirados", al final de esta pantalla, o empieza un bloque nuevo con "+ Nuevo bloque", que copia solo lo que entrenas.' : '');
+}
+const blockFullNote = block => planFullNote(block.days, IMPORT_LIMITS.days, 'Este bloque', 'días');
+const dayFullNote = day => planFullNote(day.ex, IMPORT_LIMITS.ex, 'Este día', 'ejercicios');
+
+/* The reason a "+ Añadir …" is disabled, right under it. */
+function appendFullNote(host, text) {
+  if (!text) return;
+  const note = document.createElement('p');
+  note.className = 'setup-hint';
+  note.textContent = text;
+  host.appendChild(note);
+}
+
 /* Swap with the nearest live neighbour, leaving retired items parked
    where they are. */
 function moveLive(arr, item, dir) {
@@ -698,11 +740,15 @@ function renderPlanEditor() {
   addDay.type = 'button';
   addDay.className = 'pe-add-ex';
   addDay.textContent = '+ Añadir día';
+  const full = blockFullNote(peDraftBlock);
+  addDay.disabled = !!full;
   addDay.onclick = () => {
+    if (blockFullNote(peDraftBlock)) return;
     peDraftBlock.days.push({ id: uid('d'), name: 'Día ' + (live.length + 1), ex: [newExercise()] });
     renderPlanEditor();
   };
   host.appendChild(addDay);
+  appendFullNote(host, full);
 
   renderRetired(host, profile);
 }
@@ -768,8 +814,15 @@ function buildDayBox(profile, day, pos, liveCount) {
   addBtn.type = 'button';
   addBtn.className = 'pe-add-ex';
   addBtn.textContent = '+ Añadir ejercicio';
-  addBtn.onclick = () => { day.ex.push(newExercise()); renderPlanEditor(); };
+  const full = dayFullNote(day);
+  addBtn.disabled = !!full;
+  addBtn.onclick = () => {
+    if (dayFullNote(day)) return;
+    day.ex.push(newExercise());
+    renderPlanEditor();
+  };
   box.appendChild(addBtn);
+  appendFullNote(box, full);
   return box;
 }
 
@@ -932,11 +985,15 @@ function buildExRow(profile, day, ex, pos, liveCount) {
       const o = document.createElement('option');
       o.value = d.id;
       o.textContent = d.name;
+      /* A full day takes no more by this road either: a move is an
+         exercise added to the day it lands on, past the ceiling its own
+         "+ Añadir ejercicio" keeps (planFullNote). */
+      if (dayFullNote(d)) { o.disabled = true; o.textContent = d.name + ' (completo)'; }
       moveSel.appendChild(o);
     });
     moveSel.onchange = () => {
       const target = otherDays.find(d => d.id === moveSel.value);
-      if (!target) return;
+      if (!target || dayFullNote(target)) return;
       moveExToDay(ex, day, target);
       renderPlanEditor();
       mark('"' + (ex.n || 'Ejercicio') + '" enviado a ' + target.name + ' — el registro se conserva');

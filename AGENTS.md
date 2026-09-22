@@ -210,7 +210,12 @@ untrusted. It goes through a `normalizeImported*` function
 implementation) and is escaped with `esc` (top of `js/app.js`) on the way
 out. Limits are enforced in `IMPORT_LIMITS` (grep for it in `js/app.js`)
 — not just clamped, some values (like `ex.add`) reject the import outright
-rather than silently coercing it. A key that will be used to *index*
+rather than silently coercing it. A backup or profile file is the app's
+own data coming back and has its own ceilings (`OWN_LIMITS`,
+`PROFILE_LIMITS`), and every limit that path enforces has to be one the
+app's own writers cannot exceed — which is why the plan editor stops at
+`IMPORT_LIMITS` — or the app's own backup stops restoring (plans/010's
+promise, broken once by a 15th day). A key that will be used to *index*
 `state.profiles` — a backup's `activeProfile`, a profile file's `key` — is
 checked as an own property first (`migrate()`, `profileSlotFor` in
 `js/profile-transfer.js`), because a plain object answers

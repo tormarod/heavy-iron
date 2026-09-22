@@ -1031,7 +1031,10 @@ body {
   width: 100%; margin-top: 4px; padding: 8px; border: 1px dashed var(--line); background: transparent;
   color: var(--soft); font-family: var(--font-sans); font-size: 11.5px; cursor: pointer; border-radius: 3px;
 }
-.pe-add-ex:hover { border-color: var(--signal); color: var(--signal); }
+.pe-add-ex:hover:not(:disabled) { border-color: var(--signal); color: var(--signal); }
+/* A block or a day at its ceiling (planFullNote, js/block-editor.js): the
+   line under the button says why. */
+.pe-add-ex:disabled { opacity: .45; cursor: default; }
 
 /* ---- chart sheet ---- */
 .chart-wrap { background: var(--paper); border: 1px solid var(--line); border-radius: 3px; padding: 10px; }

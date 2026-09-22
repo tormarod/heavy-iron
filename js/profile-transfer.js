@@ -16,6 +16,12 @@ function describeBackupProblem(data) {
      it does carry has to be readable. */
   const keys = Object.keys(data.profiles);
   if (!keys.length) return 'no tiene ningún perfil';
+  /* Counted before any of them is read: the walk below, and the
+     normalizeImportedProfile each one then goes through, are bounded per
+     profile (PROFILE_LIMITS.blocks, and the block limits under it) but
+     nothing bounded how many profiles there were, which is the same
+     unbounded loop one level up. */
+  if (keys.length > PROFILE_LIMITS.profiles) return 'tiene ' + keys.length + ' perfiles: el máximo es ' + PROFILE_LIMITS.profiles;
   for (const pk of keys) {
     const problem = describeProfileProblem(data.profiles[pk], pk);
     if (problem) return problem;
@@ -52,8 +58,15 @@ function describeProfileProblem(p, pk) {
 
    Mutates and returns `p`. Throws only when a count is so far beyond a real
    training history that the data cannot be saved — never for anything the
-   app itself could have written. */
-const PROFILE_LIMITS = { blocks: 40 };
+   app itself could have written.
+
+   `profiles` is read by describeBackupProblem, above, for a whole backup.
+   The app keeps two and has no way to make a third (AGENTS.md), but a
+   phone that loaded a crafted profile file before plans/040 could have
+   gained a phantom one for each of the eleven functions Object.prototype
+   carries, and its own backups carry those too. Sixteen is past that and
+   still nothing a phone cannot walk. */
+const PROFILE_LIMITS = { blocks: 40, profiles: 16 };
 
 /* True only when `o` OWNS `k` as a property, never when it merely inherits
    one. A plain {} answers a bracket read of '__proto__' with the real

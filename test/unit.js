@@ -5320,6 +5320,262 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
      priorPhaseDeload && priorPhaseDeload.week === 7 && priorPhaseDeload.w === '65',
      JSON.stringify(priorPhaseDeload));
 
+  /* plans/010's promise — a backup or profile file the app itself wrote
+     always restores, exactly as it was — broken by a limit the app never
+     held itself to. normalizeImportedBlock refuses a block of more than
+     IMPORT_LIMITS.days days, or a day of more than IMPORT_LIMITS.ex
+     exercises, on the restore path too, and counts the retired ones; the
+     plan editor let a block grow past both. So a block restructured a few
+     times — two days retired with their history, new ones added — reached
+     a 15th day, and "Cargar copia" answered the app's own download with
+     "Demasiados días (15): el máximo es 14".
+
+     Built with the writes the editor makes, on the deep copy "Editar plan"
+     opens: "Retirar" on two days and an exercise that have sets (an item
+     with none is deleted, not retired), "+ Añadir día" and "+ Añadir
+     ejercicio" one past the limit, names filled in because the save gate
+     refuses a blank one, and the copy put back the way "Guardar cambios"
+     puts it. The editor stops at the limit now (the next section), so this
+     is the block already sitting in someone's storage, and it has to come
+     back all the same — from the backup, and from the profile file. Driven
+     through restoreFromText and loadProfileFromText themselves, with their
+     confirmation answered yes, since the refusal is the whole bug. */
+  console.log('\n== a block the plan editor grew past IMPORT_LIMITS comes back from its own backup (plans/010) ==');
+  {
+    const marks = [];
+    const realMark = app.mark;
+    app.mark = (msg, err) => { marks.push({ msg: String(msg), err: !!err }); };
+    call(`
+      state = defaultState(); migrate();
+      (function () {
+        const profile = getProfile(), block = getBlock();
+        const logOne = (day, ex, w) => {
+          const row = entry(profile, block.id, 1, day.id, ex.id, ex.sets)[0];
+          row.w = w; row.r = '10'; row.done = true;
+        };
+        logOne(block.days[0], block.days[0].ex[1], '30');
+        logOne(block.days[1], block.days[1].ex[0], '50');
+        logOne(block.days[2], block.days[2].ex[0], '70');
+        commit();
+
+        const draft = JSON.parse(JSON.stringify(block));
+        draft.days[1].off = 1;
+        draft.days[2].off = 1;
+        draft.days[0].ex[1].off = 1;
+        while (draft.days.length <= IMPORT_LIMITS.days) {
+          draft.days.push({ id: uid('d'), name: 'Día ' + (dayList(draft).length + 1), ex: [newExercise()] });
+        }
+        while (draft.days[0].ex.length <= IMPORT_LIMITS.ex) draft.days[0].ex.push(newExercise());
+        draft.days.forEach(d => d.ex.forEach((e, i) => { if (!e.n) e.n = d.name + ' · ' + (i + 1); }));
+        profile.blocks[draft.id] = draft;
+        commit();
+      })();
+      __grown = JSON.parse(JSON.stringify(getProfile()));
+      __grownBackup = JSON.stringify({ app: STORAGE_KEY, v: 1, saved: new Date().toISOString(), data: state }, null, 2);
+      __grownFile = profileExportPayload(state.activeProfile);
+      true;
+    `);
+    const grown = call('({ days: __grown.blocks[__grown.activeBlock].days.length, ex: __grown.blocks[__grown.activeBlock].days[0].ex.length })');
+    ok('the fixture really is one day and one exercise past IMPORT_LIMITS, retired ones included',
+       grown.days === call('IMPORT_LIMITS.days') + 1 && grown.ex === call('IMPORT_LIMITS.ex') + 1, JSON.stringify(grown));
+
+    /* Back to a different state first, so nothing below can pass by reading
+       the one the fixture was built in. Every part of the record is
+       compared, off the table, the way the populated round trip above
+       does it; the block by containment (restoreGaps), since the restore
+       drops the blank optionals newExercise() ships. */
+    const comeBack = () => call(`(function () {
+      const before = __grown, after = getProfile();
+      const bb = before.blocks[before.activeBlock], ab = after.blocks[after.activeBlock];
+      if (!ab) return { gaps: ['no block'], parts: [] };
+      return {
+        gaps: restoreGaps(bb, ab, 'block', []).slice(0, 6),
+        parts: RECORD_PARTS.map(part => part.name)
+          .filter(name => JSON.stringify(after[name]) !== JSON.stringify(before[name])),
+        retired: ab.days.filter(d => d.off).length + '+' + ab.days[0].ex.filter(e => e.off).length,
+      };
+    })()`);
+
+    call('state = defaultState(); migrate();');
+    marks.length = 0;
+    const restoring = call('restoreFromText(__grownBackup)');
+    call('closeAsk(true)');
+    await restoring;
+    const refusedBackup = marks.filter(m => m.err).map(m => m.msg);
+    ok('"Cargar copia" takes back the app\'s own backup of that block', refusedBackup.length === 0, refusedBackup.join(' | '));
+    const fromBackup = comeBack();
+    ok('...with every day and exercise, the retired ones still retired',
+       fromBackup.gaps.length === 0 && fromBackup.retired === '2+1', JSON.stringify(fromBackup));
+    ok('...and every part of the record unchanged', fromBackup.parts.length === 0, JSON.stringify(fromBackup.parts));
+
+    call('state = defaultState(); migrate();');
+    marks.length = 0;
+    const loading = call('loadProfileFromText(__grownFile)');
+    call('closeAsk(true)');
+    await loading;
+    const refusedFile = marks.filter(m => m.err).map(m => m.msg);
+    ok('"Importar perfil" takes back the same profile\'s own file', refusedFile.length === 0, refusedFile.join(' | '));
+    const fromFile = comeBack();
+    ok('...exactly as it was', fromFile.gaps.length === 0 && fromFile.parts.length === 0 && fromFile.retired === '2+1',
+       JSON.stringify(fromFile));
+
+    app.mark = realMark;
+    call('__grown = __grownBackup = __grownFile = null;');
+
+    /* Headroom, not an open door. Past OWN_LIMITS the own path still
+       refuses, and a paste is still held to IMPORT_LIMITS: the fifteen
+       days that restore above are turned away by "Importar JSON". */
+    const ceilings = call(`(function () {
+      const days = n => ({ name: 'B', days: Array.from({ length: n }, (_, i) => ({ name: 'D' + i, ex: [{ n: 'Ex', reps: '10' }] })) });
+      const exercises = n => ({ name: 'B', days: [{ name: 'D', ex: Array.from({ length: n }, (_, i) => ({ n: 'Ex' + i, reps: '10' })) }] });
+      const refusal = (raw, opts) => { try { normalizeImportedBlock(raw, opts); return ''; } catch (e) { return e.message; } };
+      const own = { own: true };
+      return {
+        pastedDays: refusal(days(IMPORT_LIMITS.days + 1)), pastedEx: refusal(exercises(IMPORT_LIMITS.ex + 1)),
+        ownDays: refusal(days(OWN_LIMITS.days), own), ownEx: refusal(exercises(OWN_LIMITS.ex), own),
+        ownDaysPast: refusal(days(OWN_LIMITS.days + 1), own), ownExPast: refusal(exercises(OWN_LIMITS.ex + 1), own),
+        most: OWN_LIMITS.days + '/' + OWN_LIMITS.ex,
+      };
+    })()`);
+    ok('a pasted block is still held to IMPORT_LIMITS, days and exercises alike',
+       !!ceilings.pastedDays && !!ceilings.pastedEx, JSON.stringify(ceilings));
+    ok('own data is taken up to OWN_LIMITS', !ceilings.ownDays && !ceilings.ownEx, JSON.stringify(ceilings));
+    ok('...and refused past it, naming the ceiling it was held to',
+       ceilings.ownDaysPast.indexOf('el máximo es ' + ceilings.most.split('/')[0]) >= 0 &&
+       ceilings.ownExPast.indexOf('el máximo es ' + ceilings.most.split('/')[1]) >= 0, JSON.stringify(ceilings));
+
+    /* reKeyImportedSlots stops reading at LOG_LIMITS.slots keys. Sized off
+       IMPORT_LIMITS.days it was 224, so a fifteen-day block that got past
+       the day check would still have lost its last sixteen sessions, every
+       one a week of a day it really has, with no message at all. */
+    const slotsKept = call(`(function () {
+      const days = Array.from({ length: IMPORT_LIMITS.days + 1 }, (_, i) => ({ id: 'd' + i, name: 'D' + i, ex: [{ id: 'e', n: 'Ex', reps: '10' }] }));
+      const log = {};
+      for (let w = 1; w <= MAX_WEEKS; w++) days.forEach(d => { log[slot(w, d.id)] = { e: [{ w: String(w), r: '8', done: true }] }; });
+      const p = { blocks: { b: { name: 'B', weeks: MAX_WEEKS, deload: 0, days } }, blockOrder: ['b'], activeBlock: 'b', log: { b: log } };
+      let restored = -1, refused = '';
+      try { restored = Object.keys(normalizeImportedProfile(JSON.parse(JSON.stringify(p))).log.b || {}).length; }
+      catch (e) { refused = e.message; }
+      return { logged: Object.keys(log).length, restored, refused, fourteenDays: MAX_WEEKS * IMPORT_LIMITS.days };
+    })()`);
+    ok('...keeping every session such a block logged, past the slots fourteen days can fill',
+       slotsKept.restored === slotsKept.logged && slotsKept.logged > slotsKept.fourteenDays, JSON.stringify(slotsKept));
+
+    /* One level up from PROFILE_LIMITS.blocks: nothing bounded how many
+       profiles a backup walks. Counted before any is read — the getter
+       below would see a read — and set above the most a phone could have
+       ended up with by the app's own hand: two, plus the phantom plans/040
+       closed, one per name Object.prototype carries. */
+    const profileCap = call(`(function () {
+      let reads = 0;
+      const many = { profiles: {} };
+      for (let i = 0; i <= PROFILE_LIMITS.profiles; i++) {
+        const p = defaultState().profiles.hombre;
+        const blocks = p.blocks;
+        Object.defineProperty(p, 'blocks', { get() { reads++; return blocks; }, enumerable: true });
+        many.profiles['p' + i] = p;
+      }
+      return {
+        many: describeBackupProblem(many), reads,
+        own: describeBackupProblem(defaultState()),
+        phantoms: 2 + Object.getOwnPropertyNames(Object.prototype).filter(n => n !== '__proto__').length,
+        cap: PROFILE_LIMITS.profiles,
+      };
+    })()`);
+    ok('a backup with more profiles than PROFILE_LIMITS.profiles is refused, before any profile is read',
+       !!profileCap.many && profileCap.many.indexOf(String(profileCap.cap + 1)) >= 0 && profileCap.reads === 0,
+       JSON.stringify(profileCap));
+    ok('...while the app\'s own two-profile backup passes', profileCap.own === null, JSON.stringify(profileCap));
+    ok('...and the ceiling sits above two plus the pre-plans/040 phantoms, so no phone\'s own backup meets it',
+       profileCap.cap >= profileCap.phantoms, JSON.stringify(profileCap));
+  }
+
+  /* The other half, and the reason the block above is old data rather than
+     new: the editor stops where the importers stop, counting retired days
+     and exercises the way normalizeImportedBlock does. Driven through
+     renderPlanEditor with the elements it creates recorded — inert()
+     copied into plain data properties, so what the editor writes on them
+     reads back — which makes it the real "+ Añadir día" and its real
+     handler under test, not a copy of the rule. */
+  console.log('\n== the plan editor stops where the importers stop (plans/010) ==');
+  {
+    const made = [];
+    const realCreate = app.document.createElement;
+    app.document.createElement = tag => {
+      const el = Object.assign({ tagName: String(tag).toUpperCase() }, inert());
+      made.push(el);
+      return el;
+    };
+    const draw = () => { made.length = 0; call('renderPlanEditor()'); };
+    const buttons = label => made.filter(el => el.tagName === 'BUTTON' && el.textContent === label);
+    const notes = () => made.filter(el => el.tagName === 'P' && el.className === 'setup-hint').map(el => el.textContent);
+    const days = () => call('peDraftBlock.days.length');
+
+    /* What "Editar plan" opens: a deep copy of the block, one day retired
+       with a set on it. */
+    call(`state = defaultState(); migrate();
+      (function () {
+        const block = getBlock(), day = block.days[1], ex = day.ex[0];
+        const row = entry(getProfile(), block.id, 1, day.id, ex.id, ex.sets)[0];
+        row.w = '50'; row.r = '10'; row.done = true;
+      })();
+      peDraftBlock = JSON.parse(JSON.stringify(getBlock()));
+      peDraftPurge = []; peDraftOriginalDay = new Map();
+      peDraftBlock.days.forEach(day => day.ex.forEach(ex => peDraftOriginalDay.set(ex, day.id)));
+      peDraftBlock.days[1].off = 1;`);
+    const limit = call('IMPORT_LIMITS.days');
+
+    let guard = 0;
+    for (draw(); days() < limit && guard++ < 50; draw()) {
+      const add = buttons('+ Añadir día')[0];
+      if (!add || add.disabled) break;
+      add.onclick();
+    }
+    ok('"+ Añadir día" adds days up to IMPORT_LIMITS.days, the retired one among them', days() === limit, String(days()));
+    const addDay = buttons('+ Añadir día')[0];
+    ok('...and is disabled there', !!addDay && addDay.disabled === true, JSON.stringify(addDay && addDay.disabled));
+    addDay.onclick();
+    ok('...its handler refuses too, should anything still reach it', days() === limit, String(days()));
+    const dayNote = notes().find(t => t.indexOf('Este bloque') === 0) || '';
+    ok('...with the reason underneath, the retired day counted and what to do about it',
+       dayNote.indexOf('14 días, contando el retirado; el máximo es 14.') >= 0 && dayNote.indexOf('"Retirados"') >= 0 &&
+       dayNote.indexOf('"+ Nuevo bloque"') >= 0, dayNote);
+
+    /* Day 1 is retired, so the first live day's button is the first one. */
+    call('while (peDraftBlock.days[0].ex.length < IMPORT_LIMITS.ex) peDraftBlock.days[0].ex.push(newExercise());');
+    draw();
+    const addEx = buttons('+ Añadir ejercicio');
+    ok('"+ Añadir ejercicio" is disabled on a day at IMPORT_LIMITS.ex, and only there',
+       addEx.length > 1 && addEx[0].disabled === true && addEx.slice(1).every(b => !b.disabled),
+       JSON.stringify(addEx.map(b => b.disabled)));
+    const exBefore = call('peDraftBlock.days[0].ex.length');
+    addEx[0].onclick();
+    ok('...and its handler refuses', call('peDraftBlock.days[0].ex.length') === exBefore, String(call('peDraftBlock.days[0].ex.length')));
+    ok('...with its own line: nothing retired in that day, so just the ceiling',
+       notes().indexOf('Este día ya tiene 40 ejercicios; el máximo es 40.') >= 0, JSON.stringify(notes()));
+
+    /* "Enviar a…" is the other road into a day. */
+    const fullId = call('peDraftBlock.days[0].id');
+    const toFull = made.filter(el => el.tagName === 'OPTION' && el.value === fullId);
+    const toOthers = made.filter(el => el.tagName === 'OPTION' && el.value && el.value !== fullId);
+    ok('"Enviar a…" offers the full day disabled, and marked so', toFull.length > 0 &&
+       toFull.every(o => o.disabled === true && / \(completo\)$/.test(o.textContent)), JSON.stringify(toFull.map(o => [o.disabled, o.textContent])));
+    ok('...and every other day as before', toOthers.length > 0 && toOthers.every(o => !o.disabled),
+       JSON.stringify(toOthers.slice(0, 3).map(o => [o.disabled, o.textContent])));
+
+    /* A block saved over the limit before it existed: it opens, it says
+       where it stands, and it cannot grow. */
+    call('peDraftBlock.days.push({ id: uid("d"), name: "Extra", ex: [newExercise()] });');
+    draw();
+    ok('a block already past the limit opens with "+ Añadir día" disabled and says how far past it is',
+       buttons('+ Añadir día')[0].disabled === true &&
+       notes().some(t => t.indexOf('Este bloque ya tiene 15 días, contando el retirado; el máximo es 14.') === 0),
+       JSON.stringify(notes()));
+
+    app.document.createElement = realCreate;
+    call('peDraftBlock = null; peDraftPurge = []; peDraftOriginalDay = new Map();');
+  }
+
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 })();
