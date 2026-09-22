@@ -653,10 +653,12 @@ function diagRows(profile, block, scope) {
      save() now, and the render cache's log facts with it, so reopening the
      sheet after a tick reads the tick, and reopening it after nothing
      reads what the last draw already read. */
-  /* The sheet's own toggle by default; the block review passes 'block'
-     explicitly, because what it exports must not depend on whatever the
-     Diagnóstico sheet happened to be showing last. */
-  const useScope = scope || diagScope;
+  /* The caller's to say: the sheet passes its own toggle (drawDiag), and
+     the block review passes 'block', because what it exports must not
+     depend on whatever the Diagnóstico sheet happened to be showing last.
+     Left out, it is this block — never the toggle read from here, which
+     would tie the review's rows to the sheet's state. */
+  const useScope = scope || 'block';
   const rows = [];
   const seen = new Set();
   /* Volume as actually logged, not as prescribed: "you have room to add
@@ -900,7 +902,7 @@ function drawDiag() {
   if (diagView === 'freq') { drawDiagFreq(profile, block); return; }
   if (diagView === 'index') { drawDiagIndex(profile, block); return; }
 
-  const rows = diagRows(profile, block);
+  const rows = diagRows(profile, block, diagScope);
   const counted = rows.filter(r => r.trend !== 'none');
   const tally = ['down', 'flat', 'up', 'none']
     .map(t => ({ t: t, n: rows.filter(r => r.trend === t).length }))
