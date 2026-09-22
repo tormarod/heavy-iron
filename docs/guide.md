@@ -338,10 +338,16 @@ never becomes the only way to do something.
 
 Clearing a day, wiping a profile and deleting a block each take a
 snapshot first, and offer **Deshacer** in a bar at the bottom of the
-screen. One level deep: the next destructive action replaces it, and it
-doesn't survive a reload. It covers the misfire that actually happens —
-the wrong day, the wrong profile — not a change of heart tomorrow. For
-that, keep backups.
+screen. It lasts until the next thing you do — a set ticked, a box
+typed, a note, a plan edit, moving to another week, day or profile — or
+until a change arrives from another tab; then the bar goes and there is
+nothing left to undo. That is what the dialogs promise ("justo después,
+mientras no hagas otra cosa"), and it is on purpose: an undo still
+waiting an hour into a session would put back the state from before the
+action, and every set logged since would go with it. One level deep: the
+next destructive action replaces it, and it doesn't survive a reload. It
+covers the misfire that actually happens — the wrong day, the wrong
+profile — not a change of heart tomorrow. For that, keep backups.
 
 ## Data & privacy
 
@@ -404,7 +410,13 @@ Two smaller safeguards worth knowing about:
   survives a lost phone.
 - **Two tabs don't fight.** If the log changes in another tab, this one
   picks it up; if you had unsaved edits here, it says so instead of
-  silently overwriting them.
+  silently overwriting them, and asks which to keep. **Recargar** keeps
+  what the other tab saved and drops the change here; **Quedarme con lo
+  mío** does the opposite. Nothing is saved in this tab until you answer,
+  so the question has no ✕ and stays on screen — no other notice can push
+  it aside. Closing or hiding this tab before answering still saves what
+  is here, so a set logged just before the phone goes into a pocket is
+  never lost.
 
 ## Offline and installing
 
