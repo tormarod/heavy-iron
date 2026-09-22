@@ -92,9 +92,9 @@ below so it is not lost or re-audited.
 | 068 | [A set's date is the day it was trained, a timestamp no clock can read is refused, and the CSV follows a language preference](done/068-timestamps-and-csv-by-language.md) | P2 | S each | LOW / LOW–MED | — (A owns the `ts` row field; B must not touch it) | DONE — A (#180, v137): `fecha` is the local day the set was trained (`localDay`), and a `ts` no `Date` can hold is refused on every path and can no longer stop `migrate()` (`validTs`); review fixed the CSV fixture, which only held from UTC+1 down. B (#182, v138): `state.prefs.lang` (`es`, or `en`; nothing on screen sets it yet) and the CSV separator follows it (`;` / `,`); review found `buildCsv`'s `byDay` threw on a day id named `__proto__` or `constructor` (now `Object.create(null)`) |
 | 069 | [What an AI round trip hands back keeps its lifts' ids, and "series x 5 RIR 2" reads 2](done/069-ai-round-trip-keeps-long-ids.md) | P3 | S | LOW | — | DONE (#181, v136) — a paste keeps a stated id longer than 60 when the profile already holds that exercise (`knownExerciseIds`, passed by all three strict callers), the AI prompt asks for a given id to be copied exactly, and a sets word before the "x" reads as sets×reps (`series x 5 RIR 2` → 2) |
 | 070 | [AGENTS.md opens with the checklist an agent needs before it changes code, and says each rule once](done/070-agents-md-checklist-first.md) | P3 | S–M | LOW (code) / MED (reader) | 067, 068, 069 merged first — no bump | DONE (#183, no bump) — AGENTS.md opens with a checklist (each kind of change: what moves with it, what holds it, where the reasons are), and each rule is stated once under its own subsection; a 141-rule inventory maps old lines to new sections. Review corrected five statements of fact the old file carried: the hook's matcher, the gate's skip list, what the unit suite holds `SHELL` to, which files the slot-regex scan reads, and which contrast pairs are computed |
-| 071 | [A lift's rows that are not a list are repaired, and a throw inside `migrate()` lands on the recovery screen or leaves this tab's data alone](071-migrate-never-strands-the-app.md) | P2 | S each (A, B) | LOW / LOW–MED | — (A and B are independent PRs, each bumps) | TODO |
-| 072 | [The unit suite's doc checks say what GitHub and AGENTS.md say: headings slug with their underscores, the slot regex is watched in every file](072-unit-checks-match-their-docs.md) | P3 | S | LOW | — no bump | TODO |
-| 073 | ["Deshacer" is tested through the real button of every action that offers it, and AGENTS.md states the rule](073-deshacer-tested-everywhere.md) | P3 | S–M | LOW | — no bump | TODO |
+| 071 | [A lift's rows that are not a list are repaired, and a throw inside `migrate()` lands on the recovery screen or leaves this tab's data alone](done/071-migrate-never-strands-the-app.md) | P2 | S each (A, B) | LOW / LOW–MED | — (A and B are independent PRs, each bumps) | DONE — B (#185, v140): `prefs`, `mode` and `setupDone` are defaulted before the profiles are repaired (the legacy RIR fold reached `units()` first, and a state with no `prefs` threw); `load()` sends a throw from `migrate()` to the recovery screen instead of the boot guard's "La app no ha podido arrancar"; "Cargar copia" and loading a profile file put this tab's data back, drop the undo and say why on a throw; the two "rule (a)" comments say "split rule 1". A (#186, v141): the log part has a `repair` — a lift's rows that are not a list are dropped, a row that is not a plain object becomes an empty row in its place (+8.8 ms on 76,800 rows). A differential probe (old `migrate()` on input already put through the leaf rule, against new `migrate()` on the raw input) found all 15,001 generated states byte-identical |
+| 072 | [The unit suite's doc checks say what GitHub and AGENTS.md say: headings slug with their underscores, the slot regex is watched in every file](done/072-unit-checks-match-their-docs.md) | P3 | S | LOW | — no bump | DONE (#184, no bump) — the slugger keeps a literal `_` like GitHub's, pinned by seven known anchors; the slot-regex scan reads every `js/*.js` (floor: 13); the two "rule (a)" citations in `test/unit.js` say "split rule 1"; AGENTS.md says "every file in `js/`". `SHELL`'s order and "every contrast pair" were considered and left, for the reasons the plan records |
+| 073 | ["Deshacer" is tested through the real button of every action that offers it, and AGENTS.md states the rule](done/073-deshacer-tested-everywhere.md) | P3 | S–M | LOW | — no bump | DONE (#187, no bump) — booted tests press "Borrar todos los datos", the three ways to delete a block, "Cargar copia" and loading a profile file, then "Deshacer", and the saved copy comes back deep-equal each time (no bug found); every `snapshotForUndo` call is pinned to the six known actions; AGENTS.md has a checklist line and § Destructive actions and Deshacer. Review corrected two sentences: only five dialogs promise `UNDO_PROMISE` (none may say "No se puede deshacer"), and "Guardar cambios" snapshots without asking |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
@@ -1203,6 +1203,20 @@ missed a string or a number where a map goes, which made the first tick
 throw. The reviewer's differential probe — old `migrate()` against new
 over generated states — is what made widening safe to merge: every state
 a writer produces came out byte-identical each time.
+
+### Follow-ups of 067–070 — executed (2026-09-23)
+
+Plans 071–073 landed in four PRs (#184–#187), in the same way as the
+batches before (v140, v141; 072 and 073 without a bump), and the deploy
+guard passed on every merge. No review round changed code this time. The
+one correction was to AGENTS.md: plan 073's own decision 4 said the dialog
+in front of a snapshot "promises `UNDO_PROMISE`", which is true of five
+of the six, so the subsection now states the rule as the code does. Noticed
+along the way and left, both by design: `undoLast()` still calls
+`migrate()` unguarded, on this tab's own snapshot of an already-migrated
+state; and restoring the app's own backup or profile file normalises a
+legacy accent name and omits an `EX_FIELDS` default that plain
+`migrate()` keeps, both harmless.
 
 ### Follow-ups found while executing 067–070 — planned (2026-09-23)
 
