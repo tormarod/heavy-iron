@@ -710,9 +710,9 @@ function eraseFromDraft(draft, it) {
    carried, bar the few safeKey refuses, so no name is spare on its own.
    A record lifted onto a day the record already uses would be merged
    into the sessions filed there and carried off with them. One lifted
-   onto a day of the draft could be on the very day it is going to, and
-   then be put down from that day onto itself, which moveExerciseRecord
-   does by adding the rows to themselves and deleting them. Nothing is
+   onto a day of the draft could do that to another copy of the lift: a
+   copy put down on that day while this record waits there is merged
+   into it, and carried off with it to wherever it goes next. Nothing is
    left filed under a spare day: the second pass puts every record down. */
 function spareDayIds(profile, draft, n) {
   const taken = new Set(draft.block.days.map(d => d.id));

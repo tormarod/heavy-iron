@@ -627,9 +627,10 @@ function moveExerciseRecord(profile, blockId, fromDayId, toDayId, exId) {
      which is why this comes before any part runs: it takes the id out of
      the list and appends it to the same list, filing the lift as done
      last, or drops a week's order that held that id alone. No caller
-     asks for it today (applyPlanDraft skips a lift still on the day it
-     started on), but the promise above is that nothing is destroyed by
-     calling this, and this was the one call that broke it. */
+     asks for it today: applyPlanDraft skips a lift still on the day it
+     started on, and the days it lifts the rest through (spareDayIds) are
+     never a day of the draft. But the promise above is that nothing is
+     destroyed by calling this, and this was the one call that broke it. */
   if (fromDayId === toDayId) return;
   RECORD_PARTS.forEach(part => {
     const map = profile[part.name];

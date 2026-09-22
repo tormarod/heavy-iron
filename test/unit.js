@@ -3819,26 +3819,32 @@ console.log('\n== the plan draft: saving erases exactly what "Borrar registro" c
      JSON.stringify(crowded));
 
   /* Nor is a spare day ever a day of the draft, even one nothing is filed
-     under: a copy lifted onto the very day it is going to would be put
-     down from that day onto itself, and moveExerciseRecord from a day to
-     the same day adds the rows to themselves and then deletes them. The
-     day A's copy is sent to here has nothing logged and the name
-     spareDayIds hands out first. */
+     under: a record lifted onto a day that a copy of the same lift is then
+     put down on takes that copy along when it is put down itself. D here
+     has nothing logged and the name spareDayIds would hand out second,
+     and it comes before C. A's copy goes to D and B's to C, so B's would
+     wait on D, A's be merged into it there, and both go on to C, A's chip
+     and objetivo record dropped. One copy sent to D would not show it: a
+     record lifted onto the day it is going to is put down from that day
+     onto itself, which is no move. */
   const namedLikeSpare = tryCall(`(function () {
     ${FIXTURE}
     const p = fixture(true);
-    const spare = spareDayIds(p, openPlanDraft(p, p.blocks.B), 1)[0];
-    p.blocks.B.days.push({ id: spare, name: 'D', ex: [lift('k', 'Curl')] });
+    const spare = spareDayIds(p, openPlanDraft(p, p.blocks.B), 2)[1];
+    p.blocks.B.days.splice(2, 0, { id: spare, name: 'D', ex: [lift('k', 'Curl')] });
     const draft = openPlanDraft(p, p.blocks.B);
-    const dA = draft.block.days[0], dD = draft.block.days[3];
+    const [dA, dB, dD, dC] = draft.block.days;
     moveExToDay(dA.ex[0], dA, dD);
+    moveExToDay(dB.ex[0], dB, dC);
     applyPlanDraft(p, draft);
     const rows = [];
     forEachSlot(p.log, 'B', (k, w, d, s) => ((s && s.e1) || []).forEach(r => { if (rowUsed(r)) rows.push(w + ':' + (d === spare ? 'D' : d) + ':' + r.w); }));
-    return { rows: rows.sort() };
+    const at = (part, d) => ((p[part].B || {})[slot(1, d)] || {}).e1;
+    return { rows: rows.sort(), chips: [at('rir', spare), at('rir', 'dC')], records: [at('obj', spare), at('obj', 'dC')].map(r => r && r.sets[0].w) };
   })()`);
-  ok('...and a copy sent to a day with nothing logged, named the way the first spare day would have been, keeps its sets there',
-     !namedLikeSpare.threw && JSON.stringify(namedLikeSpare.rows) === JSON.stringify(['1:D:50', '1:dB:60', '1:dB:62', '2:D:52']),
+  ok('...and a copy sent to a day with nothing logged, named the way a spare day would have been, keeps its sets, chip and objetivo record there, and the other copy keeps its own',
+     !namedLikeSpare.threw && JSON.stringify(namedLikeSpare.rows) === JSON.stringify(['1:D:50', '1:dC:60', '1:dC:62', '2:D:52']) &&
+     JSON.stringify(namedLikeSpare.chips) === JSON.stringify(['1', '2+']) && JSON.stringify(namedLikeSpare.records) === JSON.stringify([50, 60]),
      JSON.stringify(namedLikeSpare));
 
   /* The point of lifting everything first: the same moves file the record
