@@ -2074,9 +2074,9 @@ const ok = (name, cond, extra) => {
     await page.click('#diagClose');
     await page.waitForTimeout(200);
 
-    /* The work axis. diagPoints() keeps the best set of a session and
-       nothing else, so 45×12/8/6 and 45×12/12/11 are the SAME point on the
-       chart — and the second one is nine more reps of work. */
+    /* The work axis. The trend reads one set of a session — the level, off
+       its first — so 45×12/8/6 and 45×12/12/11 are the SAME point on it,
+       and the second one is nine more reps of work. */
     const workCase = async weeks => {
       await page.evaluate(weeks => {
         const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
@@ -2100,9 +2100,13 @@ const ok = (name, cond, extra) => {
       await page.waitForTimeout(300);
       const out = await page.evaluate(() => {
         const r = document.querySelector('#diagHost .diag-row[data-ex="chestpress"]');
-        const pts = diagPoints(getProfile(), 'chestpress', getBlock().id);
+        /* The row's one history (plans/056): the trend is fitted on its
+           `rule`, the work axis is read off its sessions. */
+        const b = getBlock(), day = b.days[0];
+        const hist = liftHistory(getProfile(), b, day.ex[0], day.id, MAX_WEEKS + 1, b.id);
+        const pts = diagPoints(hist.sessions);
         return { cls: r.className, read: r.querySelector('.diag-read').textContent,
-                 e1rm: diagLevelTrend(getProfile(), getBlock(), getBlock().days[0], getBlock().days[0].ex[0], getBlock().id).pct,
+                 e1rm: diagLevelTrend(hist.rule).pct,
                  work: diagWorkSlope(pts), sets: pts.map(p => p.sets) };
       });
       await page.click('#diagClose');
@@ -2161,7 +2165,8 @@ const ok = (name, cond, extra) => {
             answers from a cache that save() empties (plans/045), and the
             sheet opened above has just filled it from the previous log. */
          save();
-         const pt = diagPoints(p, 'chestpress', 'block-1')[0];
+         const b = p.blocks['block-1'], day = b.days[0];
+         const pt = diagPoints(liftHistory(p, b, day.ex[0], day.id, MAX_WEEKS + 1, b.id).sessions)[0];
          return pt.sets === 2 && pt.vol === (45 * 8 + 30 * 5) + 45 * 6;
        }));
     await ctx.close();
@@ -3060,8 +3065,10 @@ const ok = (name, cond, extra) => {
     ok('the deload week is never an end of the strength comparison',
        noArtefact.change === 5 && noArtefact.base === 2 && noArtefact.last === 4, JSON.stringify(noArtefact));
     ok('and never reaches the fitted trend either', await page.evaluate(() => {
-      const pts = diagPoints(getProfile(), 'chestpress', getBlock().id);
-      return pts.length === 2 && pts.every(p => p.weight >= 60);
+      /* The Diagnóstico row's history, which the trend is fitted on. */
+      const b = getBlock(), day = b.days[0];
+      const rule = liftHistory(getProfile(), b, day.ex[0], day.id, MAX_WEEKS + 1, b.id).rule;
+      return rule.length === 2 && rule.every(s => s.sets[0].w >= 60);
     }));
     await ctx.close();
   });

@@ -2121,7 +2121,12 @@ const DECAY_MIN_REPS = 2, DECAY_MIN_SHARE = 0.25;
    list, read by repDecay for the numbers and by decayLine and the
    Diagnóstico for which set is "the first" — three readers that each
    picked their own first set disagreed on a session whose first row was
-   ticked without reps, which the tick contract allows (plans/041). */
+   ticked without reps, which the tick contract allows (plans/041).
+
+   The card hands these two its stored rows; the Diagnóstico hands them a
+   session's sets (plans/056), and they read the same: a set's `r` is what
+   num() made of the row's, NaN where the box was empty, and num() gives a
+   number back unchanged. */
 const decayRows = rows => (rows || []).filter(r => r && r.r !== '' && r.r != null && !isNaN(num(r.r)));
 
 function repDecay(rows) {
@@ -2675,9 +2680,17 @@ function setSummary(x) {
    week's increase in copyPrev as well, and no longer does: copyPrev writes
    the objetivo, and the rule reads the level off the reps done at the
    working weight, which the stripped ones never were. A planned dropset
-   says nothing of the sort and is deliberately not counted here. */
-function forcedDrop(rows) {
-  return (rows || []).some(r => r && r.done && dropKind(r) === 'forced' && dropsOf(r).some(dropUsed));
+   says nothing of the sort and is deliberately not counted here.
+
+   Reads a session's sets (sessionsOf), where every set is ticked, its kind
+   is `dropKind` and its drops are already the ones with something in
+   them. It read stored rows until plans/056, which its one caller — the
+   Diagnóstico's rows — fetched again out of the log with a cached
+   session's coordinates, a re-read that once crashed the smoke suite
+   (plans/045). Changed rather than given a twin for sets: that caller
+   lives in this file, so nothing is left to hand it stored rows. */
+function forcedDrop(sets) {
+  return (sets || []).some(x => x.dropKind === 'forced' && x.drops.length > 0);
 }
 
 /* Rows logged past what the current plan shows — kept, but out of sight. */
@@ -4868,33 +4881,30 @@ const DIAG_TRENDS = {
   none: { label: 'sin datos', plural: 'sin datos', rank: 3 },
 };
 
-/* Every session this exercise was logged in, oldest first, as one e1RM
-   point each. Modelled on collectHistoryAll(), but it keeps what the charts
-   have no use for and the diagnosis does: which rows the point came from
-   (for rep decay and forced drops), the RIR of every working set,
-   inherited the way the objetivo reads it (see sessionRirs) — and the
-   timestamp, so a gap between sessions can be told from a gap in progress.
+/* One point per session, oldest first: what the signals and the work axis
+   read off each session of a row. The sessions are handed in, and they are
+   the objetivo's own — liftHistory's, from the same call the row's trend is
+   fitted on (diagRows) — so this chooses nothing. Which weeks (stranded
+   ones included), which blocks, which day of a lift the plan splits, the
+   deload and the rename are the objetivo's decisions, made once, in
+   liftHistory. This used to make its own: the block's weeks only, both
+   days of a split lift, every block in the list, no rename, and no session
+   whose working sets all ran past EST_MAX_REPS. So a row could read
+   "6 sesiones" over a trend fitted on four, and the verdict's signals came
+   from sessions the trend had never seen (plans/056).
 
-   Read through sessionsOf (plans/038), asking what this screen is about:
-   the block's own weeks, a shortened block's stranded weeks hidden as
-   everywhere else on it, and the deload week left out — by deloadAt, the
-   same reading the objetivo has, so a week the phase text calls "Descarga"
-   is left out too and not only the one the block's deload field names.
-   The deload is prescribed at roughly 60 % of the weight, so leaving it in
-   drags the fitted line down and reports a block that did exactly what it
-   was told as "bajando". Skipped at the read rather than at the verdict,
-   so it cannot reach the slope at all.
+   Nothing here reads an Epley estimate any more, so nothing needs that
+   ceiling: the trend is the objetivo's level, which reads a set past twelve
+   reps as a floor and never as a measurement, and one 20-rep back-off set
+   cannot fake a line through it.
 
-   Sets above EST_MAX_REPS reps are dropped rather than plotted: Epley
-   drifts badly up there, and one 20-rep back-off set would otherwise fake a
-   trend that never happened. That ceiling is this screen's, not the
-   session's — it is about Epley, not about which sets count. */
-function diagPoints(profile, exId, onlyBlockId) {
-  /* A filter of blockOrder, not [onlyBlockId]: a block the profile no
-     longer lists has never been read here, and asking for it by id would
-     start to. */
-  const blocks = (profile.blockOrder || []).filter(bId => !onlyBlockId || bId === onlyBlockId);
-  return sessionsOf(profile, { weeks: 'plan', lift: { id: exId }, blocks: blocks, skipDeload: true }).map(sess => {
+   A point keeps what the diagnosis needs and a session does not say
+   outright: the kilos it moved and its working sets, the RIR of every
+   working set, and the latest tick, so a gap between sessions can be told
+   from a gap in progress. `ticked` is every set it ticked, in order, for
+   the two signals that read more than the working sets. */
+function diagPoints(sessions) {
+  return sessions.map(sess => {
     /* Working sets, the session's own flag: ticked, with a weight and a
        rep count. Each set's weight is already converted to the unit on
        screen (rowWeight() on the way in), so a row logged in the other
@@ -4902,29 +4912,11 @@ function diagPoints(profile, exId, onlyBlockId) {
        exempt on purpose; this is a screen that fits one line through many
        of them, which the session view is not. */
     const worked = sess.sets.filter(x => x.worked);
-    const done = worked.filter(x => x.r <= EST_MAX_REPS);
-    if (!done.length) return null;
-    let best = done[0];
-    done.forEach(x => { if (est1RM(x.w, x.r) > est1RM(best.w, best.r)) best = x; });
-    const block = profile.blocks[sess.block];
-    /* Stored rows for the two readers that still want them: forcedDrop and
-       repDecay read the row, and rowRir(decayRows(rows)[0]) the first set's OWN
-       reserve, which a set's inherited rir cannot stand in for. They depart
-       from plans/038 decision 7 on purpose: moving the reader was not to
-       move the decay signal. */
-    const rows = profile.log[sess.block][slot(sess.week, sess.day)][exId];
     return {
-      label: block.name + ' · S' + sess.week,
-      e1rm: est1RM(best.w, best.r),
-      weight: best.w,
-      reps: best.r,
-      /* The work side of the same session, and it counts every working
-         set — EST_MAX_REPS and all. That ceiling is a statement about
-         Epley, not about kilos: a 20-rep set moved weight whether or not
-         an estimate can honestly be read off it. The sum is
-         convertedSetVolume() (app.js) term for term — the set, then each
-         drop with something in it, an empty box adding nothing — read off
-         the session's already-converted numbers. */
+      /* The work side of the session, and it counts every working set. The
+         sum is convertedSetVolume() term for term — the set, then each drop
+         with something in it, an empty box adding nothing — read off the
+         session's already-converted numbers. */
       vol: worked.reduce((t, x) => t + (x.w * x.r + x.drops.reduce((u, d) =>
         u + ((isNaN(d.w) || isNaN(d.r)) ? 0 : d.w * d.r), 0)), 0),
       sets: worked.length,
@@ -4938,9 +4930,12 @@ function diagPoints(profile, exId, onlyBlockId) {
          difference between a session paced 3 → 2 → 1 → 0 and one ground
          out at 0 throughout. */
       rirs: worked.map(x => x.rir),
-      rows: rows.filter(r => r && r.done),
+      /* The session's own sets, for forcedDrop and repDecay, which used to
+         be handed stored rows fetched again from the log: the same sets,
+         read off the same answer as everything else on the row (plans/056). */
+      ticked: sess.sets,
     };
-  }).filter(Boolean);
+  });
 }
 
 /* ---------- frequency, from the timestamps already on every row ----------
@@ -5154,13 +5149,11 @@ function fitSlope(values) {
    raise — and handed straight to the rule's own verdict when it has
    already confirmed a drop. One log, one definition, one answer.
 
-   Through the history cache (sessionsOf), like every other reader, so the
-   sheet's MAX_WEEKS + 1 questions are answered without a walk when the
-   sheet is reopened and nothing has been logged since — and are dropped
-   by the tick itself when something has, since they include the week
-   being trained. */
-function diagLevelTrend(profile, block, day, ex, scopeBlockId) {
-  const sessions = exHistory(profile, block, ex, day && day.id, MAX_WEEKS + 1, scopeBlockId);
+   Takes the rule's projection of the row's sessions (liftHistory's `rule`)
+   rather than asking for it: diagRows hands the same history to the rest
+   of the row, which is what keeps the two from being two histories
+   (plans/056). */
+function diagLevelTrend(sessions) {
   if (!sessions.length) return null;
   const seq = capSeq(sessions).slice(-DIAG_WINDOW);
   const lv = levelOf(seq);
@@ -5221,9 +5214,9 @@ function diagVerdict(trend, sig) {
                cambio: 'Sube carga o reps: te estás dejando el estímulo sin usar.' };
     }
     /* The row the top-set metric cannot see, and the reason the work axis
-       is here at all. diagPoints() keeps the BEST set of a session and
-       throws the rest away, so 45×12/8/6 and 45×12/12/11 are the same
-       point on the chart — identical e1RM, nine more reps of work.
+       is here at all. The trend reads one set of a session — the level,
+       off its first — and throws the rest away, so 45×12/8/6 and
+       45×12/12/11 are the same point on it: nine more reps of work.
        That is series 2 and 3 catching up, which is progress, and calling
        it a stall sends you to fix a lift that is fixing itself.
 
@@ -5310,9 +5303,10 @@ function diagSessionRir(rirs) {
   return typed.length ? median(typed) : null;
 }
 
-/* One row per exercise of the live plan. The verdict is computed over the
-   window; the signals are read off the most recent sessions, since what you
-   change on Monday answers to how last Monday went. */
+/* One row per exercise of the live plan, and one per day for a lift the
+   plan puts on two. The verdict is computed over the window; the signals
+   are read off the most recent sessions, since what you change on Monday
+   answers to how last Monday went. */
 function diagRows(profile, block, scope) {
   /* No reset of the render cache here any more (plans/045). It used to be
      the only thing between this sheet and a trend read from before the last
@@ -5327,6 +5321,7 @@ function diagRows(profile, block, scope) {
      Left out, it is this block — never the toggle read from here, which
      would tie the review's rows to the sheet's state. */
   const useScope = scope || 'block';
+  const scopeBlockId = useScope === 'all' ? '' : block.id;
   const rows = [];
   const seen = new Set();
   /* Volume as actually logged, not as prescribed: "you have room to add
@@ -5334,12 +5329,30 @@ function diagRows(profile, block, scope) {
      block and looked up per exercise by its muscle tag. */
   const volByTag = {};
   volumeTrendRows('log', profile, block, 'muscle').forEach(r => { volByTag[r.label] = r; });
+  /* How many live days carry each lift. On two, it is two rows: the
+     objetivo keeps the two days' histories apart inside the block
+     (liftHistory), so each day has its own count, signals and trend, and a
+     row that folded them read a lift climbing on Monday and falling on
+     Thursday as one "Funciona" (plans/056). */
+  const liveDays = {};
+  dayList(block).forEach(day => {
+    new Set(exList(day).map(e => e.id)).forEach(id => { liveDays[id] = (liveDays[id] || 0) + 1; });
+  });
   dayList(block).forEach(day => {
     exList(day).forEach(ex => {
-      if (seen.has(ex.id)) return;
-      seen.add(ex.id);
-      const all = diagPoints(profile, ex.id, useScope === 'all' ? '' : block.id);
-      const points = all.slice(-DIAG_WINDOW);
+      /* The same id twice on one day is still one row. */
+      const key = JSON.stringify([ex.id, day.id]);
+      if (seen.has(key)) return;
+      seen.add(key);
+      /* The one history every part of the row reads — the count and the
+         three-session gate, the gap, the three signals, the work axis and
+         the trend: the objetivo's own sessions, and the rule's projection
+         of each (liftHistory). MAX_WEEKS + 1 is every week, the one being
+         trained included. Through the history cache like every other
+         reader, so reopening the sheet with nothing logged since asks for
+         nothing new, and a tick drops what it could change. */
+      const hist = liftHistory(profile, block, ex, day.id, MAX_WEEKS + 1, scopeBlockId);
+      const points = diagPoints(hist.sessions.slice(-DIAG_WINDOW));
       const est = targetNow(profile, block, day, ex, profile.week);
       const last = points[points.length - 1];
       const recent = points.slice(-3);
@@ -5351,14 +5364,15 @@ function diagRows(profile, block, scope) {
            fourth went to 0. A typed '3' still counts as the old '2+' chip
            did and a typed '0' as the old '0' (rirNumber, plans/035). */
         easy: recent.filter(p => diagSessionRir(p.rirs) >= 2).length >= 2,
-        failure: !!last && (diagSessionRir(last.rirs) === 0 || forcedDrop(last.rows)),
+        failure: !!last && (diagSessionRir(last.rirs) === 0 || forcedDrop(last.ticked)),
         /* A first set the lifter typed as two or more in reserve did not go
            to failure, so the drop after it is not "primera serie al fallo"
            and this signal stands down: the verdict falls through to the
            work-axis rows below, which is where a session that drains
-           without a hard first set belongs. Its own value only — an
-           inherited reserve says nothing about the first set. */
-        decay: !!last && repDecay(last.rows) >= 3 && !(rowRir(decayRows(last.rows)[0]) >= 2),
+           without a hard first set belongs. Its own value only — `rirOwn`,
+           not `rir`: an inherited reserve says nothing about the first
+           set. repDecay needs two sets with reps, so there is a first. */
+        decay: !!last && repDecay(last.ticked) >= 3 && !(decayRows(last.ticked)[0].rirOwn >= 2),
         /* A stall reset is also `down`, but it is not "the weight was
            picked wrong" — it is the target rule's own answer to the
            stall this screen is about to name, so it reads as the stall,
@@ -5383,9 +5397,9 @@ function diagRows(profile, block, scope) {
          kilos per set and dropping one raises it. Refusing to read it then
          costs a true flag rather than inventing a false one, which is the
          direction to be wrong in. The kilos check is the divide's guard:
-         every point diagPoints() emits has a positive weight and a
-         positive rep count today, and this is what keeps that a fact
-         rather than an assumption. */
+         every session the objetivo reads has a working set, and every
+         working set a positive weight and a positive rep count, today —
+         this is what keeps that a fact rather than an assumption. */
       if (points.length >= DIAG_MIN_SESSIONS &&
           points.every(p => p.sets === points[0].sets && p.vol > 0)) {
         sig.workPct = diagWorkSlope(points);
@@ -5397,10 +5411,10 @@ function diagRows(profile, block, scope) {
         sig.volLow = vol.zone === 'under' || vol.zone === 'maint';
       }
       let trend = 'none', pct = 0, change = null;
-      /* Still gated on the sessions this screen can SHOW — the verdict
-         text promises "N sesiones con peso y reps anotados" and the chart
-         under it plots exactly those. */
-      const lvt = points.length >= DIAG_MIN_SESSIONS ? diagLevelTrend(profile, block, day, ex, useScope === 'all' ? '' : block.id) : null;
+      /* Gated on the row's own sessions, which are the trend's: the
+         verdict text promises "N sesiones con peso y reps anotados", and
+         the N it prints is the number the level was fitted on. */
+      const lvt = points.length >= DIAG_MIN_SESSIONS ? diagLevelTrend(hist.rule) : null;
       if (lvt) {
         pct = lvt.pct;
         /* A confirmed decline is the rule's own verdict and outranks the
@@ -5410,7 +5424,11 @@ function diagRows(profile, block, scope) {
         change = lvt.change;
       }
       rows.push(Object.assign({
-        id: ex.id, name: ex.n, day: day.name, sessions: points.length,
+        id: ex.id, name: ex.n,
+        /* What the sheet calls the row: a lift on two days says which day
+           it is, with the tag the card's second band uses (dayTag). */
+        label: liveDays[ex.id] > 1 ? ex.n + ' · ' + dayTag(block, day.id) : ex.n,
+        day: day.name, dayId: day.id, sessions: points.length,
         trend: trend, pct: pct, change: change, est: est, gap: sig.gap,
       }, diagVerdict(trend, sig)));
     });
@@ -6070,8 +6088,17 @@ function recordTarget(profile, blockId, week, dayId, exId, t) {
    Chronology is blockOrder, then week, then the day's position in the
    block: the log records no clock of its own for a session that was never
    ticked, and the plan's own order is the only other thing that knows
-   which came first. */
-function exHistory(profile, block, ex, dayId, beforeWeek, onlyBlockId) {
+   which came first.
+
+   Two lists, one for one: `sessions`, the reader's own (sessionsOf), and
+   `rule`, ruleSession's projection of each, which is what the rule prices
+   from. Most callers want the second and ask exHistory, below. The
+   Diagnóstico takes both from one call, so a row's count, signals and work
+   axis are read off the very sessions its trend is fitted on: they used to
+   come from a second choice of sessions that folded both days of a split
+   lift, ignored a rename and hid stranded weeks, and the row said
+   "Funciona" over six sessions its trend had never seen (plans/056). */
+function liftHistory(profile, block, ex, dayId, beforeWeek, onlyBlockId) {
   const lo = repRangeBottom(ex.reps), hi = repRangeTop(ex.reps);
   const order = profile.blockOrder || [];
   const at = order.indexOf(block.id);
@@ -6110,15 +6137,26 @@ function exHistory(profile, block, ex, dayId, beforeWeek, onlyBlockId) {
   const key = lo + '|' + hi + '|' + (ownDay || '') + '|' + since + '|' + units();
   const hit = memo && memo.get(key);
   if (hit) return hit;
-  const out = [];
+  const kept = [], rule = [];
   sessions.forEach(s => {
     if (ownDay && s.block === block.id && s.day !== ownDay) return;
     const sess = ruleSession(s, lo, hi);
-    if (sess) out.push(sess);
+    /* The variant cut-off reads the rule's own date, the median of the
+       working sets' times — so it is applied to the projection, and the
+       session goes with it. An undated session is kept (variantSince). */
+    if (!sess || (since && sess.ts && sess.ts < since)) return;
+    kept.push(s);
+    rule.push(sess);
   });
-  const res = freezeHistory(since ? out.filter(s => !s.ts || s.ts >= since) : out);
+  /* The sessions are already frozen, as every answer of the history cache
+     is; the lists holding them are new, so they are frozen here. */
+  const res = Object.freeze({ sessions: Object.freeze(kept), rule: freezeHistory(rule) });
   if (memo) memo.set(key, res);
   return res;
+}
+
+function exHistory(profile, block, ex, dayId, beforeWeek, onlyBlockId) {
+  return liftHistory(profile, block, ex, dayId, beforeWeek, onlyBlockId).rule;
 }
 
 /* ---- the rungs this machine actually has ----

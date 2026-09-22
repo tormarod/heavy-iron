@@ -1440,11 +1440,12 @@ ok('diagMedianGap on an even number of gaps averages the middle two',
 ok('diagMedianGap on too few timestamps returns null rather than NaN',
    call('diagMedianGap([])') === null);
 
-/* diagPoints groups the log keys by week in one pass now instead of
-   re-filtering them once per week (plans/027). The order of the output is
-   what the whole screen is fitted through, and the deload is what must stay
-   out of it, so both are pinned here rather than left to the rewrite. */
-const diagPointLabels = call(`
+/* The order of a row's sessions is what the whole row is fitted through,
+   and the deload is what must stay out of them, so both are pinned here
+   rather than left to a rewrite: diagPoints' own walk once regrouped the
+   log keys (plans/027), and since plans/056 the row reads the objetivo's
+   sessions (liftHistory) and makes no choice of its own. */
+const diagWeeks = call(`
   (function () {
     state = defaultState(); migrate(); state.setupDone = true;
     const pr = state.profiles.hombre;
@@ -1459,23 +1460,25 @@ const diagPointLabels = call(`
       ] };
     });
     block.weeks = 8; block.deload = 3;
-    return { labels: diagPoints(pr, exId, blockId).map(p => p.label), name: block.name };
+    return {
+      weeks: liftHistory(pr, block, day.ex[0], day.id, MAX_WEEKS + 1, blockId).sessions.map(s => s.week),
+      sessions: diagRows(pr, block, 'block').find(r => r.id === exId).sessions,
+    };
   })()
 `);
-ok('diagPoints returns the weeks in ascending order with the deload left out',
-   JSON.stringify(diagPointLabels.labels) ===
-   JSON.stringify([1, 2, 4].map(w => diagPointLabels.name + ' · S' + w)),
-   JSON.stringify(diagPointLabels.labels));
+ok('a Diagnóstico row reads the weeks in ascending order with the deload left out',
+   JSON.stringify(diagWeeks.weeks) === '[1,2,4]' && diagWeeks.sessions === 3, JSON.stringify(diagWeeks));
 
 /* The sheet's history entries include the week being trained
-   (diagLevelTrend asks for MAX_WEEKS + 1), and a tick does not redraw the
+   (each row asks liftHistory for MAX_WEEKS + 1), and a tick does not redraw the
    day, so whatever cache the last draw left must not answer for them after
    one. Open the Diagnóstico, close it, tick, reopen. plans/027 pinned this
    through a resetRenderCache() at the top of diagRows; since plans/045 it is
    the tick's own save(), with the card's scope, that drops those entries,
-   so the tick below goes through the same save() the card calls. The
-   `change` half of the assertion is the one that pins it: `sessions` comes
-   from diagPoints, which reads the log directly and would move either way. */
+   so the tick below goes through the same save() the card calls. Both
+   halves of the assertion pin it since plans/056: `sessions` comes from the
+   same cached history as `change`, where it used to come from a walk of
+   its own that would have moved either way. */
 const sheetSeesTick = call(`
   (function () {
     state = defaultState(); migrate(); state.setupDone = true;
@@ -3822,13 +3825,17 @@ const diagUnitProbe = call(`
     profile.log[blockId][slot(1, day.id)] = { [exId]: [{ w: '100', r: '5', done: true }] };
     profile.log[blockId][slot(2, day.id)] = { [exId]: [{ w: '220.462262185', r: '5', done: true, u: 'lb' }] };
     state.prefs.units = 'kg';
-    const points = diagPoints(profile, exId, blockId);
+    /* The row's two readings of it: the level the trend is fitted on, and
+       the kilos per set of the work axis. */
+    const hist = liftHistory(profile, block, day.ex[0], day.id, MAX_WEEKS + 1, blockId);
+    const out = hist.rule.map(s => Math.round(s.sets[0].w * 100) / 100)
+      .concat(diagPoints(hist.sessions).map(p => Math.round(p.vol / p.sets * 100) / 100));
     state.prefs.units = 'kg';
-    return points.map(p => Math.round(p.weight * 100) / 100);
+    return out;
   })()
 `);
-ok('diagPoints converts a lb-stamped week back to kg instead of reading 220 kg on the trend line',
-   JSON.stringify(diagUnitProbe) === JSON.stringify([100, 100]), JSON.stringify(diagUnitProbe));
+ok('the Diagnóstico converts a lb-stamped week back to kg instead of reading 220 kg on the trend line',
+   JSON.stringify(diagUnitProbe) === JSON.stringify([100, 100, 500, 500]), JSON.stringify(diagUnitProbe));
 const reviewUnitProbe = call(`
   (function() {
     const profile = defaultState().profiles.hombre;
@@ -6114,18 +6121,19 @@ console.log('\n== the Diagnóstico on sessionsOf: the deload is deloadAt (plans/
       sessions: [1, 2, 3, 4].map(w => ({ block: 'A', week: w, day: 'd1', lift: 'bp',
                                          sets: [[w === 3 ? 30 : 50 + w, 8], [w === 3 ? 30 : 50 + w, 8]] })) });
     const block = p.blocks.A;
-    const points = diagPoints(p, 'bp', 'A').map(x => x.label);
+    /* A row's sessions are the objetivo's since plans/056, deloadAt and all. */
+    const weeks = liftHistory(p, block, block.days[0].ex[0], 'd1', MAX_WEEKS + 1, 'A').sessions.map(s => s.week);
     /* Week 4 dropped for the index: with nothing after it, the deload is
        the last week logged, which is exactly where it must not be read. */
     delete p.log.A[slot(4, 'd1')];
     return JSON.stringify({
-      points: points,
+      weeks: weeks,
       series: strengthByExercise(p, block).bp.map(v => v != null),
       rows: strengthRows(p, block).map(r => ({ base: r.base, last: r.lastWeek })),
     });
   })()`));
-  ok('diagPoints leaves out a week the phase text calls "Descarga", not only the block\'s deload week',
-     handDeload.points.join('|') === 'A · S1|A · S2|A · S4', JSON.stringify(handDeload.points));
+  ok('a Diagnóstico row leaves out a week the phase text calls "Descarga", not only the block\'s deload week',
+     handDeload.weeks.join('|') === '1|2|4', JSON.stringify(handDeload.weeks));
   ok('...and the strength index will not end its comparison on it, while the chart keeps its sets',
      handDeload.rows.length === 1 && handDeload.rows[0].base === 0 && handDeload.rows[0].last === 1 &&
        handDeload.series.join(',') === 'true,true,true,false', JSON.stringify(handDeload));
@@ -6148,11 +6156,213 @@ console.log('\n== the Diagnóstico on sessionsOf: the deload is deloadAt (plans/
     const p = sessionFixture({ blocks: [{ id: 'A', weeks: 4, days: [{ id: 'd1', ex: [{ id: 'bp' }] }] }],
       sessions: [{ block: 'A', week: 1, day: 'd1', lift: 'bp', rir: '2+',
                    sets: [[50, 8, { ts: 1000 }], [50, 8, { ts: 2000 }], [50, 8, { ts: 900000 }]] }] });
-    const pt = diagPoints(p, 'bp', 'A')[0];
-    return JSON.stringify({ ts: pt.ts, rirs: pt.rirs, rows: pt.rows.length });
+    const pt = diagPoints(liftHistory(p, p.blocks.A, p.blocks.A.days[0].ex[0], 'd1', MAX_WEEKS + 1, 'A').sessions)[0];
+    return JSON.stringify({ ts: pt.ts, rirs: pt.rirs, ticked: pt.ticked.length });
   })()`));
   ok('a point still carries the latest tick as its ts, and the legacy chip spread over every set',
-     kept.ts === 900000 && kept.rirs.join(',') === '2,2,2' && kept.rows === 3, JSON.stringify(kept));
+     kept.ts === 900000 && kept.rirs.join(',') === '2,2,2' && kept.ticked === 3, JSON.stringify(kept));
+}
+
+console.log('\n== one history per Diagnóstico row: the row reads the sessions the objetivo reads (plans/056) ==');
+{
+  /* A row's trend read the objetivo's own history (exHistory) while its
+     count, its three-session gate, its gap, its three signals and its work
+     axis read a second choice of sessions: the block's own weeks only, both
+     days of a lift the plan splits, every block in the list, and everything
+     since before a rename. The second architecture review found the two
+     disagreeing in public, and the block review's AI document copying it.
+     Each case below was written to fail against the two histories. Day ids
+     are the days' names here: sessionFixture names a day after its id. */
+  const split = JSON.parse(call(`(function () {
+    const DAY = 864e5, start = Date.now() - 30 * DAY;
+    const three = (kg, ts) => [0, 1, 2].map(() => [kg, 10, { rir: '1', ts: ts }]);
+    const sessions = [];
+    for (let w = 1; w <= 4; w++) {
+      const mon = start + (w - 1) * 7 * DAY, thu = mon + 3 * DAY;
+      sessions.push({ block: 'A', week: w, day: 'Empuje', lift: 'bp', sets: three(60 + 2.5 * (w - 1), mon) });
+      sessions.push({ block: 'A', week: w, day: 'Empuje', lift: 'ohp', sets: three(40, mon) });
+      sessions.push({ block: 'A', week: w, day: 'Pierna', lift: 'bp', sets: three(60 - 4 * (w - 1), thu) });
+    }
+    const p = sessionFixture({ blocks: [{ id: 'A', weeks: 8, days: [
+      { id: 'Empuje', ex: [{ id: 'bp', n: 'Press banca' }, { id: 'ohp', n: 'Press militar' }] },
+      { id: 'Pierna', ex: [{ id: 'bp', n: 'Press banca' }] } ] }], sessions: sessions });
+    Object.assign(p, { week: 5, notes: {}, energy: {} });
+    const block = p.blocks.A;
+    const rows = diagRows(p, block, 'block');
+    return JSON.stringify({
+      rows: rows.filter(r => r.id === 'bp')
+        .map(r => ({ label: r.label, day: r.day, sessions: r.sessions, trend: r.trend, lectura: r.lectura })),
+      plain: rows.filter(r => r.id === 'ohp').map(r => r.label),
+      trends: block.days.map(d => exHistory(p, block, d.ex[0], d.id, MAX_WEEKS + 1, 'A').length),
+      lines: reviewText(buildBlockReview(p, block)).split('\\n').filter(l => l.indexOf('- «Press banca»') === 0),
+    });
+  })()`));
+  /* The review's case, verbatim: climbing on Empuje, falling on Pierna,
+     every week. It read "Funciona" over six sessions, and the trend behind
+     that was fitted on the four Empuje ones. */
+  ok('a lift the plan puts on two days is two rows, each tagged with its day',
+     split.rows.length === 2 &&
+       split.rows.map(r => r.label).sort().join(' | ') === 'Press banca · Empuje | Press banca · Pierna',
+     JSON.stringify(split.rows));
+  ok('...while a lift on one day keeps its plain name', split.plain.join() === 'Press militar', JSON.stringify(split.plain));
+  const upRow = split.rows.find(r => r.day === 'Empuje') || {}, downRow = split.rows.find(r => r.day === 'Pierna') || {};
+  ok('...each counting the sessions of its own day, the ones its trend is fitted on',
+     split.trends.join(',') === '4,4' && upRow.sessions === 4 && downRow.sessions === 4, JSON.stringify(split));
+  ok('...so climbing on one day and falling on the other no longer reads "Funciona" over six sessions',
+     upRow.trend === 'up' && downRow.trend === 'down' && downRow.lectura !== 'Funciona' &&
+       !split.rows.some(r => r.sessions === 6), JSON.stringify(split.rows));
+  const lineOf = day => split.lines.find(l => l.indexOf('(«' + day + '»)') > 0) || '';
+  ok('the block review\'s AI document lists both rows, each with its own day, count and RIR tally',
+     split.lines.length === 2 &&
+       ['Empuje', 'Pierna'].every(d => lineOf(d).indexOf('sobre 4 sesiones') > 0 &&
+                                       lineOf(d).indexOf('RIR apuntado: 1 en 12 series (de 12)') > 0) &&
+       lineOf('Empuje').indexOf('tendencia subiendo') > 0 && lineOf('Pierna').indexOf('tendencia bajando') > 0,
+     JSON.stringify(split.lines));
+
+  /* The signals read the same sessions as the count: the weight came off to
+     finish the last set of the last Empuje session, and that is Empuje's
+     news. Read over both days, the last session was a clean Pierna one. */
+  const splitSignal = JSON.parse(call(`(function () {
+    const DAY = 864e5, start = Date.now() - 20 * DAY;
+    const sessions = [];
+    for (let w = 1; w <= 3; w++) ['Empuje', 'Pierna'].forEach((day, i) => {
+      const ts = start + ((w - 1) * 7 + 3 * i) * DAY;
+      const sets = [0, 1, 2].map(() => [40, 12, { ts: ts }]);
+      if (w === 3 && day === 'Empuje') Object.assign(sets[2][2], { dk: 'forced', d: [{ w: '30', r: '4' }] });
+      sessions.push({ block: 'A', week: w, day: day, lift: 'bp', sets: sets });
+    });
+    const p = sessionFixture({ blocks: [{ id: 'A', weeks: 8, days: [
+      { id: 'Empuje', ex: [{ id: 'bp', n: 'Press banca' }] },
+      { id: 'Pierna', ex: [{ id: 'bp', n: 'Press banca' }] } ] }], sessions: sessions });
+    p.week = 4;
+    const byDay = {};
+    diagRows(p, p.blocks.A, 'block').filter(r => r.id === 'bp').forEach(r => { byDay[r.day] = r.trend + ' | ' + r.lectura; });
+    return JSON.stringify(byDay);
+  })()`));
+  ok('a forced drop on one day\'s last session is read on that day\'s row, and only there',
+     splitSignal.Empuje === 'flat | Fatiga, no falta de esfuerzo' &&
+       splitSignal.Pierna === 'flat | Estancado de verdad — ni la serie tope ni los kilos por serie se mueven',
+     JSON.stringify(splitSignal));
+
+  /* The review's other case: six sessions, renamed on the day of the fourth,
+     so the objetivo has read three since. */
+  const renamed = JSON.parse(call(`(function () {
+    const DAY = 864e5, start = Date.now() - 45 * DAY;
+    const ts = i => start + i * 7 * DAY;
+    const p = sessionFixture({ blocks: [{ id: 'A', weeks: 8, days: [{ id: 'Espalda', ex: [{ id: 'row', n: 'Remo con barra' }] }] }],
+      sessions: [0, 1, 2, 3, 4, 5].map(i => ({ block: 'A', week: i + 1, day: 'Espalda', lift: 'row',
+        sets: [0, 1, 2].map(() => [50 + i, 10, { ts: ts(i) }]) })) });
+    Object.assign(p, { week: 7, notes: {}, energy: {} });
+    p.variants.row = [{ n: 'Remo en máquina', since: '1970-01-01' }, { n: 'Remo con barra', since: isoDay(ts(3)) }];
+    const block = p.blocks.A;
+    return JSON.stringify({
+      sessions: diagRows(p, block, 'block').find(r => r.id === 'row').sessions,
+      trend: exHistory(p, block, block.days[0].ex[0], 'Espalda', MAX_WEEKS + 1, 'A').length,
+      line: reviewText(buildBlockReview(p, block)).split('\\n').find(l => l.indexOf('- «Remo con barra»') === 0) || '',
+    });
+  })()`));
+  ok('a renamed lift counts its sessions from the rename, the ones its trend is fitted on',
+     renamed.trend === 3 && renamed.sessions === 3, JSON.stringify(renamed));
+  ok('...and the AI document quotes that count', renamed.line.indexOf('sobre 3 sesiones') > 0, renamed.line);
+
+  /* A block shortened to four weeks after six were logged: the objetivo
+     still reads weeks 5 and 6 (CONTEXT.md, "stranded week"), and the last
+     of them ran out of reps. */
+  const stranded = JSON.parse(call(`(function () {
+    const DAY = 864e5, start = Date.now() - 42 * DAY;
+    const p = sessionFixture({ blocks: [{ id: 'A', weeks: 4, days: [{ id: 'Pierna', ex: [{ id: 'sq', n: 'Sentadilla' }] }] }],
+      sessions: [1, 2, 3, 4, 5, 6].map(w => ({ block: 'A', week: w, day: 'Pierna', lift: 'sq',
+        sets: (w === 6 ? [12, 9, 8] : [12, 12, 12]).map(r => [40, r, { ts: start + (w - 1) * 7 * DAY }]) })) });
+    Object.assign(p, { week: 4, notes: {}, energy: {} });
+    const block = p.blocks.A;
+    const rows = ['block', 'all'].map(s => diagRows(p, block, s).find(r => r.id === 'sq'));
+    return JSON.stringify({
+      sessions: rows.map(r => r.sessions), lectura: rows[0].lectura,
+      trend: exHistory(p, block, block.days[0].ex[0], 'Pierna', MAX_WEEKS + 1, 'A').length,
+      line: reviewText(buildBlockReview(p, block)).split('\\n').find(l => l.indexOf('- «Sentadilla»') === 0) || '',
+    });
+  })()`));
+  ok('weeks stranded above a shortened block count on the row, in both scopes, as they do for the objetivo',
+     stranded.trend === 6 && stranded.sessions.join(',') === '6,6', JSON.stringify(stranded));
+  ok('...and the signals read them: the row\'s last session is the stranded one that ran out of reps',
+     stranded.lectura === 'Primera serie al fallo — las de después se vacían', stranded.lectura);
+  ok('...and the AI document quotes that count', stranded.line.indexOf('sobre 6 sesiones') > 0, stranded.line);
+
+  /* Two more readings the second history had of its own, beyond the
+     review's three: it dropped a session whose every set ran past
+     EST_MAX_REPS, which the level has always read (as a floor), and it
+     read every block in the list on "Todos los bloques", where the trend
+     stops at the block on screen. */
+  const highReps = JSON.parse(call(`(function () {
+    const DAY = 864e5, start = Date.now() - 30 * DAY;
+    const p = sessionFixture({ blocks: [{ id: 'A', weeks: 8, days: [
+      { id: 'Pierna', ex: [{ id: 'calf', n: 'Gemelo de pie', reps: '15-20' }] }] }],
+      sessions: [1, 2, 3, 4].map(w => ({ block: 'A', week: w, day: 'Pierna', lift: 'calf',
+        sets: [0, 1, 2].map(() => [60 + 5 * w, 18, { ts: start + (w - 1) * 7 * DAY }]) })) });
+    p.week = 5;
+    const block = p.blocks.A;
+    const row = diagRows(p, block, 'block').find(r => r.id === 'calf');
+    return JSON.stringify({ sessions: row.sessions, trend: row.trend,
+      history: exHistory(p, block, block.days[0].ex[0], 'Pierna', MAX_WEEKS + 1, 'A').length });
+  })()`));
+  ok('a lift trained past fifteen reps is judged on the sessions its trend reads, not left without any',
+     highReps.history === 4 && highReps.sessions === 4 && highReps.trend === 'up', JSON.stringify(highReps));
+  const later = JSON.parse(call(`(function () {
+    const DAY = 864e5, start = Date.now() - 60 * DAY;
+    const plan = id => ({ id: id, weeks: 4, days: [{ id: 'Empuje', ex: [{ id: 'bp', n: 'Press banca' }] }] });
+    const sessions = [];
+    ['A', 'B'].forEach((b, bi) => [1, 2, 3].forEach(w => sessions.push({ block: b, week: w, day: 'Empuje', lift: 'bp',
+      sets: [0, 1, 2].map(() => [60 + bi * 10 + w, 10, { ts: start + (bi * 4 + w - 1) * 7 * DAY }]) })));
+    const p = sessionFixture({ blocks: [plan('A'), plan('B')], sessions: sessions });
+    p.week = 4;
+    return JSON.stringify({ sessions: diagRows(p, p.blocks.A, 'all').find(r => r.id === 'bp').sessions,
+      history: exHistory(p, p.blocks.A, p.blocks.A.days[0].ex[0], 'Empuje', MAX_WEEKS + 1, '').length });
+  })()`));
+  ok('"Todos los bloques" on an earlier block counts the blocks up to it, as its trend does — not the one after',
+     later.history === 3 && later.sessions === 3, JSON.stringify(later));
+
+  /* Every row of a profile with all of the above at once — a split lift, a
+     rename, stranded weeks, a lift past fifteen reps, a block after the one
+     on screen — in both scopes: its count and its gap are the trend's own
+     sessions, found here from exHistory's answer and the stored rows
+     directly rather than through anything the row is built from. */
+  const everyRow = JSON.parse(call(`(function () {
+    const DAY = 864e5, start = Date.now() - 150 * DAY;
+    const plan = id => ({ id: id, weeks: 6, days: [
+      { id: 'Empuje', ex: [{ id: 'bp', n: 'Press banca' }, { id: 'ohp', n: 'Press militar' }] },
+      { id: 'Pierna', ex: [{ id: 'sq', n: 'Sentadilla' }, { id: 'bp', n: 'Press banca' },
+                           { id: 'calf', n: 'Gemelo', reps: '15-20' }] } ] });
+    const sessions = [];
+    let t = 0;
+    ['A', 'B', 'C'].forEach(b => {
+      for (let w = 1; w <= (b === 'A' ? 6 : 4); w++) ['Empuje', 'Pierna'].forEach(day => {
+        t += 2 + (w % 3);
+        (day === 'Empuje' ? ['bp', 'ohp'] : ['sq', 'bp', 'calf']).forEach((lift, k) => sessions.push({
+          block: b, week: w, day: day, lift: lift,
+          sets: [0, 1, 2].map(i => [50 + w + k, lift === 'calf' ? 17 : 10 - i, { ts: start + t * DAY + i * 60000 }]) }));
+      });
+    });
+    const p = sessionFixture({ blocks: [plan('A'), plan('B'), plan('C')], sessions: sessions });
+    p.blocks.A.weeks = 4;
+    p.week = 4;
+    /* Renamed a week into B: its last three sessions are the new variant. */
+    p.variants.ohp = [{ n: 'Press militar con barra', since: '1970-01-01' }, { n: 'Press militar', since: isoDay(start + 44 * DAY) }];
+    const block = p.blocks.B;
+    const out = [];
+    ['block', 'all'].forEach(scope => diagRows(p, block, scope).forEach(r => {
+      const day = block.days.find(d => d.name === r.day);
+      const ex = day.ex.find(e => e.id === r.id);
+      const hist = exHistory(p, block, ex, day.id, MAX_WEEKS + 1, scope === 'all' ? '' : block.id).slice(-DIAG_WINDOW);
+      const stamps = hist.map(s => ({ ts: p.log[s.blockId][slot(s.week, s.dayId)][r.id]
+        .reduce((m, x) => (x && x.done && +x.ts > m ? +x.ts : m), 0) }));
+      out.push({ scope: scope, row: r.id + ' · ' + r.day, sessions: r.sessions, gap: r.gap,
+                 want: { sessions: hist.length, gap: diagMedianGap(stamps) } });
+    }));
+    return JSON.stringify(out);
+  })()`));
+  const off = everyRow.filter(x => x.sessions !== x.want.sessions || x.gap !== x.want.gap);
+  ok('every row\'s count and gap come from the sessions its trend is fitted on, in both scopes',
+     everyRow.length === 10 && off.length === 0, everyRow.length + ' rows; ' + JSON.stringify(off.slice(0, 3)));
 }
 
 console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038) ==');

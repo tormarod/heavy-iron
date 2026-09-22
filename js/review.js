@@ -147,14 +147,14 @@ function buildBlockReview(profile, block) {
        map stays unread, as it always has here.
 
        The block's own weeks ('plan'), deload included — the tally says
-       what was written down in the block, not a trend — and only the days
-       where the plan still has this exercise live: the rows the review
-       lists are the plan's, and the count sits beside them. */
+       what was written down in the block, not a trend — and only the row's
+       own day: the rows the review lists are the plan's, and each count
+       sits beside its own. A lift the plan puts on two days is a row per
+       day since plans/056, and a count summed over both days, printed on
+       each of its two lines, would describe neither. */
     const rir = { n: 0 };
     RIR_OPTIONS.forEach(k => { rir[k] = 0; });
-    const onDays = dayList(block).filter(d => exList(d).some(e => e.id === x.id)).map(d => d.id);
-    sessionsOf(profile, { weeks: 'plan', blocks: [block.id], lift: { id: x.id } }).forEach(s => {
-      if (onDays.indexOf(s.day) < 0) return;
+    sessionsOf(profile, { weeks: 'plan', blocks: [block.id], lift: { id: x.id }, day: x.dayId }).forEach(s => {
       s.sets.forEach(set => {
         if (!set.worked) return;
         rir.n++;
