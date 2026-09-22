@@ -959,6 +959,11 @@ function migrate() {
   if (!Object.prototype.hasOwnProperty.call(state.profiles, state.activeProfile)) state.activeProfile = profileKeys()[0];
   if (!state.prefs || typeof state.prefs !== 'object') state.prefs = {};
   if (['auto', 'light', 'dark'].indexOf(state.prefs.theme) < 0) state.prefs.theme = 'auto';
+  /* The interface speaks only Spanish today — nothing on screen sets this —
+     but the maintainer decided (2026-09-22) to wire the preference in now
+     rather than when the English version actually lands, so the CSV export
+     already has a value to read instead of a hard-coded language. */
+  if (['es', 'en'].indexOf(state.prefs.lang) < 0) state.prefs.lang = 'es';
   state.prefs.sound = !!state.prefs.sound;
   /* Whether the rest alarm keeps working with the phone in a pocket, and
      whether the browser has already been asked to protect the log — see
@@ -8020,7 +8025,14 @@ function normalizeImportedObj(rawObj, rawBlock, normalized) {
    One row per logged set, for looking at the numbers somewhere the app
    cannot: a spreadsheet, a chart, a coach's inbox. Deliberately one-way —
    the .json is what restores, and mixing the two up loses data. */
-function csvCell(v) {
+
+/* What each language writes a CSV with. A Spanish spreadsheet splits on
+   ';' because ',' is its decimal mark — Excel in es-ES opened the old
+   comma file as a single column — and an English one splits on ','. */
+const CSV_BY_LANG = { es: { sep: ';' }, en: { sep: ',' } };
+const csvFormat = () => CSV_BY_LANG[(state && state.prefs && state.prefs.lang) || 'es'] || CSV_BY_LANG.es;
+
+function csvCell(v, sep) {
   let s = String(v == null ? '' : v);
   /* A cell starting with = + - @ (or a tab/CR) is a formula to Excel,
      LibreOffice and Sheets. Names in this file come from imported blocks
@@ -8028,7 +8040,12 @@ function csvCell(v) {
      able to carry one. A leading apostrophe is the conventional way to say
      "text" — spreadsheets hide it. Logged numbers never start with these. */
   if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
-  return /[",;\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  /* Only the column separator itself, a quote or a newline forces quoting
+     — not both ',' and ';' the way this checked before there was a choice
+     of separator. A bare decimal comma in a ';' file is exactly what lets
+     Spanish Excel read "22,5" as one number instead of splitting the row
+     on it (plans/068). */
+  return (s.indexOf(sep) >= 0 || /["\n\r]/.test(s)) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
 function buildCsv() {
@@ -8126,8 +8143,12 @@ function buildCsv() {
         .forEach(dayId => unplanned(dayId, []).forEach(id => emit(dayId, dayId, null, id, nameOf(id))));
     });
   });
-  /* The BOM is what makes Excel open a UTF-8 CSV without mangling accents. */
-  return '﻿' + rows.map(r => r.map(csvCell).join(',')).join('\r\n');
+  /* The BOM is what makes Excel open a UTF-8 CSV without mangling accents.
+     The separator is the language's own (csvFormat, above), not a fixed
+     ',' — and passed explicitly to csvCell rather than left for map() to
+     supply, which would hand it the row's own index instead. */
+  const sep = csvFormat().sep;
+  return '﻿' + rows.map(r => r.map(c => csvCell(c, sep)).join(sep)).join('\r\n');
 }
 
 $('bCsv').onclick = () => {

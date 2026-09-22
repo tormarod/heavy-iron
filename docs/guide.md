@@ -139,10 +139,11 @@ objetivo, built on the block before it.
 - **Backup / restore**: download a `.json` file with both profiles'
   data, or copy/paste it as text. Restoring replaces everything. There is
   also a one-way **CSV export** for looking at the numbers in a
-  spreadsheet. It carries every set you have ever logged, including the
-  ones the app hides: weeks past the end of a block you shortened, and
-  exercises you have since taken out of the plan, which come after the
-  plan's own and with no `orden`.
+  spreadsheet. The file is split with `;`, the way a Spanish spreadsheet
+  expects, so Excel opens it in columns instead of one. It carries every
+  set you have ever logged, including the ones the app hides: weeks past
+  the end of a block you shortened, and exercises you have since taken
+  out of the plan, which come after the plan's own and with no `orden`.
 - **Move one person between phones**: export a single profile and load it
   on the other device — it replaces that person and leaves the other
   alone. See [Two phones](#two-phones-one-profile-each).
@@ -1717,7 +1718,9 @@ Worth knowing before you plan around them:
 
 - **Spanish only.** Every string lives inline in the source, so translating
   is a real project rather than a patch. This is the biggest wall for
-  anyone who finds the app and doesn't read Spanish.
+  anyone who finds the app and doesn't read Spanish. A language preference
+  is already wired in, with no control on screen yet, for the English
+  version to come — the CSV export follows it today.
 - **No sync.** By design — there is no server. Data can be carried between
   phones by hand, as a file (see [Two phones](#two-phones-one-profile-each))
   or on camera (see [QR](#passing-data-with-the-camera-qr)), but both are

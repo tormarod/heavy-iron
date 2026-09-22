@@ -354,7 +354,9 @@ function showRecovery(err, raw, mode) {
 
 ## Documented limits — settled decisions, not bugs
 
-- **Spanish only.** Translating is a real project, not a patch.
+- **Spanish only.** Translating is a real project, not a patch. A language
+  preference is wired in already, with no control on screen yet, for the
+  English version to come — the CSV export follows it today.
 - **No sync.** By design — there is no server.
 - **QR transfer is one-way and manual.** It does not merge.
 - **Undo is one level deep** and doesn't survive a reload.

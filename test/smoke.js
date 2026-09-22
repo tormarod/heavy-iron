@@ -1269,9 +1269,14 @@ const ok = (name, cond, extra) => {
 
     console.log('\n== CSV ==');
     const csv = await page.evaluate(() => buildCsv());
-    ok('CSV has a header row', csv.split('\r\n')[0].includes('perfil,bloque,semana'));
-    ok('CSV contains the logged set', csv.includes('22,5') || csv.includes('"22,5"'), csv.split('\r\n')[1]);
-    ok('CSV quotes the comma decimal', csv.includes('"22,5"'));
+    /* The separator is read off the app (csvFormat().sep), not hard-coded,
+       so this keeps holding once a language control can pick 'en' and its
+       ',' (plans/068). Whether 22,5 is quoted now depends on that same
+       separator — es leaves it bare — so that check moved to test/unit.js,
+       next to migrate()'s own lang tests, instead of living in a browser. */
+    const sep = await page.evaluate(() => csvFormat().sep);
+    ok('CSV has a header row', csv.split('\r\n')[0].includes(['perfil', 'bloque', 'semana'].join(sep)));
+    ok('CSV contains the logged set', csv.includes('22,5'), csv.split('\r\n')[1]);
     await page.keyboard.press('Escape');
     /* No sleep: the Escape handler moves focus synchronously, and press()
        resolves after the page has run it.
@@ -1528,8 +1533,12 @@ const ok = (name, cond, extra) => {
     ok('the forced kind is recorded', (await storedRow()).dk === 'forced');
 
     const csv = await page.evaluate(() => buildCsv());
-    ok('CSV grows two columns rather than two rows', /bajadas,tipo_bajada/.test(csv.split('\r\n')[0]));
-    ok('CSV keeps the drop on its own set row', /45x5,Forzado/.test(csv), csv.split('\r\n')[1]);
+    /* Read off the app rather than hard-coded (plans/068) — neither ',' nor
+       ';' is a regex metacharacter, so building the pattern from the live
+       separator needs no escaping. */
+    const dropSep = await page.evaluate(() => csvFormat().sep);
+    ok('CSV grows two columns rather than two rows', new RegExp('bajadas' + dropSep + 'tipo_bajada').test(csv.split('\r\n')[0]));
+    ok('CSV keeps the drop on its own set row', new RegExp('45x5' + dropSep + 'Forzado').test(csv), csv.split('\r\n')[1]);
 
     const rt = await page.evaluate(() => {
       const p = state.profiles.hombre, bl = p.blocks['block-1'];
@@ -2706,13 +2715,16 @@ const ok = (name, cond, extra) => {
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForTimeout(600);
     const csv = await page.evaluate(() => buildCsv());
-    const head = csv.split('\r\n')[0].replace('\ufeff', '').split(',');
-    ok('the CSV has a column for it', head[5] === 'orden', head.join(','));
-    const csvRow = n => (csv.split('\r\n').find(l => l.indexOf(n) >= 0) || '').split(',');
+    /* Read off the app rather than hard-coded, so this keeps holding once a
+       language control can pick 'en' and its ',' (plans/068). */
+    const ordenSep = await page.evaluate(() => csvFormat().sep);
+    const head = csv.split('\r\n')[0].replace('\ufeff', '').split(ordenSep);
+    ok('the CSV has a column for it', head[5] === 'orden', head.join(ordenSep));
+    const csvRow = n => (csv.split('\r\n').find(l => l.indexOf(n) >= 0) || '').split(ordenSep);
     ok('an exercise done first is a 1 in the CSV whatever the plan said',
-       csvRow('Elevaciones laterales en polea')[5] === '1', csvRow('Elevaciones laterales en polea').join(','));
+       csvRow('Elevaciones laterales en polea')[5] === '1', csvRow('Elevaciones laterales en polea').join(ordenSep));
     ok('and the one that was bumped is a 2', csvRow('Press de pecho')[5] === '2',
-       csvRow('Press de pecho').join(','));
+       csvRow('Press de pecho').join(ordenSep));
 
     await ctx.close();
   });
