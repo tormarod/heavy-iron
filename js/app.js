@@ -6864,9 +6864,11 @@ function blockTagsFor(dim, block) {
 /* Set counts by tag for one dimension and scope: 'plan' goes through the
    same setsFor() the session view uses, so deload halving and "+1 serie
    desde semana N" are already respected; 'log' counts sets actually ticked
-   done this week. Both are seeded from blockTagsFor() first so toggling
-   between them never adds or drops a bar — only the numbers move, which is
-   the point of a plan-vs-adherence comparison. */
+   done this week, one sessionsOf query per exercise the plan still shows —
+   like the plan side, a retired exercise's old sets are not this week's
+   adherence. Both are seeded from blockTagsFor() first so toggling between
+   them never adds or drops a bar — only the numbers move, which is the
+   point of a plan-vs-adherence comparison. */
 function volumeTotals(scope, profile, block, week, dim) {
   const tagFn = VOLUME_DIMENSIONS[dim].tag;
   const totals = {};
@@ -6875,9 +6877,9 @@ function volumeTotals(scope, profile, block, week, dim) {
     exList(day).forEach(ex => {
       const t = tagFn(ex);
       if (scope === 'log') {
-        const s = profile.log[block.id] && profile.log[block.id][slot(week, day.id)];
-        const rows = s && s[ex.id];
-        if (Array.isArray(rows)) totals[t] += rows.filter(r => r && r.done).length;
+        const sess = sessionsOf(profile, { weeks: 'plan', blocks: [block.id], lift: { id: ex.id }, day: day.id })
+          .find(s => s.week === week);
+        totals[t] += sess ? sess.sets.length : 0;
       } else {
         totals[t] += setsFor(ex, week, block);
       }

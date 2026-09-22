@@ -2262,6 +2262,27 @@ ok('setsFor does not halve a week whose goal says "sin descarga"',
 ok('...nor does volumeWeeksInPlay exclude it from the typical',
    call(`volumeWeeksInPlay('plan', { deload: 0, weeks: 3, phase: { 2: { r: 'Sin descarga' } } }, [10, 10, 10]).join(',')`) === '0,1,2');
 
+/* volumeTotals('log', …) moved onto sessionsOf (plans/057), one query per
+   exercise the plan still shows — so unlike blockTonnageByWeek, a retired
+   exercise's sets stay out of it, the same as the 'plan' side right next to
+   it in the toggle. */
+console.log('\n== volumeTotals(\'log\', …) reads sessionsOf: exactly the week\'s ticked sets, and a retired exercise still does not count (plans/057) ==');
+const volumeTotalsProbe = call(`
+  (function() {
+    const block = {
+      id: 'vt', weeks: 2,
+      days: [{ id: 'd0', ex: [{ id: 'live', muscle: 'Pecho', sets: 3 }, { id: 'dead', muscle: 'Pecho', sets: 3, off: 1 }] }],
+    };
+    const profile = { blocks: { vt: block }, log: { vt: {
+      'w1-d0': { live: [{ done: true, w: '60', r: '8' }, { done: true, w: '60', r: '8' }, { w: '60', r: '8' }],
+                 dead: [{ done: true, w: '99', r: '1' }] },
+    } } };
+    return volumeTotals('log', profile, block, 1, 'muscle');
+  })()
+`);
+ok('volumeTotals(\'log\') counts exactly the week\'s ticked sets of a still-planned exercise, not a retired one\'s',
+   volumeTotalsProbe.Pecho === 2, JSON.stringify(volumeTotalsProbe));
+
 console.log('\n== decision 1 (plans/054): deloadWeek is read nowhere but app.js\'s own deloadWeeks and the editor\'s field ==');
 {
   /* The scanner on a case it exists to tell apart, so it cannot pass the
