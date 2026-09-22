@@ -47,7 +47,7 @@ const deloadSpanLabel = d => d.deload === d.deloadEnd
 function buildBlockReview(profile, block) {
   const weeks = blockWeeks(block);
   const upTo = Math.min(Math.max(profile.week, 1), weeks);
-  const tonnage = blockTonnageByWeek(profile, block, convertedSetVolume);
+  const tonnage = blockTonnageByWeek(profile, block);
   const weeksLogged = tonnage.filter(v => v > 0).length;
 
   /* Bounded to the block's own weeks, exactly like tonnage just above —

@@ -6898,28 +6898,23 @@ function volumeRows(totals) {
 
 /* Kilos moved in this block, week by week — index 0 is week 1, and a week
    with nothing ticked stays at zero rather than disappearing.
-   The log is walked raw here instead of through dayList/exList, unlike the
-   set counts above: a retired exercise's sets were still lifted, and rows
-   parked past an exercise's current set count were still lifted too.
-   Hiding them from the plan doesn't unlift them. Weeks past the block's
-   current length are left out for the same reason the session view hides
-   them — the "series en semanas por encima" notice is what speaks for
-   those. */
-/* `volumeOf` defaults to setVolume (raw, unconverted — the session view's
-   own definition), but every reader that spans sessions passes
-   convertedSetVolume (above) instead: see the comment by rowWeight for why
-   the two must stay separate functions. */
-function blockTonnageByWeek(profile, block, volumeOf) {
-  const vol = volumeOf || setVolume;
+   sessionsOf is asked for every lift here, unlike the set counts above, so
+   a retired exercise's sets still count — hiding them from the plan
+   doesn't unlift them — and so do rows parked past an exercise's current
+   set count, since a session carries every ticked set regardless of what
+   `extra` says about it. `weeks: 'plan'` is what leaves out weeks past the
+   block's current length, for the same reason the session view hides them
+   — the "series en semanas por encima" notice is what speaks for those.
+   Always the converted reading (sessionVolume, plans/057): every reader
+   that spans sessions needs one, since a block trained partly in another
+   unit would otherwise be summed as if every row were in the one on screen
+   — see the comment by rowWeight. The session view is the one screen that
+   still wants setVolume, raw, and it never reads a whole week at once. */
+function blockTonnageByWeek(profile, block) {
   const weeks = blockWeeks(block);
   const out = new Array(weeks).fill(0);
-  forEachSlot(profile.log, block.id, (k, w, d, slotRows) => {
-    if (w < 1 || w > weeks) return;
-    const s = slotRows || {};
-    Object.keys(s).forEach(exId => {
-      const rows = s[exId];
-      if (Array.isArray(rows)) out[w - 1] += rows.reduce((t, r) => t + vol(r), 0);
-    });
+  sessionsOf(profile, { weeks: 'plan', blocks: [block.id] }).forEach(sess => {
+    out[sess.week - 1] += sessionVolume(sess.sets);
   });
   return out;
 }

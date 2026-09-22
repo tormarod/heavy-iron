@@ -372,7 +372,10 @@ const ok = (name, cond, extra) => {
       setVolume({ done: true, w: '', r: '8' }) === 0));
     ok('blockTonnageByWeek indexes by week and skips weeks past the block length', await page.evaluate(() => {
       const block = { id: 'tb', weeks: 2, days: [] };
-      const profile = { log: { tb: {
+      /* blockTonnageByWeek reads sessionsOf now (plans/057), which resolves
+         the block from profile.blocks — the object this test already
+         passes as the second argument is not enough on its own. */
+      const profile = { blocks: { tb: block }, log: { tb: {
         'w1-d1': { a: [{ done: true, w: '10', r: '10' }] },
         'w2-d1': { a: [{ done: true, w: '20', r: '10' }, { w: '99', r: '9' }] },
         'w3-d1': { a: [{ done: true, w: '50', r: '10' }] },
@@ -381,7 +384,7 @@ const ok = (name, cond, extra) => {
     }));
     ok('blockTonnageByWeek still counts a retired exercise\'s logged sets', await page.evaluate(() => {
       const block = { id: 'tb', weeks: 1, days: [{ id: 'd1', ex: [{ id: 'a', off: 1 }] }] };
-      const profile = { log: { tb: { 'w1-d1': { a: [{ done: true, w: '10', r: '10' }] } } } };
+      const profile = { blocks: { tb: block }, log: { tb: { 'w1-d1': { a: [{ done: true, w: '10', r: '10' }] } } } };
       return blockTonnageByWeek(profile, block)[0] === 100;
     }));
 

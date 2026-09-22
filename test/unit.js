@@ -3836,6 +3836,11 @@ const diagUnitProbe = call(`
 `);
 ok('the Diagnóstico converts a lb-stamped week back to kg instead of reading 220 kg on the trend line',
    JSON.stringify(diagUnitProbe) === JSON.stringify([100, 100, 500, 500]), JSON.stringify(diagUnitProbe));
+ok('setVolume, the session view\'s own reading, is untouched — still blends the lb number in as if it were kg',
+   Math.round(call(`setVolume({ w: '220.462262185', r: '5', done: true, u: 'lb' })`)) === Math.round(220.462262185 * 5));
+/* blockTonnageByWeek lost its raw mode along with the walk that used to
+   feed it stored rows (plans/057): it always converts now, the one mode an
+   app caller ever asked for (decision 4) — asked for exactly that way. */
 const reviewUnitProbe = call(`
   (function() {
     const profile = defaultState().profiles.hombre;
@@ -3847,16 +3852,13 @@ const reviewUnitProbe = call(`
     profile.log[blockId][slot(1, day.id)] = { [exId]: [{ w: '100', r: '5', done: true }] };
     profile.log[blockId][slot(2, day.id)] = { [exId]: [{ w: '220.462262185', r: '5', done: true, u: 'lb' }] };
     state.prefs.units = 'kg';
-    const byWeekRaw = blockTonnageByWeek(profile, block);
-    const byWeekConverted = blockTonnageByWeek(profile, block, convertedSetVolume);
+    const byWeek = blockTonnageByWeek(profile, block);
     state.prefs.units = 'kg';
-    return { raw: byWeekRaw.slice(0, 2), converted: byWeekConverted.slice(0, 2) };
+    return byWeek.slice(0, 2);
   })()
 `);
-ok('the raw setVolume() the session view uses is untouched — still blends the lb number in as if it were kg',
-   Math.round(reviewUnitProbe.raw[1]) === Math.round(220.462262185 * 5), JSON.stringify(reviewUnitProbe));
-ok('convertedSetVolume converts that same week to kg instead — both weeks read as the 500 kg actually lifted',
-   Math.abs(reviewUnitProbe.converted[0] - 500) < 1e-6 && Math.abs(reviewUnitProbe.converted[1] - 500) < 1e-6,
+ok('blockTonnageByWeek converts that same week to kg instead — both weeks read as the 500 kg actually lifted',
+   Math.abs(reviewUnitProbe[0] - 500) < 1e-6 && Math.abs(reviewUnitProbe[1] - 500) < 1e-6,
    JSON.stringify(reviewUnitProbe));
 ok('convertedSetVolume reads a single lb-stamped set as the kilos it really moved',
    Math.abs(call(`(function(){ state.prefs.units = 'kg'; return convertedSetVolume({ w: '220.462262185', r: '5', done: true, u: 'lb' }); })()`) - 500) < 1e-6);
