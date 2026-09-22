@@ -209,7 +209,7 @@ conflict was resolved by keeping both sides:
   `day`). That is the guard's list from plan 046, now defined in
   `js/app.js` and read by the guard.
 - A backup's top level keeps only `BACKUP_FIELDS` (`profiles`,
-  `activeProfile`, `mode`, `prefs`, `setupDone`, `v`).
+  `activeProfile`, `mode`, `prefs`, `setupDone`).
 - The audit covered every write to the state's top level and to a
   profile, in `js/` today and in the whole history of the scripts
   (`git log -p`, the old hand-written map lists included). The state has
@@ -221,8 +221,9 @@ conflict was resolved by keeping both sides:
 - `v` is listed only because this plan names it. It is the version on
   the backup's wrapper, `{ app, v, saved, data }`, and `restoreFromText`
   keeps only `data`, so nothing the app writes ever puts a `v` on the
-  state. It is kept as named, and costs nothing; the orchestrator may
-  prefer to drop it.
+  state. **The orchestrator dropped it** (2026-09-22): a whitelist
+  should name only what the state carries, and listing `v` kept nothing
+  while suggesting otherwise.
 - Nothing the app writes is stripped: there is a unit test for it, and
   Step E found 0 lost paths.
 

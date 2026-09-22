@@ -262,12 +262,13 @@ function normalizeImportedProfile(p) {
 
 /* What a backup's top level keeps, which is what it becomes: the state.
    These are the fields load() and migrate() read off it, and so the ones
-   the app writes (plans/051). `v` is not one of them: it is the version
-   stamp on the wrapper around the state, which the app never writes onto
-   the state itself. It is here because plans/051 lists it, and costs
-   nothing. The guard in test/unit.js fails when the app writes a top-level
-   key this list does not name, since a restore would then drop it. */
-const BACKUP_FIELDS = ['profiles', 'activeProfile', 'mode', 'prefs', 'setupDone', 'v'];
+   the app writes (plans/051). `v` is deliberately absent: it is the
+   version stamp on the wrapper around the state ({ app, v, saved, data }),
+   never a field of the state itself, so listing it here would keep nothing
+   and suggest otherwise. The guard in test/unit.js fails when the app
+   writes a top-level key this list does not name, since a restore would
+   then drop it. */
+const BACKUP_FIELDS = ['profiles', 'activeProfile', 'mode', 'prefs', 'setupDone'];
 
 /* A whole backup the way normalizeImportedProfile takes one profile: each
    of them through it, then the top level cut down to BACKUP_FIELDS.
