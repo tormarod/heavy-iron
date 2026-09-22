@@ -2408,16 +2408,22 @@ function foldRirMap(profile, blockId) {
      and at most one of : = ~ ≈ ( stand between them: "RIR: 2", "RIR (2)",
      "RIR objetivo: 1-2". A number BEFORE a marker counts when only
      whitespace does — "2 RIR", "2-3 reps en reserva" — unless what stands
-     right in front of the number says it is something else: a week word
-     ("Semana 3 RIR 2", "semana3", "Sem. 3", "S3", "W3" — the 3 says which
-     week), the "x" or "×" of sets×reps ("3x5 RIR 2" — the 5 is reps), or
-     a digit, "." or "," (it is the tail of a decimal).
+     right in front of the number says it is something else:
+     · a week word: "Semana 3 RIR 2", "semana3", "Sem. 3", "S3", "W3" —
+       the 3 says which week. A lone "s", "w" or "wk" right after a number
+       is a unit instead ("Pausa 2 s 1 RIR" — seconds) and refuses nothing.
+     · the "x" or "×" of sets×reps, after a digit: in "3x5 RIR 2" the 5 is
+       reps. The digit is what keeps the 2 of "máx 2 RIR"; the price is
+       that "series x 5 RIR 2" reads 5, a known limit its test pins.
+     · a digit, "." or ",": the number is the tail of a decimal.
    - A range picks the LOWEST number: "2–3 RIR" is a week you are meant to
      be able to take to 2, and reading it as 3 quietly under-loads every
-     estimate built on it. Its ends may be joined by a hyphen, an en dash,
-     an em dash or a minus sign, or by the Spanish "a" and "o" ("2 a 3
-     RIR", "RIR 1 a 2"), so a range written any of those ways still reads
-     its lower end rather than the lone number next to the marker.
+     estimate built on it. A hyphen, an en dash, an em dash or a minus sign
+     joins its ends whichever way it runs, so a range split by any of them
+     reads its lower end rather than the lone number next to the marker.
+     The Spanish "a", "o" and "ó" join one too ("2 a 3 RIR", "RIR 1 a 2"),
+     but only going up: going down the word is not a range, and in "3x10 a
+     2 RIR" the "a" is "at" and the 2 stands on its own.
    - A number that is part of a decimal is refused, not rounded: RIR is
      counted in whole reps, and the 5 of "1,5 RIR" is not what anybody
      wrote.
@@ -2445,26 +2451,37 @@ function phaseRir(block, w) {
     const v = Math.min(num(lo), num(hi != null ? hi : lo));
     return v > RIR_MAX ? null : v;
   };
-  const notReserve = lead => /[\d.,]$/.test(lead) || /[x×]\s*$/i.test(lead)
-    || /\b(?:semana|sem|s|week|wk|w)\.?\s*$/i.test(lead);
+  const joins = (sep, lo, hi) => /[-–—−]/.test(sep) || num(hi) > num(lo);
+  const notReserve = lead => /[\d.,]$/.test(lead) || /\d\s*[x×]\s*$/i.test(lead)
+    || (/\b(?:semana|sem|s|week|wk|w)\.?\s*$/i.test(lead) && !/\d\s*(?:s|w|wk)\.?\s*$/i.test(lead));
   const marker = /(^|[^a-záéíóúñü])(?:(RIR)|(?:rep|reps|repetici[oó]n|repeticiones)\s+en\s+reserva)(?![a-záéíóúñü])/gi;
   let m;
   while ((m = marker.exec(r))) {
     const head = r.slice(0, m.index + m[1].length);
-    const before = /(\d+)(?:(?:\s*[-–—−]\s*|\s+[ao]\s+)(\d+))?\s*$/i.exec(head);
-    if (before && !notReserve(head.slice(0, before.index))) {
-      const v = reserve(before[1], before[2]);
-      if (v != null) return v;
+    const near = /(\d+)\s*$/.exec(head);
+    if (near) {
+      const range = /(\d+)(\s*[-–—−]\s*|\s+[aoó]\s+)$/i.exec(head.slice(0, near.index));
+      const lo = range && joins(range[2], range[1], near[1]) ? range : null;
+      if (!notReserve(head.slice(0, (lo || near).index))) {
+        const v = reserve(lo ? lo[1] : near[1], near[1]);
+        if (v != null) return v;
+      }
     }
     /* Only "RIR" takes a number after it. The phrase is Spanish only with
        its count in front ("2 reps en reserva"), so a digit after it is
        about something else. */
     if (!m[2]) continue;
     const tail = r.slice(marker.lastIndex);
-    const after = /^\s*(?:objetivo\s*(?:[:=~≈(]\s*)?|[:=~≈(]\s*(?:objetivo\s*)?)?(\d+)(?:(?:\s*[-–—−]\s*|\s+[ao]\s+)(\d+))?/i.exec(tail);
-    if (after && !/^[.,]\d/.test(tail.slice(after[0].length))) {
-      const v = reserve(after[1], after[2]);
-      if (v != null) return v;
+    const after = /^\s*(?:objetivo\s*(?:[:=~≈(]\s*)?|[:=~≈(]\s*(?:objetivo\s*)?)?(\d+)/i.exec(tail);
+    if (after) {
+      let rest = tail.slice(after[0].length);
+      const range = /^(\s*[-–—−]\s*|\s+[aoó]\s+)(\d+)/i.exec(rest);
+      const hi = range && joins(range[1], after[1], range[2]) ? range[2] : null;
+      if (hi != null) rest = rest.slice(range[0].length);
+      if (!/^[.,]\d/.test(rest)) {
+        const v = reserve(after[1], hi);
+        if (v != null) return v;
+      }
     }
   }
   return null;

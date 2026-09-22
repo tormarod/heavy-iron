@@ -5377,7 +5377,7 @@ ok('...and so does a minus sign',
    a week word that is not right in front of the number, a week word with
    no space before its number, and RIR_MAX on the side 058 did not test.
 
-   The last nineteen came out of the review of #174, which widened the
+   The next nineteen came out of the review of #174, which widened the
    table with shapes written every week: sets×reps ahead of "RIR" ("3x5
    RIR 2" read the 5 reps), a number above RIR_MAX that ended the search
    instead of being passed over ("RIR 10 · 2 RIR" and "3×10 RIR 2" read
@@ -5386,7 +5386,14 @@ ok('...and so does a minus sign',
    and the week written "S3", "S 3" or "W3". "5x5 @ 2 RIR", "4x8, RIR 1",
    "reps 2 RIR" and "2 series, 2 RIR" show the new refusals stop where
    they should: an "x" that is not right in front of the number, and a
-   word that merely ends in "s", refuse nothing. */
+   word that merely ends in "s", refuse nothing.
+
+   The last six are what that widening broke on its first try, each read
+   right on main: "3x10 a 2 RIR", "4x8 a 2 RIR" and "Semana 3 a 2 RIR" (the
+   "a" there is "at", so a word joins a range only going up), "máx 2 RIR"
+   (the sets×reps "x" needs a digit in front of it) and "Pausa 2 s 1 RIR"
+   (an "s" right after a number is seconds, not the week) — and "2 ó 3
+   RIR", the accented "o" long written between numerals. */
 [
   ['RIR: 2', 2], ['RIR (2)', 2], ['RIR ~2', 2], ['RIR objetivo 2', 2], ['RIR: 1-2', 1],
   ['2-3 reps en reserva', 2], ['1,5 RIR', null], ['Semana 3 RIR 2', 2], ['sufrir 2', null],
@@ -5397,10 +5404,22 @@ ok('...and so does a minus sign',
   ['1 rep en reserva', 1], ['1 repetición en reserva', 1], ['1 repeticion en reserva', 1],
   ['S3 RIR 2', 2], ['S 3 · RIR 2', 2], ['W3 RIR 2', 2], ['reps 2 RIR', 2], ['2 series, 2 RIR', 2],
   ['RIR 10 · 2 RIR', 2],
+  ['3x10 a 2 RIR', 2], ['4x8 a 2 RIR', 2], ['Semana 3 a 2 RIR', 2], ['máx 2 RIR', 2],
+  ['Pausa 2 s 1 RIR', 1], ['2 ó 3 RIR', 2],
 ].forEach(([label, want]) => {
   const got = call('phaseRir({ phase: [{ r: ' + JSON.stringify(label) + ' }] }, 0)');
   ok('phaseRir: "' + label + '" → ' + want + ' (plans/062)', got === want, String(got));
 });
+
+/* The known limit, pinned so that whoever changes it does so on purpose.
+   The sets×reps "x" refuses the number after it only when a digit stands
+   in front of it — that is what keeps the 2 of "máx 2 RIR" — so an "x"
+   with a word in front refuses nothing, and in "series x 5 RIR 2" the 5
+   reps are read as the reserve. The review of #174 took that cost over
+   the other one, a "máx 2 RIR" that read nothing at all. */
+ok('phaseRir: "series x 5 RIR 2" → 5 (plans/062, the known limit: an "x" with no digit in front refuses nothing)',
+   call('phaseRir({ phase: [{ r: "series x 5 RIR 2" }] }, 0)') === 5,
+   String(call('phaseRir({ phase: [{ r: "series x 5 RIR 2" }] }, 0)')));
 
 /* A fuzz rather than a fixed table: phaseRir takes free text a human typed,
    so the invariant that matters is the shape of every possible answer, not
@@ -5412,9 +5431,9 @@ ok('...and so does a minus sign',
    added what its rule reads: the ":" and "(" allowed after "RIR",
    "objetivo", the decimal separators, "reps en reserva", a lowercase
    "semana" for the week-number check and "sufrir" for "rir" inside a
-   word, and its review the "x" and "×" of sets×reps, the "a" and "o" of a
-   Spanish range, the singular "rep en reserva" and the "S" and "W" of an
-   abbreviated week — which changes the labels drawn, not what is
+   word, and its review the "x" and "×" of sets×reps, the "a", "o" and "ó"
+   of a Spanish range, the singular "rep en reserva" and the "S" and "W"
+   of an abbreviated week — which changes the labels drawn, not what is
    asserted. Digits are drawn mostly from 0–9 (three draws in four) rather
    than 0–99, because a RIR-adjacent 0–99 draw lands in [0, RIR_MAX] only
    6% of the time and the positive path — an actual prescription, not just
@@ -5432,7 +5451,7 @@ const phaseRirFuzzProbe = `
     const words = ['Semana', 'de', 'tecnica', 'Descarga', 'Top', 'set', 'back-offs',
       'reps', 'fase', 'RIR', '%', '-', '–', '—', '−', 'proxima', 'bloque',
       ':', '(', 'objetivo', ',', '.', 'reps en reserva', 'semana', 'sufrir',
-      'x', '×', 'a', 'o', 'rep en reserva', 'S', 'W'];
+      'x', '×', 'a', 'o', 'ó', 'rep en reserva', 'S', 'W'];
     const failures = [];
     for (let i = 0; i < 2000; i++) {
       const tokenCount = 1 + Math.floor(rnd() * 6);
