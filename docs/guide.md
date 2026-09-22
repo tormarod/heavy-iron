@@ -494,7 +494,9 @@ charge, the line simply isn't there.
   skip or nudge the timer, or six repeats go by. The countdown runs off a
   wall-clock end time, so it stays correct through a locked screen, and
   while it runs it holds a screen wake lock (where the browser has one) so
-  the phone doesn't sleep between sets.
+  the phone doesn't sleep between sets. Moving to another day, week, block
+  or profile ends it, and so does an undo that puts a different session on
+  screen.
 - **The alarm can follow the phone into your pocket.** Off by default,
   switched on under **Ajustes → "Aviso con la pantalla apagada"**. A page
   the phone has stopped running can't beep, and locking the screen or
