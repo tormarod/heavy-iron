@@ -424,10 +424,11 @@ existing `migrate()`, import and two-tab case stays green unchanged.
 - **Step A (`claude/067-a`), deviations and findings:**
   - **Case 1's fixture names.** Profiles `a` and `b` never shared a seed:
     `a` (first place) gets hombre's and `b` (second place) mujer's. The
-    case uses `a` and `hombre` instead, the two-profile shape that really
-    shared one object, so reverting A.1 fails it. One more assertion there
-    pins decision 1: the log a blockless profile carried is kept and reads
-    against the seed plan (`block-1/1/d0/chestpress`).
+    case uses the two pairs that really share one: `a` with `hombre`, and
+    `mujer` with `b` (added after review). Reverting A.1 fails both. One
+    more assertion per pair pins decision 1: the log a blockless profile
+    carried is kept and reads against the seed plan
+    (`block-1/1/d0/chestpress`).
   - **Case 5** sets every `RECORD_PARTS` part to `[]`, not only `log`, and
     also checks that a set ticked through `entry()` survives
     `JSON.stringify`. The phase half compares `phaseRir` week by week with
@@ -452,12 +453,52 @@ existing `migrate()`, import and two-tab case stays green unchanged.
     only touch the slot's own key or a row of its array. `weeksBeyondEnd`,
     `countSets` and `weekHasLog` only count. `buildCsv` reads through
     own-key tests, and the import path's maps are `Object.create(null)`.
-  - **Outside A.4's pattern, not fixed (out of Scope):** `buildCsv`'s
-    `byDay` is a plain `{}` indexed by a slot's *day* id. A slot keyed
-    `w1-__proto__` makes "Exportar CSV" throw
-    (`byDay[dayId].push is not a function`); the fix is one line,
-    `Object.create(null)`. The orchestrator handed this to plan 068 step
-    B, which was editing `buildCsv` at the time. Separately, a `__proto__`
-    lift on a planned day prints `[object Object]` in the CSV's `orden`
-    column. It is read-only and writes nothing.
+  - **Outside A.4's pattern, not fixed here:** `buildCsv`'s `byDay` was a
+    plain `{}` indexed by a slot's *day* id, so a slot keyed
+    `w1-__proto__` made "Exportar CSV" throw
+    (`byDay[dayId].push is not a function`). The orchestrator handed it to
+    plan 068 step B, which fixed it in #182. Separately, a `__proto__` lift
+    on a planned day prints `[object Object]` in the CSV's `orden` column.
+    It is read-only and writes nothing.
+  - **Decision 3 extended one level down, after review of #179 (the
+    orchestrator's decision, 2026-09-23).** The reviewer reproduced the
+    same bug under what the plan covered, and the extension landed in this
+    PR:
+    - `ensureRecord` replaces a block's map stored as a list with `{}` in
+      every part filed by block, and one slot's in every part filed by
+      lift. `log: { b1: [] }` and `log: { b1: { 'w1-d0': [] } }` still lost
+      a ticked set on reload. The lists that are lists by design are left
+      alone: an exercise's variants, and a slot of the session order.
+      One visible difference on a damaged shape: `order: { b1: [] }`,
+      which the order part's own repair used to delete, now stays as
+      `{ b1: {} }`. The two read the same.
+    - `migrate()` drops a day or an exercise stored as a list, like null.
+      A day stored as `[]` came back with a fresh exercise id on every
+      load, so its sets were orphaned each time.
+    - A phase table missing a week of the block gets the generic ramp's
+      entry for that week, the way `syncDraftFromForm` fills a block made
+      longer. An entry that is there is never touched, including one past
+      the block's length.
+    - The seed-clone comment names both seeds that can be shared (the
+      nit).
+    - Cases 7, 8 and 9 cover the three. Each fails when its change is
+      reverted: containers off, list days and exercises kept, fill off.
+      Two over-broad variants fail case 7's "lists kept by design"
+      assertion: repairing the order's slot lists, or the variants. A fill
+      that overwrites fails case 9.
+    - **Writer shapes unchanged.** Every writer builds a phase for every
+      week: the seed, the import and restore, the plan editor,
+      `emptyBlock`, "+ Nuevo bloque". Configurable weeks and the editor's
+      fill arrived together in `b3af260`, so no older editor made a
+      shorter table. A local differential probe of `origin/main`'s
+      `migrate()` against this one found 3,356 writer-shaped states
+      byte-identical: the seed, random ticks, notes, energy, orders and
+      objetivo records, imports, new and empty blocks, editor phases,
+      unit switches, restores, reloads and legacy id-less blocks.
+  - **Found, not fixed (outside the extension, which covers lists):** a
+    block's or a slot's map stored as a truthy scalar, such as
+    `log: { b1: 'x' }` or `{ 'w1-d0': 5 }`, makes the first tick on it
+    throw in `rowsFor`/`entry()` (`Cannot read properties of undefined`).
+    A draw of that session lands on the recovery screen. Widening the
+    same loop from "a list" to "not a map" would cover it.
 - *(Executor: record deviations here.)*
