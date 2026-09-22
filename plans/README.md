@@ -74,7 +74,7 @@ below so it is not lost or re-audited.
 | 050 | [One way to count stored sets — and the two screens that counted the wrong ones](done/050-one-set-count.md) | P3 | S | LOW | — | DONE (#145) — one `countSets`; the QR send sheet counts the payload it sends; the block review counts its own weeks |
 | 051 | [The profile's record says how each part is accepted — one import loop over `RECORD_PARTS`, and unknown keys stay out](done/051-record-parts-accept.md) | P2 | M | MED | 046 (merged) | DONE (#147) — every part has `accept`; import loops over `RECORD_PARTS`; unknown profile and backup keys stripped; one-id orders now survive import |
 | 052 | [A unit harness that boots the app and keeps its handlers — `test/harness.js`, `bootApp()`, one history fixture](052-booted-test-harness.md) | P2 | M | LOW | — | IN PROGRESS — PR 1 (`test/harness.js`, `bootApp()`, real-handler tests, a precache section that boots) #152; PR 2 (one history fixture) next |
-| 053 | [The plan draft is one object, and saving it erases exactly what the dialog promised](053-plan-draft.md) | P1 | M | LOW–MED | — | IN PROGRESS |
+| 053 | [The plan draft is one object, and saving it erases exactly what the dialog promised](done/053-plan-draft.md) | P1 | M | LOW–MED | — | DONE (#PR053) — one `peDraft`; erasures resolved to where the sets sit (exercises before the moves, days after); stale drafts refused; 0 failures in 20,000 random editor sessions |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
