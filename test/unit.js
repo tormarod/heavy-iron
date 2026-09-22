@@ -7997,6 +7997,143 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
        err || JSON.stringify(got));
   }
 
+  /* Deshacer used to have no end: the snapshot outlived every later change
+     and its toast never hid, so pressing it an hour into a session put back
+     the state from before the action, every set logged since gone. And the
+     conflict's "Recargar" reloaded into flushSave's forced write, which
+     overwrote the other tab's data the user had just chosen to keep. Each
+     case boots week 1, where seeded()'s log is, so "Borrar este día" has a
+     day to clear. */
+  console.log('\n== undo ends at the next change; "Recargar" discards; a decision toast is not pushed off (plans/060) ==');
+  {
+    const usedOnDay = booted => {
+      const s = booted.saved(), p = s.profiles[s.activeProfile], b = p.blocks[p.activeBlock];
+      const sl = ((p.log || {})[b.id] || {})['w1-' + b.days[0].id] || {};
+      return Object.keys(sl).reduce((n, id) => n + sl[id].filter(r => r.done).length, 0);
+    };
+    const clearDay = boot => pressAnswering(boot, () => boot.$('clearDay').onclick(), 'askOk');
+
+    {
+      const boot = settled(seeded({ week: 1, day: 0 }));
+      let err = '';
+      try {
+        await clearDay(boot);
+        boot.clock.advance(1);
+        boot.card(0).set(0).tick.onclick();
+        boot.clock.advance(1000);
+      } catch (e) { err = e.message; }
+      const expired = boot.call('undoSnapshot') === null, hidden = boot.$('toast').hidden === true;
+      ok('a set ticked after "Borrar este día" ends its undo, and the toast offering it goes',
+         !err && expired && hidden, err || JSON.stringify({ expired, hidden }));
+      try { boot.$('toastAct').onclick(); } catch (e) { err = e.message; }
+      boot.clock.advance(1000);
+      ok('...so a late press on "Deshacer" does nothing: the set ticked since is still on disk',
+         !err && usedOnDay(boot) === 1, err || 'sets on the day: ' + usedOnDay(boot));
+    }
+
+    {
+      const boot = settled(seeded({ week: 1, day: 0 }));
+      let err = '', note = null;
+      try {
+        await clearDay(boot);
+        boot.clock.advance(1);
+        boot.type(boot.$('sesNote'), 'x');
+        boot.clock.advance(1000);
+        const s = boot.saved(), p = s.profiles[s.activeProfile], b = p.blocks[p.activeBlock];
+        note = ((p.notes || {})[b.id] || {})['w1-' + b.days[0].id];
+      } catch (e) { err = e.message; }
+      ok('a session note typed after it ends undo too — save(\'view\') is a real write, and an undo would erase it',
+         !err && boot.call('undoSnapshot') === null && note === 'x', err || JSON.stringify({ undo: boot.call('undoSnapshot') !== null, note }));
+    }
+
+    {
+      const boot = settled(seeded({ week: 1, day: 0 }));
+      const before = usedOnDay(boot);
+      let err = '';
+      try {
+        await clearDay(boot);
+        boot.$('toastAct').onclick();
+        boot.clock.advance(1000);
+      } catch (e) { err = e.message; }
+      ok('the action\'s own writes do not end its undo: "Deshacer" pressed straight after "Borrar este día" brings the sets back',
+         !err && before > 0 && usedOnDay(boot) === before, err || JSON.stringify({ before, after: usedOnDay(boot) }));
+    }
+
+    /* Another tab's state, built the way the Bug 3 case above builds it. */
+    const theirsFrom = (boot, edit) => {
+      const theirs = boot.saved();
+      edit(theirs);
+      return JSON.stringify(theirs);
+    };
+
+    {
+      const boot = settled(seeded({ week: 1, day: 0 }));
+      const key = boot.call('STORAGE_KEY');
+      let err = '';
+      try {
+        await clearDay(boot);
+        boot.clock.advance(1000);
+        const raw = theirsFrom(boot, s => { s.prefs.barWeight = 22; });
+        boot.store[key] = raw;
+        boot.fire(boot.ctx.window, 'storage', { key: key, newValue: raw });
+      } catch (e) { err = e.message; }
+      ok('adopting another tab\'s write ends undo: a snapshot from before it would erase that tab\'s data too',
+         !err && boot.call('state.prefs.barWeight') === 22 && boot.call('undoSnapshot') === null,
+         err || JSON.stringify({ bar: boot.call('state.prefs.barWeight'), undo: boot.call('undoSnapshot') !== null }));
+    }
+
+    /* Another tab writes while this one has a change pending: the conflict. */
+    const conflict = boot => {
+      const key = boot.call('STORAGE_KEY');
+      boot.call('state.prefs.barWeight = 11, save()');
+      const raw = theirsFrom(boot, s => { s.prefs.barWeight = 22; });
+      boot.store[key] = raw;
+      boot.fire(boot.ctx.window, 'storage', { key: key, newValue: raw });
+      return { key, raw };
+    };
+
+    {
+      const boot = settled(seeded({ week: 1, day: 0 }));
+      let err = '', asked = '', noX = false, c = null;
+      try {
+        c = conflict(boot);
+        asked = boot.$('toastAct2').textContent;
+        noX = boot.$('toastDismiss').hidden === true;
+        boot.$('toastAct2').onclick();
+        /* What used to land between the press and the unload: a late
+           save(), then the unload's own forced flush. */
+        boot.call('save()');
+        boot.fire(boot.ctx.window, 'beforeunload');
+        boot.fire(boot.ctx.window, 'pagehide');
+        boot.clock.advance(1000);
+      } catch (e) { err = e.message; }
+      ok('"Recargar" leaves the other tab\'s data on disk: no late save and no unload flush writes this tab\'s change over it',
+         !err && asked === 'Recargar' && noX && !!c && boot.store[c.key] === c.raw && boot.ctx.location.reloads === 1,
+         err || JSON.stringify({ asked, noX, kept: !!c && boot.store[c.key] === c.raw, bar: boot.saved() && boot.saved().prefs.barWeight, reloads: boot.ctx.location.reloads }));
+    }
+
+    {
+      const boot = settled(seeded({ week: 1, day: 0 }));
+      let err = '', during = null, next = null, last = null;
+      try {
+        conflict(boot);
+        const msg = boot.$('toastMsg').textContent;
+        boot.call("toast('x')");
+        boot.call("toast('y', 'Actualizar', () => {}, null, null, 'update')");
+        during = { same: boot.$('toastMsg').textContent === msg, held: boot.call('held') };
+        boot.$('toastAct').onclick();
+        next = { msg: boot.$('toastMsg').textContent, x: !boot.$('toastDismiss').hidden };
+        boot.$('toastDismiss').onclick();
+        last = { msg: boot.$('toastMsg').textContent, shown: !boot.$('toast').hidden };
+      } catch (e) { err = e.message; }
+      ok('the conflict toast is not replaced by a later toast, and "held" stays set until it is answered',
+         !err && !!during && during.same && during.held === true, err || JSON.stringify(during));
+      ok('...answering it shows the queued "Actualizar" first, with its ✕, then the note',
+         !err && !!next && next.msg === 'y' && next.x && !!last && last.msg === 'x' && last.shown,
+         err || JSON.stringify({ next, last }));
+    }
+  }
+
   /* "Enviar a…" onto a day that already holds the same id. One lift on two
      days shares its id on purpose, but a day holds it once: the record is
      filed by slot and id, so two copies on one day are one record. The save
