@@ -2609,9 +2609,14 @@ function foldRirMap(profile, blockId) {
      · a week word: "Semana 3 RIR 2", "semana3", "Sem. 3", "S3", "W3" —
        the 3 says which week. A lone "s", "w" or "wk" right after a number
        is a unit instead ("Pausa 2 s 1 RIR" — seconds) and refuses nothing.
-     · the "x" or "×" of sets×reps, after a digit: in "3x5 RIR 2" the 5 is
-       reps. The digit is what keeps the 2 of "máx 2 RIR"; the price is
-       that "series x 5 RIR 2" reads 5, a known limit its test pins.
+     · the "x" or "×" of sets×reps, right after a digit or a whole word for
+       sets — "series", "serie", "sets", "set", case-insensitively: "3x5
+       RIR 2" and "series x 5 RIR 2" alike read the 5 as reps, not RIR.
+       Neither a digit nor one of those words stands in front of the "x"
+       that ends "máx", which is what still keeps the 2 of "máx 2 RIR".
+       Before plans/069 only a digit counted here, so "series x 5 RIR 2"
+       read 5 instead of 2 — pinned as a known limit until a word in front
+       of the "x" was made as clear a signal as a digit is.
      · a digit, "." or ",": the number is the tail of a decimal.
    - A range picks the LOWEST number: "2–3 RIR" is a week you are meant to
      be able to take to 2, and reading it as 3 quietly under-loads every
@@ -2649,7 +2654,7 @@ function phaseRir(block, w) {
     return v > RIR_MAX ? null : v;
   };
   const joins = (sep, lo, hi) => /[-–—−]/.test(sep) || num(hi) > num(lo);
-  const notReserve = lead => /[\d.,]$/.test(lead) || /\d\s*[x×]\s*$/i.test(lead)
+  const notReserve = lead => /[\d.,]$/.test(lead) || /(?:\d|\b(?:series?|sets?))\s*[x×]\s*$/i.test(lead)
     || (/\b(?:semana|sem|s|week|wk|w)\.?\s*$/i.test(lead) && !/\d\s*(?:s|w|wk)\.?\s*$/i.test(lead));
   const marker = /(^|[^a-záéíóúñü])(?:(RIR)|(?:rep|reps|repetici[oó]n|repeticiones)\s+en\s+reserva)(?![a-záéíóúñü])/gi;
   let m;
@@ -3757,12 +3762,20 @@ function repairFlag(ex, key) {
 
 const EX_FIELDS = Object.freeze([
   /* Identity (above): normalizeImportedBlock and migrate() give every
-     exercise one. A paste holds an id to 60 characters, stated or slugged
-     from the name; a restore gives a stored one back whole, since cutting
-     it merged two long names into one lift (plans/063). The prompt's
-     "máx 60" is the paste's rule, which is the only one an AI writes to. */
+     exercise one. A paste holds a NEW id to 60 characters, stated or
+     slugged from the name; a restore gives a stored one back whole, since
+     cutting it merged two long names into one lift (plans/063). The
+     prompt's "máx 60" used to be the paste's whole rule — the only one an
+     AI ever writes to — until the review's own round trip showed the gap:
+     the prompt asks the AI to keep the ids of the block it was just handed,
+     one of which could be a slug this app made past 60 characters before
+     plan 063 capped that, and cutting it back to 60 on the way in started
+     that lift's history over. So the paste now keeps a stated id whole when
+     it already names an exercise in the target profile (decision 1,
+     plans/069), and the prompt says both rules — "máx 60" for a new id,
+     copied exactly for one it was handed. */
   { key: 'id',
-    prompt: () => 'string opcional (máx 60 car.) — identificador estable del ejercicio. Si abajo te paso mi bloque actual, conserva el id de cada ejercicio que mantengas, para que su historial siga unido; un ejercicio nuevo puede ir sin id. El mismo ejercicio en dos días lleva el mismo nombre (no repitas el id en dos días: se renombraría)' },
+    prompt: () => 'string opcional (máx 60 car. si es nuevo; si te paso uno, cópialo tal cual) — identificador estable del ejercicio. Si abajo te paso mi bloque actual, conserva el id de cada ejercicio que mantengas, para que su historial siga unido; un ejercicio nuevo puede ir sin id. El mismo ejercicio en dos días lleva el mismo nombre (no repitas el id en dos días: se renombraría)' },
   /* A string once repaired, blank included: the blank name newExercise()
      ships is the empty box the editor shows to type into. */
   { key: 'n', max: IMPORT_LIMITS.exName, ownMax: OWN_TEXT_LIMIT,

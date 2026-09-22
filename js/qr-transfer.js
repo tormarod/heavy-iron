@@ -558,7 +558,9 @@ async function applyQrPayload(payload) {
        the same "no se puede usar" as a bad block, not bare in the footer. */
     let normalized, log, rir, order;
     try {
-      normalized = normalizeImportedBlock(payload.block);
+      /* The target profile, so a stated id it already trains under survives
+         the paste at whatever length it has (decision 1, plans/069). */
+      normalized = normalizeImportedBlock(payload.block, { profile: getProfile() });
       log = payload.kind === 'blocklog' ? normalizeImportedLog(payload.log, payload.block, normalized) : null;
       rir = payload.kind === 'blocklog' ? normalizeImportedRir(payload.rir, payload.block, normalized) : null;
       order = payload.kind === 'blocklog' ? normalizeImportedOrder(payload.order, payload.block, normalized) : null;
