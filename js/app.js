@@ -784,6 +784,24 @@ function migrate() {
 
     if (!profile.label) profile.label = seed.label;
     if (ACCENTS.indexOf(profile.theme) < 0 && !legacyAccent(profile.theme)) profile.theme = seed.theme;
+
+    /* A block that is not an object — null, a string, a list — has no plan
+       left to repair, and every step below writes onto it: a null threw on
+       `id`, so load() stopped here and the app never drew. The import
+       refuses the same shape (describeProfileProblem), but localStorage is
+       not an import. It goes the way a deleted block goes, record and all,
+       and before the check for no blocks, so a profile left with none gets
+       the seed like one that had none. Its record matters most there: the
+       seed's block reuses a fixed id, and would otherwise open on sets
+       logged under a corrupt block that happened to carry it. */
+    if (profile.blocks && typeof profile.blocks === 'object') {
+      Object.keys(profile.blocks).forEach(bk => {
+        const block = profile.blocks[bk];
+        if (block && typeof block === 'object' && !Array.isArray(block)) return;
+        delete profile.blocks[bk];
+        purgeRecord(profile, bk);
+      });
+    }
     if (!profile.blocks || typeof profile.blocks !== 'object' || !Object.keys(profile.blocks).length) {
       profile.blocks = seed.blocks;
       profile.blockOrder = seed.blockOrder.slice();
