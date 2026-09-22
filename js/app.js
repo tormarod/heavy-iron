@@ -3491,7 +3491,10 @@ function repairFlag(ex, key) {
 
 const EX_FIELDS = Object.freeze([
   /* Identity (above): normalizeImportedBlock and migrate() give every
-     exercise one, and the importer holds a stated one to 60 characters. */
+     exercise one. A paste holds an id to 60 characters, stated or slugged
+     from the name; a restore gives a stored one back whole, since cutting
+     it merged two long names into one lift (plans/063). The prompt's
+     "máx 60" is the paste's rule, which is the only one an AI writes to. */
   { key: 'id',
     prompt: () => 'string opcional (máx 60 car.) — identificador estable del ejercicio. Si abajo te paso mi bloque actual, conserva el id de cada ejercicio que mantengas, para que su historial siga unido; un ejercicio nuevo puede ir sin id. El mismo ejercicio en dos días lleva el mismo nombre (no repitas el id en dos días: se renombraría)' },
   /* A string once repaired, blank included: the blank name newExercise()
@@ -7586,7 +7589,9 @@ function setsWithDoneLabel(total, done) {
    renames the *later* duplicate and leaves the first one's id alone, so
    rows filed under that id belong to the first. Letting the duplicate
    overwrite the mapping would quietly move somebody's sets onto a
-   different exercise. */
+   different exercise. For the same reason every raw id is registered
+   before any self-mapping: first-wins only protects the sender's rows if
+   the sender's ids get there first (plans/063, below). */
 function importIdMaps(rawBlock, normalized) {
   /* Object.create(null), not {}: every key below is a raw, untrusted id.
      A plain object answers `map['__proto__']` with the real Object.prototype
@@ -7599,12 +7604,20 @@ function importIdMaps(rawBlock, normalized) {
      js/profile-transfer.js). */
   const dayMap = Object.create(null), exMap = Object.create(null);
   const put = (map, from, to) => { if (from != null && !isObj(from) && !(String(from) in map)) map[String(from)] = to; };
-  (rawBlock.days || []).forEach((rd, di) => {
-    const nd = normalized.days[di];
-    if (!nd || !rd) return;
-    put(dayMap, rd.id, nd.id);
-    /* A log already keyed by the id the block ended up with still resolves. */
-    put(dayMap, nd.id, nd.id);
+  /* Every raw id before any self-mapping, days and exercises alike. A raw
+     id is what the sender's log is filed under; a normalized id that
+     happens to spell another raw id is only a coincidence of naming. The
+     block-wide de-duplication can hand an earlier exercise the literal id
+     a later one carries — day 2's `press` becomes `press-2` because day 1
+     has `press`, and the real `press-2` becomes `press-2-2` — and
+     interleaved, the self-mapping of `press-2` got in first and filed the
+     incline press's rows on the flat press, dropping the flat press's
+     (plans/063). */
+  const pairs = (rawBlock.days || []).map((rd, di) => ({ rd, nd: normalized.days[di] })).filter(p => p.rd && p.nd);
+  pairs.forEach(p => put(dayMap, p.rd.id, p.nd.id));
+  /* A log already keyed by the id the block ended up with still resolves. */
+  pairs.forEach(p => put(dayMap, p.nd.id, p.nd.id));
+  pairs.forEach(({ rd, nd }) => {
     /* Per day, not per block: the log is keyed by slot (week + day) and then
        by exercise id, so an id that appears on two days resolves differently
        depending on which day's slot is being read. One flat map sent day B's
@@ -7612,12 +7625,9 @@ function importIdMaps(rawBlock, normalized) {
        across the block (`usedDayIds` in normalizeImportedBlock), so each day
        gets its own map. */
     const forDay = exMap[nd.id] || (exMap[nd.id] = Object.create(null));
-    (Array.isArray(rd.ex) ? rd.ex : []).forEach((re, ei) => {
-      const ne = nd.ex[ei];
-      if (!ne || !re) return;
-      put(forDay, re.id, ne.id);
-      put(forDay, ne.id, ne.id);
-    });
+    const exPairs = (Array.isArray(rd.ex) ? rd.ex : []).map((re, ei) => ({ re, ne: nd.ex[ei] })).filter(p => p.re && p.ne);
+    exPairs.forEach(p => put(forDay, p.re.id, p.ne.id));
+    exPairs.forEach(p => put(forDay, p.ne.id, p.ne.id));
   });
   return { dayMap, exMap };
 }

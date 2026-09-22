@@ -1373,6 +1373,86 @@ ok("...day A's sets land on day A's exercise", strictDayAwareLog.dayARow, strict
 ok("...and day B's on the renamed one, not day A's id",
    strictDayAwareLog.dayBRow, strictDayAwareLog.ids + ' - slot B has ' + strictDayAwareLog.sbKeys);
 
+/* plans/063. The block-wide de-duplication can hand an earlier exercise
+   the literal id a later one carries: day 2's `press` becomes `press-2`
+   (day 1 has `press`), so the real `press-2` becomes `press-2-2`. With
+   raw and self-mappings interleaved, `press-2 -> press-2` got in before
+   the sender's own `press-2 -> press-2-2`, and the incline press's rows
+   landed on the flat press while the flat press's were dropped. */
+const rawFirstReKey = call(`
+  (function() {
+    const raw = { name: 'B', weeks: 4, deload: 0, days: [
+      { id: 'd0', name: 'Lunes', ex: [{ id: 'press', n: 'Press banca', reps: '8-10' }] },
+      { id: 'd1', name: 'Jueves', ex: [{ id: 'press', n: 'Press banca', reps: '8-10' },
+                                       { id: 'press-2', n: 'Press inclinado', reps: '10-12' }] },
+    ] };
+    const rawLog = { 'w1-d1': { 'press': [{ w: '60', r: '10', done: true }], 'press-2': [{ w: '40', r: '12', done: true }] } };
+    const normalized = normalizeImportedBlock(JSON.parse(JSON.stringify(raw)));
+    const ids = normalized.days.map(d => d.ex.map(e => e.id));
+    const s = normalizeImportedLog(rawLog, raw, normalized)[slot(1, normalized.days[1].id)] || {};
+    const flat = ids[1][0], incline = ids[1][1];
+    return {
+      ids: JSON.stringify(ids),
+      flat: !!(s[flat] && s[flat].length === 1 && s[flat][0].w === '60' && s[flat][0].r === '10'),
+      incline: !!(s[incline] && s[incline].length === 1 && s[incline][0].w === '40' && s[incline][0].r === '12'),
+      slot: JSON.stringify(s),
+    };
+  })()
+`);
+ok("an import names a day's duplicate press-2 and the real press-2 press-2-2 (plans/063)",
+   rawFirstReKey.ids === JSON.stringify([['press'], ['press-2', 'press-2-2']]), rawFirstReKey.ids);
+ok("...and each lift's rows are filed under the id its own exercise landed with (plans/063)",
+   rawFirstReKey.flat && rawFirstReKey.incline, rawFirstReKey.ids + ' — ' + rawFirstReKey.slot);
+
+/* The day half of the same rule. A day id is cut to 60, so a first day
+   whose id is 61 characters lands on the literal id the second day
+   carries, and the second day is given a fresh one. With the self-mapping
+   of the first day registered before the second day's raw id, the second
+   day's slots resolved to the first day, and its rows were dropped there,
+   no exercise of the first day answering to them. */
+const rawFirstDayReKey = call(`
+  (function() {
+    const long = 'x'.repeat(61), cut = 'x'.repeat(60);
+    const raw = { name: 'B', weeks: 4, deload: 0, days: [
+      { id: long, name: 'Lunes', ex: [{ id: 'a', n: 'Sentadilla', reps: '5' }] },
+      { id: cut, name: 'Jueves', ex: [{ id: 'b', n: 'Peso muerto', reps: '5' }] },
+    ] };
+    const rawLog = { ['w1-' + long]: { a: [{ w: '100', r: '5', done: true }] },
+                     ['w1-' + cut]: { b: [{ w: '140', r: '5', done: true }] } };
+    const normalized = normalizeImportedBlock(JSON.parse(JSON.stringify(raw)));
+    const days = normalized.days.map(d => d.id);
+    const log = normalizeImportedLog(rawLog, raw, normalized);
+    const s0 = log[slot(1, days[0])] || {}, s1 = log[slot(1, days[1])] || {};
+    return {
+      days: days.map(id => id.length > 12 ? id.slice(0, 3) + '…×' + id.length : id),
+      renamed: days[0] === cut && days[1] !== cut,
+      first: !!(s0.a && s0.a.length === 1 && s0.a[0].w === '100') && Object.keys(s0).length === 1,
+      second: !!(s1.b && s1.b.length === 1 && s1.b[0].w === '140') && Object.keys(s1).length === 1,
+      slots: Object.keys(log).length,
+    };
+  })()
+`);
+ok('an import cuts a 61-character day id onto the literal id the next day carries, and renames that day (plans/063)',
+   rawFirstDayReKey.renamed, JSON.stringify(rawFirstDayReKey));
+ok("...and each day's rows stay on that day, the second's not resolved to the first (plans/063)",
+   rawFirstDayReKey.first && rawFirstDayReKey.second && rawFirstDayReKey.slots === 2, JSON.stringify(rawFirstDayReKey));
+
+/* capSlug's trailing-dash trim. A 61-character slug cut at 60 can end on
+   the dash between two words; kept, the id ended in "-", and the block-wide
+   de-duplication gave the next copy "--2". */
+const cutSlugIds = call(`
+  (function() {
+    const name = 'x'.repeat(59) + ' y';
+    const b = normalizeImportedBlock({ name: 'B', weeks: 4, deload: 0, days: [
+      { name: 'Lunes', ex: [{ n: name, sets: 3, reps: '8-10' }] },
+      { name: 'Jueves', ex: [{ n: name, sets: 3, reps: '8-10' }] },
+    ] });
+    return b.days.map(d => d.ex[0].id);
+  })()
+`);
+ok('a slug cut at 60 on a dash loses the dash: x×59, then x×59-2 (plans/063)',
+   JSON.stringify(cutSlugIds) === JSON.stringify(['x'.repeat(59), 'x'.repeat(59) + '-2']), JSON.stringify(cutSlugIds));
+
 /* 7. Every other field a block carries. The probes above each name the
       field the bug was about, which is the problem: `off` was found because
       plans/010 named it, and a field added to the editor next year would be
@@ -3713,6 +3793,70 @@ ok('...and its energy', renamedDayProbe.renamed && renamedDayProbe.energy0 && re
 ok('...and a key that is no slot, or a week outside 1..MAX_WEEKS, is dropped rather than carried',
    renamedDayProbe.noteKeys.length === 2 && renamedDayProbe.energyKeys.length === 2, JSON.stringify(renamedDayProbe));
 
+console.log('\n== an exercise keeps its own id through a paste and every restore (plans/063) ==');
+{
+  /* A paste capped a stated id at 60 but slugged a missing one from the
+     whole name, and a restore then cut every stored id at 60: two long
+     names sharing their first sixty slug characters, on two days, came
+     back from the first restore as one id, and the own path's one id on
+     two days is how the app records one lift trained twice — so two
+     lifts' histories merged without a word. */
+  const stem = 'Remo con mancuerna a una mano apoyado en banco inclinado con agarre neutro'.slice(0, 70);
+  const pasted = call(`(function () {
+    const nameA = (${JSON.stringify(stem)} + ' y pausa arriba ' + 'a'.repeat(40)).slice(0, 110);
+    const nameB = (${JSON.stringify(stem)} + ' y tempo lento ' + 'b'.repeat(40)).slice(0, 110);
+    const b = normalizeImportedBlock({ name: 'B', weeks: 4, deload: 0, days: [
+      { name: 'Lunes', ex: [{ n: nameA, sets: 3, reps: '8-10' }] },
+      { name: 'Jueves', ex: [{ n: nameB, sets: 3, reps: '8-10' }] },
+    ] });
+    return { a: b.days[0].ex[0].id, b: b.days[1].ex[0].id, nameLengths: [nameA.length, nameB.length] };
+  })()`);
+  ok('a pasted exercise with no id gets a slug capped at 60, like a stated id, and two long names still get two ids (plans/063)',
+     pasted.a.length <= 62 && pasted.b.length <= 62 && pasted.a !== pasted.b
+       && pasted.nameLengths[0] === 110 && pasted.nameLengths[1] === 110, JSON.stringify(pasted));
+
+  /* The own path: ids already stored longer than 60 exist on phones that
+     pasted long names before the cap, and a restore must give them back
+     as they are — each day's set still under its own lift. */
+  const restored = call(`(function () {
+    const common = ('remo-con-mancuerna-a-una-mano-apoyado-en-banco-inclinado-con-agarre').slice(0, 60);
+    const idA = common + '-' + 'a'.repeat(39), idB = common + '-' + 'b'.repeat(39);
+    state = defaultState(); migrate();
+    const profile = state.profiles.hombre;
+    const block = { id: 'blk', name: 'Largo', weeks: 4, deload: 0, days: [
+      { id: 'd0', name: 'Lunes', ex: [{ id: idA, n: 'Remo A', sets: 3, reps: '8-10' }] },
+      { id: 'd1', name: 'Jueves', ex: [{ id: idB, n: 'Remo B', sets: 3, reps: '8-10' }] },
+    ] };
+    profile.blocks = { blk: block }; profile.blockOrder = ['blk']; profile.activeBlock = 'blk';
+    profile.log = { blk: {} };
+    profile.log.blk[slot(1, 'd0')] = { [idA]: [{ w: '50', r: '10', done: true }] };
+    profile.log.blk[slot(1, 'd1')] = { [idB]: [{ w: '70', r: '8', done: true }] };
+    migrate();
+    const restore = () => {
+      const data = normalizeImportedBackup(JSON.parse(JSON.stringify(state)));
+      state = data; migrate();
+      return JSON.stringify(state);
+    };
+    const once = restore();
+    const p = state.profiles.hombre, b = p.blocks.blk, log = p.log.blk;
+    const first = {
+      lengths: [idA.length, idB.length],
+      idA: b.days[0].ex[0].id === idA, idB: b.days[1].ex[0].id === idB,
+      rowA: !!(log[slot(1, 'd0')] && log[slot(1, 'd0')][idA] && log[slot(1, 'd0')][idA][0].w === '50'),
+      rowB: !!(log[slot(1, 'd1')] && log[slot(1, 'd1')][idB] && log[slot(1, 'd1')][idB][0].w === '70'),
+      strayA: !!(log[slot(1, 'd0')] && Object.keys(log[slot(1, 'd0')]).length !== 1),
+      strayB: !!(log[slot(1, 'd1')] && Object.keys(log[slot(1, 'd1')]).length !== 1),
+    };
+    const twice = restore();
+    return Object.assign(first, { idempotent: once === twice });
+  })()`);
+  ok('a restore gives back a stored exercise id longer than 60 whole, two long ids sharing their first 60 staying two (plans/063)',
+     restored.lengths[0] === 100 && restored.lengths[1] === 100 && restored.idA && restored.idB, JSON.stringify(restored));
+  ok('...and each day\'s logged set is still under its own lift (plans/063)',
+     restored.rowA && restored.rowB && !restored.strayA && !restored.strayB, JSON.stringify(restored));
+  ok('...and restoring the result again changes nothing (plans/063)', restored.idempotent, JSON.stringify(restored));
+}
+
 console.log('\n== moveExerciseRecord merges rather than overwrites (plans/008 items 1, 3) ==');
 const moveProbe = call(`
   (function() {
@@ -3839,6 +3983,128 @@ ok('an unmodified save leaves day A\'s rows alone',
 ok('...and day B\'s — the id-only map used to erase one of them',
    peSaveProbe['w1-d1'] && peSaveProbe['w1-d1'].e1 && peSaveProbe['w1-d1'].e1.length === 1 && peSaveProbe['w1-d1'].e1[0].w === '60',
    JSON.stringify(peSaveProbe));
+
+console.log('\n== plan editor "Guardar cambios": a rename is told by the day an exercise started on (plans/063) ==');
+{
+  /* One id on two days under two names. The old names were kept by id
+     alone, so the last day's name answered for both copies and every save
+     — one that only fixed a cue included — said "1 ejercicio renombrado"
+     and cut the objetivo history again. Pressed on the real buttons; the
+     status line is what the person reads, and `variants` is the cut. */
+  const planBoot = () => {
+    const boot = bootApp({ state: {
+      activeProfile: 'hombre',
+      profiles: { hombre: {
+        label: 'Hombre', activeBlock: 'B', blockOrder: ['B'], week: 1, day: 0,
+        blocks: { B: {
+          id: 'B', name: 'Block', weeks: 8, deload: 0,
+          days: [
+            { id: 'd0', name: 'Lunes', ex: [{ id: 'press', n: 'Press banca', sets: 3, reps: '8-10' },
+                                           { id: 'row', n: 'Remo', sets: 3, reps: '8-10' }] },
+            { id: 'd1', name: 'Jueves', ex: [{ id: 'press', n: 'Press banca (máquina)', sets: 3, reps: '8-10' }] },
+            { id: 'd2', name: 'Sábado', ex: [{ id: 'curl', n: 'Curl', sets: 3, reps: '10-12' }] },
+          ],
+        } },
+        log: { B: {} },
+      } },
+    } });
+    boot.clock.advance(1000);
+    return boot;
+  };
+  /* The editor's own controls: a box by its input handler, and "Enviar a…"
+     by its select, which asks moveExRefusal before it moves anything. A
+     row is found by the name its box shows, in the day box it is drawn
+     in, so a send the select refused is caught here rather than passing
+     as a save with nothing moved. */
+  const editor = boot => {
+    const find = (day, name) => boot.$('peDays').children.filter(c => c.className === 'pe-day')[day]
+      .querySelector('.pe-exlist').children.find(r => r.querySelector('.f-n').value === name);
+    const row = (day, name) => {
+      const r = find(day, name);
+      if (!r) throw new Error('no row "' + name + '" on day ' + day);
+      return r;
+    };
+    return {
+      type: (day, name, box, value) => boot.type(row(day, name).querySelector(box), value),
+      send: (day, name, to) => {
+        const sel = row(day, name).querySelector('.pe-move-sel');
+        sel.value = boot.call('peDraft.block.days[' + to + '].id');
+        sel.onchange();
+        if (find(day, name) || !find(to, name)) throw new Error('"Enviar a…" did not move "' + name + '" from day ' + day + ' to day ' + to);
+      },
+    };
+  };
+  const save = (boot, edit) => {
+    let problem = '', status = '';
+    try {
+      boot.$('editPlan').onclick();
+      if (!boot.call('peDraft')) return { problem: '"Editar plan" opened no draft' };
+      if (edit) edit(editor(boot));
+      boot.$('peSave').onclick().catch(() => {});
+      if (!boot.call('peDraft === null && !askResolve')) problem = 'the save did not run to its end';
+      /* Read before the clock moves: save()'s debounced write lands after
+         and puts "Guardado hh:mm" over the line the handler wrote. */
+      status = boot.$('status').textContent;
+      if (!problem && !/^Plan actualizado/.test(status)) problem = 'the status line is not the save\'s';
+      boot.clock.advance(1000);
+    } catch (e) { problem = e.message; }
+    const cuts = id => JSON.stringify(boot.call('(getProfile().variants || {})[' + JSON.stringify(id) + ']') || null);
+    return {
+      problem, status, press: cuts('press'), row: cuts('row'),
+      names: JSON.stringify(boot.call('getProfile().blocks.B.days.map(d => d.ex.map(e => e.n))')),
+    };
+  };
+  const renamedIn = r => /renombrado/.test(r.status);
+  const boot = planBoot();
+  const cue = save(boot, ed => ed.type(0, 'Press banca', '.f-cue', 'Codos a 45°'));
+  cue.cue = boot.call('getProfile().blocks.B.days[0].ex[0].cue');
+  const again = save(boot);
+  ok('a save that only changes a cue reports no rename when one id sits on two days under two names (plans/063)',
+     !cue.problem && cue.cue === 'Codos a 45°' && !renamedIn(cue) && cue.press === 'null', JSON.stringify(cue));
+  ok('...nor does the save after it (plans/063)', !again.problem && !renamedIn(again) && again.press === 'null', JSON.stringify(again));
+
+  const real = save(boot, ed => ed.type(1, 'Press banca (máquina)', '.f-n', 'Press inclinado'));
+  const after = save(boot);
+  const cuts = JSON.parse(real.press || 'null');
+  ok('renaming one copy for real reports exactly one rename, and records it once (plans/063)',
+     !real.problem && /· 1 ejercicio renombrado/.test(real.status) && Array.isArray(cuts) && cuts.length === 2
+       && cuts[1].n === 'Press inclinado', JSON.stringify(real));
+  ok('...and the save after it reports none, the cut left as it was (plans/063)',
+     !after.problem && !renamedIn(after) && after.press === real.press, JSON.stringify(after));
+
+  const moved = save(boot, ed => ed.send(0, 'Remo', 2));
+  ok('sending an exercise to another day without renaming it is no rename (plans/063)',
+     !moved.problem && !renamedIn(moved) && moved.press === real.press && moved.row === 'null'
+       && moved.names === JSON.stringify([['Press banca'], ['Press inclinado'], ['Curl', 'Remo']]), JSON.stringify(moved));
+
+  /* The two that tell the start day from the day an exercise is on now.
+     Looked up where it landed, a copy sent and renamed in one save found
+     no old name there and was no rename at all; and in a swap, the copy
+     that took another's place was compared with the name that other copy
+     had, so a save that renamed nothing cut the objetivo. Each on a fresh
+     boot, so neither leans on what the saves above left. */
+  const sentAndRenamed = save(planBoot(), ed => {
+    ed.send(0, 'Remo', 2);
+    ed.type(2, 'Remo', '.f-n', 'Remo en polea');
+  });
+  const rowCuts = JSON.parse(sentAndRenamed.row || 'null');
+  ok('sending an exercise to another day and renaming it in the same save is exactly one rename (plans/063)',
+     !sentAndRenamed.problem && /· 1 ejercicio renombrado/.test(sentAndRenamed.status)
+       && Array.isArray(rowCuts) && rowCuts.length === 2 && rowCuts[0].n === 'Remo' && rowCuts[1].n === 'Remo en polea'
+       && sentAndRenamed.press === 'null'
+       && sentAndRenamed.names === JSON.stringify([['Press banca'], ['Press banca (máquina)'], ['Curl', 'Remo en polea']]),
+     JSON.stringify(sentAndRenamed));
+
+  const swapped = save(planBoot(), ed => {
+    ed.send(0, 'Press banca', 2);
+    ed.send(1, 'Press banca (máquina)', 0);
+    ed.send(0, 'Remo', 1);
+  });
+  ok('a swap with no name changed — Lunes\' press to Sábado, Jueves\' press to Lunes, Remo to Jueves — is no rename (plans/063)',
+     !swapped.problem && !renamedIn(swapped) && swapped.press === 'null' && swapped.row === 'null'
+       && swapped.names === JSON.stringify([['Press banca (máquina)'], ['Remo'], ['Curl', 'Press banca']]),
+     JSON.stringify(swapped));
+}
 
 /* plans/053. "Borrar registro" used to file the erasure under the day the
    item sat on in the draft, while the dialog in front of it counted the
