@@ -515,4 +515,49 @@ end the suite (see how those sections wrap their bodies in `try`).
 - `load()`'s recovery path now also catches bugs in `migrate()` itself. A
   recovery screen reporting a TypeError from inside `migrate()` is an app
   bug to fix, not damaged data.
+- **Step B (`claude/071-b`), deviations and findings:**
+  - **The moved block.** It is byte for byte main's 34 lines, and the unit
+    suite gave the same 1441 passes with only the move made, so the STOP on
+    existing tests did not fire. Nothing `migrate()`'s loop reaches writes
+    `state.prefs`, `state.mode` or `state.setupDone`; every other write to
+    them is in a handler.
+  - **Case 2's download button.** `boot.$('recDownload')` is never null in
+    the harness: `getElementById` makes an element for any id, and
+    `showRecovery` finds its button on its own box
+    (`box.querySelector('#recDownload')`), which the fake answers for any
+    selector too. The case reads the box's markup for `id="recDownload"`
+    instead, since the fake keeps `innerHTML` as a string. It then presses
+    the handler `showRecovery` hung there, with `downloadFile` caught, and
+    checks that it hands over exactly the bytes in storage. It also checks
+    the default mode's heading ("No se ha podido abrir tu registro") and
+    the stub's error in the box's `<pre>`.
+  - **Case 2's bytes are put back indented** (`JSON.stringify(saved, null,
+    1)`), a form `save()` never writes. The stub throws before `migrate()`
+    touches anything, so a save of the unmigrated state would have written
+    the same compact bytes back, and "unchanged" could not have seen it.
+  - **Cases 3 and 4 check a little more than the plan lists.** Case 3's
+    copy is this tab's own backup with `barWeight` 22, and case 4's file is
+    `profileExportPayload()` with the label changed, so a tab left holding
+    the file shows. Beside what the plan asks, each checks the whole state
+    unchanged as JSON, no "Deshacer" toast (`toastKind !== 'undo'`) as well
+    as `undoSnapshot === null`, and storage unchanged after
+    `advance(1000)`. Each also checks the whole status line, the stub's
+    message included, so the refusal is the new catch's and not an
+    earlier check's.
+  - **Mutation 1** (the prefs block back after the loop) fails case 1's
+    four assertions, but not with a throw out of the boot. `load()`'s new
+    `try` catches the `TypeError` and the boot lands on the recovery
+    screen, and each FAIL carries its message ("Cannot read properties of
+    undefined (reading 'units')", and "of null" for `prefs: null`).
+    Mutations 2 to 4 fail as the plan says. Mutation 2 fails case 2's three
+    assertions, each carrying the stub's message, and the suite still runs
+    to its summary. Mutation 3 fails case 3's "same object, unchanged", and
+    mutation 4 fails case 4's "Deshacer". With both shipped files as they
+    are on `origin/main`, all fifteen new assertions fail, and the suite
+    still reaches its summary.
+  - **B.4 is a commit of its own**, before the bump.
+  - **Out of scope, noticed:** `undoLast()` (`js/app.js`) is now the one
+    caller of `migrate()` with no guard. Its input is this tab's own
+    snapshot of a state that was already migrated, so a throw there would
+    be an app bug, not damaged data.
 - *(Executor: record deviations here.)*
