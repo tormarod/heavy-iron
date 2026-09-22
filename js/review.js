@@ -444,7 +444,8 @@ function wireReview() {
     installImportedBlock(normalized);
     blob.value = '';
     closeReview();
-    flushSave();
-    mark('Bloque "' + normalized.name + '" importado desde la revisión en ' + getProfile().label);
+    /* Same as restoreFromText (js/profile-transfer.js): only an explicit
+       false from flushSave means the write failed. */
+    if (flushSave() !== false) mark('Bloque "' + normalized.name + '" importado desde la revisión en ' + getProfile().label);
   };
 }

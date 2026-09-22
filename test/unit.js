@@ -9281,6 +9281,46 @@ console.log('\n== the CSV: every set ever logged, the hidden ones too (plans/038
        cut.length === 0, cut.map(k => k + ': ' + stored[k].length + ' -> ' + (back[k] || '').length).join(' | '));
   }
 
+  console.log('\n== a save that could not be written is never reported as one (plans/064) ==');
+  {
+    /* Every import path calls flushSave() and then prints its own success
+       message over the footer: "Registro restaurado", "<name> cargado",
+       "Bloque … añadido/importado". writeState's catch already puts the
+       failure — "No se ha podido guardar…" — there; flushSave and
+       writeState answer false exactly when nothing was written, so a
+       caller has to check that specifically, not truthiness (an app.js
+       cached from before these return values existed still answers
+       undefined on a real success, and flushSave() !== false is true for
+       undefined too — see the five sites in js/*.js that rely on it). */
+    const writer = settled(JSON.parse(SEED));
+    const backup = writer.call('JSON.stringify({ app: STORAGE_KEY, v: 1, saved: new Date().toISOString(), data: state }, null, 2)');
+
+    const failing = settled(JSON.parse(SEED));
+    failing.ctx.localStorage.setItem = () => { throw new Error('QuotaExceededError'); };
+    failing.ctx.__backup = backup;
+    const restoringFailed = failing.call('restoreFromText(__backup)');
+    failing.call('closeAsk(true)');
+    await restoringFailed;
+    const failedStatus = failing.$('status').textContent;
+    ok('a restore that could not be saved says so in the footer, not "Registro restaurado"',
+       failedStatus.indexOf('No se ha podido guardar') === 0 && failedStatus.indexOf('Registro restaurado') < 0,
+       failedStatus);
+
+    const working = settled(JSON.parse(SEED));
+    working.ctx.__backup = backup;
+    const restoringOk = working.call('restoreFromText(__backup)');
+    working.call('closeAsk(true)');
+    await restoringOk;
+    ok('...and the same backup, storage working, does say "Registro restaurado"',
+       working.$('status').textContent.indexOf('Registro restaurado') === 0, working.$('status').textContent);
+  }
+  {
+    const boot = settled(JSON.parse(SEED));
+    const result = boot.call('flushSave()');
+    ok('flushSave with nothing pending writes nothing but still answers true, not undefined',
+       result === true, String(result));
+  }
+
   console.log('\n== the plan editor stops each text box at the importers\' length (plans/055) ==');
   {
     /* A cue typed before the editor capped anything: longer than a paste

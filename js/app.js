@@ -1157,10 +1157,14 @@ let refusedWhileDiscarding = false;
    line still updates on every attempt for anyone who is looking at it. */
 let quotaToastShown = false;
 
+/* Every branch below returns explicitly, on purpose: false means nothing
+   was written — an early return, or the catch — and a caller that reports
+   success must not do so on false (see the five import sites that check
+   it); true means setItem landed. */
 function writeState(force) {
-  if (frozen) return;
-  if (discarding) { refusedWhileDiscarding = true; return; }
-  if (held && !force) return;
+  if (frozen) return false;
+  if (discarding) { refusedWhileDiscarding = true; return false; }
+  if (held && !force) return false;
   if (held) {
     held = false;
     /* A forced write while the conflict is asking — the tab being hidden or
@@ -1174,6 +1178,7 @@ function writeState(force) {
     pruneLog();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     mark('Guardado ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    return true;
   } catch (e) {
     mark('No se ha podido guardar — puede que no quede espacio en el navegador', true);
     if (!quotaToastShown) {
@@ -1181,6 +1186,7 @@ function writeState(force) {
       toast('No se han podido guardar los últimos cambios — puede que no quede espacio en el navegador. Descarga una copia antes de seguir.',
         'Copia de seguridad', () => $('backup').click());
     }
+    return false;
   }
 }
 
@@ -1209,10 +1215,10 @@ function save(scope) {
    "Recargar", writeState refuses everything (`discarding`), this forced
    write included. */
 function flushSave() {
-  if (!saveT && !held) return;
+  if (!saveT && !held) return true;
   clearTimeout(saveT);
   saveT = null;
-  writeState(true);
+  return writeState(true);
 }
 
 /* The half of flushSave an import's pre-flight needs: land the pending
