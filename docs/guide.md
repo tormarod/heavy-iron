@@ -341,7 +341,11 @@ snapshot first, and offer **Deshacer** in a bar at the bottom of the
 screen. It lasts until the next thing you do — a set ticked, a box
 typed, a note, a plan edit, moving to another week, day or profile — or
 until a change arrives from another tab; then the bar goes and there is
-nothing left to undo. That is what the dialogs promise ("justo después,
+nothing left to undo. (A change from another tab that lands in the
+split second before this tab has saved the action itself brings up the
+[two-tabs question](#when-the-data-goes-wrong) instead, and **Deshacer**
+comes back once you answer **Quedarme con lo mío**.) That is what the
+dialogs promise ("justo después,
 mientras no hagas otra cosa"), and it is on purpose: an undo still
 waiting an hour into a session would put back the state from before the
 action, and every set logged since would go with it. One level deep: the
@@ -414,9 +418,10 @@ Two smaller safeguards worth knowing about:
   what the other tab saved and drops the change here; **Quedarme con lo
   mío** does the opposite. While the question waits, this tab holds back
   its saves, so it has no ✕ and stays on screen — no other notice can push
-  it aside. The one exception: closing or hiding this tab before answering
-  still saves what is here, so a set logged just before the phone goes
-  into a pocket is never lost.
+  it aside. Anything that has to save this tab's data at once counts as
+  **Quedarme con lo mío** and takes the question away with it: closing or
+  hiding this tab — so a set logged just before the phone goes into a
+  pocket is never lost — or loading a backup, a profile or a block here.
 
 ## Offline and installing
 
