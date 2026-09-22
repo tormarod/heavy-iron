@@ -143,4 +143,213 @@ at least three deliberate breaks are caught.
 
 ## Maintenance notes
 
-(Filled in when the PR lands.)
+**Drift.** Clean at the start: nothing in the drift check's files had
+changed since `2805d9c`. main then moved twice while this was in progress.
+First came #142 (plan 049, the rest timer). Then came #143 (the
+restore-limits fix the drift check names: `OWN_LIMITS`,
+`LOG_LIMITS.slots` 224 → 448, `PROFILE_LIMITS.profiles`), #144 (plan
+048, `writeRows`) and #145 (plan 050, `countSets`, which also carried
+this plan's own commit). None of them touched `normalizeImportedProfile`,
+`reKeyImportedSlots`, `RECORD_PARTS`, `setOrder` or migrate's repairs;
+#143 changed only values they read. The branch was rebased over each.
+The plans commit was dropped the second time, as already upstream. Every
+conflict was resolved by keeping both sides:
+- the index rows in `plans/README.md`;
+- the "sharing a block" section comment in `js/app.js`, which plan 050
+  rewrote: its text is kept, with a sentence saying the checks are each
+  part's `accept` now;
+- the `countProfileSets` comment in `js/profile-transfer.js`;
+- `AGENTS.md`'s untrusted-input paragraph, where #143's `OWN_LIMITS`
+  sentence and this plan's now stand side by side;
+- a `test/unit.js` section next to plan 050's new send-sheet test.
+
+**Decision 2: every difference, and how it was decided.**
+
+1. *One id is still an order; the import wanted two.* The stricter rule
+   (two or more) would drop data the app writes, so the lenient one
+   stands. "Enviar a otra sesión" (`order.move`) takes the moved lift out
+   of the source day's order and keeps the rest, so a day can be left
+   with a one-id order. The repair always kept it, but the import dropped
+   it from every backup: 300 states built by main's own writers carried
+   338 of them, and main's restore lost all 338. It still carries
+   meaning: `orderedEx` draws that lift first, which differs from the
+   plan's order once the plan has put another lift ahead of it. The
+   behaviour change is that a backup, a profile file or a QR "blocklog"
+   now keeps a one-id order. `blockShareOrder` still sends only two or
+   more (decision 5: no send hooks).
+2. *The cap comes before the ids are resolved; the repair capped after
+   filtering.* The stricter rule is the import's, cap first, whose result
+   is always a prefix of the other. Nothing the app writes changes: every
+   writer keeps its ids distinct, usable and at most `ORDER_LIMIT` long.
+   The one exception is the move's append, which can reach
+   `ORDER_LIMIT + 1`, and both rules cut that to the same first 60. The
+   rules only differ on a stored list with junk or repeats before
+   position 60 and real ids after it (2 of the limit fixtures).
+3. *`setOrder` writes through the rule; it applied the cap alone.* The
+   stricter rule applies, so a non-list, a repeat, a blocked key or a
+   non-string is refused at the write. Its callers (`moveSessionEx`, and
+   the reset with `null`) hand it the day's own ids, which the rule
+   passes unchanged. One unit fixture ("a restored session order keeps
+   all three of its exercises") planted a `__proto__` id through
+   `setOrder`; it now writes the map directly, and what it tests is
+   unchanged.
+4. *The variants' list rule* has no difference: the two copies were
+   identical character for character. The import's key cap
+   (`IMPORT_LIMITS.days × ex`) and its re-keying stay in `accept`, and
+   migrate never had them.
+
+**Decision 4: what is stripped.**
+- A profile keeps only `RECORD_PARTS`' names and `NON_RECORD_FIELDS`
+  (`label`, `theme`, `blocks`, `blockOrder`, `activeBlock`, `week`,
+  `day`). That is the guard's list from plan 046, now defined in
+  `js/app.js` and read by the guard.
+- A backup's top level keeps only `BACKUP_FIELDS` (`profiles`,
+  `activeProfile`, `mode`, `prefs`, `setupDone`, `v`).
+- The audit covered every write to the state's top level and to a
+  profile, in `js/` today and in the whole history of the scripts
+  (`git log -p`, the old hand-written map lists included). The state has
+  only ever had `profiles`, `activeProfile`, `prefs`, `mode` and
+  `setupDone`, and a profile only the fields above plus the parts of its
+  record.
+- `setupDone` is the one field the audit added: `load()` writes it and
+  `migrate()` reads it.
+- `v` is listed only because this plan names it. It is the version on
+  the backup's wrapper, `{ app, v, saved, data }`, and `restoreFromText`
+  keeps only `data`, so nothing the app writes ever puts a `v` on the
+  state. It is kept as named, and costs nothing; the orchestrator may
+  prefer to drop it.
+- Nothing the app writes is stripped: there is a unit test for it, and
+  Step E found 0 lost paths.
+
+**Equivalence (Step E).** This was run against `origin/main` at
+`2a87448`, the base this lands on, and first at `f4d392c`, before the
+second rebase, with the same outcome. It used three vm contexts, each
+built the way `loadApp` builds one:
+- main;
+- the branch;
+- a reference: main with only the three changes above patched in (the
+  import's `> 1` → `> 0`, the repair's slice before its filter,
+  `setOrder` through the same filter), and decision 4 applied as a
+  post-step with both lists written out in the harness rather than read
+  from the code.
+
+The branch had to equal the reference on every input. Outputs were
+compared as JSON text, so key order was held to the same standard, and
+thrown messages were compared too. Every main-vs-branch difference then
+had to be one the reference explains, and each was attributed to the
+single change that explains it.
+
+There were **19,210 comparisons, with 0 unexplained differences**:
+- `normalizeImportedProfile`, 6,713 runs:
+  - 600 own-data profiles, from 300 states built by main's own writers:
+    `entry`, `setNoteText`, `setEnergy`, `moveSessionEx`,
+    `moveExerciseRecord` with peSave's plan edit, `recordTarget`,
+    `recordVariant`, `stampRowUnit`, `purgeRecord`, `pruneLog`,
+    `emptyBlock` and the published blocks;
+  - 2,424 hostile ones: the unit suite's `H`, `__proto__`-key and
+    renamed-day fixtures, a profile with `__proto__`/`constructor`/
+    `toString` at every level, array- and string-shaped parts, and random
+    junk in every part, block, slot, exercise and field;
+  - 3,600 near misses: a plausible wrong value at a position that
+    resolves, in every part;
+  - 89 at, just under and just over every cap: blocks, rows, the hard
+    cap, slots, weeks, own-mode days and exercises, order length,
+    variants and their keys, note, drop, text and obj bounds.
+- The restore as `restoreFromText` runs it (normalize, strip,
+  `migrate`), 692 runs: 300 own backups, 300 damaged ones with junk
+  top-level keys, and 92 limit cases including 15, 16 and 17 profiles.
+- `migrate()` on 689 states, own and damaged.
+- The four named wrappers, and notes' and energy's `accept` against
+  main's old wrappers: 10,416 runs over strict and own blocks.
+- A QR "blocklog" built by `blockShareLog`/`Rir`/`Order` and read back:
+  300 runs. `setOrder`: 400 runs.
+
+main and the branch differed on **3,230** of them, every one attributed:
+
+| Change | Differences |
+|---|---|
+| 2a: one-id order kept on import | 2,231 |
+| 4: unknown keys stripped | 574 |
+| 2a and 4 in the same input | 303 |
+| 2c: `setOrder` through the rule | 120 |
+| 2b: the repair caps first | 2 |
+
+The array-shaped part with a block named `length`, where writing the
+value back throws a `RangeError`, behaves the same on both sides: the log
+names its block (`rejects`), and every other part throws bare, as main
+did.
+
+The own backup's round trip, over 300 backups, was measured path by path
+against main. The branch loses nothing main kept, and it keeps the 338
+one-id orders main dropped. Neither version restores a backup byte for
+byte, and those differences are all main's own, unchanged:
+- blocks are rebuilt: phase entries follow a changed length, and an
+  empty `alt`, `cue`, `share` or `ss` goes;
+- objetivo records leave a false `hold`/`brake` and a null `rir` absent,
+  and write a missing move as `''`;
+- half-typed drops and emptied slots are dropped.
+
+Twelve deliberate breaks were then made to the branch, and **all twelve
+were caught**. Each figure is the unexplained differences in 12,730
+comparisons (60 seeds); "lost" is own-data paths the round-trip check
+flagged.
+
+| Break | Unexplained |
+|---|---|
+| rir accepts `'3'` | 15 |
+| log hard cap off by one | 2 |
+| notes cap one short | 960 (107 lost) |
+| order wants two ids again | 692 |
+| order caps after resolving | 33 |
+| variants lose their key cap | 4 |
+| log loses `rejects` | 7 |
+| obj keeps `hold: false` | 1,835 |
+| exercise ids not re-keyed | 158 |
+| variants keep 13 | 21 |
+| `NON_RECORD_FIELDS` loses `week` | 1,437 (114 lost) |
+| `BACKUP_FIELDS` loses `setupDone` | 119 (20 lost) |
+
+**Deviations.**
+- `normalizeImportedBackup` (`js/profile-transfer.js`) is new. It is
+  `restoreFromText`'s per-profile loop plus the top-level strip, split
+  out so decision 4's backup half has a unit test without a dialog. The
+  rejection message is the same string.
+- The log part has a `rejects` flag. The loop wraps only a part that can
+  refuse the file, which is what keeps every thrown message identical.
+- `eachExercise(check)`, beside `reKeyImportedSlots`, is the
+  per-exercise walk the log, rir and obj normalizers each had a copy of.
+- `recordPart(name)` is new too: the named wrappers and `setOrder` use
+  it.
+- `normalizeImportedNotes`/`Energy` are deleted. After the loop nothing
+  called them, and decision 3 keeps only the four the QR path and the
+  tests call. `js/profile-transfer.js` is precached with `app.js`
+  (`AGENTS.md`), so no older copy of it can call them.
+- The QR payload guard compares what "blocklog" adds to the "block"
+  payload, rather than a hand-written list of envelope keys.
+
+**Tests.**
+- **Added, 8** under "a restore keeps what the app reads, and nothing
+  else": extra keys (`__proto__`, `constructor` and others, parsed from
+  JSON) leave a profile and a backup's top level with both prototypes
+  intact; nothing the app writes is dropped; and the state holds nothing
+  `BACKUP_FIELDS` leaves out.
+- **Added, 14** under "RECORD_PARTS: each part says how it is accepted":
+  every part has `accept`; the fixture carries a one-id order; one test
+  per part shows its own-data value survives; five pin the order rule.
+- **Added, 1** in the async tail: the blocklog payload's keys equal the
+  `travelsWithBlock` parts.
+- **Changed:** plan 046's guard reads `NON_RECORD_FIELDS`, and one
+  fixture was re-pointed (see decision 2, item 3).
+- Each new guard was checked against a deliberate break: stripping
+  disabled, the two-id rule back, `order` dropped from the payload.
+
+**Verification.**
+- `node --check` passes on every `js/*.js`, `sw.js` and `test/*.js`.
+- `node test/unit.js`: 949 passed, 0 failed.
+- `BASE=http://127.0.0.1:8799 node test/smoke.js --only "profile import
+  hardening" --only "main session" --only "Guardar cambios" --only
+  "weight drops"`: 266 passed, 0 failed. It was run before and after the
+  second rebase. The QR sections are sub-headings of "main session", and
+  "weight drops" has a QR round trip of its own.
+- The equivalence harness is throwaway and not committed.
+- `CACHE_VERSION` is not bumped; that is the orchestrator's step.
