@@ -131,8 +131,8 @@ objetivo, built on the block before it.
   [During the session](#during-the-session).
 - **Weight drops on any set**: record a dropset, or the weight you had to
   strip off to finish the reps, without inventing a set that wasn't there.
-  Marking a drop as *forzado* stops the automatic weight increase next
-  week — see [Weight drops](#weight-drops).
+  Marking a drop as *forzado* makes the [Diagnóstico](#diagnóstico) read
+  that session as one taken to failure — see [Weight drops](#weight-drops).
 - **Light and dark**, following the phone unless you override it under
   **Más → Tema** — a tap cycles automático, claro and oscuro.
 - **Backup / restore**: download a `.json` file with both profiles'

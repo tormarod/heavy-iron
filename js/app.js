@@ -85,10 +85,12 @@ const clampNum = (v, lo, hi, dflt, step) => {
   return Math.round(clamped * 100) / 100;
 };
 
-/* `ex.inc` — the weight step double progression adds once every set hit the
-   top of the rep range last week (see copyPrev). Bounded to something a
-   plate stack could actually add: quarter-unit granularity, nothing under
-   a plate change and nothing past a round-trip's worth of iron. */
+/* `ex.inc` — one step of weight for the objetivo rule (targetFor): how far
+   a set moves up or down a rung when the weights already logged against
+   the lift have none within a step and a half (nextLoad, prevLoad). Bounded
+   to something a plate stack could actually add: quarter-unit granularity,
+   nothing under a plate change and nothing past a round-trip's worth of
+   iron. */
 const INC_MIN = 0.25, INC_MAX = 50, INC_STEP = 0.25;
 
 /* Plate bounds. The only filter used to be `p > 0`, so a near-zero plate
@@ -104,18 +106,21 @@ const PLATE_MIN = { kg: 0.25, lb: 0.5 }, PLATE_MAX = { kg: 50, lb: 100 };
 const PLATES_MAX = 24;
 
 /* The step to fall back on when an exercise declares no `inc` of its own —
-   and most don't, since it is an optional field. Something has to round the
-   target weight below to a number you can actually load, so the chain runs
-   exercise → your own default (Ajustes) → this. Deliberately the smallest
+   and most don't, since it is an optional field. Something has to size the
+   rule's step for every lift, so the chain runs exercise → your own
+   default (Ajustes, seeded from this) → this. Deliberately the smallest
    plate/stack step that exists on most equipment rather than a typical one:
-   rounding to a step finer than the machine has only ever costs you the
-   difference between two real notches, while rounding to a coarser one
-   invents jumps the stack cannot make.
+   a step finer than the machine has only ever costs you the difference
+   between two real notches, while a coarser one invents jumps the stack
+   cannot make.
 
-   Only ever used for ROUNDING a number the app shows you. copyPrev stays
-   keyed on an explicit `ex.inc`: it writes weights into the log, and
-   defaulting a step for an exercise nobody declared one for would quietly
-   put +2,5 kg on a 12 kg lateral raise. */
+   It does reach the log. copyPrev ("Rellenar con el objetivo") writes the
+   objetivo into the boxes, and the objetivo is priced with this — which is
+   why copyPrev used to move only an exercise with an explicit `ex.inc`, so
+   a default could not quietly put +2,5 kg on a 12 kg lateral raise. The
+   ladder is what stops that now: the weights already logged are the
+   lift's rungs, and the step only invents one when none is near (see "the
+   rungs this machine actually has"). */
 const DEFAULT_INC = { kg: 2.5, lb: 5 };
 
 /* Never call this before migrate() has run — it reads state.prefs. */
@@ -2093,9 +2098,12 @@ function decayLine(rows) {
 }
 
 /* The top of a rep range like "8–12" or "8-12" — the last number in the
-   string, so it also copes with a plain "12" (no range at all). Used by
-   copyPrev to decide whether double progression's condition ("top of range
-   on every set") was actually met last week. */
+   string, so it also copes with a plain "12" (no range at all). Read by the
+   objetivo rule (targetFor, and ruleSession through exHistory), set by
+   set: a set that reached it is the one that moves up a rung, and is read
+   as a floor under what the set could do rather than a measurement of it.
+   copyPrev ("Rellenar con el objetivo") no longer asks it anything; it
+   writes whatever weights the rule priced. */
 function repRangeTop(reps) {
   const nums = String(reps || '').match(/\d+(?:[.,]\d+)?/g);
   return nums && nums.length ? num(nums[nums.length - 1]) : null;
@@ -2604,9 +2612,12 @@ function setSummary(x) {
 }
 
 /* A set the weight had to come off to finish is the plainest statement there
-   is that the weight was too heavy — so it joins RIR-0 and rep decay as a
-   reason for copyPrev to withhold next week's automatic increase. A planned
-   dropset says nothing of the sort and is deliberately not counted here. */
+   is that the weight was too heavy — so it joins RIR 0 as what makes the
+   Diagnóstico read a session as run at failure. It used to veto next
+   week's increase in copyPrev as well, and no longer does: copyPrev writes
+   the objetivo, and the rule reads the level off the reps done at the
+   working weight, which the stripped ones never were. A planned dropset
+   says nothing of the sort and is deliberately not counted here. */
 function forcedDrop(rows) {
   return (rows || []).some(r => r && r.done && dropKind(r) === 'forced' && dropsOf(r).some(dropUsed));
 }
@@ -4906,9 +4917,13 @@ const hasReps = r => r.r !== '' && r.r != null && !isNaN(num(r.r)) && num(r.r) >
 const EPLEY_A = 30;
 
 /* Above this Epley drifts far enough that the estimate would be inventing
-   a number rather than reading one. Still the ceiling the chart and the
-   Diagnóstico plot to; the rule below does not refuse past it, it reads
-   the set as a MINIMUM instead (see the censoring note). */
+   a number rather than reading one. Still the ceiling the Diagnóstico
+   plots to and the RÉCORD 1RM badge is judged under; the rule below does
+   not refuse past it, it reads the set as a MINIMUM instead (see the
+   censoring note). The progress chart is not on it: its 1RM view keeps a
+   stricter cut of its own, at twelve (isHighRep, js/chart.js), and past
+   that it leaves the point off the line and marks it rather than
+   dropping it. */
 const EST_MAX_REPS = 15;
 
 /* ---- censoring ----
