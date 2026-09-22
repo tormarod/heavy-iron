@@ -660,25 +660,31 @@ function moveExerciseRecord(profile, blockId, fromDayId, toDayId, exId) {
    every backup written before v3 lacks obj and variants — so a part that is
    missing, or not an object, starts empty rather than failing the load. */
 function ensureRecord(profile) {
+  /* What a map is, at every level of a part: an object that is not a list.
+     One test at all three levels, so the rule reads the same everywhere. */
+  const notMap = v => !v || typeof v !== 'object' || Array.isArray(v);
   RECORD_PARTS.forEach(part => {
     /* A list is not a map, though typeof calls it an object. Kept, a
        `log: []` took every tick as a string key on the array, which
        JSON.stringify drops: the session's sets were gone on the next
        reload (plans/067). */
-    if (!profile[part.name] || typeof profile[part.name] !== 'object' || Array.isArray(profile[part.name])) profile[part.name] = {};
+    if (notMap(profile[part.name])) profile[part.name] = {};
     /* The same one level down, and two for a part filed by lift: a block's
-       map stored as a list, or one slot's, took every write the same way,
-       and `log: { b1: [] }` lost a tick on the same reload. Only the maps
-       are touched. A part keyed by exercise holds a list per lift by design
-       (the variants), and so does a slot of the session order, whose value
-       IS the list. */
+       map, or one slot's, stored as anything but a map. A list took each
+       write as a string key and lost it on the next reload. A string, a
+       number or `true` took no write at all, and the log's first tick
+       threw inside the draw. A falsy one becomes {} too, on purpose, so
+       the one rule reads the same at every level. Only the maps are
+       touched. A part keyed by exercise holds a list per lift by design
+       (the variants), and a slot of a part keyed by slot alone holds the
+       value itself: a note's or an energy's string, an order's list. */
     if (part.keyedBy === 'exercise') return;
     const map = profile[part.name];
     Object.keys(map).forEach(bk => {
+      if (notMap(map[bk])) { map[bk] = {}; return; }
+      if (part.keyedBy !== 'slot+exercise') return;
       const blk = map[bk];
-      if (Array.isArray(blk)) { map[bk] = {}; return; }
-      if (part.keyedBy !== 'slot+exercise' || !blk || typeof blk !== 'object') return;
-      Object.keys(blk).forEach(k => { if (Array.isArray(blk[k])) blk[k] = {}; });
+      Object.keys(blk).forEach(k => { if (notMap(blk[k])) blk[k] = {}; });
     });
   });
   RECORD_PARTS.forEach(part => { if (part.repair) part.repair(profile); });

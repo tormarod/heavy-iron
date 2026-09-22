@@ -1255,6 +1255,60 @@ ok('...while an entry that is there is never touched, including one past the blo
      && JSON.stringify(phaseFill.keys) === '["1","2","3","4","5","6","9"]',
    JSON.stringify({ keys: phaseFill.keys, mine: phaseFill.mine, beyond: phaseFill.beyond }));
 ok('...and a phase stored as {} comes back as the whole generic ramp', phaseFill.empty);
+
+/* 10. Case 7 for everything else that is not a map (the orchestrator's call
+   on what case 7 left open). A block's map, or a slot's in a part filed by
+   lift, stored as a string, a number or `true` took no write at all, and
+   the log's first tick threw inside the draw. null is repaired the same
+   way, so the one rule reads the same at every level. What a slot holds by
+   design is not a map either and must stay as it is: a note's or an
+   energy's string, an order's list, and the variants' lists. A repair that
+   reached them would wipe every note. */
+[['a string', 'x'], ['a number', 5], ['true', true], ['null', null]].forEach(([label, bad]) => {
+  const scalarState = { activeProfile: 'hombre', profiles: {
+    hombre: { blocks: listBlocks(), blockOrder: ['b1'], activeBlock: 'b1' },
+    mujer: { blocks: listBlocks(), blockOrder: ['b1'], activeBlock: 'b1',
+      notes: { b1: { 'w1-d0': 'Nota guardada' } }, energy: { b1: { 'w1-d0': 'baja' } },
+      order: { b1: { 'w1-d0': ['e1'] } }, variants: { e1: [{ n: 'Uno', since: '2026-09-01' }] } },
+  } };
+  call('RECORD_PARTS.filter(part => part.keyedBy !== "exercise").map(part => part.name)')
+    .forEach(name => { scalarState.profiles.hombre[name] = { b1: bad }; });
+  call('RECORD_PARTS.filter(part => part.keyedBy === "slot+exercise").map(part => part.name)')
+    .forEach(name => { scalarState.profiles.mujer[name] = { b1: { 'w1-d0': bad } }; });
+  const got = JSON.parse(fromStorage(scalarState, `(() => {
+    const h = state.profiles.hombre, m = state.profiles.mujer;
+    const bySlot = RECORD_PARTS.filter(part => part.keyedBy !== 'exercise').map(part => part.name);
+    const byLift = RECORD_PARTS.filter(part => part.keyedBy === 'slot+exercise').map(part => part.name);
+    const notEmpty = bySlot.filter(name => JSON.stringify(h[name].b1) !== '{}')
+      .concat(byLift.filter(name => JSON.stringify(m[name].b1 && m[name].b1['w1-d0']) !== '{}').map(name => name + ' (slot)'));
+    const byDesign = p => ({ note: getNote(p, 'b1', 1, 'd0'), energy: getEnergy(p, 'b1', 1, 'd0'),
+      order: p.order.b1 && p.order.b1['w1-d0'], variants: p.variants.e1 });
+    const before = byDesign(m);
+    let threw = '';
+    try {
+      [[h, '50'], [m, '60']].forEach(([p, w]) => { const r = entry(p, 'b1', 1, 'd0', 'e1', 3)[0]; r.w = w; r.r = '8'; r.done = true; });
+      setNoteText(h, 'b1', 1, 'd0', 'Nota');
+      setEnergy(h, 'b1', 1, 'd0', 'alta');
+    } catch (e) { threw = e.message; }
+    state = JSON.parse(JSON.stringify(state));
+    migrate();
+    const lifted = p => sessionsOf(p, { weeks: 'logged' }).map(s => s.lift + ':' + s.sets.map(x => x.wLogged).join()).join();
+    const bh = state.profiles.hombre, bm = state.profiles.mujer;
+    return JSON.stringify({
+      notEmpty: notEmpty, threw: threw, before: before, after: byDesign(bm),
+      reloaded: { hombre: lifted(bh), mujer: lifted(bm), note: getNote(bh, 'b1', 1, 'd0'), energy: getEnergy(bh, 'b1', 1, 'd0') },
+    });
+  })()`));
+  ok('a block\'s map stored as ' + label + ' becomes {} in every part filed by block, and so does a slot\'s in every part filed by lift (plans/067)',
+     got.notEmpty.length === 0, 'not {}: ' + got.notEmpty.join(', '));
+  ok('...and a set ticked into each, and a note and an energy written into the first, land and survive a reload (' + label + ')',
+     !got.threw && JSON.stringify(got.reloaded) === '{"hombre":"e1:50","mujer":"e1:60","note":"Nota","energy":"alta"}',
+     got.threw || JSON.stringify(got.reloaded));
+  const designed = '{"note":"Nota guardada","energy":"baja","order":["e1"],"variants":[{"n":"Uno","since":"2026-09-01"}]}';
+  ok('...while what a slot holds by design is kept, before and after the reload: a note, an energy, an order, the variants (' + label + ')',
+     JSON.stringify(got.before) === designed && JSON.stringify(got.after) === designed,
+     JSON.stringify({ before: got.before, after: got.after }));
+});
 call('state = __before067; __before067 = null;');
 
 console.log('\n== normalizeImportedProfile ==');
