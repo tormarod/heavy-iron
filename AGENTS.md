@@ -45,7 +45,8 @@ identical to an oversight unless someone writes down which it is:
   applied at all and "auto" never flashes light for a moment on a dark
   system (plans/008 item 20). It has no `wire*()` — it is a self-invoking
   read of the theme preference, not DOM wiring — but it is still in `SHELL`
-  and still loaded by `test/unit.js`'s `loadApp()`, first, ahead of this list.
+  and still first in `SHELL_SCRIPTS` (`test/harness.js`), the list the unit
+  suite loads, ahead of this list.
 - **A file other than `app.js` must keep all its DOM wiring inside its own
   `wire*()` function**, called from `app.js`'s tail (at the foot of that file):
 
@@ -68,8 +69,8 @@ identical to an oversight unless someone writes down which it is:
   along its own five section seams, one per pull request (plans/008 item 13,
   now done); a further split follows the same recipe. Each new file needs
   the script tag *before* `js/app.js`, a `SHELL` entry in `sw.js`, a
-  guarded `wire*()` call here, its place in `loadApp()` in
-  `test/unit.js`, and a line in this list and in the README's layout
+  guarded `wire*()` call here, its place in `SHELL_SCRIPTS` in
+  `test/harness.js`, and a line in this list and in the README's layout
   table.
 
   Two rules the five seams settled, and they are what keeps a split safe:
@@ -88,13 +89,15 @@ identical to an oversight unless someone writes down which it is:
      stayed behind while their screens left.
 
   `test/unit.js` holds both rules to the source: it fails on a read that
-  breaks either one, naming the file and line, and it loads the shell
-  without each guarded file in turn and draws every week of a block with a
-  mid-block deload. That draw is where `deloadCheck` used to reach
-  `strengthByExercise` in `js/diagnostics.js`, unstubbed, and fall into
-  recovery; it lives in `app.js` now. One rule-2 breach still stands and
-  is listed there by name — `js/review.js` builds on six of the
-  Diagnóstico's names — and that list only shrinks.
+  breaks either one, naming the file and line, and it boots the shell
+  without each guarded file in turn, ticks a set on the real card and
+  draws every week of a block with a mid-block deload. That draw is where
+  `deloadCheck` used to reach `strengthByExercise` in `js/diagnostics.js`,
+  unstubbed, and fall into recovery; it lives in `app.js` now. One rule-2
+  breach still stands and is listed there by name — `js/review.js` builds
+  on six of the Diagnóstico's names, so without `js/diagnostics.js`
+  "+ Nuevo bloque → Ver la revisión" throws and makes no block — and that
+  list only shrinks.
 
   Both rules are about symbols, and **both read the same on ids**: an id
   that is new to `index.html` and looked up by a split file needs a null
@@ -142,7 +145,8 @@ halves: the `cache-version` job in `.github/workflows/test.yml` fails a pull
 request whose shell changed without a bump, and its second step fails one
 whose `js/*.js` or `css/*.css` file is missing from `SHELL`. `test/unit.js`
 closes the rest of that circle — it asserts `index.html`, `SHELL` and
-`loadApp()` name the same files in the same order (plans/014).
+`SHELL_SCRIPTS` in `test/harness.js` name the same files in the same order
+(plans/014).
 
 `tools/bump-cache-version.sh` does the bump, so a red `cache-version` run
 costs one command rather than a round-trip: `--dry-run` prints the current
@@ -156,7 +160,7 @@ request is opened.
 
 ```
 node --check js/<file>.js                # 1. syntax, instant
-node test/unit.js                        # 2. all pure logic, under a second
+node test/unit.js                        # 2. logic and handlers' data, ~1 s
 node test/smoke.js --only "<section>"    # 3. one browser section, ~5-10 s
 ```
 
@@ -201,15 +205,37 @@ The whole suite by hand is warranted in three cases only: you edited
 the hook failed and you are checking the fix — and even then, iterate
 with `--only` on the failing section and let the hook do the final full
 pass. Only `test/unit.js` runs on GitHub. It loads every shell script into
-one shared Node context — the same global scope the `<script>` tags create,
-in the same order — and is the fastest full check. A new file under `js/`
-goes into that list too, in the position its `<script>` tag has.
+a Node context — the same global scope the `<script>` tags create, in the
+same order — and is the fastest full check. A new file under `js/` goes
+into `SHELL_SCRIPTS` in `test/harness.js` too, in the position its
+`<script>` tag has.
+
+`test/harness.js` loads the shell two ways, and a test picks by what it
+touches (plans/052):
+
+- **`loadApp()`, for pure logic** — `migrate()`, the validators, the
+  statistics, called directly. It is the one context most of
+  `test/unit.js` shares, and it never boots: its document keeps nothing,
+  so `load()`'s first draw falls into recovery, `ready` is false, `frozen`
+  is true and there is no handler to press.
+- **`bootApp({ omit, state })`, for what a handler does to the data.** It
+  boots for real — `state` seeds `localStorage`, `load()` draws — against
+  a document that remembers (one element per id, one answer per selector,
+  every handler kept) and on a fake clock. A test presses the app's own
+  handler (`boot.$('copyPrev').onclick()`, or a card's tick through
+  `boot.card(exId).set(i)`), steps over `save()`'s debounce with
+  `boot.clock.advance(ms)`, and asserts the rows, the record and what
+  `boot.saved()` holds. A test that would otherwise copy a handler's code,
+  or swap out `render`/`save` to get at one, boots instead. It is still
+  not a DOM — `innerHTML` is never parsed — so what a person sees stays in
+  `test/smoke.js`.
 
 **Testing policy** (`test/smoke.js:10-11`): *"Add a case here whenever a bug
 turns out to have been invisible from the outside."* Arithmetic and data
-repair go in `test/unit.js` instead — and prefer that side of the line when
-a case fits either: a unit assertion costs nothing on every later run, a
-smoke assertion costs Chromium time forever.
+repair go in `test/unit.js` instead, and so does what a handler writes,
+through `bootApp()` — and prefer that side of the line when a case fits
+either: a unit assertion costs nothing on every later run, a smoke
+assertion costs Chromium time forever.
 
 ## Untrusted input
 

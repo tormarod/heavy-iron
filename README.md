@@ -185,7 +185,8 @@ rule, and which of this project's absences are deliberate.
 | `manifest.webmanifest`, `icon.svg`, `icon-*.png` | what makes it installable |
 | `tools/render-icons.mjs` | re-exports the PNGs from `icon.svg` — run it after editing the artwork (needs the same `playwright` module as the smoke suite) |
 | `blocks/` | blocks published for one-click import |
-| `test/unit.js` | headless assertions for pure logic — no server, no browser |
+| `test/harness.js` | what `test/unit.js` loads the app with: `loadApp()` (scripts only, for pure logic) and `bootApp()` (the real `load()` on a remembering fake document and a fake clock, for handler-level data tests) |
+| `test/unit.js` | headless assertions for pure logic and, through `bootApp()`, the real handlers' data effects — no server, no browser |
 | `test/smoke.js` | browser-driven smoke tests |
 | `docs/guide.md` | the user guide: what every screen does and why |
 | `AGENTS.md` | the briefing for agents: the invariants, the release rule, how to verify a change |
