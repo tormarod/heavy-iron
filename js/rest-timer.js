@@ -13,9 +13,10 @@
    notification and the wake lock — one subject, and nothing else in the app
    is about any of it.
 
-   Unlike the calculator, five of these are called from app.js: startRest and
-   stopRest from the tick handler and from every navigation button,
-   renderSoundBtn from drawApp, askForNotifications and keepAliveStop from
+   Unlike the calculator, five of these are called from app.js: startRest from
+   the tick handler; stopRest from there and from drawApp, which stops a
+   running rest whenever the session on screen changes (plans/049);
+   renderSoundBtn from drawApp too; askForNotifications and keepAliveStop from
    Ajustes. app.js stubs all five to no-ops when this file is not on the page
    — see the comment there for why that matters more than a dead button.
 

@@ -2930,10 +2930,11 @@ function freezeHistory(list) {
 }
 
 /* ---------- the rest timer lives in js/rest-timer.js ----------
-   These five are everything the rest of the app asks of it: startRest and
-   stopRest from the tick handler and from every profile/week/day button,
-   renderSoundBtn from drawApp, askForNotifications and keepAliveStop from
-   Ajustes. They are stubbed to no-ops when that file is not on the page,
+   These five are everything the rest of the app asks of it: startRest from
+   the tick handler; stopRest from there and from drawApp, which stops a
+   running rest whenever the session on screen changes (plans/049);
+   renderSoundBtn from drawApp too; askForNotifications and keepAliveStop
+   from Ajustes. They are stubbed to no-ops when that file is not on the page,
    because a returning user's service worker can still be serving an
    index.html with no script tag for it — and unlike a split-out button,
    these are not things you can afford to lose loudly: renderSoundBtn would
@@ -2973,7 +2974,7 @@ function renderProfiles() {
     b.setAttribute('aria-pressed', key === state.activeProfile ? 'true' : 'false');
     /* Picking somebody puts the sheet away: the answer to "who is training"
        is one tap, not a tap and a dismissal. */
-    b.onclick = () => { closeSheet('profileSheet'); state.activeProfile = key; stopRest(); commit('view'); };
+    b.onclick = () => { closeSheet('profileSheet'); state.activeProfile = key; commit('view'); };
     host.appendChild(b);
   });
   /* The header carries the answer, not the question: a dot in the profile's
@@ -3157,8 +3158,8 @@ function renderNav() {
   const prev = $('weekPrev'), next = $('weekNext');
   prev.disabled = profile.week <= 1;
   next.disabled = profile.week >= weeks;
-  prev.onclick = () => { if (profile.week > 1) { profile.week--; stopRest(); commit('view'); } };
-  next.onclick = () => { if (profile.week < weeks) { profile.week++; stopRest(); commit('view'); } };
+  prev.onclick = () => { if (profile.week > 1) { profile.week--; commit('view'); } };
+  next.onclick = () => { if (profile.week < weeks) { profile.week++; commit('view'); } };
 
   for (let w = 1; w <= weeks; w++) {
     const b = document.createElement('button');
@@ -3169,7 +3170,7 @@ function renderNav() {
     b.setAttribute('aria-selected', w === profile.week ? 'true' : 'false');
     b.setAttribute('aria-label', 'Semana ' + w + (w === dl ? ', descarga' : ''));
     if (weekHasLog(profile, block, w)) { const dot = document.createElement('span'); dot.className = 'dot'; b.appendChild(dot); }
-    b.onclick = () => { profile.week = w; stopRest(); commit('view'); };
+    b.onclick = () => { profile.week = w; commit('view'); };
     $('weeks').appendChild(b);
   }
 
@@ -3188,7 +3189,7 @@ function renderNav() {
     /* Roving tabindex, the other half of what role="tab" promises: one stop
        for the whole strip in the Tab order, the arrows move within it. */
     b.tabIndex = i === profile.day ? 0 : -1;
-    b.onclick = () => { profile.day = i; stopRest(); commit('view'); };
+    b.onclick = () => { profile.day = i; commit('view'); };
     $('days').appendChild(b);
   });
   /* The cards are this tab's panel, and which day they belong to is the tab
@@ -3214,7 +3215,6 @@ $('days').addEventListener('keydown', e => {
   if (to < 0) return;
   e.preventDefault();
   getProfile().day = to;
-  stopRest();
   commit('view');
   const fresh = $('days').querySelectorAll('.day')[to];
   if (fresh) fresh.focus();
@@ -3542,6 +3542,28 @@ function slugifyCached(s) {
   return renderCache.slug[k];
 }
 
+/* The session drawApp drew last time, as the string sessionOnScreen(state)
+   below returns — null before the first draw, so there is nothing to
+   compare against yet and nothing is stopped then. */
+let lastSessionOnScreen = null;
+
+/* The profile, block and slot on screen, joined into one key so two draws'
+   answers can be compared with !==. Takes `state` rather than reading the
+   global so a test can hand it a bare one (defaultState() plus a mutation)
+   without going through a draw. drawApp calls this every draw and stops the
+   rest timer when the answer changed since the last one (plans/049): eight
+   navigation controls used to call stopRest() by hand, one per button, and
+   undo and adopting another tab's write changed the session without either
+   having a call of its own. The draw is the one place that sees every way
+   of leaving a session, this one included. */
+function sessionOnScreen(state) {
+  const profile = state.profiles[state.activeProfile];
+  const block = profile.blocks[profile.activeBlock];
+  const days = dayList(block);
+  const day = days[profile.day] || days[0];
+  return state.activeProfile + '|' + block.id + '|' + slot(profile.week, day.id);
+}
+
 function drawApp() {
   resetRenderCache();
   const profile = getProfile();
@@ -3579,6 +3601,12 @@ function drawApp() {
   /* Before anything is drawn from it: pruneLog reads this to know which row
      arrays are the live ones. */
   drawnSlot = { profile: state.activeProfile, block: block.id, key: slot(profile.week, day.id) };
+  /* Stop a running rest the moment the session it belongs to leaves the
+     screen — see sessionOnScreen above. A redraw of the same session (a
+     tick's commit(), a sheet closing) compares equal and stops nothing. */
+  const onScreen = sessionOnScreen(state);
+  if (lastSessionOnScreen !== null && onScreen !== lastSessionOnScreen) stopRest();
+  lastSessionOnScreen = onScreen;
   drawEnergy(profile, block, day);
   drawDeloadCheck(profile, block);
   drawBrakeNote(profile, block);
