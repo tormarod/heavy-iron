@@ -34,7 +34,7 @@ const SHELL = [
   'index.html',
   'js/theme-init.js',
   'css/style.css',
-  'js/app.js',
+  'js/data.js',
   'js/block-editor.js',
   'js/diagnostics.js',
   'js/review.js',
@@ -44,8 +44,8 @@ const SHELL = [
   'js/chart.js',
   'js/volume-sheet.js',
   'js/qr-transfer.js',
+  'js/app.js',
   'js/boot-guard.js',
-  'js/data.js',
   'manifest.webmanifest',
   'icon.svg',
   /* The PNGs the install prompt reads: Firefox on Android picks its home
