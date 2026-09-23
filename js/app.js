@@ -1709,8 +1709,21 @@ function undoLast() {
      change and try to drop it. */
   undoSnapshot = null;
   undoArmed = false;
+  const prev = state;
   state = restored;
-  migrate();
+  try {
+    migrate();
+  } catch (err) {
+    /* The snapshot is this tab's own state from seconds earlier, already
+       migrated once, so a throw here is an app bug rather than foreign
+       bytes — but an app bug is exactly what a guard is for. Before this,
+       the throw left `state` half repaired for the next save() to write,
+       with the undo already spent and no snapshot left to retry from
+       (adoptStored, above, guards the same call for the same reason). */
+    state = prev;
+    mark('No se ha podido deshacer: ' + err.message, true);
+    return;
+  }
   applyTheme();
   save();
   render();
