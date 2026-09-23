@@ -356,11 +356,14 @@ const RECORD_PARTS = Object.freeze([
      Their checks on the way in are the ones the restore has run since
      plans/008 item 4: a note capped to NOTE_LIMIT, an energy inside
      ENERGY_OPTIONS, and a slot left with nothing valid dropped like any
-     other. */
+     other. Only the app's own files carry them, so a note that is text
+     comes back as it was stored, cut at NOTE_LIMIT and not tidied again:
+     migrate() keeps a stored note as it is, and so does the import
+     (plans/077). */
   {
     name: 'notes', keyedBy: 'slot',
     accept(raw, rawBlock, normalized) {
-      return reKeyImportedSlots(raw, rawBlock, normalized, v => txt(v, NOTE_LIMIT) || undefined);
+      return reKeyImportedSlots(raw, rawBlock, normalized, v => storedText(v, NOTE_LIMIT) || undefined);
     },
   },
   {
@@ -491,19 +494,23 @@ const RECORD_PARTS = Object.freeze([
         /* A record written before plans/021 has no `kind`, and it stays
            absent rather than being given a default: the missing field is
            the only thing that tells the two generations apart, and some of
-           the older ones are reconstructions. `hold`/`brake` are stored
-           only when true, the same convention the log uses for
-           `share`/`ss`/`u`. */
+           the older ones are reconstructions. The flags come back as
+           recordTarget stores them, `hold` and `brake` both booleans, false
+           included; a value that is not one is dropped. They used to be
+           kept only when true, a convention recordTarget never followed,
+           so the app's own backup changed every record it was read over
+           (plans/077). */
         const keep = { v: 3, at: clampInt(rec.at, 0, Number.MAX_SAFE_INTEGER, 0),
                        conf: TARGET_CONF_OPTIONS.indexOf(rec.conf) >= 0 ? rec.conf : 'baja', sets: sets };
         if (TARGET_KIND_OPTIONS.indexOf(rec.kind) >= 0) keep.kind = rec.kind;
-        if (rec.hold === true) keep.hold = true;
-        if (rec.brake === true) keep.brake = true;
-        /* The week's RIR the reps were solved for, when the record has
-           one: an integer inside the same range a row can hold, dropped
-           otherwise like `kind`. A descarga or a vuelta was never solved
-           for one, so a record without it is not a record that lost it. */
-        if (Number.isInteger(rec.rir) && rec.rir >= 0 && rec.rir <= RIR_MAX) keep.rir = rec.rir;
+        if (typeof rec.hold === 'boolean') keep.hold = rec.hold;
+        if (typeof rec.brake === 'boolean') keep.brake = rec.brake;
+        /* The week's RIR the reps were solved for, as recordTarget stores
+           it too: an integer inside the same range a row can hold, or the
+           null it writes for a descarga or a vuelta, which were never
+           solved for one. Anything else is dropped like `kind`, and a
+           record from before the field keeps having none (plans/077). */
+        if (rec.rir === null || (Number.isInteger(rec.rir) && rec.rir >= 0 && rec.rir <= RIR_MAX)) keep.rir = rec.rir;
         return keep;
       }));
     },
@@ -3863,9 +3870,10 @@ function safeKey(id) {
    (OWN_TEXT_LIMIT). `repair(ex, weeks)` mends the stored exercise in
    place. The text repairs this table added (the name, the alternative, the
    cue and the rep range) only ever cut a string at its bound, never
-   rewrite it, so what the editor stored comes through untouched; the
-   machine settings and the tags keep the repair migrate() always gave
-   them, which tidies their spacing the way an import does.
+   rewrite it, so what the editor stored comes through untouched, and their
+   `accept` does the same for the app's own data (acceptText, plans/077);
+   the machine settings and the tags keep the repair migrate() always gave
+   them, which tidies their spacing the way an import does, on every path.
 
    `id` and `n` are identity as well as fields. Which id an exercise ends
    up with, and what a blank name means (a paste is refused over it, a
@@ -3891,6 +3899,15 @@ const exMax = (f, own) => (own && f.ownMax) || f.max;
    else becomes the text txt() reads it as, '' for an object. */
 const storedText = (v, max) => (typeof v === 'string' ? v.slice(0, max) : txt(v, max));
 
+/* A text field on the way in, for field `f`. A paste or a scan gets
+   txt(), tidied and cut at `max`, as it always has. The app's own data
+   comes back as migrate() leaves it: cut at the own bound and otherwise as
+   typed, blank ends and double spaces included. The import used to tidy
+   what migrate() keeps, so the app's own file changed the data it was read
+   over — a name typed with the space a phone keyboard leaves after a word
+   came back without it (plans/077). */
+const acceptText = (f, v, ctx) => (ctx.own ? storedText(v, exMax(f, true)) : txt(v, exMax(f, false)));
+
 /* An optional one: absent stays absent, text is cut as above, and a value
    that is not text becomes what a restore would make of it — its text
    when it is truthy, and nothing when it is not. */
@@ -3898,6 +3915,15 @@ function repairOptionalText(ex, key, max) {
   const v = ex[key];
   if (v === undefined) return;
   if (typeof v === 'string' || v) ex[key] = storedText(v, max); else delete ex[key];
+}
+
+/* And on the way in (acceptText, above): a paste leaves a blank one out,
+   as it always has, and the app's own data keeps what the repair keeps,
+   any string, the empty one included. The import used to drop that one
+   where migrate() keeps it: the seed's leg press has an empty alternative
+   (plans/077). */
+function acceptOptionalText(f, v, ctx) {
+  return (ctx.own && typeof v === 'string') || v ? acceptText(f, v, ctx) : undefined;
 }
 
 /* A tag, on the way in and on the shelf: trimmed, capped, and dropped
@@ -3933,7 +3959,7 @@ const EX_FIELDS = Object.freeze([
   /* A string once repaired, blank included: the blank name newExercise()
      ships is the empty box the editor shows to type into. */
   { key: 'n', max: IMPORT_LIMITS.exName, ownMax: OWN_TEXT_LIMIT,
-    accept(v, ctx) { return txt(v, exMax(this, ctx.own)); },
+    accept(v, ctx) { return acceptText(this, v, ctx); },
     repair(ex) { ex.n = storedText(ex.n, this.ownMax); },
     prompt() { return 'string OBLIGATORIO — nombre del ejercicio (máx ' + this.max + ' car.)'; } },
   { key: 'sets', lo: 1, hi: 12, dflt: 3,
@@ -3949,18 +3975,18 @@ const EX_FIELDS = Object.freeze([
      with. */
   { key: 'reps', max: IMPORT_LIMITS.reps, ownMax: OWN_TEXT_LIMIT, dflt: '10–15', rejects: true,
     accept(v, ctx) {
-      const reps = txt(v, exMax(this, ctx.own)) || (ctx.own ? this.dflt : '');
+      const reps = acceptText(this, v, ctx) || (ctx.own ? this.dflt : '');
       if (!reps) throw new Error('Falta el rango de repeticiones en "' + ctx.n + '".');
       return reps;
     },
     repair(ex) { ex.reps = storedText(ex.reps, this.ownMax) || this.dflt; },
     prompt() { return 'string OBLIGATORIO — rango de reps, p.ej. "8-12" (máx ' + this.max + ' car.)'; } },
   { key: 'alt', max: IMPORT_LIMITS.alt, ownMax: OWN_TEXT_LIMIT,
-    accept(v, ctx) { return v ? txt(v, exMax(this, ctx.own)) : undefined; },
+    accept(v, ctx) { return acceptOptionalText(this, v, ctx); },
     repair(ex) { repairOptionalText(ex, this.key, this.ownMax); },
     prompt() { return 'string opcional — alternativa (máx ' + this.max + ' car.)'; } },
   { key: 'cue', max: IMPORT_LIMITS.cue, ownMax: OWN_TEXT_LIMIT,
-    accept(v, ctx) { return v ? txt(v, exMax(this, ctx.own)) : undefined; },
+    accept(v, ctx) { return acceptOptionalText(this, v, ctx); },
     repair(ex) { repairOptionalText(ex, this.key, this.ownMax); },
     prompt() { return 'string opcional — indicación técnica, para todas las series (máx ' + this.max + ' car.)'; } },
   /* Seat height, pin position, the stuff you discover at the machine and
@@ -7866,7 +7892,13 @@ const ROW_FIELDS = [
   { key: 'dk', col: 'tipo_bajada',
     /* Only where there is something for it to describe. */
     send: r => (dropsOf(r).some(dropUsed) ? dropKind(r) : undefined),
-    accept: (raw, row) => (row.d ? (DROP_KINDS.indexOf(raw.dk) >= 0 ? raw.dk : 'drop') : undefined),
+    /* And only when the row states a kind. The app writes `dk` when the
+       lifter picks one on a drop's chips; a drop nobody picked a kind for
+       has none, and every reader takes that as a dropset (dropKind).
+       Filling that default in here wrote a kind nobody chose onto every
+       such row an import read, so the app's own backup changed the data
+       it was read over (plans/077). */
+    accept: (raw, row) => (row.d && DROP_KINDS.indexOf(raw.dk) >= 0 ? raw.dk : undefined),
     cell: r => (dropsOf(r).some(dropUsed) ? DROP_LABEL[dropKind(r)] : '') },
 ];
 const ROW_CSV_COLUMNS = ROW_FIELDS.map(f => f.col);

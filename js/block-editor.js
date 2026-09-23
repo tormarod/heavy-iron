@@ -300,11 +300,18 @@ function normalizeImportedBlock(raw, opts) {
      better is still somebody's real history, and "Demasiados días (15)" on
      the app's own backup was the bug. */
   const most = own ? OWN_LIMITS : IMPORT_LIMITS;
+  /* Text on the way in. A paste is tidied by txt(); the app's own comes
+     back as it was stored (storedText), cut at `max` and otherwise as
+     typed, as migrate() keeps it. The own path used to tidy it too, so the
+     app's own file changed the data it was read over: a day's name typed
+     with a blank end lost it, and a pair note's line break became a space
+     (plans/077). */
+  const keepText = (v, max) => (own ? storedText(v, max) : txt(v, max));
   /* The same headroom for the text the plan editor never capped: the
      block's name, and each day's name and pair note here, and an
      exercise's text through its EX_FIELDS entry. OWN_TEXT_LIMIT says why a
      restore takes more than a paste. */
-  const text = (v, max) => txt(v, own ? OWN_TEXT_LIMIT : max);
+  const text = (v, max) => keepText(v, own ? OWN_TEXT_LIMIT : max);
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('El JSON no es un objeto válido.');
   const name = text(raw.name, IMPORT_LIMITS.name) || 'Bloque importado';
   /* Both optional: a block that says nothing is the eight-week, deload-on-8
@@ -385,7 +392,9 @@ function normalizeImportedBlock(raw, opts) {
     while (!dayId || usedDayIds.has(dayId)) dayId = uid('d');
     usedDayIds.add(dayId);
     const out = { id: dayId, name: dayName, ex };
-    if (day.pair) out.pair = text(day.pair, IMPORT_LIMITS.pair);
+    /* An empty one is kept on the own path: the editor stores it when a
+       note is cleared, and migrate() leaves it be (plans/077). */
+    if (day.pair || (own && typeof day.pair === 'string')) out.pair = text(day.pair, IMPORT_LIMITS.pair);
     /* Same rule as an exercise's `off` (EX_FIELDS). */
     if (own && day.off) out.off = 1;
     return out;
@@ -397,8 +406,10 @@ function normalizeImportedBlock(raw, opts) {
     phase = {};
     for (let w = 1; w <= weeks; w++) {
       const p = raw.phase[w] || raw.phase[String(w)];
+      /* One length on every path, since no box lets anyone type these
+         (OWN_TEXT_LIMIT says why), and as stored on the own one. */
       phase[w] = (p && p.r && p.t)
-        ? { r: txt(p.r, IMPORT_LIMITS.phaseR), t: txt(p.t, IMPORT_LIMITS.phaseT) }
+        ? { r: keepText(p.r, IMPORT_LIMITS.phaseR), t: keepText(p.t, IMPORT_LIMITS.phaseT) }
         : generic[w];
     }
   }

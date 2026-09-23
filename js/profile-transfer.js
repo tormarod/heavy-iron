@@ -252,10 +252,19 @@ function normalizeImportedProfile(p) {
     if (part.keyedBy === 'exercise') p[part.name] = part.accept(p[part.name], exIdMap);
   });
 
-  p.label = txt(p.label, 80);
-  /* accentOf already encodes "in ACCENTS, or a known legacy value, or the
-     default" — the same rule migrate() applies to a stored profile's theme. */
-  p.theme = accentOf(p);
+  /* The name comes back as it was stored, cut at 80 (storedText): Ajustes
+     keeps a double space typed inside it, migrate() keeps it too, and the
+     import used to tidy it away (plans/077). */
+  p.label = storedText(p.label, 80);
+  /* A theme the app stores comes back as stored: a current accent, or one
+     of the two legacy names every phone set up from the seed still holds
+     (legacyAccent), which migrate() keeps as they are. Turning a legacy
+     name into its new one here made the app's own file change the data it
+     was read over (plans/077). Anything else gets accentOf's default,
+     'azul', where migrate() would give it the seed's accent for that
+     profile (by its name, else its place) — the one difference left, and
+     only a file the app did not write can carry such a theme. */
+  if (ACCENTS.indexOf(p.theme) < 0 && !legacyAccent(p.theme)) p.theme = accentOf(p);
 
   return p;
 }
