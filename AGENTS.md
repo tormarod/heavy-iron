@@ -409,7 +409,12 @@ untrusted.
   cannot exceed — which is why the plan editor stops at `IMPORT_LIMITS`,
   and "+ Nuevo bloque" and every import at `PROFILE_LIMITS.blocks` — or
   the app's own backup stops restoring (plans/010's promise, broken by a
-  15th day and then by a 41st block).
+  15th day and then by a 41st block). What the app wrote also comes back
+  as it wrote it: read into a phone that holds the same data, its own
+  backup or profile file leaves the whole saved copy as it was, key order
+  aside, except that an exercise saved with no name comes back named
+  (plans/010) — held by unit "the app's own backup and profile file come
+  back as the app wrote them" (plans/077).
 - **Text.** Text keeps the same promise: every box in the plan editor
   stops at its `IMPORT_LIMITS` length, and a restore takes up to
   `OWN_TEXT_LIMIT` in the fields the editor did not always cap

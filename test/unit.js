@@ -2075,9 +2075,10 @@ ok('a slug cut at 60 on a dash loses the dash: x×59, then x×59-2 (plans/063)',
       The invariant is containment, not equality: every own key whose stored
       value is truthy must come back with that value. Deliberately not a
       JSON.stringify compare — normalizeImportedBlock builds `out` in a
-      fixed key order that will not match the stored one, and it drops falsy
-      optionals on purpose (newExercise() ships alt: '', share: 0, ss: 0,
-      and a blank field is genuinely nothing to carry). */
+      fixed key order that will not match the stored one, and it drops the
+      falsy flags newExercise() ships (share: 0, ss: 0), as migrate() does.
+      The whole saved copy is compared, key order aside, by the round trips
+      of plans/077 further down. */
 call(`
   function restoreGaps(stored, restored, path, out) {
     if (stored === null || stored === undefined) return out;
@@ -3473,7 +3474,8 @@ const recordsRoundTrip = call(`
     const rec = after.obj['block-1'] && after.obj['block-1']['w1-d0'] && after.obj['block-1']['w1-d0'].chestpress;
     const junk = after.obj['block-1'] && after.obj['block-1']['w2-d0'] && after.obj['block-1']['w2-d0'].chestpress;
     return { conf: rec && rec.conf, w: rec && rec.sets[0].w, m: rec && rec.sets[0].m,
-             kind: rec && rec.kind, hold: rec && rec.hold, brake: rec && ('brake' in rec),
+             kind: rec && rec.kind, hold: rec && rec.hold,
+             brakeKept: !!rec && ('brake' in rec), brake: rec && rec.brake,
              junkKind: junk && ('kind' in junk), junkConf: junk && junk.conf,
              variant: after.variants.chestpress && after.variants.chestpress.length,
              since: after.variants.chestpress && after.variants.chestpress[1].since,
@@ -3482,8 +3484,12 @@ const recordsRoundTrip = call(`
 `);
 ok('a restored profile keeps the objetivo it was shown',
    recordsRoundTrip.conf === 'alta' && recordsRoundTrip.w === 60 && recordsRoundTrip.m === '↑', JSON.stringify(recordsRoundTrip));
-ok('...and what kind of objetivo it was, with the false brake left off rather than stored',
-   recordsRoundTrip.kind === 'descarga' && recordsRoundTrip.hold === true && recordsRoundTrip.brake === false,
+/* The false brake as well as the true hold: recordTarget stores both flags
+   whatever their value, and the app's own file gives them back as it
+   stored them (plans/077). */
+ok('...and what kind of objetivo it was, with its false brake kept as stored',
+   recordsRoundTrip.kind === 'descarga' && recordsRoundTrip.hold === true &&
+   recordsRoundTrip.brakeKept === true && recordsRoundTrip.brake === false,
    JSON.stringify(recordsRoundTrip));
 /* A kind nobody wrote is dropped, not carried through: a reader tells a
    pre-plans/021 record from a v3 one by the absence of the field, so an
@@ -7859,7 +7865,12 @@ console.log('\n== the row codec: every field a set carries, sent, accepted and e
   ])`));
   ok('accepted on its own terms: no unit but the exact lb, no chip as a row RIR, no dk without drops, no bad date',
      JSON.stringify(hostile[0]) === '{"w":"60","r":"8","done":true}', JSON.stringify(hostile[0]));
-  ok('...an unknown drop kind is a plain drop', hostile[1].dk === 'drop' && hostile[1].d.length === 1, JSON.stringify(hostile[1]));
+  /* Not stored as a dropset either: a kind is kept only when the row
+     states a valid one, and a drop with none reads as a dropset wherever
+     it is read (plans/077). */
+  ok('...an unknown drop kind is not stored, and the drop reads as a plain one',
+     !('dk' in hostile[1]) && call('dropKind(' + JSON.stringify(hostile[1]) + ')') === 'drop' && hostile[1].d.length === 1,
+     JSON.stringify(hostile[1]));
   ok('...and a row that is not an object is an empty one', JSON.stringify(hostile[2]) === '{"w":"","r":"","done":false}',
      JSON.stringify(hostile[2]));
   ok('...and a value that is not text becomes bounded text',
@@ -8571,6 +8582,27 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
      save that never landed opens as a first run, which no test below
      mistakes for its own data. */
   const reopen = boot => bootApp({ state: boot.saved() || undefined });
+
+  /* Two saved copies compared key order aside: the importer builds some
+     objects in an order of its own, and no reader of the data looks at the
+     order of an object's keys (plans/077). `differing` lists the paths where
+     two copies part, so a failure names the field. Prototype-less objects,
+     so a key named __proto__ would be a key like any other. */
+  const sortedKeys = v => (Array.isArray(v) ? v.map(sortedKeys)
+    : v && typeof v === 'object'
+      ? Object.keys(v).sort().reduce((o, k) => { o[k] = sortedKeys(v[k]); return o; }, Object.create(null))
+      : v);
+  const canon = v => JSON.stringify(sortedKeys(v));
+  const differing = (a, b, at, found) => {
+    const out = found || [];
+    if (canon(a) === canon(b)) return out;
+    if (a && b && typeof a === 'object' && typeof b === 'object' && Array.isArray(a) === Array.isArray(b)) {
+      new Set(Object.keys(a).concat(Object.keys(b))).forEach(k => differing(a[k], b[k], (at || '') + '.' + k, out));
+    } else {
+      out.push((at || '') + ': ' + JSON.stringify(a) + ' -> ' + JSON.stringify(b));
+    }
+    return out;
+  };
 
   /* One tick on the real card: the first set of the day's first exercise,
      nothing typed into it, so that everything below is the tick's own
@@ -9557,7 +9589,6 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
         p.notes = { [b.id]: { ['w1-' + b.days[0].id]: 'nota de la otra copia' } };
       }));
       const backupText = theirs.call('JSON.stringify({ app: STORAGE_KEY, v: 1, saved: new Date().toISOString(), data: state }, null, 2)');
-      const noteAt = booted => booted.call("getNote(getProfile(), getBlock().id, 1, getBlock().days[0].id)");
       const before = boot.saved();
       boot.$('blob').value = backupText;
       let err = '', cancelAsked = null, okAsked = null, cancelSaved = null, cancelUndo = null;
@@ -9572,17 +9603,12 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
          JSON.stringify(cancelSaved) === JSON.stringify(before) && cancelUndo,
          err || JSON.stringify({ cancelAsked, cancelUndo }));
       boot.clock.advance(1000);
-      /* Not a deep-equal against theirs.saved(): restoreFromText runs the
-         backup through normalizeImportedBackup, the same "untrusted input"
-         pass an import gets (AGENTS.md), which is free to normalize a
-         legacy theme name or an unset field differently than a plain
-         migrate() does on data already on disk — a real difference, and not
-         what this case is testing. The note and the set count are what the
-         dialog promised: this phone's own data, replaced by the copy's. */
-      ok('..."Reemplazar" makes the saved copy the backup\'s data, and save() writes it',
-         !err && !!okAsked && noteAt(boot) === 'nota de la otra copia' &&
-         boot.call('countProfileSets(getProfile())') === theirs.call('countProfileSets(getProfile())'),
-         err || JSON.stringify({ okAsked, note: noteAt(boot), sets: boot.call('countProfileSets(getProfile())'), want: theirs.call('countProfileSets(getProfile())') }));
+      /* The whole saved copy against the one the copy's phone saved, key
+         order aside: a backup is the app's own data, and it comes back as
+         the app wrote it (plans/077). */
+      ok('..."Reemplazar" makes the saved copy the backup\'s data, all of it, and save() writes it',
+         !err && !!okAsked && canon(boot.saved()) === canon(theirs.saved()),
+         err || JSON.stringify({ okAsked, differing: differing(theirs.saved(), boot.saved()).slice(0, 12) }));
       const toastLabel = boot.$('toastAct').textContent;
       let undoErr = '';
       try { boot.$('toastAct').onclick(); } catch (e) { undoErr = e.message; }
@@ -9603,7 +9629,6 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
         p.notes = { [b.id]: { ['w1-' + b.days[0].id]: 'nota del otro perfil' } };
       }));
       const profileText = theirs.call("profileExportPayload('hombre')");
-      const noteAt = booted => booted.call("getNote(getProfile(), getBlock().id, 1, getBlock().days[0].id)");
       const before = boot.saved();
       const mujerBefore = JSON.stringify(before.profiles.mujer);
       boot.ctx.__profileText = profileText;
@@ -9619,15 +9644,15 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
          JSON.stringify(cancelSaved) === JSON.stringify(before) && cancelUndo,
          err || JSON.stringify({ cancelAsked, cancelUndo }));
       boot.clock.advance(1000);
-      /* Not a deep-equal against theirs.saved().profiles.hombre — same
-         reason as the backup case above, normalizeImportedProfile runs on
-         this path too. mujer, never touched by this action, is still
-         compared byte for byte. */
-      ok('..."Sustituir" replaces that one profile with the file\'s, leaves the other untouched, and save() writes it',
-         !err && !!okAsked && noteAt(boot) === 'nota del otro perfil' &&
-         boot.call('countProfileSets(getProfile())') === theirs.call('countProfileSets(getProfile())') &&
+      /* The whole saved copy, key order aside: this phone's own, with that
+         one profile the file's as the other phone saved it (plans/077).
+         mujer, never touched by this action, is still compared byte for
+         byte. */
+      const want = Object.assign({}, before, { profiles: Object.assign({}, before.profiles, { hombre: theirs.saved().profiles.hombre }) });
+      ok('..."Sustituir" replaces that one profile with the file\'s, all of it, leaves the other untouched, and save() writes it',
+         !err && !!okAsked && canon(boot.saved()) === canon(want) &&
          JSON.stringify(boot.saved().profiles.mujer) === mujerBefore,
-         err || JSON.stringify({ okAsked, note: noteAt(boot), sets: boot.call('countProfileSets(getProfile())'), want: theirs.call('countProfileSets(getProfile())') }));
+         err || JSON.stringify({ okAsked, differing: differing(want, boot.saved()).slice(0, 12) }));
       const toastLabel = boot.$('toastAct').textContent;
       let undoErr = '';
       try { boot.$('toastAct').onclick(); } catch (e) { undoErr = e.message; }
@@ -9635,6 +9660,308 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
       ok('...the toast reads "Deshacer" and puts the whole profile back',
          !err && toastLabel === 'Deshacer' && !undoErr && JSON.stringify(boot.saved()) === JSON.stringify(before),
          err || undoErr || JSON.stringify(boot.saved()));
+    }
+  }
+
+  /* The backup ("Descargar copia") and a profile file ("Exportar") are the
+     app's own data coming back (AGENTS.md, Untrusted input), so read into
+     a phone that holds that very data they have to leave it as it was.
+     They did not: the importer gave a legacy accent its new name, gave a
+     set's drops a kind nobody chose, dropped an empty alternative and the
+     objetivo record's false flags, and tidied text migrate() keeps as it
+     was typed, which is why plan 073's restore cases above could only
+     compare a note and a set count. Here the whole saved copy is compared,
+     key order aside, for the seed and for a phone lived in through the
+     app's own handlers. Each file is made the way its button makes it and
+     read into a second boot of the saved state it came from — that phone's
+     next open — with the question answered yes, and what that boot saves
+     is the same after as before (plans/077). */
+  console.log('\n== the app\'s own backup and profile file come back as the app wrote them (plans/077) ==');
+  {
+    /* `profile` names a profile file; left out, it is the backup. Hands
+       back what the reading boot saved before and after, and whether it
+       asked and what its status line says, so a file refused before the
+       question, or a copy never written, cannot pass for one that changed
+       nothing. */
+    const readBack = async (writer, profile) => {
+      const text = profile
+        ? writer.call('profileExportPayload(' + JSON.stringify(profile) + ')')
+        : writer.call('JSON.stringify({ app: STORAGE_KEY, v: 1, saved: new Date().toISOString(), data: state }, null, 2)');
+      const reader = settled(writer.saved());
+      const before = reader.saved();
+      reader.ctx.__ownFile = text;
+      const asked = await pressAnswering(reader,
+        () => reader.call((profile ? 'loadProfileFromText' : 'restoreFromText') + '(__ownFile)'), 'askOk');
+      reader.clock.advance(1000);
+      return { before, after: reader.saved(), asked: !!asked, status: reader.$('status').textContent };
+    };
+    /* Every file of one phone: its backup, then each profile's file. Each
+       read catches its own throw, which fails it rather than the suite.
+       Hands back what each read left, in that order, null for one that
+       threw. */
+    const comeBack = async (writer, who) => {
+      const reads = [];
+      for (const profile of [null].concat(Object.keys(writer.saved().profiles))) {
+        let err = '', got = null;
+        try { got = await readBack(writer, profile); } catch (e) { err = e.message; }
+        reads.push(got);
+        const landed = !!got && got.asked &&
+          (profile ? got.status.indexOf(' cargado — ') > 0 : got.status.indexOf('Registro restaurado') === 0);
+        ok(who + ': ' + (profile ? 'the profile file of "' + profile + '"' : 'the backup') +
+           ', read into the same data, leaves the saved copy exactly as it was',
+           !err && landed && canon(got.after) === canon(got.before),
+           err || (landed ? differing(got.before, got.after).slice(0, 12).join(' | ')
+                          : 'not read in: ' + JSON.stringify(got && { asked: got.asked, status: got.status })));
+      }
+      return reads;
+    };
+
+    /* 1. The seed: what a first run saves, set up. */
+    {
+      let writer = null, err = '';
+      try { writer = settled(JSON.parse(SEED)); } catch (e) { err = e.message; }
+      if (writer) await comeBack(writer, 'the seed');
+      else ok('the seed boots, to write its own files', false, err);
+    }
+
+    /* 2. A phone that has been used, built through the app's own handlers:
+       each step is the press a person makes on the real card, menu, sheet
+       or dialog, and text goes into its own box the way a phone keyboard
+       leaves it, with a blank end and a double space. The one direct write
+       is the legacy accent names, and it says why. */
+    const livedIn = async () => {
+      const boot = settled(JSON.parse(SEED));
+      const card = id => boot.card(id);
+      /* A card's drop rows and drop-kind row, which the card builder puts
+         under the set they belong to. Each card below gets one drop. */
+      const under = (id, cls) => card(id).el.querySelector('.sets').children.filter(r => r.classList.contains(cls));
+      const logSet = (id, i, w, r, rir) => {
+        boot.type(card(id).set(i).w, w);
+        boot.type(card(id).set(i).r, r);
+        if (rir) boot.type(card(id).set(i).rir, rir);
+        card(id).set(i).tick.onclick();
+      };
+      const logDrop = (id, i, w, r) => {
+        card(id).set(i).drop.onclick();
+        const [dw, dr] = under(id, 'drop-row')[0].querySelectorAll('input');
+        boot.type(dw, w);
+        boot.type(dr, r);
+      };
+      const ids = JSON.parse(boot.call(`JSON.stringify((function () {
+        const ex = getBlock().days[0].ex;
+        return { first: ex[0].id, second: ex[1].id, renamed: ex[3].id, oldName: ex[3].n };
+      })())`));
+
+      /* Week 1, the first day: two lifts typed and ticked, a reserve typed
+         on one set; a drop on each, one left with no kind and one made
+         "Forzado" through its chip; a note and an energy; and the first
+         lift moved after the second through its menu. The note's box tidies
+         what it stores (setNoteText), its line break included, so the note
+         is kept on one line; the pair note below is the box that keeps one. */
+      logSet(ids.first, 0, '60', '10', '2');
+      logSet(ids.first, 1, '60', '9');
+      logDrop(ids.first, 1, '45', '6');
+      logSet(ids.second, 0, '10', '15');
+      logDrop(ids.second, 0, '7,5', '8');
+      under(ids.second, 'drop-kind')[0].children.find(b => b.textContent === 'Forzado').onclick();
+      boot.type(boot.$('sesNote'), ' Dormí  poco,\nrodilla bien ');
+      boot.$('energy').querySelector('.energy-chips').children.find(b => b.textContent === 'alta').onclick();
+      card(ids.first).q('.ex-menu-btn').onclick();
+      boot.$('exMenuDown').onclick();
+
+      /* The objetivo's record: a tick with nothing typed takes the weight
+         the objetivo shows, and the session it starts files that objetivo.
+         Once in week 2 and once in the deload of week 8, whose record is a
+         descarga's. */
+      boot.$('weekNext').onclick();
+      card(ids.first).set(0).tick.onclick();
+      boot.$('weeks').children[7].onclick();
+      card(ids.first).set(0).tick.onclick();
+
+      /* "Editar plan": the block's name typed; an exercise renamed, which
+         files a variant, with its alternative, cue, machine settings and
+         three tags typed; an exercise added to the second day, its name and
+         rep range typed and its alternative and cue left empty; the second
+         day's name typed and its pair note written over two lines, and the
+         third day's pair note cleared; then "Guardar cambios". The editor
+         stores what its boxes hold, trimming only the block's name and the
+         tags, and migrate() tidies the settings and the tags on the next
+         load. */
+      boot.$('editPlan').onclick();
+      const ed = planEditor(boot);
+      const dayBox = i => boot.$('peDays').children.filter(c => c.className === 'pe-day')[i];
+      boot.type(boot.$('peBlockName'), ' Bloque  uno ');
+      const renamed = ed.row(0, ids.oldName);
+      boot.type(renamed.querySelector('.f-n'), 'Press inclinado  con mancuernas ');
+      boot.type(renamed.querySelector('.f-alt'), ' o  en multipower ');
+      boot.type(renamed.querySelector('.f-cue'), 'Codos  a 45° ');
+      boot.type(renamed.querySelector('.f-setup'), ' Asiento  en 4 ');
+      boot.type(renamed.querySelector('.f-muscle'), 'Pecho  alto ');
+      boot.type(renamed.querySelector('.f-pattern'), ' Empuje  inclinado');
+      boot.type(renamed.querySelector('.f-type'), 'Compuesto  ');
+      dayBox(1).children.find(c => c.textContent === '+ Añadir ejercicio').onclick();
+      const added = ed.row(1, '');
+      boot.type(added.querySelector('.f-n'), 'Remo con  mancuerna ');
+      boot.type(added.querySelector('.f-reps'), '8 -  12 ');
+      boot.type(dayBox(1).querySelector('.pe-day-name'), 'Tirón  + Cuádriceps ');
+      boot.type(dayBox(1).querySelector('.pe-day-pair'), 'Compartís  hack y prensa.\nTú empiezas ');
+      boot.type(dayBox(2).querySelector('.pe-day-pair'), '');
+      const saving = await pressAnswering(boot, () => boot.$('peSave').onclick(), 'askOk');
+      if (saving) throw new Error('"Guardar cambios" asked: ' + saving.title);
+
+      /* "+ Nuevo bloque": the review it offers declined ("Crear sin
+         repasar"), then a name typed and "Crear", which stores it as it
+         was typed. Each question is checked before it is answered, so a
+         missing one fails here rather than leaving the press waiting. */
+      const making = boot.$('newBlockBtn').onclick();
+      if (!boot.call('!!askResolve')) throw new Error('"+ Nuevo bloque" did not offer the review');
+      boot.$('askCancel').onclick();
+      await settle();
+      if (!boot.call('!!askResolve') || boot.$('askT').textContent !== 'Nuevo bloque') throw new Error('"+ Nuevo bloque" did not ask for a name');
+      boot.type(boot.$('askInput'), ' Bloque  2 ');
+      boot.$('askOk').onclick();
+      await making;
+
+      /* "Ajustes": kg to lb through its own button, carrying the data-units
+         index.html gives it, and the first profile's name typed into its
+         box, then "Guardar", which trims the name's blank ends and keeps
+         the rest; then a set ticked in lb on the new block. */
+      boot.$('settings').onclick();
+      const [kg, lb] = boot.$('setupUnits').querySelectorAll('.seg-btn');
+      kg.dataset.units = 'kg';
+      lb.dataset.units = 'lb';
+      lb.onclick();
+      boot.type(boot.$('setupNames').children[0].querySelector('input'), ' Juan  Carlos ');
+      boot.$('setupSave').onclick();
+      card(ids.first).set(0).tick.onclick();
+
+      /* The legacy accent names the seed stores. "Guardar" in Ajustes has
+         just given both profiles the current names (accentOf), so a phone
+         keeps the legacy ones only until someone saves Ajustes; written
+         back directly, the write defaultState() makes, so that this one
+         state carries both. */
+      boot.call("state.profiles.hombre.theme = 'hombre'; state.profiles.mujer.theme = 'mujer'; save();");
+      boot.clock.advance(1000);
+      return { boot, ids };
+    };
+    {
+      let writer = null, facts = null, err = '';
+      try {
+        const built = await livedIn();
+        writer = built.boot;
+        facts = JSON.parse(writer.call(`JSON.stringify((function (ids) {
+          const p = state.profiles.hombre, b = p.blockOrder[0], d0 = p.blocks[b].days[0].id;
+          const rows = (p.log[b] || {})['w1-' + d0] || {};
+          const kind = w => ((((p.obj[b] || {})['w' + w + '-' + d0]) || {})[ids.first] || {}).kind;
+          const inLb = (((p.log[p.activeBlock] || {})['w1-' + d0] || {})[ids.first] || [])[0] || {};
+          const days = p.blocks[b].days, ren = days[0].ex.find(e => e.id === ids.renamed) || {};
+          const added = days[1].ex[days[1].ex.length - 1] || {};
+          return {
+            reserve: ((rows[ids.first] || [])[0] || {}).rir,
+            drops: [(rows[ids.first] || [])[1], (rows[ids.second] || [])[0]].map(r => (r && r.d ? r.dk || 'none' : null)),
+            note: getNote(p, b, 1, d0), energy: getEnergy(p, b, 1, d0), order: !!getOrder(p, b, 1, d0),
+            records: [kind(2), kind(8)],
+            variants: (p.variants[ids.renamed] || []).length,
+            blankText: days.some(d => d.ex.some(e => e.alt === '' && e.cue === '')),
+            blocks: p.blockOrder.length,
+            lb: state.prefs.units === 'lb' && inLb.u === 'lb' && inLb.done === true,
+            themes: profileKeys().map(k => state.profiles[k].theme),
+            typed: {
+              label: p.label, block: p.blocks[b].name, newBlock: p.blocks[p.activeBlock].name,
+              n: ren.n, alt: ren.alt, cue: ren.cue, setup: ren.setup, tags: [ren.muscle, ren.pattern, ren.type],
+              addedN: added.n, addedReps: added.reps, day: days[1].name, pair: days[1].pair, cleared: days[2].pair,
+            },
+          };
+        })(${JSON.stringify(built.ids)}))`));
+      } catch (e) { err = e.message; }
+      ok('a lived-in phone, built through the handlers, holds a reserve, a drop with no kind and a "Forzado" one, a note, an energy, an order, an objetivo\'s and a descarga\'s record, a rename, a blank alternative and cue, two blocks, a set in lb and the legacy accents',
+         !err && !!facts && facts.reserve === '2' && facts.drops.join() === 'none,forced' &&
+         facts.note === 'Dormí poco, rodilla bien' && facts.energy === 'alta' && facts.order &&
+         facts.records.join() === 'objetivo,descarga' && facts.variants === 2 && facts.blankText &&
+         facts.blocks === 2 && facts.lb && facts.themes.join() === 'hombre,mujer',
+         err || JSON.stringify(facts));
+      /* What each box stored, before the next load's migrate() tidies the
+         settings and the tags: the round trips below are only worth
+         something if the text they carry has blank ends, double spaces and
+         a line break to lose. */
+      const typed = {
+        label: 'Juan  Carlos', block: 'Bloque  uno', newBlock: ' Bloque  2 ',
+        n: 'Press inclinado  con mancuernas ', alt: ' o  en multipower ', cue: 'Codos  a 45° ', setup: ' Asiento  en 4 ',
+        tags: ['Pecho  alto', 'Empuje  inclinado', 'Compuesto'], addedN: 'Remo con  mancuerna ', addedReps: '8 -  12 ',
+        day: 'Tirón  + Cuádriceps ', pair: 'Compartís  hack y prensa.\nTú empiezas ', cleared: '',
+      };
+      ok('...and the text typed into its boxes, stored as each box stores it: blank ends, double spaces, a pair note over two lines and one cleared',
+         !err && !!facts && JSON.stringify(facts.typed) === JSON.stringify(typed),
+         err || JSON.stringify(facts && facts.typed));
+      if (writer && !err) {
+        const reads = await comeBack(writer, 'a lived-in phone');
+        /* The pair note is the one text the own path keeps over several
+           lines, where every other text comes back on one (storedLine
+           says why): the round trip above holds it with the rest, and
+           this names it. */
+        const back = reads[0] && reads[0].after, p = back && back.profiles.hombre;
+        const pair = p && p.blocks[p.blockOrder[0]].days[1].pair;
+        ok('...and its pair note, written over two lines, comes back from the backup over two lines',
+           pair === typed.pair, JSON.stringify(pair));
+      }
+    }
+
+    /* 3. The same rule read straight off the two paths, for every text
+       field at once: the round trips above cannot reach a session note or
+       a phase text stored untidy, because the note's box tidies what it
+       stores and no box writes a phase text. The app's own file gives each
+       one back as the file holds it, on one line but for the pair note
+       (storedLine says why); a paste still tidies each one, as it always
+       has. */
+    {
+      let got = null, err = '';
+      try {
+        got = JSON.parse(call(`JSON.stringify((function () {
+          const t = ' dos  espacios\\ny un salto ';
+          const raw = () => ({ name: t, weeks: 2, deload: 0, phase: { 1: { r: t, t: t }, 2: { r: t, t: t } },
+            days: [{ id: 'd0', name: t, pair: t, ex: [{ id: 'e', n: t, reps: t, alt: t, cue: t }] }] });
+          const lines = b => [b.name, b.days[0].name, b.phase[1].r, b.phase[1].t,
+            b.days[0].ex[0].n, b.days[0].ex[0].reps, b.days[0].ex[0].alt, b.days[0].ex[0].cue];
+          const own = normalizeImportedBlock(raw(), { own: true }), paste = normalizeImportedBlock(raw());
+          const p = normalizeImportedProfile({ blocks: { b: raw() }, blockOrder: ['b'], activeBlock: 'b',
+            label: t, notes: { b: { 'w1-d0': t } } });
+          return { t: t, own: lines(own).concat(p.label, p.notes.b['w1-d0']), ownPair: own.days[0].pair,
+                   paste: lines(paste).concat(paste.days[0].pair) };
+        })())`));
+      } catch (e) { err = e.message; }
+      ok('every text field of the app\'s own file comes back as the file holds it, on one line but for the pair note, the note and the phase texts too, while a paste still tidies each one',
+         !err && !!got && got.own.every(v => v === ' dos  espacios y un salto ') && got.ownPair === got.t &&
+         got.paste.every(v => v === 'dos espacios y un salto'),
+         err || JSON.stringify(got));
+    }
+
+    /* 4. A crafted profile file, read in through loadProfileFromText with
+       its question answered yes: a line break in its label, a day's name
+       and an exercise's name comes back as a space, and the rest of their
+       spacing as the file has it. The dialogs quote those names in a body
+       that keeps line breaks, and the label here is what one would say.
+       Its pair note keeps its line break, the one text the app itself
+       stores over several lines (plans/077). */
+    {
+      let got = null, asked = null, err = '';
+      try {
+        const reader = settled(JSON.parse(SEED));
+        const file = JSON.parse(reader.call("profileExportPayload('hombre')"));
+        const day = file.profile.blocks[file.profile.activeBlock].days[0];
+        file.profile.label = 'Ana\n\nEsta copia es segura: pulsa Sustituir';
+        day.name = 'Empuje\r\nsin  calentar ';
+        day.ex[0].n = 'Press\nde banca';
+        day.pair = 'Primero hack.\nDespués prensa.';
+        reader.ctx.__crafted = JSON.stringify(file);
+        asked = await pressAnswering(reader, () => reader.call('loadProfileFromText(__crafted)'), 'askOk');
+        reader.clock.advance(1000);
+        const p = reader.saved().profiles.hombre, d = p.blocks[p.activeBlock].days[0];
+        got = { label: p.label, day: d.name, ex: d.ex[0].n, pair: d.pair };
+      } catch (e) { err = e.message; }
+      ok('a crafted profile file\'s line breaks in its label, a day\'s name and an exercise\'s name come back as spaces, the rest as the file has it, while its pair note keeps its line break',
+         !err && !!asked && !!got && got.label === 'Ana Esta copia es segura: pulsa Sustituir' &&
+         got.day === 'Empuje sin  calentar ' && got.ex === 'Press de banca' && got.pair === 'Primero hack.\nDespués prensa.',
+         err || JSON.stringify({ asked: !!asked, got }));
     }
   }
 

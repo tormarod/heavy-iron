@@ -310,4 +310,73 @@ assertion updated; three mutation checks.
 - A new field the app writes gets its round trip for free: the test
   compares whole saved copies. A field whose importer rewrites what the
   app wrote fails it.
-- *(Executor: record deviations here.)*
+- **What the round trips found, and the fix for each** (the seed and a
+  lived-in phone, each through its backup and both profile files):
+  1. `theme`: a legacy accent name renamed. Decision 2.
+  2. An exercise's empty `alt` or `cue` dropped (the seed's leg press,
+     `newExercise()`). Decision 4: `acceptOptionalText` keeps any string
+     on the own path.
+  3. `dk: 'drop'` written on a row with drops and no chosen kind.
+     Decision 3; the row codec's "...an unknown drop kind is a plain drop"
+     now asserts no `dk` is stored and `dropKind` reads `'drop'`.
+  4. The objetivo record's `hold: false` and `brake: false`, and a
+     descarga's `rir: null`, dropped: `recordTarget` writes all three.
+     Converging it failed "...with the false brake left off rather than
+     stored", so the executor stopped (decision 5). **Orchestrator's
+     decision**: converge toward storage. The record's `accept` keeps both
+     flags as booleans and `rir: null`, and that assertion is rewritten as
+     "...with its false brake kept as stored" (key present, value false).
+  5. Text typed through the app's own boxes and tidied by `txt()`: an
+     exercise's name and rep range, a day's name, a pair note's line
+     break, a new block's name with a blank end, a label's double space;
+     and a cleared pair note (`''`) dropped. **Orchestrator's decision**:
+     decision 4 extends to every text field `migrate()` keeps as stored —
+     `EX_FIELDS`' `n` and `reps` (`acceptText`), `normalizeImportedBlock`'s
+     own branch (block name, day names, pair notes, phase texts), the label
+     in `normalizeImportedProfile` and the `notes` part's `accept`. That
+     extends this plan's Scope to `js/block-editor.js` (the own branch
+     only) and to `normalizeImportedProfile`'s label. A paste is unchanged.
+- **Left as they were, on purpose**: the machine settings and the three
+  tags, whose repair tidies them on every load, so the import's `txt()`
+  already gives `migrate()`'s answer (the lived-in phone types them with
+  spaces, and they round-trip); a variant's name, since `clean()` serves
+  the repair and the import alike; ids and `createdAt`.
+- **What no box can store untidy**: the session note, which `setNoteText`
+  tidies, and a phase text, which no box writes. The round trips cannot
+  see either, so case 3 of the new section reads the rule straight off
+  both paths for every text field.
+- **Not converged, reported**: an exercise saved with no name
+  (`emptyBlock()`'s starting exercise) still comes back named "Ejercicio
+  N" on the own path, where `migrate()` keeps `''`. plans/010 decided it
+  and "...which comes back with a name to show" pins it, so converging it
+  would change an existing test. AGENTS.md's sentence names it.
+- **Known and not done** (orchestrator: planned separately): a set's
+  weight and reps are cut at 12 characters on every import
+  (`LOG_LIMITS.val`) and their boxes have no `maxlength`; the objetivo
+  record's weight is clamped at 9999. Older and the same kind (plans/055):
+  a block's or day's name and a pair note past `OWN_TEXT_LIMIT` are cut by
+  a restore, where `migrate()` keeps them whole.
+- **Deviations**: `canon`/`differing` sit with the booted helpers after
+  `reopen`, since plan 073's two cases use them too. The lived-in phone
+  also starts a session in the deload week, which is what found
+  `rir: null`. "Guardar" in Ajustes gives both profiles the current accent
+  names, so the legacy ones are written back directly, with a comment. The
+  comment on section 7's `restoreGaps` said the import drops `alt: ''`;
+  corrected. Mutation checks: the plan's three, one per convergence after
+  them, and two for the review's refinement below.
+- **Review of #191, one line but for the pair note**: the own path kept a
+  line break a file carries in any text field, and the dialogs quote a
+  label, a block's, a day's and an exercise's name in bodies with
+  `white-space: pre-line`. So a line break now survives only in the pair
+  note, whose textarea is the one box that stores them. `storedLine`
+  (beside `storedText`, `js/app.js`) turns each run of `\r`/`\n` into one
+  space for the label, the block's and the days' names, an exercise's `n`,
+  `reps`, `alt` and `cue`, the phase texts and the `notes` accept. Nothing
+  the app writes changes. Case 3 expects one line but for the pair note,
+  case 4 reads a crafted profile file through `loadProfileFromText`, and
+  the lived-in phone's pair note is named after its round trips.
+- **Look closely**: `storedLine` breaks at `\r` and `\n`, as the review
+  set it. U+2028 and U+2029, which `txt()`'s `\s` used to collapse and a
+  browser may also break a line at, pass through. A single-line box keeps
+  one that is pasted in, so turning it into a space would make that round
+  trip inexact; left for a decision.
