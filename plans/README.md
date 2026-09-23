@@ -95,6 +95,10 @@ below so it is not lost or re-audited.
 | 071 | [A lift's rows that are not a list are repaired, and a throw inside `migrate()` lands on the recovery screen or leaves this tab's data alone](done/071-migrate-never-strands-the-app.md) | P2 | S each (A, B) | LOW / LOW–MED | — (A and B are independent PRs, each bumps) | DONE — B (#185, v140): `prefs`, `mode` and `setupDone` are defaulted before the profiles are repaired (the legacy RIR fold reached `units()` first, and a state with no `prefs` threw); `load()` sends a throw from `migrate()` to the recovery screen instead of the boot guard's "La app no ha podido arrancar"; "Cargar copia" and loading a profile file put this tab's data back, drop the undo and say why on a throw; the two "rule (a)" comments say "split rule 1". A (#186, v141): the log part has a `repair` — a lift's rows that are not a list are dropped, a row that is not a plain object becomes an empty row in its place (+8.8 ms on 76,800 rows). A differential probe (old `migrate()` on input already put through the leaf rule, against new `migrate()` on the raw input) found all 15,001 generated states byte-identical |
 | 072 | [The unit suite's doc checks say what GitHub and AGENTS.md say: headings slug with their underscores, the slot regex is watched in every file](done/072-unit-checks-match-their-docs.md) | P3 | S | LOW | — no bump | DONE (#184, no bump) — the slugger keeps a literal `_` like GitHub's, pinned by seven known anchors; the slot-regex scan reads every `js/*.js` (floor: 13); the two "rule (a)" citations in `test/unit.js` say "split rule 1"; AGENTS.md says "every file in `js/`". `SHELL`'s order and "every contrast pair" were considered and left, for the reasons the plan records |
 | 073 | ["Deshacer" is tested through the real button of every action that offers it, and AGENTS.md states the rule](done/073-deshacer-tested-everywhere.md) | P3 | S–M | LOW | — no bump | DONE (#187, no bump) — booted tests press "Borrar todos los datos", the three ways to delete a block, "Cargar copia" and loading a profile file, then "Deshacer", and the saved copy comes back deep-equal each time (no bug found); every `snapshotForUndo` call is pinned to the six known actions; AGENTS.md has a checklist line and § Destructive actions and Deshacer. Review corrected two sentences: only five dialogs promise `UNDO_PROMISE` (none may say "No se puede deshacer"), and "Guardar cambios" snapshots without asking |
+| 074 | [`sw.js`'s `SHELL` lists the page's scripts in the page's order, and the unit suite holds it there](074-shell-lists-scripts-in-page-order.md) | P3 | S | LOW | — (bumps) | TODO |
+| 075 | [The contrast check reads every text-on-background pair the stylesheet declares, in all six palettes, and no text colour goes unchecked](075-contrast-checks-every-declared-pair.md) | P3 | S–M | LOW | — no bump | TODO |
+| 076 | ["Deshacer" survives a throw inside `migrate()` like every other caller, and the callers are pinned](076-every-migrate-caller-guarded.md) | P3 | S | LOW | — (bumps) | TODO |
+| 077 | [The app's own backup and profile file come back exactly as the app wrote them](077-own-files-come-back-as-written.md) | P3 | M | LOW–MED | — (bumps) | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
@@ -1203,6 +1207,27 @@ missed a string or a number where a map goes, which made the first tick
 throw. The reviewer's differential probe — old `migrate()` against new
 over generated states — is what made widening safe to merge: every state
 a writer produces came out byte-identical each time.
+
+### Set-aside topics — planned (2026-09-23)
+
+The maintainer asked for the four topics set aside while executing 071–073
+to be done after all. Recon for them found more than the set-aside notes
+said:
+
+- **074** — `SHELL`'s order is made to match the page (a bump; the order
+  has no runtime meaning, but three lists now read the same).
+- **075** — the stylesheet declares 16 text-on-background pairs in single
+  rules, and six were in no check. All pass 4.5:1 except the unticked
+  tick's "✓" (`--edge` on `--card`, 3.57/3.20), a toggle's icon that
+  WCAG 1.4.11 holds to 3:1. Declared pairs are now checked automatically
+  in all six palettes (light, dark, and each accent), with a reasoned
+  exception table.
+- **076** — `undoLast()` guards `migrate()` like the other four
+  callers, which are pinned.
+- **077** — the app's own backup and profile file change three things
+  on a same-data round trip (legacy accent names, an empty `alt`, a
+  materialised `dk: "drop"`). The own path gives back what the app
+  wrote, and a round-trip test holds it.
 
 ### Follow-ups of 067–070 — executed (2026-09-23)
 
