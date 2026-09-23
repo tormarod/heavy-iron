@@ -252,10 +252,13 @@ function normalizeImportedProfile(p) {
     if (part.keyedBy === 'exercise') p[part.name] = part.accept(p[part.name], exIdMap);
   });
 
-  /* The name comes back as it was stored, cut at 80 (storedText): Ajustes
-     keeps a double space typed inside it, migrate() keeps it too, and the
-     import used to tidy it away (plans/077). */
-  p.label = storedText(p.label, 80);
+  /* The name comes back as it was stored, cut at 80 and on one line
+     (storedLine): Ajustes keeps a double space typed inside it, migrate()
+     keeps it too, and the import used to tidy it away (plans/077). The one
+     line matters here most: the dialogs quote this name, and
+     loadProfileFromText's question says why a line break must not reach
+     them. */
+  p.label = storedLine(p.label, 80);
   /* A theme the app stores comes back as stored: a current accent, or one
      of the two legacy names every phone set up from the seed still holds
      (legacyAccent), which migrate() keeps as they are. Turning a legacy

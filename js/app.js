@@ -358,12 +358,12 @@ const RECORD_PARTS = Object.freeze([
      ENERGY_OPTIONS, and a slot left with nothing valid dropped like any
      other. Only the app's own files carry them, so a note that is text
      comes back as it was stored, cut at NOTE_LIMIT and not tidied again:
-     migrate() keeps a stored note as it is, and so does the import
-     (plans/077). */
+     migrate() keeps a stored note as it is, and so does the import. On
+     one line, like the note's own box writes it (storedLine, plans/077). */
   {
     name: 'notes', keyedBy: 'slot',
     accept(raw, rawBlock, normalized) {
-      return reKeyImportedSlots(raw, rawBlock, normalized, v => storedText(v, NOTE_LIMIT) || undefined);
+      return reKeyImportedSlots(raw, rawBlock, normalized, v => storedLine(v, NOTE_LIMIT) || undefined);
     },
   },
   {
@@ -3899,14 +3899,24 @@ const exMax = (f, own) => (own && f.ownMax) || f.max;
    else becomes the text txt() reads it as, '' for an object. */
 const storedText = (v, max) => (typeof v === 'string' ? v.slice(0, max) : txt(v, max));
 
+/* storedText for a text that is one line wherever the app shows it, the
+   same with each run of line breaks turned into one space. The dialogs
+   quote a profile's, a block's, a day's or an exercise's name in a body
+   that keeps line breaks (white-space: pre-line), so one carried in by a
+   crafted file would break the question wherever the file wanted it. No
+   box of the app's can type one, since they are single-line inputs, so
+   nothing the app wrote changes. Only the pair note is stored over several
+   lines, from its textarea, and it keeps storedText (plans/077). */
+const storedLine = (v, max) => storedText(v, max).replace(/[\r\n]+/g, ' ');
+
 /* A text field on the way in, for field `f`. A paste or a scan gets
    txt(), tidied and cut at `max`, as it always has. The app's own data
    comes back as migrate() leaves it: cut at the own bound and otherwise as
-   typed, blank ends and double spaces included. The import used to tidy
-   what migrate() keeps, so the app's own file changed the data it was read
-   over — a name typed with the space a phone keyboard leaves after a word
-   came back without it (plans/077). */
-const acceptText = (f, v, ctx) => (ctx.own ? storedText(v, exMax(f, true)) : txt(v, exMax(f, false)));
+   typed, blank ends and double spaces included, on one line (storedLine).
+   The import used to tidy what migrate() keeps, so the app's own file
+   changed the data it was read over — a name typed with the space a phone
+   keyboard leaves after a word came back without it (plans/077). */
+const acceptText = (f, v, ctx) => (ctx.own ? storedLine(v, exMax(f, true)) : txt(v, exMax(f, false)));
 
 /* An optional one: absent stays absent, text is cut as above, and a value
    that is not text becomes what a restore would make of it — its text

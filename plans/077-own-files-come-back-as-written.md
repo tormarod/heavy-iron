@@ -362,11 +362,21 @@ assertion updated; three mutation checks.
   `rir: null`. "Guardar" in Ajustes gives both profiles the current accent
   names, so the legacy ones are written back directly, with a comment. The
   comment on section 7's `restoreGaps` said the import drops `alt: ''`;
-  corrected. Mutation checks: the plan's three and one per convergence
-  after them.
-- **Look closely**: the own path now keeps a line break a file carries in
-  any text field. The app's single-line boxes cannot produce one (only the
-  pair note's textarea can), but a crafted backup or profile file can put
-  one in a label or a name, and a dialog body (`white-space: pre-line`)
-  that quotes it later breaks there. `loadProfileFromText` still tidies
-  the incoming label for its own question.
+  corrected. Mutation checks: the plan's three, one per convergence after
+  them, and two for the review's refinement below.
+- **Review of #191, one line but for the pair note**: the own path kept a
+  line break a file carries in any text field, and the dialogs quote a
+  label, a block's, a day's and an exercise's name in bodies with
+  `white-space: pre-line`. So a line break now survives only in the pair
+  note, whose textarea is the one box that stores them. `storedLine`
+  (beside `storedText`, `js/app.js`) turns each run of `\r`/`\n` into one
+  space for the label, the block's and the days' names, an exercise's `n`,
+  `reps`, `alt` and `cue`, the phase texts and the `notes` accept. Nothing
+  the app writes changes. Case 3 expects one line but for the pair note,
+  case 4 reads a crafted profile file through `loadProfileFromText`, and
+  the lived-in phone's pair note is named after its round trips.
+- **Look closely**: `storedLine` breaks at `\r` and `\n`, as the review
+  set it. U+2028 and U+2029, which `txt()`'s `\s` used to collapse and a
+  browser may also break a line at, pass through. A single-line box keeps
+  one that is pasted in, so turning it into a space would make that round
+  trip inexact; left for a decision.

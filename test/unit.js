@@ -9696,11 +9696,15 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
       return { before, after: reader.saved(), asked: !!asked, status: reader.$('status').textContent };
     };
     /* Every file of one phone: its backup, then each profile's file. Each
-       read catches its own throw, which fails it rather than the suite. */
+       read catches its own throw, which fails it rather than the suite.
+       Hands back what each read left, in that order, null for one that
+       threw. */
     const comeBack = async (writer, who) => {
+      const reads = [];
       for (const profile of [null].concat(Object.keys(writer.saved().profiles))) {
         let err = '', got = null;
         try { got = await readBack(writer, profile); } catch (e) { err = e.message; }
+        reads.push(got);
         const landed = !!got && got.asked &&
           (profile ? got.status.indexOf(' cargado — ') > 0 : got.status.indexOf('Registro restaurado') === 0);
         ok(who + ': ' + (profile ? 'the profile file of "' + profile + '"' : 'the backup') +
@@ -9709,6 +9713,7 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
            err || (landed ? differing(got.before, got.after).slice(0, 12).join(' | ')
                           : 'not read in: ' + JSON.stringify(got && { asked: got.asked, status: got.status })));
       }
+      return reads;
     };
 
     /* 1. The seed: what a first run saves, set up. */
@@ -9888,15 +9893,26 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
       ok('...and the text typed into its boxes, stored as each box stores it: blank ends, double spaces, a pair note over two lines and one cleared',
          !err && !!facts && JSON.stringify(facts.typed) === JSON.stringify(typed),
          err || JSON.stringify(facts && facts.typed));
-      if (writer && !err) await comeBack(writer, 'a lived-in phone');
+      if (writer && !err) {
+        const reads = await comeBack(writer, 'a lived-in phone');
+        /* The pair note is the one text the own path keeps over several
+           lines, where every other text comes back on one (storedLine
+           says why): the round trip above holds it with the rest, and
+           this names it. */
+        const back = reads[0] && reads[0].after, p = back && back.profiles.hombre;
+        const pair = p && p.blocks[p.blockOrder[0]].days[1].pair;
+        ok('...and its pair note, written over two lines, comes back from the backup over two lines',
+           pair === typed.pair, JSON.stringify(pair));
+      }
     }
 
     /* 3. The same rule read straight off the two paths, for every text
        field at once: the round trips above cannot reach a session note or
        a phase text stored untidy, because the note's box tidies what it
        stores and no box writes a phase text. The app's own file gives each
-       one back as the file holds it; a paste still tidies each one, as it
-       always has. */
+       one back as the file holds it, on one line but for the pair note
+       (storedLine says why); a paste still tidies each one, as it always
+       has. */
     {
       let got = null, err = '';
       try {
@@ -9904,18 +9920,48 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
           const t = ' dos  espacios\\ny un salto ';
           const raw = () => ({ name: t, weeks: 2, deload: 0, phase: { 1: { r: t, t: t }, 2: { r: t, t: t } },
             days: [{ id: 'd0', name: t, pair: t, ex: [{ id: 'e', n: t, reps: t, alt: t, cue: t }] }] });
-          const texts = b => [b.name, b.days[0].name, b.days[0].pair, b.phase[1].r, b.phase[1].t,
+          const lines = b => [b.name, b.days[0].name, b.phase[1].r, b.phase[1].t,
             b.days[0].ex[0].n, b.days[0].ex[0].reps, b.days[0].ex[0].alt, b.days[0].ex[0].cue];
+          const own = normalizeImportedBlock(raw(), { own: true }), paste = normalizeImportedBlock(raw());
           const p = normalizeImportedProfile({ blocks: { b: raw() }, blockOrder: ['b'], activeBlock: 'b',
             label: t, notes: { b: { 'w1-d0': t } } });
-          return { t: t, own: texts(normalizeImportedBlock(raw(), { own: true })), paste: texts(normalizeImportedBlock(raw())),
-                   label: p.label, note: p.notes.b['w1-d0'] };
+          return { t: t, own: lines(own).concat(p.label, p.notes.b['w1-d0']), ownPair: own.days[0].pair,
+                   paste: lines(paste).concat(paste.days[0].pair) };
         })())`));
       } catch (e) { err = e.message; }
-      ok('every text field of the app\'s own file comes back as the file holds it, the note and the phase texts too, while a paste still tidies each one',
-         !err && !!got && got.own.every(v => v === got.t) && got.label === got.t && got.note === got.t &&
+      ok('every text field of the app\'s own file comes back as the file holds it, on one line but for the pair note, the note and the phase texts too, while a paste still tidies each one',
+         !err && !!got && got.own.every(v => v === ' dos  espacios y un salto ') && got.ownPair === got.t &&
          got.paste.every(v => v === 'dos espacios y un salto'),
          err || JSON.stringify(got));
+    }
+
+    /* 4. A crafted profile file, read in through loadProfileFromText with
+       its question answered yes: a line break in its label, a day's name
+       and an exercise's name comes back as a space, and the rest of their
+       spacing as the file has it. The dialogs quote those names in a body
+       that keeps line breaks, and the label here is what one would say.
+       Its pair note keeps its line break, the one text the app itself
+       stores over several lines (plans/077). */
+    {
+      let got = null, asked = null, err = '';
+      try {
+        const reader = settled(JSON.parse(SEED));
+        const file = JSON.parse(reader.call("profileExportPayload('hombre')"));
+        const day = file.profile.blocks[file.profile.activeBlock].days[0];
+        file.profile.label = 'Ana\n\nEsta copia es segura: pulsa Sustituir';
+        day.name = 'Empuje\r\nsin  calentar ';
+        day.ex[0].n = 'Press\nde banca';
+        day.pair = 'Primero hack.\nDespués prensa.';
+        reader.ctx.__crafted = JSON.stringify(file);
+        asked = await pressAnswering(reader, () => reader.call('loadProfileFromText(__crafted)'), 'askOk');
+        reader.clock.advance(1000);
+        const p = reader.saved().profiles.hombre, d = p.blocks[p.activeBlock].days[0];
+        got = { label: p.label, day: d.name, ex: d.ex[0].n, pair: d.pair };
+      } catch (e) { err = e.message; }
+      ok('a crafted profile file\'s line breaks in its label, a day\'s name and an exercise\'s name come back as spaces, the rest as the file has it, while its pair note keeps its line break',
+         !err && !!asked && !!got && got.label === 'Ana Esta copia es segura: pulsa Sustituir' &&
+         got.day === 'Empuje sin  calentar ' && got.ex === 'Press de banca' && got.pair === 'Primero hack.\nDespués prensa.',
+         err || JSON.stringify({ asked: !!asked, got }));
     }
   }
 
