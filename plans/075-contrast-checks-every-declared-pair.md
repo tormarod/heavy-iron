@@ -257,11 +257,11 @@ table's assertion, the coverage assertion, and three mutation checks.
 
 ## Done criteria
 
-- [ ] every declared pair is checked in six palettes; `.tick` at 3:1 by
+- [x] every declared pair is checked in six palettes; `.tick` at 3:1 by
       its table entry; all pass
-- [ ] the coverage assertion passes and fails under its mutation
-- [ ] AGENTS.md's two passages describe the new checks
-- [ ] `node test/unit.js` → `0 failed`; CR check `0`; no `css/`, `js/` or
+- [x] the coverage assertion passes and fails under its mutation
+- [x] AGENTS.md's two passages describe the new checks
+- [x] `node test/unit.js` → `0 failed`; CR check `0`; no `css/`, `js/` or
       `sw.js` change
 
 ## STOP conditions
@@ -281,4 +281,28 @@ table's assertion, the coverage assertion, and three mutation checks.
   more: its pair is checked. Text on an ancestor's background needs a
   named check, and the coverage assertion catches a text colour that has
   neither.
-- *(Executor: record deviations here.)*
+- The scan found exactly 16 distinct declared pairs at this plan's base
+  commit, matching the "Why this matters" table; all 16 passed their
+  threshold in every one of the six palettes on the first run, so the
+  STOP conditions never fired.
+- Step 1's verify line ("16 declared-pair assertions … plus the
+  exceptions assertion") reads as if `grep -c "declared pair"` gives 16.
+  It gives 17: decision 2's own wording for the exceptions check ("every
+  exception still matches **a declared pair**") puts that same substring
+  in its name too. Not a bug — both counts (16 per-pair assertions, 1
+  exceptions assertion) are individually exactly what the plan specifies;
+  a literal grep just can't tell them apart by that phrase alone.
+- Drift: plan 074 merged to `main` (PR #188) while this plan was being
+  executed, after the drift check at the top found none against
+  `dfa29a9`/`1b91860`. Rebased `claude/075-contrast-pairs` onto the new
+  `origin/main` (`de7838b`) once Steps 1-3 were done and both commits were
+  made; it applied cleanly with no conflicts (074 touched AGENTS.md's
+  "The release rule" section and test/unit.js's "the four script lists
+  agree" section — a new assertion around line 61 — both well outside
+  this plan's two passages and its contrast section starting near line
+  268). Full suite re-run after the rebase: still `0 failed`, 1520 passed
+  (1519 before the rebase, +1 for 074's new assertion), the 16
+  declared-pair assertions and the two new coverage/exception assertions
+  among them. `git diff --stat origin/main` after the rebase showed only
+  `test/unit.js` and `AGENTS.md` — no `sw.js`/`css/`/`js/` touched, and
+  `CACHE_VERSION` unchanged at the `v142` 074 itself had just bumped to.

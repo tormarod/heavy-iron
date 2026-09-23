@@ -367,6 +367,102 @@ function profileOverride(selectorPattern) {
   ok(label + ': --on-signal is >= 4.5:1 on --signal', r >= 4.5, onSignal + ' on ' + signal + ' = ' + r.toFixed(2));
 });
 
+/* ---------- declared pairs: every rule that sets its own color and background ----------
+   Everything above is a pair a human had to notice by hand: text whose background comes from
+   an ancestor rule, not its own. That missed the far more common shape — a rule that sets
+   `color:` and `background:` (or `background-color:`) together, where the pairing is certain
+   straight from the rule itself and nobody has to remember to add anything here. Reading
+   css/style.css at plans/075 found 16 such pairs, six of which were nowhere in the hand-written
+   list above, among them --edge on --card as *text*: .tick's unticked "✓" at 18px, in the
+   control-border colour. That glyph is a toggle's icon, not body text, so WCAG 1.4.11 (non-text
+   contrast) holds it to 3:1 rather than 4.5:1 — hence the exception table below, keyed by
+   selector as well as pair, so a future rule that puts --edge on --card as real text still gets
+   the normal 4.5:1 sweep. */
+const cssRulesText = cssSrc.replace(/\/\*[\s\S]*?\*\//g, '');
+const declaredPairs = new Map(); // 'A on B' -> Set of selectors that declare it
+for (const m of cssRulesText.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+  const colorM = /(?:^|;)\s*color:\s*var\(--([\w-]+)\)/.exec(m[2]);
+  const bgM = /(?:^|;)\s*background(?:-color)?:\s*var\(--([\w-]+)\)/.exec(m[2]);
+  if (!colorM || !bgM) continue;
+  const key = colorM[1] + ' on ' + bgM[1];
+  if (!declaredPairs.has(key)) declaredPairs.set(key, new Set());
+  declaredPairs.get(key).add(m[1].trim());
+}
+
+/* Six palettes: the plain theme, the dark theme (the light tokens with the dark block merged
+   over them — the dark block does not redefine every token, so darkTokens alone is missing
+   whatever it never overrides), and each of those with the azul or verde accent merged over it
+   in turn. Built with the same four profileOverride patterns the on-signal/signal check above
+   uses, so a hex that drifts here fails just as loudly. */
+const darkMerged = Object.assign({}, lightTokens, darkTokens);
+const palettes = [
+  ['light', lightTokens],
+  ['dark', darkMerged],
+  ['light azul', Object.assign({}, lightTokens, profileOverride('#app\\.profile-hombre, #app\\.profile-azul'))],
+  ['light verde', Object.assign({}, lightTokens, profileOverride('#app\\.profile-mujer, #app\\.profile-verde'))],
+  ['dark azul', Object.assign({}, darkMerged, profileOverride(':root\\[data-theme="dark"\\] #app\\.profile-hombre,\\s*:root\\[data-theme="dark"\\] #app\\.profile-azul'))],
+  ['dark verde', Object.assign({}, darkMerged, profileOverride(':root\\[data-theme="dark"\\] #app\\.profile-mujer,\\s*:root\\[data-theme="dark"\\] #app\\.profile-verde'))],
+];
+
+/* A pair checked at something other than 4.5:1 goes here, with a reason, keyed by the selector
+   as well as the pair — see the comment above the scan for why .tick is the one entry. */
+const DECLARED_PAIR_EXCEPTIONS = [
+  { selector: '.tick', pair: 'edge on card', threshold: 3,
+    reason: 'the unticked ✓ is the toggle’s icon, not body text: WCAG 1.4.11 non-text contrast' },
+];
+
+declaredPairs.forEach((selectors, key) => {
+  const [fg, , bg] = key.split(' ');
+  /* The exception has to be per selector, not per pair: granting it the moment *any* selector
+     of the pair matches would let a second, uncovered rule that reuses the same two tokens (say
+     --edge on --card as real text, not .tick's icon) quietly inherit .tick's 3:1. So the looser
+     threshold applies only when every selector that declares this pair has its own entry here;
+     one uncovered selector drags the whole pair back to 4.5. */
+  const exceptionsForPair = DECLARED_PAIR_EXCEPTIONS.filter(e => e.pair === key);
+  const allExcepted = exceptionsForPair.length > 0 &&
+    [...selectors].every(sel => exceptionsForPair.some(e => e.selector === sel));
+  const threshold = allExcepted ? Math.min(...exceptionsForPair.map(e => e.threshold)) : 4.5;
+  let worst = Infinity, worstLabel = '';
+  const brokenIn = [];
+  palettes.forEach(([label, t]) => {
+    const bgTok = t[bg], fgTok = t[fg];
+    if (bgTok === undefined) { brokenIn.push(label + ': --' + bg + ' is not defined'); return; }
+    if (bgTok[0] !== '#') { brokenIn.push(label + ': --' + bg + ' is translucent (' + bgTok + ')'); return; }
+    /* A translucent foreground is fine — over() composites it over the background below — but an
+       undefined one is not: over() reads token[0] and throws, which would end the whole suite
+       rather than fail one assertion. */
+    if (fgTok === undefined) { brokenIn.push(label + ': --' + fg + ' is not defined'); return; }
+    const r = contrast(fgTok, bgTok);
+    if (r < worst) { worst = r; worstLabel = label; }
+  });
+  const diagnostic = brokenIn.length
+    ? brokenIn.join('; ') + ' — add this pair to the named checks above with the surface it really sits on'
+    : worstLabel + ': ' + worst.toFixed(2);
+  ok('declared pair --' + fg + ' on --' + bg + ' (' + [...selectors].join(', ') + ') is >= ' + threshold + ':1 in every palette',
+     brokenIn.length === 0 && worst >= threshold, diagnostic);
+});
+ok('every DECLARED_PAIR_EXCEPTIONS entry still matches a declared pair',
+   DECLARED_PAIR_EXCEPTIONS.every(e => declaredPairs.has(e.pair) && declaredPairs.get(e.pair).has(e.selector)),
+   DECLARED_PAIR_EXCEPTIONS.filter(e => !(declaredPairs.has(e.pair) && declaredPairs.get(e.pair).has(e.selector)))
+     .map(e => e.selector + ': ' + e.pair).join(', '));
+
+/* Every text colour the stylesheet uses has to show up somewhere above: as a declared pair's
+   foreground (just swept) or, for text whose background comes from an ancestor and so never
+   appears as a same-rule pair, in this list — the foregrounds the hand-written checks near the
+   top of this section already hold to their own threshold. A token in neither is a text colour
+   nobody has checked at all. */
+const NAMED_FOREGROUNDS = ['soft', 'amber-ink', 'edge', 'ink', 'on-signal', 'signal', 'on-share',
+  'share-ink', 'timer-ink', 'timer-dim', 'flare', 'danger'];
+const declaredForegrounds = new Set([...declaredPairs.keys()].map(k => k.split(' ')[0]));
+const usedForegrounds = new Set();
+for (const m of cssRulesText.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+  const colorM = /(?:^|;)\s*color:\s*var\(--([\w-]+)\)/.exec(m[2]);
+  if (colorM) usedForegrounds.add(colorM[1]);
+}
+const uncoveredForegrounds = [...usedForegrounds].filter(t => !declaredForegrounds.has(t) && !NAMED_FOREGROUNDS.includes(t));
+ok('every color: var(--T) token is a declared-pair foreground or in NAMED_FOREGROUNDS',
+   uncoveredForegrounds.length === 0, uncoveredForegrounds.join(', '));
+
 const app = loadApp();
 const call = expr => vm.runInContext(expr, app);
 const throws = expr => { try { call(expr); return false; } catch (e) { return true; } };
