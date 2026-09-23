@@ -45,11 +45,13 @@ or CI job fails, and a reviewer is the only check. How to run the checks is
   → [Constraints](#constraints-that-are-decisions-not-gaps)
 - **A style** — a class in `css/style.css`, never a `style` attribute; a
   value computed at runtime through a CSSOM property; `--edge` for control
-  borders, `--line` for dividers, `--amber-ink` for amber text. Held by unit
-  "css tokens keep WCAG contrast" for the pairs it names (a new pair only
-  once it is added there), and by smoke "main session" and "accesibilidad:
-  reduced motion y CSP sin unsafe-inline", which fail on a CSP violation on
-  the screens they open. → [The CSP](#the-csp)
+  borders, `--line` for dividers, `--amber-ink` for amber text. Held by
+  unit "css tokens keep WCAG contrast": every pair a rule declares
+  together is checked in all six palettes, the named pairs cover text on
+  an ancestor's background, and a new text colour needs one or the
+  other; and by smoke "main session" and "accesibilidad: reduced motion
+  y CSP sin unsafe-inline", which fail on a CSP violation on the screens
+  they open. → [The CSP](#the-csp)
 - **Anything read from a file, a paste, `blocks/` or a QR scan** — a
   `normalizeImported*` on the way in, `esc` on the way out, and the limits
   in `IMPORT_LIMITS`, `OWN_LIMITS` and `PROFILE_LIMITS`. Held by the unit
@@ -584,8 +586,15 @@ foreground/background pairs it names — `--soft`, `--ink`, `--amber-ink`,
 `--edge`, `--signal`, `--on-signal`, `--on-share`, `--share-ink`,
 `--danger`, the rest timer's tokens and the profile accents, each on the
 surfaces it sits on — and a pair below 4.5:1 (text) or 3:1 (borders)
-fails `node test/unit.js` (plans/032). A new pair is checked only once it
-is added there.
+fails `node test/unit.js` (plans/032). Beyond that named list, the same
+suite reads every rule in `css/style.css` that declares a `color:` and a
+`background:` together and checks that pair too, in all six palettes —
+light, dark, and each with the azul or verde accent merged over it — so
+a new rule needs nothing added here to be covered (plans/075). A pair
+held to a different threshold than 4.5:1 goes in
+`DECLARED_PAIR_EXCEPTIONS`, next to the named checks, with a reason;
+today that is `--edge` on `--card` at 3:1, because `.tick`'s unticked
+"✓" is a toggle's icon (WCAG 1.4.11 non-text contrast), not body text.
 
 ## Comment style
 
