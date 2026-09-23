@@ -413,15 +413,26 @@ const DECLARED_PAIR_EXCEPTIONS = [
 
 declaredPairs.forEach((selectors, key) => {
   const [fg, , bg] = key.split(' ');
-  const exception = DECLARED_PAIR_EXCEPTIONS.find(e => e.pair === key && selectors.has(e.selector));
-  const threshold = exception ? exception.threshold : 4.5;
+  /* The exception has to be per selector, not per pair: granting it the moment *any* selector
+     of the pair matches would let a second, uncovered rule that reuses the same two tokens (say
+     --edge on --card as real text, not .tick's icon) quietly inherit .tick's 3:1. So the looser
+     threshold applies only when every selector that declares this pair has its own entry here;
+     one uncovered selector drags the whole pair back to 4.5. */
+  const exceptionsForPair = DECLARED_PAIR_EXCEPTIONS.filter(e => e.pair === key);
+  const allExcepted = exceptionsForPair.length > 0 &&
+    [...selectors].every(sel => exceptionsForPair.some(e => e.selector === sel));
+  const threshold = allExcepted ? Math.min(...exceptionsForPair.map(e => e.threshold)) : 4.5;
   let worst = Infinity, worstLabel = '';
   const brokenIn = [];
   palettes.forEach(([label, t]) => {
-    const bgTok = t[bg];
+    const bgTok = t[bg], fgTok = t[fg];
     if (bgTok === undefined) { brokenIn.push(label + ': --' + bg + ' is not defined'); return; }
     if (bgTok[0] !== '#') { brokenIn.push(label + ': --' + bg + ' is translucent (' + bgTok + ')'); return; }
-    const r = contrast(t[fg], bgTok);
+    /* A translucent foreground is fine — over() composites it over the background below — but an
+       undefined one is not: over() reads token[0] and throws, which would end the whole suite
+       rather than fail one assertion. */
+    if (fgTok === undefined) { brokenIn.push(label + ': --' + fg + ' is not defined'); return; }
+    const r = contrast(fgTok, bgTok);
     if (r < worst) { worst = r; worstLabel = label; }
   });
   const diagnostic = brokenIn.length
