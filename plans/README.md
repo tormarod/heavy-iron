@@ -95,10 +95,10 @@ below so it is not lost or re-audited.
 | 071 | [A lift's rows that are not a list are repaired, and a throw inside `migrate()` lands on the recovery screen or leaves this tab's data alone](done/071-migrate-never-strands-the-app.md) | P2 | S each (A, B) | LOW / LOW–MED | — (A and B are independent PRs, each bumps) | DONE — B (#185, v140): `prefs`, `mode` and `setupDone` are defaulted before the profiles are repaired (the legacy RIR fold reached `units()` first, and a state with no `prefs` threw); `load()` sends a throw from `migrate()` to the recovery screen instead of the boot guard's "La app no ha podido arrancar"; "Cargar copia" and loading a profile file put this tab's data back, drop the undo and say why on a throw; the two "rule (a)" comments say "split rule 1". A (#186, v141): the log part has a `repair` — a lift's rows that are not a list are dropped, a row that is not a plain object becomes an empty row in its place (+8.8 ms on 76,800 rows). A differential probe (old `migrate()` on input already put through the leaf rule, against new `migrate()` on the raw input) found all 15,001 generated states byte-identical |
 | 072 | [The unit suite's doc checks say what GitHub and AGENTS.md say: headings slug with their underscores, the slot regex is watched in every file](done/072-unit-checks-match-their-docs.md) | P3 | S | LOW | — no bump | DONE (#184, no bump) — the slugger keeps a literal `_` like GitHub's, pinned by seven known anchors; the slot-regex scan reads every `js/*.js` (floor: 13); the two "rule (a)" citations in `test/unit.js` say "split rule 1"; AGENTS.md says "every file in `js/`". `SHELL`'s order and "every contrast pair" were considered and left, for the reasons the plan records |
 | 073 | ["Deshacer" is tested through the real button of every action that offers it, and AGENTS.md states the rule](done/073-deshacer-tested-everywhere.md) | P3 | S–M | LOW | — no bump | DONE (#187, no bump) — booted tests press "Borrar todos los datos", the three ways to delete a block, "Cargar copia" and loading a profile file, then "Deshacer", and the saved copy comes back deep-equal each time (no bug found); every `snapshotForUndo` call is pinned to the six known actions; AGENTS.md has a checklist line and § Destructive actions and Deshacer. Review corrected two sentences: only five dialogs promise `UNDO_PROMISE` (none may say "No se puede deshacer"), and "Guardar cambios" snapshots without asking |
-| 074 | [`sw.js`'s `SHELL` lists the page's scripts in the page's order, and the unit suite holds it there](074-shell-lists-scripts-in-page-order.md) | P3 | S | LOW | — (bumps) | TODO |
-| 075 | [The contrast check reads every text-on-background pair the stylesheet declares, in all six palettes, and no text colour goes unchecked](075-contrast-checks-every-declared-pair.md) | P3 | S–M | LOW | — no bump | TODO |
-| 076 | ["Deshacer" survives a throw inside `migrate()` like every other caller, and the callers are pinned](076-every-migrate-caller-guarded.md) | P3 | S | LOW | — (bumps) | TODO |
-| 077 | [The app's own backup and profile file come back exactly as the app wrote them](077-own-files-come-back-as-written.md) | P3 | M | LOW–MED | — (bumps) | TODO |
+| 074 | [`sw.js`'s `SHELL` lists the page's scripts in the page's order, and the unit suite holds it there](done/074-shell-lists-scripts-in-page-order.md) | P3 | S | LOW | — (bumps) | DONE (#188, v142) — two lines moved in `SHELL`; unit "sw.js SHELL lists index.html's scripts in index.html's order"; AGENTS.md's release rule says the three lists agree in order again |
+| 075 | [The contrast check reads every text-on-background pair the stylesheet declares, in all six palettes, and no text colour goes unchecked](done/075-contrast-checks-every-declared-pair.md) | P3 | S–M | LOW | — no bump | DONE (#189, no bump) — the 16 pairs a rule declares together are checked in light, dark and each accent; six were in no check before, all pass 4.5:1 but the unticked tick's "✓" (`--edge` on `--card`, 3.57/3.20), held to 3:1 as a toggle's icon (WCAG 1.4.11) by a reasoned exception; a text colour in no check fails. Review made the exception hold only when every rule declaring the pair is listed, and a missing token fail one assertion rather than end the suite |
+| 076 | ["Deshacer" survives a throw inside `migrate()` like every other caller, and the callers are pinned](done/076-every-migrate-caller-guarded.md) | P3 | S | LOW | — (bumps) | DONE (#190, v143) — `undoLast` puts this tab's state back and says "No se ha podido deshacer" on a throw; the five `migrate()` callers are pinned, each inside a `try`; AGENTS.md § Untrusted input states the rule (review: `adoptStored` puts the data back silently) |
+| 077 | [The app's own backup and profile file come back exactly as the app wrote them](done/077-own-files-come-back-as-written.md) | P3 | M | LOW–MED | — (bumps) | DONE (#191, v144) — restored into a phone holding the same data, the app's own backup and each profile file leave the whole saved copy as it was (key order aside), for the seed and a lived-in phone built through the real handlers. Converged on the own path: legacy accent names kept; an empty `alt`/`cue` kept; `dk` stored only when chosen; the objetivo's `hold`/`brake` booleans and a descarga's `rir: null` kept as `recordTarget` writes them; text typed through the app's boxes kept as typed (blank ends, double spaces), with line breaks surviving only in the pair note, the one box that stores them. One exception, pinned: an exercise saved with no name comes back named. Two assertions that pinned the old conversions were rewritten on purpose |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
@@ -1207,6 +1207,35 @@ missed a string or a number where a map goes, which made the first tick
 throw. The reviewer's differential probe — old `migrate()` against new
 over generated states — is what made widening safe to merge: every state
 a writer produces came out byte-identical each time.
+
+### Set-aside topics — executed (2026-09-23)
+
+Plans 074–077 landed in four PRs (#188–#191; v142, v143, v144; 075
+without a bump), and the deploy guard passed on every merge. Review sent
+three of the four back once:
+- 075's exception let any rule sharing `.tick`'s token pair inherit its
+  3:1;
+- 076's AGENTS.md bullet said `adoptStored` explains itself;
+- 077 kept a crafted file's line breaks in single-line names that
+  confirmation dialogs quote.
+
+077 stopped once, correctly: its round trips found the objetivo record's
+`false` flags and `rir: null` dropped on restore, which an existing test
+pinned. The maintainer's direction, "the own path gives back what the app
+wrote", settled it, and the same tests then found that text typed through
+the app's own boxes was tidied on restore too.
+
+### Found while executing 074–077 — recorded, not planned
+
+- **Limits the app's own writers can exceed**: the weight and reps boxes
+  have no `maxlength`, but every import cuts both to 12 characters, and
+  an objetivo's weight is clamped to 9999 on the way in. plans/010's
+  promise, that every limit the own path enforces is one the app's
+  writers cannot exceed, is broken in principle, though no real entry
+  reaches 12 characters or 9999 kg.
+- **docs/guide.md could now say more**: a backup gives back exactly what
+  was typed. The guide promises length (`docs/guide.md`, the backup
+  section), which is still true.
 
 ### Set-aside topics — planned (2026-09-23)
 
