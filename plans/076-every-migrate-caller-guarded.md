@@ -225,4 +225,15 @@ booted case on the plan 071 B section's cases 3 and 4.
 
 - A sixth caller of `migrate()` fails the pin until it has a guard and
   its entry.
-- *(Executor: record deviations here.)*
+- The drift check and the STOP condition's grep both came back clean at
+  push time (`dfa29a9..origin/main` touched none of `js/app.js`,
+  `test/unit.js` or `AGENTS.md`; `origin/main`'s five `migrate();` calls
+  matched the plan exactly), so no adaptation was needed there.
+- The pin's "directly inside a try" check reads the function each call
+  sits in the same way: the nearest preceding `function NAME(` in the
+  file, backward from the call. No caller today nests a named function
+  between its own declaration and its `migrate()` call, so this is
+  enough; a caller that did would need a less naive scan.
+- Plan 074 merged first and took v142 while this branch was in progress
+  (`origin/main` was `1b91860` at branch time, `de7838b` at push time).
+  Rebased onto it and re-bumped at push time, per the brief.
