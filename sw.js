@@ -18,7 +18,7 @@
    are deleted on activate, and the app shows an "Actualizar" prompt rather
    than swapping the code under a session in progress. */
 
-const CACHE_VERSION = 'v141';
+const CACHE_VERSION = 'v142';
 const SHELL_CACHE = 'heavy-iron-shell-' + CACHE_VERSION;
 const RUNTIME_CACHE = 'heavy-iron-runtime-' + CACHE_VERSION;
 /* Bumped only when js/vendor/ itself changes (see js/vendor/README.md's
@@ -34,7 +34,7 @@ const SHELL = [
   'index.html',
   'js/theme-init.js',
   'css/style.css',
-  'js/app.js',
+  'js/data.js',
   'js/block-editor.js',
   'js/diagnostics.js',
   'js/review.js',
@@ -44,8 +44,8 @@ const SHELL = [
   'js/chart.js',
   'js/volume-sheet.js',
   'js/qr-transfer.js',
+  'js/app.js',
   'js/boot-guard.js',
-  'js/data.js',
   'manifest.webmanifest',
   'icon.svg',
   /* The PNGs the install prompt reads: Firefox on Android picks its home

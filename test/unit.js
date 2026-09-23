@@ -58,6 +58,11 @@ ok('index.html loads exactly the files loadApp() loads, in the same order',
 ok('every index.html script is in sw.js SHELL',
    indexScripts.every(f => shellFiles.includes(f)),
    JSON.stringify(indexScripts.filter(f => !shellFiles.includes(f))));
+/* The order means nothing to the worker; it is held so the three lists read
+   the same (plans/074). */
+ok('sw.js SHELL lists index.html\'s scripts in index.html\'s order',
+   JSON.stringify(shellFiles.filter(f => indexScripts.includes(f))) === JSON.stringify(indexScripts),
+   JSON.stringify(shellFiles.filter(f => indexScripts.includes(f))));
 ok('every js/*.js file is a script tag in index.html',
    jsFiles.every(f => indexScripts.includes(f)),
    JSON.stringify(jsFiles.filter(f => !indexScripts.includes(f))));

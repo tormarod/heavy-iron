@@ -273,9 +273,9 @@ CI enforces both halves: the `cache-version` job in
 without a bump, and its second step fails one whose `js/*.js` or
 `css/*.css` file is missing from `SHELL`. `test/unit.js` closes the rest
 of that circle ("the four script lists agree", plans/014): it holds
-`index.html` and `SHELL_SCRIPTS` in `test/harness.js` to the same files in
-the same order, and `SHELL` to membership only — every `index.html` script
-is in it, and every `js/` entry in it exists on disk. The deploy workflow
+`index.html`, `SHELL_SCRIPTS` in `test/harness.js`, and `SHELL`'s scripts
+to the same files in the same order, and every `js/` entry in `SHELL` to a
+file on disk. The deploy workflow
 (`.github/workflows/pages.yml`, plans/061) guards the same change against
 what is live, so if two PRs both bump `CACHE_VERSION` from the same base,
 the second deploy fails and requires another bump on `main`.
