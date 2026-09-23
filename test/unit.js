@@ -11219,6 +11219,107 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
     }
   }
 
+  /* undoLast() was the one caller of migrate() with nothing to catch a
+     throw: the snapshot it restores is this tab's own, already migrated
+     once, so a throw there is an app bug rather than foreign bytes — but
+     an app bug is exactly what a guard is for, and without one the throw
+     spent the undo, left `state` half repaired, and the next save() wrote
+     that over the data "Deshacer" was meant to bring back. Guarded now the
+     same way as the other four (plans/076), and pinned so a sixth caller
+     cannot land unguarded: every migrate() call in js/, block comments
+     stripped and the definition itself excluded, has to be one of the
+     five, and has to sit directly inside a try — read the same textual
+     way the scans above read a call or a regex, not with a real parser:
+     the nearest `try {` no more than a couple of lines above it, with no
+     `}` in between to close that try before the call. */
+  console.log('\n== "Deshacer" survives a throw inside migrate(), and every caller is guarded (plans/076) ==');
+  {
+    /* 1. The pin. */
+    const KNOWN_MIGRATE_CALLERS = [
+      'js/app.js: load', 'js/app.js: adoptStored', 'js/app.js: undoLast',
+      'js/profile-transfer.js: restoreFromText', 'js/profile-transfer.js: loadProfileFromText',
+    ].sort();
+    const callers = [], unguarded = [];
+    fs.readdirSync(path.join(ROOT, 'js')).filter(f => f.endsWith('.js')).forEach(f => {
+      const rel = 'js/' + f;
+      /* Blanked rather than cut, so a line number computed below means the
+         same thing here as it does in the file on disk. */
+      const src = fs.readFileSync(path.join(ROOT, rel), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, c => c.replace(/[^\n]/g, ' '));
+      const lineAt = pos => src.slice(0, pos).split('\n').length;
+      const callRe = /\bmigrate\(\)\s*;/g;
+      let cm;
+      while ((cm = callRe.exec(src))) {
+        const at = cm.index;
+        /* Belt-and-braces: the semicolon this regex needs already keeps
+           "function migrate() {" out, since that line ends in a brace, not
+           a semicolon — but say so rather than lean on it. */
+        if (src.slice(Math.max(0, at - 9), at) === 'function ') continue;
+        const fnRe = /function\s+(\w+)\s*\(/g;
+        let fm, fnName = null;
+        while ((fm = fnRe.exec(src)) && fm.index < at) fnName = fm[1];
+        const tryRe = /try\s*\{/g;
+        let tm, tryAt = null;
+        while ((tm = tryRe.exec(src)) && tm.index < at) tryAt = tm;
+        const guarded = !!tryAt && lineAt(at) - lineAt(tryAt.index) < 3 &&
+          src.slice(tryAt.index + tryAt[0].length, at).indexOf('}') < 0;
+        callers.push(rel + ': ' + fnName);
+        if (!guarded) unguarded.push(rel + ': ' + fnName + ' (line ' + lineAt(at) + ')');
+      }
+    });
+    const NEEDS_GUARD = ' — a new caller needs a guard like adoptStored\'s (js/app.js) and a booted test that throws through it';
+    ok('every migrate() call in js/ is one of the five known callers, named by the function it sits in',
+       JSON.stringify(callers.slice().sort()) === JSON.stringify(KNOWN_MIGRATE_CALLERS),
+       JSON.stringify(callers.slice().sort()) + NEEDS_GUARD);
+    ok('...and each sits directly inside a try {',
+       unguarded.length === 0, JSON.stringify(unguarded) + NEEDS_GUARD);
+
+    /* 2. "Deshacer" over a throwing migrate(): the plan 071 B section's
+       stand-in, copied because it is local to that section. */
+    const stubMigrateThrows = boot => boot.call(
+      "(function(){ const m = migrate; migrate = function(){ migrate = m; throw new Error('datos de una versión más nueva'); }; })()"
+    );
+    {
+      let err = '', seen = null;
+      try {
+        const boot = settled(seeded({ week: 1, day: 0 }));
+        const key = boot.call('STORAGE_KEY');
+        const usedInDay0 = () => boot.call(`(function () {
+          const p = getProfile(), b = getBlock(), day = dayList(b)[0];
+          return Object.values((p.log[b.id] || {})[slot(1, day.id)] || {}).reduce((n, rows) => n + rows.filter(rowUsed).length, 0);
+        })()`);
+        const before = usedInDay0();
+        const asked = await pressAnswering(boot, () => boot.$('clearDay').onclick(), 'askOk');
+        boot.clock.advance(1000);
+        const clearedOk = before > 0 && usedInDay0() === 0;
+        const bytes = boot.store[key];
+        const stateRef = boot.call('state');
+        stubMigrateThrows(boot);
+        boot.$('toastAct').onclick();
+        seen = {
+          asked: !!asked, clearedOk,
+          sameState: boot.call('state') === stateRef,
+          stillCleared: usedInDay0() === 0,
+          status: boot.$('status').textContent,
+        };
+        boot.clock.advance(1000);
+        seen.kept = boot.store[key] === bytes;
+        boot.$('toastAct').onclick();
+        seen.secondSameState = boot.call('state') === stateRef;
+        boot.clock.advance(1000);
+        seen.secondKept = boot.store[key] === bytes;
+      } catch (e) { err = e.message; }
+      ok('"Deshacer" over a migrate() that throws keeps this tab\'s state: the same object it was before the press',
+         !err && seen.asked && seen.clearedOk && seen.sameState, err || JSON.stringify(seen));
+      ok('...the day "Borrar este día" cleared is still cleared', !err && seen.stillCleared, err || JSON.stringify(seen));
+      ok('...and the status line says so, naming the stub\'s own error',
+         !err && seen.status === 'No se ha podido deshacer: datos de una versión más nueva', err || JSON.stringify(seen));
+      ok('...storage still holds the cleared day, exactly as save() left it', !err && seen.kept, err || JSON.stringify(seen));
+      ok('...a second press on the toast\'s button does nothing: the snapshot is already spent',
+         !err && seen.secondSameState && seen.secondKept, err || JSON.stringify(seen));
+    }
+  }
+
   /* The real sw.js, run (loadWorker, plans/066). Everything above only read
      it as text, and the incidents in its upgrade path — a page and scripts
      from two releases, an old worker reading a newer release's cache — were

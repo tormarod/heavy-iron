@@ -439,6 +439,14 @@ untrusted.
   `profile.blocks`, a block filed under a name `safeKey` refuses moves to
   a fresh key with its record, and a block's `id` is always its key,
   because that id is what every write to the record is filed under.
+- **A throw inside `migrate()`.** Every path that replaces this tab's
+  state catches it, the way `adoptStored` does: `load()` lands on the
+  recovery screen, and `adoptStored`, `undoLast`, `restoreFromText` and
+  `loadProfileFromText` put this tab's data back — the three a person
+  started ("Deshacer", "Cargar copia", a profile file) also say why on
+  the status line. Unit "\"Deshacer\" survives a throw inside
+  migrate(), and every caller is guarded" pins the five and fails on a
+  sixth with no guard (plans/076).
 
 ## The data model's rules
 
