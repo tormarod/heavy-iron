@@ -83,9 +83,10 @@ objetivo, built on the block before it.
 - **A review at the end of each block**, exportable as the prompt that
   writes the next one — see [The block review](#the-block-review).
 - **Plan editor**: edit exercise names, alternatives, cues, sets, reps,
-  rest time, and shared/superserie flags for the active block, add or
-  remove exercises and days, and reorder them — all without losing what
-  you have already logged. See [Editing a block mid-way](#editing-a-block-mid-way).
+  rest time, the lowest RIR a lift is ever asked for (**RIR mínimo**), and
+  shared/superserie flags for the active block, add or remove exercises
+  and days, and reorder them — all without losing what you have already
+  logged. See [Editing a block mid-way](#editing-a-block-mid-way).
 - **Blocks of any length**, 1 to 16 weeks, with the deload week you choose
   (or none at all) — see [Block length](#block-length-and-the-deload-week).
 - **Week/day navigation**, rest timer, "fill the week with the objetivo",
@@ -932,7 +933,8 @@ week's RIR against the one you typed.
 - **`ex.minRir` is a floor the week cannot get under.** For the lifts nobody
   takes to failure — a squat, a Romanian deadlift — a week prescribing 0–1
   RIR is a number you are not going to follow, and a target solved for it is
-  a weight you cannot make.
+  a weight you cannot make. Set it per exercise in **Editar plan** →
+  **RIR mínimo**; empty means no floor.
 - **Deload weeks and the sessions before a variant change are out of every
   window.** A deload is ~60 % of the working weight by design and is
   evidence about nothing.
@@ -1627,7 +1629,9 @@ machine presses, 5 on the hack squat, leg press and hip thrust. That is
 what double progression adds when you hit the top of the range, and what
 the weekly objetivo rounds to. Only new installs get them: an existing log
 is never rewritten, so set them yourself in **Editar plan** if you started
-before this.
+before this. The same is true of the **RIR mínimo** floor on the hack
+squat, the Romanian deadlift and her hip thrust: an existing install does
+not get it either, so set it the same way.
 
 **Mujer — músculos separados por día.** Each muscle is trained on exactly
 one day of the week, counting the indirect work compounds do. The plan
@@ -1684,6 +1688,9 @@ priority.
 explicitly (hit the top of the rep range on every set → add the smallest
 increment next week) and restrict week 7's to-failure sets to machines
 and isolation work rather than hack squats, RDLs and heavy hip thrusts.
+The hack squat, the Romanian deadlift and her hip thrust carry a
+**RIR mínimo** of 1, so the objetivo never prices them past 1 RIR even in
+the week that asks for 0–1.
 
 The two RIR ramps differ, because the two lifters do. His runs 3 RIR in
 week 1 down to 0–1 by week 7. Hers starts at 4 and ends at 1–2, which is

@@ -1222,6 +1222,7 @@ function buildExRow(profile, day, ex, pos, liveCount) {
     '<div class="pe-row">' +
       '<div><span class="pe-field-lbl">+1 serie desde sem.</span><input type="number" min="1" max="' + MAX_WEEKS + '" class="f-add"></div>' +
       '<div><span class="pe-field-lbl">Incremento de peso (' + esc(units()) + ')</span><input type="number" min="' + INC_MIN + '" max="' + INC_MAX + '" step="' + INC_STEP + '" class="f-inc"></div>' +
+      '<div><span class="pe-field-lbl">RIR mínimo</span><input type="number" min="' + exField('minRir').lo + '" max="' + exField('minRir').hi + '" step="1" class="f-minrir"></div>' +
     '</div>' +
     '<div class="pe-row"><div class="u-flex-grow"><span class="pe-field-lbl">Músculo</span>' +
       '<input type="text" class="f-muscle" list="muscleSuggestions" placeholder="Sin clasificar"' + cap('muscle') + '></div></div>' +
@@ -1267,6 +1268,12 @@ function buildExRow(profile, day, ex, pos, liveCount) {
     if (v === '') { delete ex.inc; return; }
     ex.inc = clampNum(v, INC_MIN, INC_MAX, INC_MIN, INC_STEP);
   };
+  row.querySelector('.f-minrir').value = ex.minRir || '';
+  /* Through the field's own accept rather than a local clamp, so the
+     editor and every import (paste, restore, migrate()) enforce the same
+     range from one place. Empty deletes the key, the same convention
+     .f-add uses: absent means "no floor", not "floor of zero". */
+  row.querySelector('.f-minrir').oninput = e => { const v = exField('minRir').accept(e.target.value); if (v) ex.minRir = v; else delete ex.minRir; };
   row.querySelector('.f-muscle').value = ex.muscle || '';
   /* Freeform text with a suggestion list (see the shared #muscleSuggestions
      datalist), not a fixed set — type any tag, or clear it to fall back to

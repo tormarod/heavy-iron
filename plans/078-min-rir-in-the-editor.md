@@ -402,8 +402,35 @@ Stop and report back — do not improvise — if:
 
 ## Maintenance notes
 
-(For the executor to fill in: deviations, the two mutation results, anything
-the reviewer should look at.)
+- Deviation: the comment placed above `DEFAULT_DAYS_TU` (Step 2) originally
+  read "minRir: 1 on hack squat, RDL and (her) heavy hip thrust only …",
+  which collided with that step's own verification,
+  `grep -c "minRir: 1" js/data.js` → `5` — the comment's own text matched
+  too, making it 6. Reworded to "A minRir floor of 1, on hack squat,
+  RDL …" so the comment no longer contains the literal substring, and the
+  grep reads 5 again.
+- Deviation: the executor brief's Step 4 anchor is "before" the plans/060
+  `console.log` line, but that line has its own preamble comment directly
+  above it ("Deshacer used to have no end: …"). Inserting immediately
+  before the `console.log` itself would have split that comment from its
+  own section. Inserted this plan's whole new section immediately before
+  that preamble comment instead — still directly ahead of the plans/060
+  section as a unit, with no collision risk, since plans 079 and 080
+  anchor at unrelated lines (plans/067 B and plans/071 B respectively).
+- Mutation check 1 (Step 4): replaced the `.f-minrir` `oninput` handler
+  with `e => {}`. Result: 3 of the 10 new assertions failed — both of
+  case 1 ("typing "1" into the RIR mínimo box and saving sets minRir on
+  the block", "...and the next open reads the same value back") and case
+  2's first ("typing "9" into RIR mínimo clamps the draft to the field's
+  hi bound, 5"); `node test/unit.js` read 1548 passed, 3 failed. Restored
+  — back to 1551 passed, 0 failed.
+- Mutation check 2 (Step 4): removed the `"minRir": 1,` line from the
+  hack squat entry in `blocks/hombre-bloque-1.json`. Result:
+  "blocks/hombre-bloque-1.json days match DEFAULT_DAYS_TU" (plans/008 item
+  12) failed; nothing else moved. Restored — back to 1551 passed, 0
+  failed.
+- Nothing else deviated: no `migrate()` or `EX_FIELDS` change, no CSS
+  change, no file outside the plan's declared scope.
 
 - For the maintainer, on an **existing** install: this plan does not change
   your stored plan. Once it has shipped, open **Editar plan** on the block

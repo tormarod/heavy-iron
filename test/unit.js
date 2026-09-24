@@ -8961,6 +8961,103 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
        err || JSON.stringify(got));
   }
 
+  /* ex.minRir had no box: the import, the restore, migrate() and the AI
+     prompt all understood the field, but an import always lands as a new
+     block, so nobody could set it on the block they are actually training
+     (plans/078). The box goes through exField('minRir').accept, the same
+     clamp every other path onto the field shares, and an empty box deletes
+     the key rather than storing a floor of zero — the same convention
+     .f-add uses. */
+  console.log('\n== "RIR mínimo" in the plan editor, and the default plans\' floors (plans/078) ==');
+  {
+    const boot = settled(seeded({ week: 2, day: 0 }));
+    const first = boot.call('getBlock().days[0].ex[0].n');
+    let err = '', saving = 'not pressed';
+    try {
+      boot.$('editPlan').onclick();
+      boot.type(planEditor(boot).row(0, first).querySelector('.f-minrir'), '1');
+      saving = await pressAnswering(boot, () => boot.$('peSave').onclick(), 'askOk');
+    } catch (e) { err = e.message; }
+    boot.clock.advance(1000);
+    const got = boot.call('getBlock().days[0].ex[0].minRir');
+    ok('typing "1" into the RIR mínimo box and saving sets minRir on the block',
+       !err && saving === null && got === 1, err || JSON.stringify({ saving, got }));
+    const reopened = reopen(boot).call('getBlock().days[0].ex[0].minRir');
+    ok('...and the next open reads the same value back', reopened === 1, String(reopened));
+  }
+
+  {
+    const boot = settled(seeded({ week: 2, day: 0 }));
+    const first = boot.call('getBlock().days[0].ex[0].n');
+    let err = '', got9 = null, got0 = null, has0 = null, gotEmpty = null, hasEmpty = null;
+    try {
+      boot.$('editPlan').onclick();
+      const box = planEditor(boot).row(0, first).querySelector('.f-minrir');
+      boot.type(box, '9');
+      got9 = boot.call('peDraft.block.days[0].ex[0].minRir');
+      boot.type(box, '0');
+      got0 = boot.call('peDraft.block.days[0].ex[0].minRir');
+      has0 = boot.call("'minRir' in peDraft.block.days[0].ex[0]");
+      boot.type(box, '');
+      gotEmpty = boot.call('peDraft.block.days[0].ex[0].minRir');
+      hasEmpty = boot.call("'minRir' in peDraft.block.days[0].ex[0]");
+    } catch (e) { err = e.message; }
+    ok('typing "9" into RIR mínimo clamps the draft to the field\'s hi bound, 5',
+       !err && got9 === 5, err || String(got9));
+    ok('typing "0" deletes the draft\'s minRir key rather than storing a floor of 0',
+       !err && got0 === undefined && has0 === false, err || JSON.stringify({ got0, has0 }));
+    ok('...and clearing the box (empty string) deletes it the same way',
+       !err && gotEmpty === undefined && hasEmpty === false, err || JSON.stringify({ gotEmpty, hasEmpty }));
+  }
+
+  {
+    const boot = settled(seeded({ week: 2, day: 0 }, (p, b) => { b.days[0].ex[0].minRir = 2; }));
+    const first = boot.call('getBlock().days[0].ex[0].n');
+    let err = '', val = null;
+    try {
+      boot.$('editPlan').onclick();
+      val = planEditor(boot).row(0, first).querySelector('.f-minrir').value;
+    } catch (e) { err = e.message; }
+    ok('opening the editor on an exercise that already carries minRir shows it in the box',
+       !err && val === 2, err || JSON.stringify(val));
+  }
+
+  /* The default plans themselves: exactly the five exercises the week-7
+     banners forbid taking to failure carry the floor, and nothing else
+     does — a stray minRir on a sixth exercise would be as wrong as a
+     missing one on the five. */
+  {
+    const minRirByPlan = name => JSON.parse(call(`JSON.stringify(${name}.reduce((o, d) => {
+      d.ex.forEach(e => { if ('minRir' in e) o[e.id] = e.minRir; });
+      return o;
+    }, {}))`));
+    const tu = minRirByPlan('DEFAULT_DAYS_TU');
+    const pareja = minRirByPlan('DEFAULT_DAYS_PAREJA');
+    ok('DEFAULT_DAYS_TU carries minRir 1 on exactly the hack squat and the RDL',
+       JSON.stringify(tu) === JSON.stringify({ hacksquat: 1, rdl: 1 }), JSON.stringify(tu));
+    ok('DEFAULT_DAYS_PAREJA carries minRir 1 on exactly the hack squat, the hip thrust and the RDL',
+       JSON.stringify(pareja) === JSON.stringify({ hacksquat: 1, hipthrust: 1, rdl: 1 }), JSON.stringify(pareja));
+  }
+
+  /* What the floor buys in week 7: without it, the RDL would price at the
+     "0–1 RIR" banner's own hard end, 0 — a target solved for it is a
+     weight you cannot make (docs/guide.md). A machine exercise with no
+     floor, chest press, still reads the banner exactly as written. */
+  {
+    const probe = call(`(function () {
+      const block = freshBlock('block-1', 'Bloque 1', DEFAULT_DAYS_TU, DEFAULT_PHASE_TU, DEFAULT_PRIORITY_TU);
+      const findEx = id => {
+        for (const d of block.days) { const e = d.ex.find(x => x.id === id); if (e) return e; }
+        return null;
+      };
+      return { rdl: weekRir(block, findEx('rdl'), 7, null), chestpress: weekRir(block, findEx('chestpress'), 7, null) };
+    })()`);
+    ok('week 7 prices the RDL at its minRir floor, 1, not the banner\'s own hard end, 0',
+       probe.rdl === 1, JSON.stringify(probe));
+    ok('...while chest press, with no floor, still reads the banner\'s hard end, 0',
+       probe.chestpress === 0, JSON.stringify(probe));
+  }
+
   /* Deshacer used to have no end: the snapshot outlived every later change
      and its toast never hid, so pressing it an hour into a session put back
      the state from before the action, every set logged since gone. And the
