@@ -2393,6 +2393,13 @@ ok('a downward trend with no gap reads as a real strength loss',
    call('diagVerdict("down", { gap: 1 }).lectura') === 'Pierde fuerza de verdad');
 ok('a flat trend with no signals falls through to the generic stall',
    call('diagVerdict("flat", {}).lectura') === 'Estancado, sin una señal clara en el registro');
+/* plans/080 F: the same "no signal" fallback, but every recent session
+   already carries an RIR — so "write it down" is advice the log
+   contradicts, and the honest row (plan 044's maintenance note) is picked
+   instead. */
+ok('a flat trend with no signals but an RIR logged on every recent session reads as effort already accounted for',
+   call('diagVerdict("flat", { rirLogged: true }).lectura') ===
+     'Estancado con el esfuerzo bien puesto — el RIR apuntado no es ni holgado ni de fallo');
 ok('an upward trend with no signals reads as working as intended',
    call('diagVerdict("up", {}).lectura') === 'Funciona');
 ok('too few sessions is its own verdict',
@@ -4066,6 +4073,27 @@ const heldSess = () => [[12, '3'], [12, '3'], [11, '0']];
 ok('...and a session held back on most sets reads as lacking intensity whatever the last set did',
    diagProbe(three(heldSess()), false) === 'flat | Falta intensidad — RIR 2+ repetido',
    diagProbe(three(heldSess()), false));
+/* plans/080 F: the fallback below every other flat signal, reached only
+   when the work axis itself is withheld — which needs sessions whose set
+   count differs, since sig.workPct is computed only when every session in
+   the window agrees on how many sets it has. The reps stay the same
+   session to session (10, inside the exercise's 8-12 range and below its
+   top — a set at 12 is censored, which pulls the trend itself off flat)
+   so only the set count varies; 1 in reserve is typed on every set, so no
+   session fails (RIR 0) and none reads as easy (RIR 2+, at least two of
+   the last three). */
+const mixedSetCountSess = rir => [
+  [[10, rir], [10, rir], [10, rir]],
+  [[10, rir], [10, rir]],
+  [[10, rir], [10, rir], [10, rir]],
+];
+ok('a flat lift over sessions with different set counts, RIR 1 on every set, reads the effort as already accounted for',
+   diagProbe(mixedSetCountSess('1'), false) ===
+     'flat | Estancado con el esfuerzo bien puesto — el RIR apuntado no es ni holgado ni de fallo',
+   diagProbe(mixedSetCountSess('1'), false));
+ok('...and with no RIR typed at all, falls back to the same generic stall as ever',
+   diagProbe(mixedSetCountSess(null), false) === 'flat | Estancado, sin una señal clara en el registro',
+   diagProbe(mixedSetCountSess(null), false));
 const dsr = a => call('diagSessionRir(' + JSON.stringify(a) + ')');
 ok('diagSessionRir is the median of the typed sets, null when none is typed',
    dsr([3, 2, 1, 0]) === 1.5 && dsr([3, 3, 3, 0]) === 3 && dsr([0, 0, 1]) === 0 &&

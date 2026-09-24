@@ -6071,6 +6071,15 @@ function diagVerdict(trend, sig) {
       return { lectura: 'Estancado de verdad — ni la serie tope ni los kilos por serie se mueven',
                cambio: 'No hay progreso escondido en las series de después: haz lo que mande el objetivo de la semana, y si lleva medio bloque igual, cambia el ejercicio.' };
     }
+    /* The work axis is withheld (no sig.workPct), and every session in the
+       window already carries an RIR: the fallback below used to tell this
+       lifter to start writing it down, which the log in front of them
+       contradicts. Plan 044 recorded the honest row and left the wording
+       to the maintainer; plan 080 F picks it. */
+    if (sig.rirLogged) {
+      return { lectura: 'Estancado con el esfuerzo bien puesto — el RIR apuntado no es ni holgado ni de fallo',
+               cambio: 'Llegas al RIR que toca y la serie tope no se mueve: cambia el estímulo — una serie más, otro rango de repeticiones u otro ejercicio.' };
+    }
     return { lectura: 'Estancado, sin una señal clara en el registro',
              cambio: 'Apunta el RIR de cada serie unas semanas: sin eso no se puede distinguir fatiga de falta de intensidad.' };
   }
@@ -6212,6 +6221,10 @@ function diagRows(profile, block, scope) {
         heldRir: est ? est.rirWeek : null,
         conf: est ? est.conf : null,
         gap: diagMedianGap(points),
+        /* Every one of the last sessions carries an RIR, so the flat
+           fallback's "write down your RIR" is advice the log already
+           contradicts (plan 044's maintenance note, plans/080 F). */
+        rirLogged: recent.length > 0 && recent.every(p => diagSessionRir(p.rirs) != null),
       };
       /* Withheld unless the set count held still across the whole window.
          Per-set already takes the count out of the total, but not out of
