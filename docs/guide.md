@@ -183,12 +183,13 @@ history, which is what blocks are for instead.
 because there is nothing to set them against yet: your bar weight and the
 plates you have, used by [the calculator](#warm-ups-and-plate-maths), and
 your **default weight increment** — the smallest step you can actually
-load. The plates are separated by semicolons (`20; 15; 10; 5; 2,5; 1,25`),
-not commas, because the comma is the decimal key. That last one is what [the weekly objetivo](#the-weekly-objetivo)
+load. That last one is what [the weekly objetivo](#the-weekly-objetivo)
 rounds to for every exercise that doesn't carry an `inc` of its own; an
 exercise that does carry one always wins over it. It starts at 2,5 kg
 (5 lb) and, like the bar weight, is seeded from whichever unit you picked
-and never rescaled afterwards.
+and never rescaled afterwards. The plates are separated by semicolons
+(`20; 15; 10; 5; 2,5; 1,25`), not commas, because the comma is the
+decimal key.
 
 It is only ever the *fallback* step, and only where the exercise's own
 logged weights cannot supply a rung: [the objetivo](#the-weekly-objetivo)
@@ -544,7 +545,7 @@ charge, the line simply isn't there.
   resting for, when it ends, and the same **−30** / **+30** / skip — and
   the end of the rest also posts a notification, but only when the app is
   out of sight. Coming back to the app takes the notification down.
-  Switching the pocket alarm on also turns on **Aviso sonoro** below, since
+  Switching the pocket alarm on also turns on **Aviso sonoro**, since
   a silent keep-alive with nothing to say at zero was the setting paying
   its cost for nothing — turn the sound back off on the timer if you don't
   want it.
