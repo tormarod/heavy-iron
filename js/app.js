@@ -5187,7 +5187,13 @@ function buildExCard(ctx, ex, i) {
     tick.onclick = () => {
       let adopted = '';
       writeRows(cardCtx, () => { adopted = tickRow(r, hint, Date.now()); });
-      if (r.done && ex.rest) startRest(ex.rest, ex.n + ' · serie ' + (si + 1), hints.next[si]);
+      /* What the tick decided, said where the eye is next: the rest timer
+         this same tick is about to start, not just the status line at the
+         foot of the page, which a save() overwrites 400ms later (plans/080
+         C). Built once so both the timer and the status line say the same
+         thing. */
+      const adoptedNote = adopted ? 'Serie ' + (si + 1) + ' anotada con ' + adopted + ' ' + units() + ' (' + hintFrom + ') — cámbialo si no fue eso' : '';
+      if (r.done && ex.rest) startRest(ex.rest, ex.n + ' · serie ' + (si + 1), hints.next[si], adoptedNote);
       if (r.done && !ex.rest) stopRest();
       /* The tick that finishes the whole day counts as a session — see
          maybeNagBackup. dayCards holds every card's rows by live reference,
@@ -5198,7 +5204,7 @@ function buildExCard(ctx, ex, i) {
         maybeNagBackup();
       }
       drawCard(ex.id);
-      if (adopted) mark('Serie ' + (si + 1) + ' anotada con ' + adopted + ' ' + units() + ' (' + hintFrom + ') — cámbialo si no fue eso');
+      if (adoptedNote) mark(adoptedNote);
     };
 
     /* ↓ adds a segment rather than opening a panel: there is nothing to

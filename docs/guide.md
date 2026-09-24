@@ -490,8 +490,9 @@ charge, the line simply isn't there.
 - **The weight box already knows what you did last time.** The greyed
   number in it is what you lifted on that same set the last week you
   logged it. Tick a set without typing anything and it takes that number,
-  telling you so in the status line — change it if the weight was
-  different. The number it shows is [the objetivo](#the-weekly-objetivo)'s
+  telling you so on the rest timer the tick starts, and in the status line
+  at the foot of the page — change it if the weight was different. The
+  number it shows is [the objetivo](#the-weekly-objetivo)'s
   own weight for that set; on an exercise with no history at all it falls
   back to last week's, and then to the block before. On the first week of a
   new block the band underneath still names the block and week the numbers

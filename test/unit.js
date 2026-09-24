@@ -11549,6 +11549,23 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
        boot.call('state.prefs.sound') === false && boot.call('state.prefs.bgAlarm') === true,
        'sound ' + boot.call('state.prefs.sound') + ', bgAlarm ' + boot.call('state.prefs.bgAlarm'));
   }
+  {
+    /* C. What a tick decided — the grey weight it took — used to be said
+       only in the status line at the foot of the page, replaced by
+       "Guardado hh:mm" 400ms later. Said now where the eye actually goes
+       next: the rest timer the same tick starts (plans/080 C). Week 2 of
+       `seeded` has week 1 fully logged, so its cards carry a grey weight. */
+    const boot = settled(seeded({ week: 2, day: 0 }));
+    boot.card(0).set(0).tick.onclick();
+    const tookNote = boot.$('tmsg').textContent;
+    ok('a tick that takes the grey weight says so on the rest timer it starts',
+       tookNote.indexOf('Serie 1 anotada con') === 0, tookNote);
+    boot.type(boot.card(0).set(1).w, '50');
+    boot.card(0).set(1).tick.onclick();
+    const typedNote = boot.$('tmsg').textContent;
+    ok('...but a tick with nothing adopted (the weight was typed) leaves the timer\'s fixed breathing tip alone',
+       typedNote.indexOf('Prueba de la frase') === 0, typedNote);
+  }
 
   /* load() and the two imports that replace data wholesale, "Cargar copia"
      and loading a profile file, ran migrate() with nothing to catch a throw.
