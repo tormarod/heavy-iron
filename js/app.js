@@ -5545,20 +5545,34 @@ function nextSessionLine(profile, block, days) {
    dueSlot rather than shared with that line, whose strings the unit suite
    pins. */
 
+/* How long after its last tick a session still counts as the one in
+   progress. The plan caps a rest at 900 s (EX_FIELDS), so a session under
+   way never goes two hours between ticks, and one that ended less than two
+   hours ago is still the one on screen. Without this, a session ticked on
+   past midnight was pulled forward into the next day's in the middle of a
+   rest: its date is yesterday's, and so was the last write (plans/079,
+   review of #194). */
+const DUE_AFTER_MS = 2 * 3600e3;
+
 /* The slot of the latest session trained in this block: the session with
    the latest date (sessionsOf's `ts`, the median time of its ticked sets)
    among those on a live day that have a date at all. A session with no
    date cannot say when it happened, and one on a retired day has no tab
    to land on. `day` is an index into dayList(block), as profile.day is.
-   A tie goes to the later slot, since sessionsOf answers in plan order. */
+   A tie goes to the later slot, since sessionsOf answers in plan order.
+   `lastTick` is the block's latest tick of any set, which is not that
+   session's date: a long session's median can be hours old while its
+   last tick is minutes old. */
 function lastTrained(profile, block) {
   const days = dayList(block);
-  let last = null;
+  let last = null, newest = 0;
   sessionsOf(profile, { weeks: 'plan', blocks: [block.id] }).forEach(s => {
+    s.sets.forEach(x => { if (x.ts > newest) newest = x.ts; });
     const at = days.findIndex(d => d.id === s.day);
     if (at < 0 || !(s.ts > 0)) return;
     if (!last || s.ts >= last.ts) last = { week: s.week, day: at, ts: s.ts };
   });
+  if (last) last.lastTick = newest;
   return last;
 }
 
@@ -5566,19 +5580,25 @@ function lastTrained(profile, block) {
    the latest session trained, or null when there is nowhere to go. Null
    before anything is trained; when that session's day is today or later,
    because then the session on screen is today's own and not a finished
-   one; at the block's end, where the footer already points at the next
-   block; and when that slot is already on screen. Whether the last session
-   had every set ticked does not matter: a set skipped on purpose, like the
-   default plan's "first one to go" kickback, must not hold the view on
-   it. */
+   one; while the block's last tick is under DUE_AFTER_MS old, for the same
+   reason past midnight; at the block's end, where the footer already
+   points at the next block; when that slot is already on screen; and when
+   something in it is already ticked, since drawDueNote says nothing about
+   a slot under way, and a move the line cannot announce is a move nobody
+   can take back. That happens when days are trained out of order, or a
+   forgotten session is filled in later. Whether the last session had every
+   set ticked does not matter: a set skipped on purpose, like the default
+   plan's "first one to go" kickback, must not hold the view on it. */
 function dueSlot(profile, block) {
   const last = lastTrained(profile, block);
   if (!last || localDay(last.ts) >= localDay(Date.now())) return null;
+  if (Date.now() - last.lastTick < DUE_AFTER_MS) return null;
   const days = dayList(block);
   const to = last.day < days.length - 1 ? { week: last.week, day: last.day + 1 }
     : last.week < blockWeeks(block) ? { week: last.week + 1, day: 0 }
     : null;
   if (!to || (to.week === profile.week && to.day === profile.day)) return null;
+  if (dayHasLog(profile, block, to.week, days[to.day].id)) return null;
   return to;
 }
 
@@ -5731,16 +5751,18 @@ function drawDueNote(profile, block, day) {
   host.hidden = !show;
   if (!show) return;
   const from = landed.from, days = dayList(block);
-  /* A view stored outside the block (damaged storage) is drawn as the
-     first day, so that is the day to name. */
+  /* A view stored outside the block (damaged storage) is drawn as drawApp
+     draws it, on the first day and the block's last week, so those are the
+     ones to name. */
   const fromDay = days[from.day] || days[0];
+  const fromWeek = Math.min(from.week, blockWeeks(block));
   const txtEl = document.createElement('span');
   txtEl.textContent = 'Te toca ' + day.name + ' (semana ' + profile.week + ').';
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'ord-reset';
   btn.textContent = 'Volver';
-  btn.setAttribute('aria-label', 'Volver a ' + fromDay.name + ', semana ' + from.week);
+  btn.setAttribute('aria-label', 'Volver a ' + fromDay.name + ', semana ' + fromWeek);
   btn.onclick = () => {
     profile.week = from.week;
     profile.day = from.day;
