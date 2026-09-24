@@ -99,6 +99,9 @@ below so it is not lost or re-audited.
 | 075 | [The contrast check reads every text-on-background pair the stylesheet declares, in all six palettes, and no text colour goes unchecked](done/075-contrast-checks-every-declared-pair.md) | P3 | S–M | LOW | — no bump | DONE (#189, no bump) — the 16 pairs a rule declares together are checked in light, dark and each accent; six were in no check before, all pass 4.5:1 but the unticked tick's "✓" (`--edge` on `--card`, 3.57/3.20), held to 3:1 as a toggle's icon (WCAG 1.4.11) by a reasoned exception; a text colour in no check fails. Review made the exception hold only when every rule declaring the pair is listed, and a missing token fail one assertion rather than end the suite |
 | 076 | ["Deshacer" survives a throw inside `migrate()` like every other caller, and the callers are pinned](done/076-every-migrate-caller-guarded.md) | P3 | S | LOW | — (bumps) | DONE (#190, v143) — `undoLast` puts this tab's state back and says "No se ha podido deshacer" on a throw; the five `migrate()` callers are pinned, each inside a `try`; AGENTS.md § Untrusted input states the rule (review: `adoptStored` puts the data back silently) |
 | 077 | [The app's own backup and profile file come back exactly as the app wrote them](done/077-own-files-come-back-as-written.md) | P3 | M | LOW–MED | — (bumps) | DONE (#191, v144) — restored into a phone holding the same data, the app's own backup and each profile file leave the whole saved copy as it was (key order aside), for the seed and a lived-in phone built through the real handlers. Converged on the own path: legacy accent names kept; an empty `alt`/`cue` kept; `dk` stored only when chosen; the objetivo's `hold`/`brake` booleans and a descarga's `rir: null` kept as `recordTarget` writes them; text typed through the app's boxes kept as typed (blank ends, double spaces), with line breaks surviving only in the pair note, the one box that stores them. One exception, pinned: an exercise saved with no name comes back named. Two assertions that pinned the old conversions were rewritten on purpose |
+| 078 | [The plan editor can say which lifts never go to failure, and the default plans say it for theirs](078-min-rir-in-the-editor.md) | P1 | S | LOW | — (bumps; land before the household's week 7) | TODO |
+| 079 | [The first open of a new day lands on the session that's due, and the day tabs show what is done](079-land-on-the-due-session.md) | P2 | S–M | LOW–MED | — (bumps) | TODO |
+| 080 | [Six small promises the session breaks, kept](080-session-fixes.md) | P2 | S | LOW | — (bumps) | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
@@ -1353,6 +1356,193 @@ and tests themselves; none is a regression.
 - Still open from the audit itself: finding 14 (CSV `fecha` is the UTC
   day; `,` separator in es-ES Excel), the `ts` upper bound, AGENTS.md's
   restructure, and the ninth audit's findings 4–6 and 12.
+
+## Eleventh pass (2026-09-24) — direction: what to build next
+
+A direction-only pass (`/improve next`) at `c82678d`. Three read-only
+sweeps ran in parallel:
+
+- the status at HEAD of every open option in the fourth, sixth, eighth and
+  tenth direction menus;
+- new signals since plan 030: deferred work in `plans/done/*`, comments,
+  data written but never read, and what an English version would touch;
+- the every-session flow read as a user, with tap counts.
+
+Every item on the shortlist was re-opened at its cited line, and the claims
+the plans rest on were probed in `loadApp()`. The baseline was `node
+test/unit.js` 1538/1538. No secrets and no prompt-injection content were
+found.
+
+**Nothing from the earlier menus has shipped.** Of about 45 options, all are
+still open except one that is moot. Most are cheaper now (`RECORD_PARTS`,
+`sessionsOf`, `EX_FIELDS`). This pass therefore did not write a fifth menu.
+It ranked by what the household meets next and added what the earlier
+passes missed.
+
+**The maintainer's answers (2026-09-24):**
+- Picked: `minRir` in the editor (→ **078**), landing on the due session
+  (→ **079**), and the fixes bundle (→ **080**).
+- The English-version spike: **not yet**.
+- **The household logs on two phones**, each on their own profile. So on
+  any one phone the other profile is a copy moved by file or QR. That
+  matters for anything that reads the partner: the block change for two,
+  and 030's N8 partner band.
+
+### The shortlist, and what became of it
+
+| # | Option | Evidence (`c82678d`) | Effort | Disposition |
+|---|---|---|---|---|
+| 1 | **The plan can't say which lifts never go to failure.** The default plans' week-7 goals say "nunca en hack ni peso muerto rumano", yet their `hacksquat`, `rdl` and `hipthrust` carry no `minRir`, so his week 7 prices them at 0 RIR (probed: `weekRir` → 0, and 1 with the floor). The field works on every path but the editor | `js/data.js:37, 53, 68, 78, 99, 109-110`; `js/app.js:4063-4074, 6631-6636`; `js/block-editor.js:1222-1225` | S | **078** |
+| 2 | **The block change, for two.** The default plans are a designed pair: 15 shared stations and pair notes that describe the partner's sets. The AI round trip is per person (the prompt's only couple fact is "Entreno en pareja."), and a pasted block installs and becomes active with no preview of which lifts keep their ids and so their objetivo history | `js/data.js:23-28, 58, 89`; `js/block-editor.js:609-629, 616`; `js/review.js:429-453` | M (spike + a first slice) | not planned. **Two phones** make it harder: the partner's plan on this phone is a copy, and the profile file's `saved` date is shown once and dropped (`js/profile-transfer.js:439-451`), so its age cannot be shown |
+| 3 | **Three readers stop at the edge of a block.** (a) "¿Funcionó la descarga?" can never appear on the default plans: both deload in their last week, and `deloadCheck` skips a span with no week after it inside the block. A unit case pins that, and the smoke test moves the deload to week 4 to test the feature at all. (b) Last week's session note does not cross into the next block (019 deferred it). (c) A lift the next block drops loses every entry point: the chart opens only from a card, the Diagnóstico lists only the plan, and picking the old block resets the view to week 1, day 1 | `js/app.js:6248-6265`; `test/unit.js:7555-7562`; `test/smoke.js:3098`; `js/app.js:2877-2885, 5320, 6132-6133`; `js/block-editor.js:43` | S–M | not planned. Design note for (a): week 1 of a new block is a calibration week (3–4 RIR), so plain Epley would read every deload as a loss. The rule's `capOf` adds the reserve back and censors sets at 2+, which is the likely answer |
+| 4 | **Land on the session that's due.** `nextSessionLine` computes it and only prints it. Open, resume and profile switch show the last session left; an installed app resumed from the background never reruns `load()` | `js/app.js:5437-5449, 5471-5474, 739-797, 1385-1387, 3692` | S–M | **079**, with a day-tab dot. It moves only on the first open of a new day (`prefs.lastDay`), so a deliberate look back is respected and no existing test fixture lands |
+| 5 | **Machine taken.** Recording the real order costs 2 taps per place. The listed alternative is display-only, so doing it means logging it under the main lift, which moves that lift's objetivo level (the best of the last sessions) or reads as a decline | `js/app.js:5315-5336, 4975, 5023, 7054-7064` | S ("Hacer ahora") / M spike | not planned |
+| 6 | **The English version.** Sized below | `js/app.js:878-882`; `README.md` § Known limits | M spike / L build | **not yet** (maintainer) |
+| — | **Fixes found on the way:** the pocket alarm silent at zero with "Aviso sonoro" off (the default); the plates box splits on `,` so "1,25" saves two plates; the tick's "anotada con…" replaced by "Guardado" 400 ms later at the foot of the page; a rest after the day's last set; the footer's all-sets rule; the Diagnóstico asking for RIR the log has | `js/rest-timer.js:157-167`; `js/app.js:2026, 2116, 1319, 5176, 5473, 6043-6044` | S | **080** |
+
+### New signals recorded, not planned
+
+Each was re-opened at HEAD. None was on an earlier list.
+
+- **RIR in the history bands** (`60×10@2`). `setSummary` prints weight×reps
+  only (`js/app.js:3115-3119`). Plan 035 left it "for later" and it was
+  never recorded. S.
+- **The review screen shows no energy.** `buildBlockReview` computes the
+  buckets and only `reviewText` prints them (`js/review.js:115-125,
+  254-263`). The guide's "las sesiones flojas movieron un 18 % menos" is
+  computed nowhere. S.
+- **Importar JSON cannot open a file**, though "Descargar plan (JSON)"
+  writes one (`index.html:447-476`). S.
+- **Keep the view per block.** Picking another block resets week and day
+  to 1/1, on the way there and on the way back (`js/block-editor.js:43`).
+  So reading last block's review costs your place. S.
+- **Rename history on the chart and in the CSV.** `variants` is read only
+  by the objetivo and the Diagnóstico's cut. The chart draws straight
+  through a machine change, and the CSV names old sessions by the new name.
+  Plan 028 deferred it. S–M.
+- **Open a lift's chart from its Diagnóstico row.** Rows carry
+  `data-ex`/`data-day` and no handler (`js/diagnostics.js:345-346`). S.
+- **Show kept-but-hidden sets without editing the plan.** Each set's
+  `extra` flag is computed and read by nothing (`js/app.js:3439`). The
+  footer's tonnage counts visible rows while the volume sheet counts every
+  ticked set. S.
+- **The rest line after an exercise's last set** says "Última serie hecha"
+  rather than naming the next card (`js/app.js:4815`). It pairs with the
+  ninth audit's finding 11 (its reps half). S.
+- **"Hacer ahora" in the ⋯ menu**: one tap to put a card next, instead of
+  2 taps per place. S.
+- **The header's ⋯ opens the same sheet as the bar's Más**
+  (`index.html:56-58`). Minor.
+
+### Considered and rejected
+
+- **A per-set control that types the objetivo's reps.** Reps are the
+  real cost of every set, but the tick contract refuses them on purpose:
+  `docs/guide.md` — "a rep count or a reserve nobody reported is not a
+  measurement", and the objetivo "never logs anything for you". Recorded so
+  it is not re-proposed as a gap.
+- **Demoting "Rellenar con el objetivo".** Since v3 it writes the weights
+  the tick already takes (`js/app.js:6330-6339`). That is a product call,
+  not a defect, so it is recorded and not weighed.
+- **Backfilling `minRir` onto existing installs in `migrate()`.** Absent is
+  also what a cleared box looks like, so the field could never be cleared.
+  078 records it.
+- **Landing on every open, not just the first of a day.** It would pull
+  back someone who went back to look at yesterday, and every booted test
+  fixture would land.
+- Session duration still waits on tick discipline (fourth audit #10),
+  unchanged.
+
+### Carried options, status at `c82678d`
+
+All open unless marked. The statuses come from the status sweep. The rows
+the shortlist relies on were re-opened by hand: N2, N5, N7, N29, N31, #8,
+#9, #12, #16, #17, #20, N26, N49, the `obj` readout and #14.
+
+- **Cheaper now**, often one `RECORD_PARTS` entry or one `sessionsOf`
+  query:
+  - N1 bodyweight, if keyed by slot like `energy`; keyed by ISO day, it
+    needs a fourth `keyedBy` shape;
+  - N3 session summary;
+  - N4 name autocomplete, as a loop over `EX_FIELDS`, with
+    `knownExerciseIds` already there;
+  - N6 early deload: `obj` stores `brake` per session;
+  - N7 "+ serie hoy": `extra` is already computed;
+  - N8 partner band: `sessionsOf` takes any profile, but it needs the
+    snapshot date;
+  - N9 all-blocks calendar;
+  - N15 note per exercise;
+  - N17 scroll to the next set;
+  - N31 history search;
+  - #7 file lane: `applyQrPayload` works whatever carried it;
+  - #8 copy block to the other profile: `installImportedBlock` plus a
+    profile parameter;
+  - #10 duration spike;
+  - #12 last-backup date: the four resets go through `resetBackupNag`;
+  - #13 the table half;
+  - #14 Récords;
+  - #15 plumbing only;
+  - #16 calculator prefill: `openCalc()` takes no argument, and ⋯ has
+    `ex` in scope;
+  - the `obj` readout's card line;
+  - the third audit's zero-weight empty state;
+  - tenth-B, one block from a backup.
+- **Same**: N5, N18, N29, N30, N44, N45, N49, N16, N10, #11, #18, #20,
+  eighth-b, eighth-c, tenth-A (its prerequisite is still open), tenth-C.
+  - N50's premise is stale: `theilSen` feeds the objetivo, and the
+    Diagnóstico uses `fitSlope`.
+  - #21 is still blocked on N1.
+  - N2 and eighth-a are now **079**.
+- **Dearer**:
+  - N26 large text: `css/style.css` has 724 px values and 0 rem (602 at
+    030).
+  - #9 week-goal editor: since plans 058/062 `phaseRir` reads the goal
+    text as the objetivo's RIR, so an editor must show what it parsed.
+- **Moot**: #17, the per-exercise "apply the objetivo". A tick on an empty
+  weight box already takes the objetivo's weight for that set.
+
+### The English version, sized for when it is wanted
+
+These are estimates from the sweep: quoted literals filtered for Spanish
+words and accents. They were not counted by hand.
+
+- **The preference.** `state.prefs.lang` is repaired in `migrate()` and read
+  only by `csvFormat`. There is no control on screen.
+- **Strings.** About 250 in `index.html` and 780–1,080 in `js/` (100–155 of
+  them seed content). There are 31 singular/plural pairs and about 300
+  places that build a sentence around a number.
+- **Parsers bound to Spanish.** `phaseRir` reads "RIR", "reps en reserva",
+  "objetivo" and the ranges `a/o/ó`. `saysDescarga` reads
+  "descarga"/"sin". `js/block-editor.js:1360` compares the literal
+  `'Descarga'`. `num()` reads a decimal comma.
+- **Spanish stored as data.**
+  - The generic phase texts, and the energy values `baja/normal/alta`.
+  - Tags, and `MUSCLE_BY_ID`.
+  - Default names, the seeds and `blocks/*.json`.
+  - Translating a stored exercise name counts as a rename (renames compare
+    slugs) and cuts that lift's history.
+- **Tests pin Spanish**: 49 `phaseRir` cases, and roughly 230 unit and 108
+  smoke lines.
+- **The spike's first question** is where a string table can live under
+  AGENTS.md's split rules. Keys that are the Spanish text itself would make
+  an identity stub a safe fallback on a precache hole: the app would read
+  exactly as it does today.
+
+### Landing order
+
+078 first. It is P1, and the household should then set **RIR mínimo** to 1
+on its own hack squat, Romanian deadlift and her hip thrust, before week 7.
+079 and 080 come in either order, one at a time. Both edit `js/app.js` in
+different functions and `docs/guide.md` in different paragraphs, and all
+three bump `CACHE_VERSION`: rebase and re-bump before each merge.
+
+### Eleventh pass — not audited
+
+Correctness, security and performance beyond what the three lenses
+touched; `js/vendor/`; the training methodology; visual design. The smoke
+suite was not run; each plan names the sections to run. The household's
+current week is inferred from the repo's age (first commit 2026-08-13;
+block 1 is 8 weeks), not known.
 
 ## Worth doing, not yet planned
 
