@@ -11167,8 +11167,11 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
      different. Pressed on a booted app. */
   console.log('\n== "Guardar" in Ajustes keeps the plates migrate() would (plans/055) ==');
   {
-    /* The box is a comma-separated list, so its decimals are written with a
-       point; num() reads a comma decimal, which only a stored list holds. */
+    /* The box is semicolon-separated (plans/080 B): a comma is the decimal
+       key on a Spanish phone, the same one num() reads everywhere else. A
+       comma followed by whitespace, ", ", is still read as a separator
+       first, so a list typed the old way parses exactly as it always did —
+       which is what keeps this assertion passing unchanged. */
     const typedList = '25, 20, 20, 0.25, x, 100, 1.25';
     const boot = settled(JSON.parse(SEED));
     boot.call('openSetup(false); setupDraft.platesText = ' + JSON.stringify(typedList) + ';');
@@ -11178,6 +11181,37 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
       '.split(","); migrate(); JSON.stringify(state.prefs.plates)');
     ok('the same list comes out of Ajustes and out of a load: each size once, the unit\'s bounds kept, junk left out',
        typedPlates === '[25,20,0.25,1.25]' && loaded === typedPlates, typedPlates + ' / ' + loaded);
+
+    /* The box's actual shape now: semicolons between sizes, commas inside
+       one (plans/080 B). */
+    const boot2 = settled(JSON.parse(SEED));
+    boot2.call('openSetup(false); setupDraft.platesText = ' + JSON.stringify('20; 15; 2,5; 1,25') + ';');
+    boot2.$('setupSave').onclick();
+    const semicolonPlates = boot2.call('JSON.stringify(state.prefs.plates)');
+    ok('a semicolon-separated list with decimal commas reads as the weights it shows',
+       semicolonPlates === '[20,15,2.5,1.25]', semicolonPlates);
+
+    /* One plate, one decimal comma, and nothing else to separate it from —
+       the case the old split(',') got wrong (plans/080 B: "1,25" used to
+       save two plates, 1 and 25). */
+    const boot3 = settled(JSON.parse(SEED));
+    boot3.call('openSetup(false); setupDraft.platesText = ' + JSON.stringify('1,25') + ';');
+    boot3.$('setupSave').onclick();
+    const onePlate = boot3.call('JSON.stringify(state.prefs.plates)');
+    ok('a single decimal-comma plate saves as one plate, not two split on its comma',
+       onePlate === '[1.25]', onePlate);
+
+    /* Round trip: the text the box opens with — built from the stored list
+       the same way the kg defaults are shown, "1,25; 2,5; 5; 10; 15; 20" —
+       saved back untouched, gives back that same list (plans/080 B). */
+    const boot4 = settled(JSON.parse(SEED));
+    boot4.call('state.prefs.units = "kg"; state.prefs.plates = [1.25, 2.5, 5, 10, 15, 20]; save(); openSetup(false);');
+    const shownText = boot4.call('setupDraft.platesText');
+    boot4.$('setupSave').onclick();
+    const roundTripped = boot4.call('JSON.stringify(state.prefs.plates)');
+    ok('the text Ajustes opens with, saved unchanged, gives back the same plates',
+       shownText === '1,25; 2,5; 5; 10; 15; 20' && roundTripped === '[1.25,2.5,5,10,15,20]',
+       shownText + ' -> ' + roundTripped);
   }
 
   /* plans/010's promise, one level up from the block. A restore reads every

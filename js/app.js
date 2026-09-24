@@ -1969,7 +1969,10 @@ function openSetup(firstRun) {
     units: state.prefs.units,
     plan: 'example',
     barWeight: state.prefs.barWeight,
-    platesText: state.prefs.plates.join(', '),
+    /* Shown with a decimal comma, semicolon-separated — the box reads
+       weights the way every other box in the app does, comma decimal
+       (plans/080 B). */
+    platesText: state.prefs.plates.map(p => String(p).replace('.', ',')).join('; '),
     inc: state.prefs.inc,
     bgAlarm: !!state.prefs.bgAlarm,
     /* On a first run the name boxes start empty, so the placeholder invites
@@ -2118,7 +2121,13 @@ $('setupSave').onclick = () => {
   } else {
     const bw = num(setupDraft.barWeight);
     if (bw > 0) state.prefs.barWeight = bw;
-    const plates = cleanPlates(String(setupDraft.platesText || '').split(','), state.prefs.units);
+    /* The box used to split on ',', but a comma is the decimal key on a
+       Spanish keyboard — the same one num() reads everywhere else in the
+       app — so "1,25" read as two plates, 1 and 25. A comma followed by
+       whitespace is still read as a separator first (so a list typed the
+       old way, "20, 15, 10", still works); what is left is semicolons and
+       bare whitespace. No lookbehind — Safari 15 cannot parse one. */
+    const plates = cleanPlates(String(setupDraft.platesText || '').replace(/,\s+/g, ';').split(/[;\s]+/), state.prefs.units);
     if (plates.length) state.prefs.plates = plates;
     const inc = clampNum(setupDraft.inc, INC_MIN, INC_MAX, 0, INC_STEP);
     if (inc > 0) state.prefs.inc = inc;

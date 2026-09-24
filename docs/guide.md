@@ -183,7 +183,8 @@ history, which is what blocks are for instead.
 because there is nothing to set them against yet: your bar weight and the
 plates you have, used by [the calculator](#warm-ups-and-plate-maths), and
 your **default weight increment** — the smallest step you can actually
-load. That last one is what [the weekly objetivo](#the-weekly-objetivo)
+load. The plates are separated by semicolons (`20; 15; 10; 5; 2,5; 1,25`),
+not commas, because the comma is the decimal key. That last one is what [the weekly objetivo](#the-weekly-objetivo)
 rounds to for every exercise that doesn't carry an `inc` of its own; an
 exercise that does carry one always wins over it. It starts at 2,5 kg
 (5 lb) and, like the bar weight, is seeded from whichever unit you picked
