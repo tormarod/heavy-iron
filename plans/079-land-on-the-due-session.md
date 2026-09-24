@@ -51,13 +51,22 @@ After this plan:
 
 1. **What is due.** It is found from the active block's own sessions: the
    session with the latest date (`ts`) among sessions on a live day
-   (`dayList(block)`) that have a date (`ts > 0`). It is `null` in four
-   cases:
+   (`dayList(block)`) that have a date (`ts > 0`). It is `null` in six
+   cases (the third and sixth were added in the review of #194):
    - there is no such session;
    - that session's local day (`localDay(ts)`) is today or later, which
      means you trained today, so nothing is "due" yet;
+   - the block's most recent tick of any set is under `DUE_AFTER_MS`
+     (two hours) old, which means a session is still going on past
+     midnight. It is the latest tick and not the session's median `ts`,
+     because a long session's median can be hours old while its last tick
+     is minutes old;
    - the block has no slot after it;
-   - the slot after it is already on screen.
+   - the slot after it is already on screen;
+   - the slot after it already has a ticked set. The line (decision 5)
+     does not show on a slot with ticks, so that move could be neither
+     announced nor taken back. This happens when days are trained out of
+     order, or a forgotten session is filled in later.
 
    **The slot after** is the next live day in the same week. After the
    week's last live day it is week + 1, day 0. After the block's last week
@@ -281,9 +290,10 @@ Never run the full browser suite by hand; the PR hook does (AGENTS.md).
 **In scope**:
 - `js/app.js` — the new functions, `writeState` (one line), `migrate()` (one repair line), `load()` (one call), the resume listener, `renderProfiles`' click, `renderNav`, `refreshWeekDot`, `drawApp` (one call), `drawCard` (one call)
 - `index.html` — the `#dueNote` element
-- `css/style.css` — `.day` position and the two `.day .dot` rules
+- `css/style.css` — `.day` position and the two `.day .dot` rules; `min-height: 24px` on `.ord-reset` (review of #194)
 - `docs/guide.md`, `CONTEXT.md` — Step 7
 - `test/unit.js` — Step 6, and the pinned `expected` list
+- `test/smoke.js` — one case in "accesibilidad: tamaños, foco y área segura" holding a landing's "Volver" to the 24×24 floor, and nothing else (review of #194, widened by the orchestrator)
 - `sw.js` — the bump only
 
 **Out of scope** (do NOT touch):
@@ -619,7 +629,8 @@ after plan 078 landed):
     note's own "Volver al orden del plan" has the same size. The section
     passes because neither note is visible during it. Adding
     `min-height: 24px` to `.ord-reset` would settle both. I left it
-    alone, as it is outside this plan's CSS scope.
+    alone, as it is outside this plan's CSS scope. (Settled in the
+    review round below.)
 - **Time zones.** The whole unit suite passes under Asia/Dhaka (UTC+6,
   where `BOOT_TIME` is local midnight), Asia/Kolkata and Asia/Kathmandu
   (30 and 15 minutes before one), Pacific/Kiritimati, Etc/GMT+12 and
@@ -636,5 +647,65 @@ after plan 078 landed):
   - there were no CSP violations and no page errors.
 
   The smoke sections "layout", "tamaños", "main session" and CSP passed
-  (272, 0 failed). None of them lands, since their stored states are from
-  today.
+  (272, 0 failed). None of them landed then, since their stored states
+  were from today; "tamaños" seeds a landing since the review round.
+
+Review of #194 (one round, verdict REVISE; the four deviations above were
+approved):
+
+- **Rebased** onto `bc24d77`, plan 080's merge. The rebase dropped this
+  branch's bump, being identical to main's v145→v146, so the bump was
+  redone as the last commit: v147. Unit on the merged tree before this
+  round's changes: 1592 (main's 1565 plus this plan's 27).
+- **Past midnight** (should-fix). The failing case was a session ticked
+  at 23:30 and 23:58, its rest running, hidden at 23:58:30 and shown at
+  00:00:30. It jumped to the next day and stopped the rest, because its
+  date and `lastDay` were both yesterday. `dueSlot` now returns null while
+  the block's latest tick of any set is under `DUE_AFTER_MS` (two hours)
+  old, and `lastTrained` returns that tick as `lastTick`. The local was
+  first named `tick`, which the split-rule check read as
+  `js/rest-timer.js`'s `tick()`, so it was renamed.
+- **Silent move** (should-fix). When the slot after the latest session
+  already had a ticked set, the app moved there and the line hid itself.
+  That happens with days trained out of order, or a forgotten session
+  filled in later. `dueSlot` now returns null there.
+- **Target size** (should-fix). `.ord-reset` has `min-height: 24px`,
+  which fixes the order note's button too. "Tamaños" now seeds a landing
+  and holds the whole screen, "Volver" included, to the 24×24 floor, with
+  the section's own measuring code hoisted into `undersizedNow`.
+- **Label** (nit). Volver's `aria-label` clamps the week the way
+  `drawApp` does.
+- **New unit assertions** (11). Their times come from the shell's own
+  `Date` through the shared context, on a day after the boot's, so they
+  hold in every zone:
+  - after a landing, `›` and then `‹` (2);
+  - the clamped label;
+  - a retired middle day;
+  - the latest session on a retired last day;
+  - every set undated;
+  - days trained out of order;
+  - past midnight: nothing moves at 00:00:30, then it lands at 09:00,
+    both by resume and by `load()` (3);
+  - a long session (21:30, 21:35, 23:58), the case that tells the last
+    tick from the median.
+
+  Unit is 1603 on the merged tree (1565 + 38), in local time and under
+  each of the six zones above.
+- **Mutations**, each reverted, with the file restored byte for byte:
+  - no `DUE_AFTER_MS` check: both past-midnight "stays" assertions fail;
+  - the median instead of the last tick: only the long session fails;
+  - no "next slot already ticked" check: only the out-of-order case
+    fails;
+  - `lastTrained` with no filter: the retired-last-day and undated cases
+    fail. Removing only the retired-day half fails the first; removing
+    only the undated half fails the second;
+  - no "forget on another slot": both `›`/`‹` assertions fail;
+  - no week clamp: the label assertion fails;
+  - `.ord-reset` without its `min-height`: the new "tamaños" case fails
+    (`ord-reset 46x21`).
+- **Kept as designed:**
+  - After "Volver", switching to the other person and back lands her
+    again. Decision 3 puts no gate on a switch, and her view is back on
+    the session she finished.
+  - Unticking the only set on the landed slot brings the line back:
+    decision 5 read literally ("nothing in that slot is ticked yet").
