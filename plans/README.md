@@ -99,9 +99,9 @@ below so it is not lost or re-audited.
 | 075 | [The contrast check reads every text-on-background pair the stylesheet declares, in all six palettes, and no text colour goes unchecked](done/075-contrast-checks-every-declared-pair.md) | P3 | S–M | LOW | — no bump | DONE (#189, no bump) — the 16 pairs a rule declares together are checked in light, dark and each accent; six were in no check before, all pass 4.5:1 but the unticked tick's "✓" (`--edge` on `--card`, 3.57/3.20), held to 3:1 as a toggle's icon (WCAG 1.4.11) by a reasoned exception; a text colour in no check fails. Review made the exception hold only when every rule declaring the pair is listed, and a missing token fail one assertion rather than end the suite |
 | 076 | ["Deshacer" survives a throw inside `migrate()` like every other caller, and the callers are pinned](done/076-every-migrate-caller-guarded.md) | P3 | S | LOW | — (bumps) | DONE (#190, v143) — `undoLast` puts this tab's state back and says "No se ha podido deshacer" on a throw; the five `migrate()` callers are pinned, each inside a `try`; AGENTS.md § Untrusted input states the rule (review: `adoptStored` puts the data back silently) |
 | 077 | [The app's own backup and profile file come back exactly as the app wrote them](done/077-own-files-come-back-as-written.md) | P3 | M | LOW–MED | — (bumps) | DONE (#191, v144) — restored into a phone holding the same data, the app's own backup and each profile file leave the whole saved copy as it was (key order aside), for the seed and a lived-in phone built through the real handlers. Converged on the own path: legacy accent names kept; an empty `alt`/`cue` kept; `dk` stored only when chosen; the objetivo's `hold`/`brake` booleans and a descarga's `rir: null` kept as `recordTarget` writes them; text typed through the app's boxes kept as typed (blank ends, double spaces), with line breaks surviving only in the pair note, the one box that stores them. One exception, pinned: an exercise saved with no name comes back named. Two assertions that pinned the old conversions were rewritten on purpose |
-| 078 | [The plan editor can say which lifts never go to failure, and the default plans say it for theirs](078-min-rir-in-the-editor.md) | P1 | S | LOW | — (bumps; land before the household's week 7) | TODO |
-| 079 | [The first open of a new day lands on the session that's due, and the day tabs show what is done](079-land-on-the-due-session.md) | P2 | S–M | LOW–MED | — (bumps) | TODO |
-| 080 | [Six small promises the session breaks, kept](080-session-fixes.md) | P2 | S | LOW | — (bumps) | TODO |
+| 078 | [The plan editor can say which lifts never go to failure, and the default plans say it for theirs](done/078-min-rir-in-the-editor.md) | P1 | S | LOW | — (bumps; land before the household's week 7) | DONE (#192, v145). A **RIR mínimo** box in Editar plan, bound through `EX_FIELDS`' own `accept`. The default plans' hack squat, Romanian deadlift and her hip thrust carry `minRir: 1` (new installs only; an existing install sets it in the box). 10 assertions, 2 mutation checks. Two small deviations, recorded in its Maintenance notes: a comment reworded so its own grep count holds, and the test section placed above plans/060's preamble comment |
+| 079 | [The first open of a new day lands on the session that's due, and the day tabs show what is done](done/079-land-on-the-due-session.md) | P2 | S–M | LOW–MED | — (bumps) | DONE (#194, v147). `prefs.lastDay` gates the landing to the first open or resume of a new day; "Te toca … · Volver"; a dot on each day tab. **Review changed decision 1 twice**: it now holds the view while the block's last tick is under two hours old, since a session past midnight was pulled forward mid-rest; and it never lands on a slot that already has a ticked set, since that move could not be announced. `.ord-reset` is now 24 px tall (it was 21), held by a new "tamaños" smoke case. 38 assertions, passing under six time zones; the full gate ran on the final head (588/0) |
+| 080 | [Six small promises the session breaks, kept](done/080-session-fixes.md) | P2 | S | LOW | — (bumps) | DONE (#193, v146). Turning on the pocket alarm turns on Aviso sonoro; the plates box reads a decimal comma, with `;` between sizes; the rest timer says what weight a tick took; no rest after the day's last set; the footer drops the old all-sets rule; the Diagnóstico's flat fallback says "cambia el estímulo" once every recent session carries an RIR (the wording is a draft the maintainer may reword). 14 assertions, 5 mutation checks. Review fixed one guide sentence that separated "That last one" from the increment it names |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
@@ -1535,6 +1535,37 @@ on its own hack squat, Romanian deadlift and her hip thrust, before week 7.
 079 and 080 come in either order, one at a time. Both edit `js/app.js` in
 different functions and `docs/guide.md` in different paragraphs, and all
 three bump `CACHE_VERSION`: rebase and re-bump before each merge.
+
+### Eleventh pass — executed (2026-09-24)
+
+The three plans landed the same morning in three PRs: #192 (v145), #193
+(v146) and #194 (v147). Each was built by an executor in its own
+worktree, on its own smoke port and with its own test-insertion anchor, so
+the three could run at once. Sonnet built 078 and 080; Opus built 079.
+Every PR was reviewed before it merged: by the orchestrator, and for 079
+also by an Opus reviewer. They merged one at a time, each with a rebase
+and a re-bump. The deploy guard passed on #192 and #193.
+
+Review changed two of the three:
+
+- **079's decision 1 was too narrow twice.** A session that runs past
+  midnight was pulled forward into the next day's in the middle of a rest:
+  its date and the last write were both yesterday. And a next slot that
+  already had ticks was landed on with no line to say so. It now waits for
+  two hours after the block's last tick, and it never lands on a slot under
+  way. The reviewer's mutation checks also found two rules no test guarded:
+  the retired or undated filter, and forgetting the landing on the next
+  navigation. Both have tests now.
+- **The "Volver" button measured 46×21.** It is now 24 px tall, and so is
+  the order note's button, which shares its class. A "tamaños" smoke case
+  that seeds a landing holds it there.
+- **080's guide edit separated "That last one" from the increment it
+  names**; fixed in review.
+
+One correction for anyone running time-zone tests on this machine. Node
+does honour IANA zone names. It is Git Bash that drops a `TZ` value
+containing `/`, so set the zone from PowerShell. The executor for 079
+found this; the memory note that blamed Node was wrong.
 
 ### Eleventh pass — not audited
 
