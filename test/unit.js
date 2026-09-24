@@ -7838,7 +7838,11 @@ console.log('\n== the history cache: one read per question, dropped by the write
     /* The landing on the session that's due, on the way back from the
        background: it moves only the week and day on screen (plans/079). */
     'js/app.js:landOnResume',
-    'js/app.js:drawOrderNote', 'js/app.js:drawEnergy', 'js/app.js:drawSessionNote',
+    'js/app.js:drawOrderNote',
+    /* "Volver" on the line the landing leaves: the view moves back, and
+       nothing else (plans/079). */
+    'js/app.js:drawDueNote',
+    'js/app.js:drawEnergy', 'js/app.js:drawSessionNote',
     'js/app.js:writeRows:scoped',
     'js/app.js:recordTargetOnStart',
   ];

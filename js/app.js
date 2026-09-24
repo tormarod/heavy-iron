@@ -4192,32 +4192,55 @@ function repairExercise(ex, weeks) {
 
 /* ---------- nav ---------- */
 
+/* A ticked set in one slot: what the dot on a day tab means, and what the
+   due session's line waits for before it gives way (drawDueNote). The week's
+   dot is the same question asked of each of its days, so both dots read
+   this one rule. One home, because renderNav draws them for every week and
+   day and drawCard has to move them for the current ones after a tick, and
+   a rule with two implementations is a rule that drifts. */
+function dayHasLog(profile, block, w, dayId) {
+  const s = profile.log[block.id] && profile.log[block.id][slot(w, dayId)];
+  return !!s && Object.values(s).some(a => Array.isArray(a) && a.some(x => x && x.done));
+}
+
 /* Something logged anywhere in this week of this block — what the dot on a
-   week button means. One home, because renderNav draws it for every week and
-   drawCard has to move it for the current one after a tick, and a rule with
-   two implementations is a rule that drifts. */
+   week button means. */
 function weekHasLog(profile, block, w) {
-  return dayList(block).some(d => {
-    const s = profile.log[block.id] && profile.log[block.id][slot(w, d.id)];
-    return !!s && Object.values(s).some(a => Array.isArray(a) && a.some(x => x && x.done));
-  });
+  return dayList(block).some(d => dayHasLog(profile, block, w, d.id));
+}
+
+/* Puts the dot on a week or day button, or takes it off. Looked for among
+   the button's own children, where it is always put, rather than with
+   querySelector: the unit suite's document answers every selector with an
+   element (test/harness.js), so a dot looked for that way is always found
+   there and the tick-time refresh could not be tested. */
+function setDot(btn, on) {
+  const dot = Array.prototype.find.call(btn.children, c => c.className === 'dot');
+  if (on && !dot) { const el = document.createElement('span'); el.className = 'dot'; btn.appendChild(el); }
+  else if (!on && dot) dot.remove();
+}
+
+/* A day tab's accessible name. The dot says the same thing to the eye. */
+function dayTabLabel(i, d, logged) {
+  return 'Día ' + (i + 1) + ': ' + d.name + (logged ? ', con series registradas' : '');
 }
 
 /* The first ticked set of a week adds the dot and unticking the last one
-   removes it, so a card-local redraw still owes the nav this much. Moving
-   the one dot rather than calling renderNav(), which would rebuild every
-   week and day button to do it — the whole point of drawCard is to stop
-   rebuilding things that did not change. */
+   removes it, so a card-local redraw still owes the nav this much: the
+   week's dot, and one level down the day's, whose tab says it in its name
+   too. Moving the two dots rather than calling renderNav(), which would
+   rebuild every week and day button to do it — the whole point of drawCard
+   is to stop rebuilding things that did not change. */
 function refreshWeekDot(profile, block) {
   const host = $('weeks');
   const btn = host && host.children[profile.week - 1];
-  if (!btn) return;
-  const dot = btn.querySelector('.dot');
-  if (weekHasLog(profile, block, profile.week)) {
-    if (!dot) { const el = document.createElement('span'); el.className = 'dot'; btn.appendChild(el); }
-  } else if (dot) {
-    dot.remove();
-  }
+  if (btn) setDot(btn, weekHasLog(profile, block, profile.week));
+  const d = dayList(block)[profile.day];
+  const tab = d && $('days').children[profile.day];
+  if (!tab) return;
+  const logged = dayHasLog(profile, block, profile.week, d.id);
+  setDot(tab, logged);
+  tab.setAttribute('aria-label', dayTabLabel(profile.day, d, logged));
 }
 
 /* ---------- the week selector ----------
@@ -4278,7 +4301,7 @@ function renderNav() {
     b.setAttribute('role', 'tab');
     b.setAttribute('aria-selected', w === profile.week ? 'true' : 'false');
     b.setAttribute('aria-label', 'Semana ' + w + (dl ? ', descarga' : ''));
-    if (weekHasLog(profile, block, w)) { const dot = document.createElement('span'); dot.className = 'dot'; b.appendChild(dot); }
+    setDot(b, weekHasLog(profile, block, w));
     b.onclick = () => { profile.week = w; commit('view'); };
     $('weeks').appendChild(b);
   }
@@ -4294,7 +4317,11 @@ function renderNav() {
     b.setAttribute('role', 'tab');
     b.setAttribute('aria-selected', i === profile.day ? 'true' : 'false');
     b.setAttribute('aria-controls', 'list');
-    b.setAttribute('aria-label', 'Día ' + (i + 1) + ': ' + d.name);
+    /* The week strip's dot, one level down: this day has something logged
+       in the week on screen. */
+    const logged = dayHasLog(profile, block, profile.week, d.id);
+    setDot(b, logged);
+    b.setAttribute('aria-label', dayTabLabel(i, d, logged));
     /* Roving tabindex, the other half of what role="tab" promises: one stop
        for the whole strip in the Tab order, the arrows move within it. */
     b.tabIndex = i === profile.day ? 0 : -1;
@@ -4757,6 +4784,7 @@ function drawApp() {
      sequence of the cards changes. */
   const sessionEx = orderedEx(profile, block, profile.week, day);
   drawOrderNote(profile, block, day, sessionEx);
+  drawDueNote(profile, block, day);
 
   const ctx = { profile: profile, block: block, day: day, days: days, sessionEx: sessionEx };
   sessionEx.forEach((ex, i) => list.appendChild(buildExCard(ctx, ex, i)));
@@ -5421,7 +5449,10 @@ function openExMenu(ctx, ex, i) {
    each one is a thing that could otherwise silently go stale here:
      - the line under the session: tonnage, records, the progress bar and the
        "N de M series" count (drawSessionFoot, off dayCards)
-     - the dot on the week button, which the first ticked set of a week adds
+     - the dots on the week button and the day's tab, which the first ticked
+       set of a week or of a day adds
+     - the line saying the app landed on this session, which the first
+       ticked set takes away (drawDueNote)
      - the deload comparison, when this is the week after a deload
    Nothing else on screen reads one card's rows. The "weeks beyond the end of
    the block" note does not, because a card only ever writes to the week
@@ -5474,6 +5505,7 @@ function drawCard(exId) {
     else if (at) applyFocusPath(fresh, at);
     drawSessionFoot(profile, block, days);
     refreshWeekDot(profile, block);
+    drawDueNote(profile, block, day);
     drawDeloadCheck(profile, block);
   } catch (e) {
     showRecovery(e, readRaw(), 'draw');
@@ -5676,6 +5708,44 @@ function drawOrderNote(profile, block, day, sessionEx) {
     setOrder(profile, block.id, profile.week, day.id, null);
     commit('view');
     mark('Orden del plan restablecido');
+  };
+  host.appendChild(txtEl);
+  host.appendChild(btn);
+}
+
+/* The app moving the view by itself has to say so, or the first open of a
+   new day reads as the app having lost your place (landOnDue). Said while
+   the view is still the slot it landed on, for the same person and block,
+   and nothing in it is ticked yet: after the first tick the session is
+   under way and the line has nothing left to explain, so drawCard redraws
+   it on every tick. "Volver" puts back the week and day it came from. Any
+   draw of another slot forgets the landing, so the offer does not follow
+   you around. Guarded like drawOrderNote, for the same old index.html. */
+function drawDueNote(profile, block, day) {
+  const host = $('dueNote');
+  if (!host) return;
+  if (landed && (landed.profile !== state.activeProfile || landed.block !== block.id ||
+      landed.to.week !== profile.week || landed.to.day !== profile.day)) landed = null;
+  const show = !!landed && !dayHasLog(profile, block, profile.week, day.id);
+  host.innerHTML = '';
+  host.hidden = !show;
+  if (!show) return;
+  const from = landed.from, days = dayList(block);
+  /* A view stored outside the block (damaged storage) is drawn as the
+     first day, so that is the day to name. */
+  const fromDay = days[from.day] || days[0];
+  const txtEl = document.createElement('span');
+  txtEl.textContent = 'Te toca ' + day.name + ' (semana ' + profile.week + ').';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'ord-reset';
+  btn.textContent = 'Volver';
+  btn.setAttribute('aria-label', 'Volver a ' + fromDay.name + ', semana ' + from.week);
+  btn.onclick = () => {
+    profile.week = from.week;
+    profile.day = from.day;
+    landed = null;
+    commit('view');
   };
   host.appendChild(txtEl);
   host.appendChild(btn);

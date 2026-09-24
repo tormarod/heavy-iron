@@ -280,13 +280,21 @@ body {
    (index.html:12), not data-theme — every other button class in this file
    states its own colour, and this was the one that didn't. */
 .day {
-  height: 60px; overflow: hidden;
+  height: 60px; overflow: hidden; position: relative;
   border: 1px solid var(--edge); background: transparent; cursor: pointer;
   padding: 7px 6px; border-radius: 3px; text-align: left; transition: all .12s;
   color: var(--ink);
 }
 .day:hover { border-color: var(--ink); }
 .day.on { background: var(--signal); border-color: var(--signal); color: var(--on-signal); }
+/* The week strip's dot (.wk .dot), one level down: something is logged on
+   this day in the week on screen. Placed in the corner, out of the flow, so
+   the tab's fixed height is not touched. */
+.day .dot {
+  position: absolute; top: 6px; right: 6px; width: 6px; height: 6px;
+  border-radius: 50%; background: var(--signal);
+}
+.day.on .dot { background: var(--on-signal); }
 .day-n {
   font-family: var(--font-display); font-size: 11px; font-weight: 600;
   letter-spacing: .08em; text-transform: uppercase; color: var(--soft); display: block;
