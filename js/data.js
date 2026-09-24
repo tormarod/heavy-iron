@@ -54,6 +54,9 @@ const DEFAULT_PHASE_PAREJA = {
   8: { r: 'Descarga', t: 'Mitad de series, ~60% del peso. Nada duro. De eso se trata.' },
 };
 
+/* A minRir floor of 1, on hack squat, RDL and (her) heavy hip thrust only
+   — both plans' week-7 banner says never to take those three to failure,
+   and without the floor a "0–1 RIR" week prices them at 0 anyway (weekRir). */
 const DEFAULT_DAYS_TU = [
   { name: 'Empuje', pair: 'Las seis primeras estaciones se alternan. Ella hace una serie menos en press de hombros, inclinado, contractora y triceps, asi que tu serie extra la haces mientras ella prepara la siguiente maquina. El septimo es distinto para cada uno: tu face pull, su extension sobre la cabeza.', ex: [
     { id: 'chestpress', muscle: 'Pecho', share: 1, n: 'Press de pecho en máquina', alt: 'o press de banca con barra', sets: 4, add: 5, inc: 2.5, reps: '6–10', rest: 150, cue: 'El ejercicio pesado del día: llega a 10 reps limpias en las 4 series antes de subir peso' },
@@ -65,7 +68,7 @@ const DEFAULT_DAYS_TU = [
     { id: 'facepull', muscle: 'Hombro', n: 'Face pull en polea', alt: 'o contractora inversa', sets: 3, inc: 1, reps: '15–20', rest: 60, cue: 'Segunda dosis de deltoide posterior de la semana: equilibra todo el empuje del día' },
   ]},
   { name: 'Tirón + Cuádriceps', pair: 'Compartis hack, prensa, jalon, remo y la superserie de brazo. En la prensa cambiad la posicion de pies entre series: tu en el centro, ella altos y abiertos. Ella anade extension de cuadriceps mientras tu haces el jalon neutro.', ex: [
-    { id: 'hacksquat', muscle: 'Cuádriceps', share: 1, n: 'Sentadilla hack', alt: 'o pendular / sentadilla con barra', sets: 3, inc: 5, reps: '8–12', rest: 180, cue: 'Dosis corta de pierna: 3 series bien hechas, profundidad por debajo de la paralela' },
+    { id: 'hacksquat', muscle: 'Cuádriceps', share: 1, n: 'Sentadilla hack', alt: 'o pendular / sentadilla con barra', sets: 3, inc: 5, minRir: 1, reps: '8–12', rest: 180, cue: 'Dosis corta de pierna: 3 series bien hechas, profundidad por debajo de la paralela' },
     { id: 'legpress', muscle: 'Cuádriceps', share: 1, n: 'Prensa de piernas', alt: '', sets: 3, inc: 5, reps: '10–15', rest: 150, cue: 'Pies a media altura y a la anchura de los hombros — mas cuadriceps. Ella los pone altos y abiertos: cambiad la posicion entre series' },
     { id: 'pulldown_w', muscle: 'Espalda', share: 1, n: 'Jalón al pecho, agarre ancho', alt: 'o dominadas', sets: 4, add: 5, inc: 2.5, reps: '8–12', rest: 150, cue: 'El ejercicio pesado del día. Pecho arriba, codos hacia los bolsillos' },
     { id: 'csrow', muscle: 'Espalda', share: 1, n: 'Remo en máquina con apoyo pectoral', alt: 'o remo con barra', sets: 4, inc: 2.5, reps: '10–15', rest: 120 },
@@ -75,7 +78,7 @@ const DEFAULT_DAYS_TU = [
     { id: 'hammer', muscle: 'Bíceps', share: 1, n: 'Curl martillo con cuerda', alt: 'o curl martillo con mancuernas', sets: 4, inc: 2.5, reps: '12–15', rest: 60 },
   ]},
   { name: 'Pecho/Brazo + Isquios', pair: 'Compartis peso muerto rumano y curl femoral al empezar. Despues ella sigue con gluteo, gemelo y abdomen mientras tu haces tu segunda sesion de pecho, espalda y brazo.', ex: [
-    { id: 'rdl', muscle: 'Isquios', share: 1, n: 'Peso muerto rumano en multipower', alt: 'o hiperextensiones a 45°', sets: 3, inc: 2.5, reps: '8–12', rest: 150, cue: 'Cadera atrás, busca el estiramiento del femoral. Sin redondear la espalda' },
+    { id: 'rdl', muscle: 'Isquios', share: 1, n: 'Peso muerto rumano en multipower', alt: 'o hiperextensiones a 45°', sets: 3, inc: 2.5, minRir: 1, reps: '8–12', rest: 150, cue: 'Cadera atrás, busca el estiramiento del femoral. Sin redondear la espalda' },
     { id: 'legcurl', muscle: 'Isquios', share: 1, n: 'Curl femoral sentado', alt: 'o curl femoral tumbado', sets: 2, inc: 2.5, reps: '12–15', rest: 90 },
     { id: 'cablepress', muscle: 'Pecho', n: 'Press de pecho en polea alta, de pie', alt: 'poleas por encima del hombro, empuje en diagonal hacia el suelo', sets: 3, inc: 2.5, reps: '10–15', rest: 90, cue: 'Unico angulo bajo de la semana: paso adelante, tronco algo inclinado, y junta las manos abajo y adentro. Peso moderado, aqui te limita el equilibrio y no el pecho' },
     { id: 'cablerow', muscle: 'Espalda', n: 'Remo sentado en polea', alt: 'o remo con apoyo pectoral', sets: 3, inc: 2.5, reps: '10–15', rest: 120 },
@@ -96,7 +99,7 @@ const DEFAULT_DAYS_PAREJA = [
     { id: 'ohext', muscle: 'Tríceps', n: 'Extensión de tríceps sobre la cabeza', alt: 'en polea o con mancuerna', sets: 3, inc: 2.5, reps: '12–15', rest: 75, ss: 1, cue: 'Tríceps solo hoy: los dos ejercicios juntos, y el resto de la semana descansan' },
   ]},
   { name: 'Cuádriceps + Espalda', pair: 'Compartís hack, prensa, jalón, remo y la superserie de brazo. En la prensa cambiad la posición de pies entre series: tú altos y abiertos, él en el centro. Tú añades extensión de cuádriceps mientras él hace el jalón neutro. Bíceps solo hoy: todo el trabajo de brazo va junto al de dorsal, para que descansen los otros dos días.', ex: [
-    { id: 'hacksquat', muscle: 'Cuádriceps', share: 1, n: 'Sentadilla hack', alt: 'o pendular / sentadilla con barra', sets: 4, add: 5, inc: 5, reps: '8–12', rest: 180, cue: 'Pies algo más altos y abiertos para más glúteo. Empieza el día con lo que más te importa' },
+    { id: 'hacksquat', muscle: 'Cuádriceps', share: 1, n: 'Sentadilla hack', alt: 'o pendular / sentadilla con barra', sets: 4, add: 5, inc: 5, minRir: 1, reps: '8–12', rest: 180, cue: 'Pies algo más altos y abiertos para más glúteo. Empieza el día con lo que más te importa' },
     { id: 'legpress', muscle: 'Cuádriceps', share: 1, n: 'Prensa de piernas', alt: 'o zancadas caminando', sets: 3, inc: 5, reps: '10–15', rest: 150, cue: 'Pies altos y abiertos — más glúteo y menos cuádriceps. Él los pone en el centro: cambiad la posición entre series' },
     { id: 'legext', muscle: 'Cuádriceps', n: 'Extensión de cuádriceps', alt: 'o sentadilla búlgara', sets: 3, inc: 2.5, reps: '12–15', rest: 90, cue: 'Cierra el cuádriceps aquí: es el único día que lo entrenas' },
     { id: 'pulldown', muscle: 'Espalda', share: 1, n: 'Jalón al pecho, agarre ancho', alt: 'o dominadas asistidas', sets: 4, add: 7, inc: 2.5, reps: '8–12', rest: 150, cue: 'Pecho arriba, codos hacia los bolsillos' },
@@ -106,8 +109,8 @@ const DEFAULT_DAYS_PAREJA = [
     { id: 'hammer', muscle: 'Bíceps', share: 1, n: 'Curl martillo con cuerda', alt: 'o curl martillo con mancuernas', sets: 3, inc: 2.5, reps: '12–15', rest: 60 },
   ]},
   { name: 'Glúteo + Isquios', pair: 'Compartís peso muerto rumano y curl femoral. El resto del día es tuyo: él sigue con pecho, espalda y brazo mientras tú acabas glúteo, gemelo y abdomen.', ex: [
-    { id: 'hipthrust', muscle: 'Glúteo', n: 'Hip thrust con barra o máquina', alt: 'o hip thrust en multipower', sets: 4, add: 5, inc: 5, reps: '8–12', rest: 150, cue: 'El ejercicio clave de glúteo. Cárgalo y sube el peso. Barbilla al pecho, pausa 1s arriba' },
-    { id: 'rdl', muscle: 'Isquios', share: 1, n: 'Peso muerto rumano en multipower', alt: 'o con barra libre', sets: 4, add: 7, inc: 2.5, reps: '8–12', rest: 150, cue: 'Lleva la cadera atrás, busca el estiramiento del femoral. Sin redondear la espalda' },
+    { id: 'hipthrust', muscle: 'Glúteo', n: 'Hip thrust con barra o máquina', alt: 'o hip thrust en multipower', sets: 4, add: 5, inc: 5, minRir: 1, reps: '8–12', rest: 150, cue: 'El ejercicio clave de glúteo. Cárgalo y sube el peso. Barbilla al pecho, pausa 1s arriba' },
+    { id: 'rdl', muscle: 'Isquios', share: 1, n: 'Peso muerto rumano en multipower', alt: 'o con barra libre', sets: 4, add: 7, inc: 2.5, minRir: 1, reps: '8–12', rest: 150, cue: 'Lleva la cadera atrás, busca el estiramiento del femoral. Sin redondear la espalda' },
     { id: 'legcurl', muscle: 'Isquios', share: 1, n: 'Curl femoral sentado', alt: 'o curl femoral tumbado', sets: 3, inc: 2.5, reps: '10–15', rest: 90 },
     { id: 'kickback', muscle: 'Glúteo', n: 'Patada de glúteo en polea', alt: 'cada pierna', sets: 3, inc: 1, reps: '12–15', rest: 90, cue: 'Si el día se alarga, este es el primero que se cae: repite lo que ya hace el hip thrust' },
     { id: 'abduction', muscle: 'Glúteo', n: 'Abducción de cadera (máquina o polea)', alt: 'inclínate ligeramente hacia delante', sets: 3, inc: 2.5, reps: '15–20', rest: 60 },

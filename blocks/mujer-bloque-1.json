@@ -102,6 +102,7 @@
           "sets": 4,
           "add": 5,
           "inc": 5,
+          "minRir": 1,
           "reps": "8–12",
           "rest": 180,
           "cue": "Pies algo más altos y abiertos para más glúteo. Empieza el día con lo que más te importa"
@@ -203,6 +204,7 @@
           "sets": 4,
           "add": 5,
           "inc": 5,
+          "minRir": 1,
           "reps": "8–12",
           "rest": 150,
           "cue": "El ejercicio clave de glúteo. Cárgalo y sube el peso. Barbilla al pecho, pausa 1s arriba"
@@ -216,6 +218,7 @@
           "sets": 4,
           "add": 7,
           "inc": 2.5,
+          "minRir": 1,
           "reps": "8–12",
           "rest": 150,
           "cue": "Lleva la cadera atrás, busca el estiramiento del femoral. Sin redondear la espalda"

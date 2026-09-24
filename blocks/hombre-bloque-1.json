@@ -100,6 +100,7 @@
           "alt": "o pendular / sentadilla con barra",
           "sets": 3,
           "inc": 5,
+          "minRir": 1,
           "reps": "8–12",
           "rest": 180,
           "cue": "Dosis corta de pierna: 3 series bien hechas, profundidad por debajo de la paralela"
@@ -199,6 +200,7 @@
           "alt": "o hiperextensiones a 45°",
           "sets": 3,
           "inc": 2.5,
+          "minRir": 1,
           "reps": "8–12",
           "rest": 150,
           "cue": "Cadera atrás, busca el estiramiento del femoral. Sin redondear la espalda"
