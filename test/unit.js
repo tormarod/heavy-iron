@@ -11566,6 +11566,34 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
     ok('...but a tick with nothing adopted (the weight was typed) leaves the timer\'s fixed breathing tip alone',
        typedNote.indexOf('Prueba de la frase') === 0, typedNote);
   }
+  {
+    /* D. The day's very last tick used to start a full rest countdown for a
+       workout that is over, hiding Progreso/Plan/Más until Saltar or three
+       minutes past zero. Every exercise on the default day 1 has a rest
+       above 0, so every tick before the last starts one — and the last
+       tick, which finishes the day, must not (plans/080 D). The card is
+       rebuilt on every tick (drawCard), so it is looked up again each
+       time rather than kept from before. */
+    const boot = settled(seeded({ week: 2, day: 0 }));
+    const before = boot.call('state.prefs.sessionsSinceBackup');
+    const nCards = boot.call('dayCards.length');
+    let sawRestBeforeLast = false;
+    for (let i = 0; i < nCards; i++) {
+      const nRows = boot.card(i).rows.length;
+      for (let k = 0; k < nRows; k++) {
+        const isLast = i === nCards - 1 && k === nRows - 1;
+        if (isLast) sawRestBeforeLast = boot.$('timer').classList.contains('up');
+        boot.card(i).set(k).tick.onclick();
+      }
+    }
+    ok('just before the day\'s last tick, a rest from the tick before it is still running',
+       sawRestBeforeLast, String(sawRestBeforeLast));
+    ok('the day\'s last tick starts no rest: the timer does not take the bottom bar\'s place for a workout that is over',
+       !boot.$('timer').classList.contains('up'), boot.$('timer').className);
+    ok('...and still counts as the session it is: the backup counter went up by exactly one',
+       boot.call('state.prefs.sessionsSinceBackup') === before + 1,
+       'before ' + before + ', after ' + boot.call('state.prefs.sessionsSinceBackup'));
+  }
 
   /* load() and the two imports that replace data wholesale, "Cargar copia"
      and loading a profile file, ran migrate() with nothing to catch a throw.

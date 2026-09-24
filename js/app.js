@@ -5193,13 +5193,19 @@ function buildExCard(ctx, ex, i) {
          C). Built once so both the timer and the status line say the same
          thing. */
       const adoptedNote = adopted ? 'Serie ' + (si + 1) + ' anotada con ' + adopted + ' ' + units() + ' (' + hintFrom + ') — cámbialo si no fue eso' : '';
-      if (r.done && ex.rest) startRest(ex.rest, ex.n + ' · serie ' + (si + 1), hints.next[si], adoptedNote);
-      if (r.done && !ex.rest) stopRest();
+      /* dayCards holds every card's rows by live reference, so this reads
+         true only once every row across every exercise is done — including
+         the cards this redraw is not going to touch. Read once, since the
+         rest timer below and the backup counter after it both need it: a
+         countdown for a workout that is already over would take the bottom
+         bar's place — hiding Progreso, Plan and Más — until Saltar or three
+         minutes past zero, for a rest nobody is taking (plans/080 D). */
+      const dayDone = r.done && dayCards.every(c => c.rows.every(rr => rr.done));
+      if (r.done && ex.rest && !dayDone) startRest(ex.rest, ex.n + ' · serie ' + (si + 1), hints.next[si], adoptedNote);
+      if (r.done && (!ex.rest || dayDone)) stopRest();
       /* The tick that finishes the whole day counts as a session — see
-         maybeNagBackup. dayCards holds every card's rows by live reference,
-         so this reads true only once every row across every exercise is
-         done — including the cards this redraw is not going to touch. */
-      if (r.done && dayCards.every(c => c.rows.every(rr => rr.done))) {
+         maybeNagBackup. */
+      if (dayDone) {
         state.prefs.sessionsSinceBackup++;
         maybeNagBackup();
       }

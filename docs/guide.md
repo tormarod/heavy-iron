@@ -529,7 +529,8 @@ charge, the line simply isn't there.
   while it runs it holds a screen wake lock (where the browser has one) so
   the phone doesn't sleep between sets. Moving to another day, week, block
   or profile ends it, and so does an undo that puts a different session on
-  screen.
+  screen. The day's last set starts no rest: a countdown for a workout that
+  is already over would only hide the bar underneath until you skip it.
 - **The alarm can follow the phone into your pocket.** Off by default,
   switched on under **Ajustes → "Aviso con la pantalla apagada"**. A page
   the phone has stopped running can't beep, and locking the screen or
