@@ -542,8 +542,6 @@ With `python3 -m http.server 8765` running, run each of these with
 
 ## Maintenance notes
 
-(Executor: deviations, the mutation results, anything the reviewer should look at.)
-
 - The first open after this ships moves nothing: there is no `lastDay` yet.
   From the next day on, it lands.
 - A reviewer should check that no path other than `writeState` writes
@@ -552,3 +550,91 @@ With `python3 -m http.server 8765` running, run each of these with
 - Not done, recorded in the eleventh pass: keeping the view per block when
   another block is picked (`js/block-editor.js` resets it to week 1, day
   1), and offering "+ Nuevo bloque" at a finished block.
+
+Executor, 2026-09-24 (`claude/079-land-on-due`, rebased onto `ccf51be`,
+after plan 078 landed):
+
+- **STOP checks.** After Step 1 and after Step 3 the only failing unit
+  assertion was the pinned-claims list, which named exactly
+  `js/app.js:landOnResume`, then (Step 4) `js/app.js:drawDueNote`. No
+  fixture landed and no identity test moved. Unit: 1541 before, 1568 with
+  the new section (27 assertions), 1578 after the rebase (078 added 10).
+- **Mutation checks**, each reverted, `js/app.js` identical to its commit
+  afterwards:
+  - (a) `landOnDue` returning `false` at its top: 10 fail. Those are
+    cases 1 (3), 2, 5's week wrap, 6, 7 (2) and 8, and the first-tick
+    case. Each fails on its own evidence: the "Volver" presses are
+    conditional, so a missing button does not fail its neighbours.
+  - (b) The `lastDay` gate skipped for `'open'`: 20 fail. Case 3's
+    "stays" is one of 8 in this section. The other 12 are existing booted
+    assertions: 4 in plans/052's section, 5 in plans/060's, 1 in the
+    plans/071 case under plans/067 B's heading, and 2 in plans/076's.
+  - (c) `landOnResume` without the `askResolve` check (see below): only
+    "…nor from under a question" fails.
+  - (d) The profile click landing without the `switching` check (see
+    below): only "…picking the person already on screen moves nothing"
+    fails.
+- **Deviations**, each small and each pinned by a test or a comment:
+  - `landOnResume` also waits while a question is open (`askResolve`),
+    as well as for an empty sheet stack. `#askSheet` is never on
+    `sheetStack` (see `askReturn`). "Borrar este día" is a row of the Más
+    sheet, which closes before the question opens, so the question is up
+    with the stack empty. `clearDay` reads `profile.week` only after the
+    answer, so a landing underneath would clear the captured day in
+    another week than the dialog named. Decision 4 says "no sheet is
+    open", and this covers the one sheet the stack does not hold.
+  - The profile click lands only when the key changes. Tapping the person
+    already on screen switches nothing. Without the check, a view that
+    "Volver" had just put back on the session they finished was pulled
+    forward again.
+  - There are three helpers beyond the plan's functions:
+    - `lastTrained(profile, block)`: the latest dated session on a live
+      day, which `dueSlot` and the switch condition both need.
+    - `setDot(btn, on)`: both dots, in `renderNav` and `refreshWeekDot`.
+    - `dayTabLabel(i, d, logged)`: one accessible name, used in both
+      places.
+  - `setDot` finds the dot among the button's children instead of with
+    `querySelector('.dot')`, which is what `refreshWeekDot` used before.
+    The harness document answers every selector with an element, so that
+    lookup always "found" a dot, and case 9 could not see the tick-time
+    refresh. The behaviour in a real DOM is the same: the dot is always a
+    direct child.
+  - `landOnDue` wraps its work in `try`/`catch` and returns `false` on a
+    throw. In `load()` it runs before `render()`'s guard, so a throw would
+    stop `load()` with the skeleton still up. The draw that follows reads
+    the same sessions inside its own guard, where the recovery screen is.
+  - A landing's `from` is the raw stored view. When it is out of range
+    (damaged storage), `drawDueNote` names the first day, which is what
+    `drawApp` draws.
+  - `CONTEXT.md` says "slot" where Step 7's wording said "session",
+    because the glossary defines a session as one lift in one slot.
+  - The test section sits after plans/077's closing brace, above the
+    adoptStored section's leading comment. Inserting it directly before
+    that section's `console.log`, the brief's literal anchor, would have
+    separated the comment from its heading.
+- **For the reviewer:**
+  - In Chromium at 375 px, "Volver" measures 46×21. That is under the
+    24×24 floor that "accesibilidad: tamaños" holds visible controls to.
+    It is `.ord-reset`, the class decision 5 prescribes, and the order
+    note's own "Volver al orden del plan" has the same size. The section
+    passes because neither note is visible during it. Adding
+    `min-height: 24px` to `.ord-reset` would settle both. I left it
+    alone, as it is outside this plan's CSS scope.
+- **Time zones.** The whole unit suite passes under Asia/Dhaka (UTC+6,
+  where `BOOT_TIME` is local midnight), Asia/Kolkata and Asia/Kathmandu
+  (30 and 15 minutes before one), Pacific/Kiritimati, Etc/GMT+12 and
+  America/Los_Angeles. Set `TZ` from PowerShell: Git Bash drops a value
+  that contains a slash, so an IANA name silently runs in local time.
+- **Browser.** An uncommitted Playwright probe against the real shell, in
+  light and dark, with a stored `lastDay` of yesterday:
+  - the app lands on day 2, with the line and "Volver";
+  - the header stays 133 px and the tabs 60 px, with the dot 6 px inside
+    the tab's top-right corner;
+  - "Volver" goes back;
+  - a real `visibilitychange` lands again;
+  - the first tick hides the line and dots the tab;
+  - there were no CSP violations and no page errors.
+
+  The smoke sections "layout", "tamaños", "main session" and CSP passed
+  (272, 0 failed). None of them lands, since their stored states are from
+  today.
