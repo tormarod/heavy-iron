@@ -2024,7 +2024,7 @@ function renderSetup() {
     b.onclick = () => { setupDraft.bgAlarm = on; renderSetup(); };
   });
   $('setupBgHint').textContent = setupDraft.bgAlarm
-    ? 'El aviso suena aunque bloquees el móvil o te vayas a otra app, y el descanso aparece en la pantalla de bloqueo con −30 / +30 / saltar. Para conseguirlo la app reproduce un sonido inaudible mientras dura el descanso: en algunos móviles eso pausa la música que estés escuchando. Si el móvil lo permite, además te avisa con una notificación.'
+    ? 'El aviso suena aunque bloquees el móvil o te vayas a otra app, y el descanso aparece en la pantalla de bloqueo con −30 / +30 / saltar. Para conseguirlo la app reproduce un sonido inaudible mientras dura el descanso: en algunos móviles eso pausa la música que estés escuchando. Si el móvil lo permite, además te avisa con una notificación. Al activarlo se enciende también el aviso sonoro del temporizador; puedes apagarlo ahí mismo.'
     : 'Con el móvil bloqueado o en otra app, el aviso llega cuando vuelves a mirar la pantalla. Actívalo si entrenas con el móvil en el bolsillo.';
   $('setupBarWeightU').textContent = setupDraft.units;
   $('setupIncU').textContent = setupDraft.units;
@@ -2098,6 +2098,11 @@ $('setupSave').onclick = () => {
   state.prefs.units = setupDraft.units;
   const bgAlarmTurnedOn = setupDraft.bgAlarm && !state.prefs.bgAlarm;
   state.prefs.bgAlarm = setupDraft.bgAlarm;
+  /* The alarm this setting keeps alive *is* the sound: with Aviso sonoro
+     off, turning the pocket alarm on pays the keep-alive's cost (a silent
+     loop that can pause your music) for nothing but a bare OS notification
+     at zero. Turning the alarm off leaves the sound as the user left it. */
+  if (bgAlarmTurnedOn) state.prefs.sound = true;
   if (!state.prefs.bgAlarm) keepAliveStop();
   /* The calculator fields are hidden on first run (there is nothing to edit
      yet — migrate() seeded them from the 'kg' fallback before the user ever

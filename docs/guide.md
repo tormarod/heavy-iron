@@ -541,6 +541,10 @@ charge, the line simply isn't there.
   resting for, when it ends, and the same **−30** / **+30** / skip — and
   the end of the rest also posts a notification, but only when the app is
   out of sight. Coming back to the app takes the notification down.
+  Switching the pocket alarm on also turns on **Aviso sonoro** below, since
+  a silent keep-alive with nothing to say at zero was the setting paying
+  its cost for nothing — turn the sound back off on the timer if you don't
+  want it.
 - **RIR, per set.** A third box in the set row, next to the reps: one
   digit, `0` to `5`, for how that set actually felt. Optional and empty by
   default, same as `share`/`ss`: skip it and nothing changes. It is the

@@ -11488,6 +11488,34 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
      strandedReviewProbe.energyAltaWithStranded.kg === strandedReviewProbe.energyAlta.kg,
      JSON.stringify(strandedReviewProbe));
 
+  /* Six small gaps between what the app says and what it does on the
+     everyday path, found by the eleventh pass's direction lenses and
+     bundled for one review (plans/080). B's cases extend the plans/055
+     plates section in place, and F's sit next to the existing
+     diagVerdict/diagProbe cases, both elsewhere in this file — only A, C,
+     D and E are here. */
+  console.log('\n== six promises the session breaks, kept (plans/080) ==');
+  {
+    /* A. The pocket alarm's only audible half is Aviso sonoro, off by
+       default and reachable only from the rest timer, mid-rest — so
+       switching the alarm on used to buy a silent keep-alive loop and
+       nothing at zero but a bare OS notification. Turning the alarm on
+       now turns the sound on with it; turning the alarm off leaves the
+       sound as the user set it (plans/080 A). */
+    const boot = settled(JSON.parse(SEED));
+    boot.call('openSetup(false); setupDraft.bgAlarm = true;');
+    boot.$('setupSave').onclick();
+    ok('turning the pocket alarm on in Ajustes turns Aviso sonoro on with it',
+       boot.call('state.prefs.sound') === true && boot.call('state.prefs.bgAlarm') === true,
+       'sound ' + boot.call('state.prefs.sound') + ', bgAlarm ' + boot.call('state.prefs.bgAlarm'));
+    boot.$('tsound').onclick();
+    boot.call('openSetup(false);');
+    boot.$('setupSave').onclick();
+    ok('...but saving Ajustes again without touching the alarm leaves a sound turned back off alone',
+       boot.call('state.prefs.sound') === false && boot.call('state.prefs.bgAlarm') === true,
+       'sound ' + boot.call('state.prefs.sound') + ', bgAlarm ' + boot.call('state.prefs.bgAlarm'));
+  }
+
   /* load() and the two imports that replace data wholesale, "Cargar copia"
      and loading a profile file, ran migrate() with nothing to catch a throw.
      In load() the throw stopped the boot before anything drew, so the boot
