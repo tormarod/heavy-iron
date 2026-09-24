@@ -886,6 +886,11 @@ function migrate() {
      keepAliveStart() and askForPersistenceOnce(). */
   state.prefs.bgAlarm = !!state.prefs.bgAlarm;
   state.prefs.persistAsked = !!state.prefs.persistAsked;
+  /* The local day of the last write (writeState stamps it), compared as a
+     string against today's by the landing on the due session. Anything
+     that is not a YYYY-MM-DD string could compare either way, so it goes,
+     and an absent day is read as "don't move". */
+  if (typeof state.prefs.lastDay !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(state.prefs.lastDay)) delete state.prefs.lastDay;
   /* A label, never a conversion: you write down the number on the machine,
      and this is what the app calls it. */
   if (['kg', 'lb'].indexOf(state.prefs.units) < 0) state.prefs.units = 'kg';
@@ -1315,6 +1320,14 @@ function writeState(force) {
   }
   try {
     pruneLog();
+    /* The day of the last write, which is what the landing on the due
+       session reads (landOnDue): it moves the view only on an open or a
+       resume when nothing has been written yet today. Stamped here rather
+       than by the draw because a draw changes nothing, while any write
+       does: a tick, a note or a tap on another day, or load()'s own
+       write-back. After one of those the view on screen is the one the
+       person chose today, and pulling them forward again would undo it. */
+    state.prefs.lastDay = localDay(Date.now());
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     mark('Guardado ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
     return true;
