@@ -787,6 +787,10 @@ function load() {
   }
   ready = true;
   applyTheme();
+  /* Before the first draw, so that the first thing drawn on a new day is
+     the session that's due. The write-back below keeps the move and
+     records today, which disarms it until tomorrow (landOnDue). */
+  landOnDue('open');
   render();
   /* Write straight back: on a first run that persists the starting plan, and
      on a later one it persists whatever migrate() had to repair, so the same
@@ -1392,11 +1396,13 @@ function flushPending() {
 window.addEventListener('pagehide', flushSave);
 window.addEventListener('beforeunload', flushSave);
 /* The phone going into a pocket is the most likely moment for the tab to be
-   discarded, and it is exactly when the last set was just typed. The other
-   half of this event — re-reading the clock the rest timer was counting
-   against — belongs to js/rest-timer.js and has its own listener there. */
+   discarded, and it is exactly when the last set was just typed. Coming
+   back out of it is the first use of a new day as often as a fresh open
+   is, so that half lands on the session that's due (landOnResume). The
+   rest timer's own half, re-reading the clock it was counting against,
+   belongs to js/rest-timer.js and has its own listener there. */
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') flushSave();
+  if (document.visibilityState === 'hidden') flushSave(); else landOnResume();
 });
 
 /* Two tabs (or the installed app and a browser tab) share one localStorage.
@@ -3715,8 +3721,17 @@ function renderProfiles() {
     b.textContent = p.label;
     b.setAttribute('aria-pressed', key === state.activeProfile ? 'true' : 'false');
     /* Picking somebody puts the sheet away: the answer to "who is training"
-       is one tap, not a tap and a dismissal. */
-    b.onclick = () => { closeSheet('profileSheet'); state.activeProfile = key; commit('view'); };
+       is one tap, not a tap and a dismissal. Somebody else, that is: their
+       view may have been left on the session they finished, and then it
+       moves on to the one that's due (landOnDue). Picking the person
+       already on screen switches nothing, so it moves nothing either. */
+    b.onclick = () => {
+      closeSheet('profileSheet');
+      const switching = key !== state.activeProfile;
+      state.activeProfile = key;
+      if (switching) landOnDue('switch');
+      commit('view');
+    };
     host.appendChild(b);
   });
   /* The header carries the answer, not the question: a dot in the profile's
@@ -5485,6 +5500,120 @@ function nextSessionLine(profile, block, days) {
   const first = dayList(profile.blocks[nextId])[0];
   return 'Fin del bloque. Siguiente: ' + (first ? first.name + ', ' : '') +
     'semana 1 de "' + blockPickerLabel(profile, nextId) + '".';
+}
+
+/* ---------- the session that's due ----------
+   nextSessionLine, above, has always known where the next session is, but
+   it says so only once every set is ticked, and nothing acted on it: the
+   app reopened on whatever was left on screen, which is usually the
+   session finished last time. So every training day began with a tap on a
+   day tab, or `›` and then a tab after a week's last day, and one missed
+   `›` meant typing into last week's finished session, whose boxes stay
+   editable (plans/079). The "slot after" rule is written out again in
+   dueSlot rather than shared with that line, whose strings the unit suite
+   pins. */
+
+/* The slot of the latest session trained in this block: the session with
+   the latest date (sessionsOf's `ts`, the median time of its ticked sets)
+   among those on a live day that have a date at all. A session with no
+   date cannot say when it happened, and one on a retired day has no tab
+   to land on. `day` is an index into dayList(block), as profile.day is.
+   A tie goes to the later slot, since sessionsOf answers in plan order. */
+function lastTrained(profile, block) {
+  const days = dayList(block);
+  let last = null;
+  sessionsOf(profile, { weeks: 'plan', blocks: [block.id] }).forEach(s => {
+    const at = days.findIndex(d => d.id === s.day);
+    if (at < 0 || !(s.ts > 0)) return;
+    if (!last || s.ts >= last.ts) last = { week: s.week, day: at, ts: s.ts };
+  });
+  return last;
+}
+
+/* Where the app should be on the first open of a new day: the slot after
+   the latest session trained, or null when there is nowhere to go. Null
+   before anything is trained; when that session's day is today or later,
+   because then the session on screen is today's own and not a finished
+   one; at the block's end, where the footer already points at the next
+   block; and when that slot is already on screen. Whether the last session
+   had every set ticked does not matter: a set skipped on purpose, like the
+   default plan's "first one to go" kickback, must not hold the view on
+   it. */
+function dueSlot(profile, block) {
+  const last = lastTrained(profile, block);
+  if (!last || localDay(last.ts) >= localDay(Date.now())) return null;
+  const days = dayList(block);
+  const to = last.day < days.length - 1 ? { week: last.week, day: last.day + 1 }
+    : last.week < blockWeeks(block) ? { week: last.week + 1, day: 0 }
+    : null;
+  if (!to || (to.week === profile.week && to.day === profile.day)) return null;
+  return to;
+}
+
+/* The move drawDueNote reports and its "Volver" takes back:
+   { profile, block, from: { week, day }, to: { week, day } }, or null.
+   In memory only, because it is about the screen in front of you: the
+   draw forgets it as soon as that screen shows any other slot. */
+let landed = null;
+
+/* Moves the view to the due session, and says whether it did. It never
+   saves: each caller persists the move its own way (load()'s write-back,
+   landOnResume's commit), and that write records today as lastDay, which
+   disarms the next open and resume for the rest of the day.
+
+   'open' and 'resume' move only on the first use of a new day, meaning
+   the last write (state.prefs.lastDay) was on an earlier day. Any write
+   since then, a tick or a tap on another day, was a choice made today,
+   and pulling the view forward again would undo it. An absent lastDay
+   means "don't move", so the first open after this shipped only records
+   the day. Where the view was left does not matter: a view left on an old
+   week is exactly what should give way.
+
+   'switch' has no such day to go by, since lastDay is the phone's and not
+   the person's. The other person moves only when their view is on the
+   session they trained last, i.e. it was left on the one they finished;
+   anywhere else was a choice too.
+
+   A throw in here must not stop the app from drawing. In load() this runs
+   outside render()'s guard, and the draw straight after it reads the same
+   sessions inside that guard, where the recovery screen is. */
+function landOnDue(reason) {
+  try {
+    const profile = getProfile(), block = getBlock();
+    if (reason === 'switch') {
+      const last = lastTrained(profile, block);
+      if (!last || last.week !== profile.week || last.day !== profile.day) return false;
+    } else {
+      const lastDay = state.prefs.lastDay;
+      if (typeof lastDay !== 'string' || lastDay >= localDay(Date.now())) return false;
+    }
+    const to = dueSlot(profile, block);
+    if (!to) return false;
+    landed = { profile: state.activeProfile, block: block.id,
+               from: { week: profile.week, day: profile.day }, to: to };
+    profile.week = to.week;
+    profile.day = to.day;
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/* The landing on the way back from the background. An installed app that
+   was only backgrounded never runs load() again ("it is the same page it
+   was on Tuesday", registerServiceWorker), so without this a new day
+   landed only when the phone had thrown the page away overnight.
+
+   It leaves alone a screen that is busy with something else: no draw yet
+   (ready), the recovery screen (frozen), the two-tab question (held), a
+   "Recargar" on its way out (discarding), or a sheet or a question on
+   screen. A move redraws the day under whatever is open, and a question
+   answered after it would be answered about another session: "Borrar
+   este día" reads the week when it is answered. The question is not on
+   the sheet stack (see askReturn), so it is asked after separately. */
+function landOnResume() {
+  if (!ready || frozen || held || discarding || sheetStack.length || askResolve) return;
+  if (landOnDue('resume')) commit('view');
 }
 
 /* The progress bar and the line under the session are sums over the cards,
