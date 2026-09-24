@@ -5494,9 +5494,14 @@ function drawSessionFoot(profile, block, days) {
   if (tonnage > 0) extra.push('Volumen: ' + fmtKg(tonnage) + ' movidos');
   if (prs) extra.push(prs === 1 ? '1 récord personal' : prs + ' récords personales');
   if (lastTs) extra.push('último registro ' + new Date(lastTs).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }));
+  /* Since the objetivo (v3) every set has its own answer, shown under its
+     own card — a footer repeating the old all-sets rule ("llega al tope
+     del rango en todas las series...") contradicted it on every unfinished
+     session, telling the lifter a blanket rule the card underneath had
+     already made obsolete (plans/080 E). */
   const head = doneN === total
     ? 'Sesión completa — ' + total + ' series registradas. ' + nextSessionLine(profile, block, days)
-    : doneN + ' de ' + total + ' series hechas. Llega al tope del rango en todas las series y sube el peso el próximo día.';
+    : doneN + ' de ' + total + ' series hechas.';
   $('note').textContent = head + (extra.length ? ' · ' + extra.join(' · ') + '.' : '');
 }
 

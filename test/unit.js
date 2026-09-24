@@ -11594,6 +11594,17 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
        boot.call('state.prefs.sessionsSinceBackup') === before + 1,
        'before ' + before + ', after ' + boot.call('state.prefs.sessionsSinceBackup'));
   }
+  {
+    /* E. Since the objetivo (v3) every set has its own answer, shown under
+       its own card — the footer repeating the first commit's all-sets rule
+       ("Llega al tope del rango en todas las series...") contradicted it on
+       every unfinished session (plans/080 E). */
+    const boot = settled(seeded({ week: 2, day: 0 }));
+    boot.card(0).set(0).tick.onclick();
+    const note = boot.$('note').textContent;
+    ok('the footer counts sets done and stops there — no more restating the old all-sets rule',
+       /^1 de \d+ series hechas\./.test(note) && note.indexOf('Llega al tope') === -1, note);
+  }
 
   /* load() and the two imports that replace data wholesale, "Cargar copia"
      and loading a profile file, ran migrate() with nothing to catch a throw.
