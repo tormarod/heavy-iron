@@ -280,13 +280,21 @@ body {
    (index.html:12), not data-theme — every other button class in this file
    states its own colour, and this was the one that didn't. */
 .day {
-  height: 60px; overflow: hidden;
+  height: 60px; overflow: hidden; position: relative;
   border: 1px solid var(--edge); background: transparent; cursor: pointer;
   padding: 7px 6px; border-radius: 3px; text-align: left; transition: all .12s;
   color: var(--ink);
 }
 .day:hover { border-color: var(--ink); }
 .day.on { background: var(--signal); border-color: var(--signal); color: var(--on-signal); }
+/* The week strip's dot (.wk .dot), one level down: something is logged on
+   this day in the week on screen. Placed in the corner, out of the flow, so
+   the tab's fixed height is not touched. */
+.day .dot {
+  position: absolute; top: 6px; right: 6px; width: 6px; height: 6px;
+  border-radius: 50%; background: var(--signal);
+}
+.day.on .dot { background: var(--on-signal); }
 .day-n {
   font-family: var(--font-display); font-size: 11px; font-weight: 600;
   letter-spacing: .08em; text-transform: uppercase; color: var(--soft); display: block;
@@ -379,10 +387,11 @@ body {
   padding: 7px 10px; margin: 0 0 10px;
 }
 .ord-note[hidden] { display: none; }
+/* min-height: the 24x24 floor test/smoke.js holds controls to; the text alone made it 21px. */
 .ord-reset {
   background: transparent; border: 1px solid var(--edge); color: var(--soft);
   font-size: 11px; font-family: var(--font-sans); font-weight: 600;
-  padding: 3px 7px; border-radius: 3px; cursor: pointer;
+  padding: 3px 7px; border-radius: 3px; cursor: pointer; min-height: 24px;
 }
 .ord-reset:hover { border-color: var(--signal); color: var(--signal); }
 /* The whole name block is the disclosure's target, so the tap area is the

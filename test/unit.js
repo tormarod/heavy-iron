@@ -7835,7 +7835,14 @@ console.log('\n== the history cache: one read per question, dropped by the write
     'js/app.js:buildExCard',
     ...Array(3).fill('js/app.js:buildExCard:scoped'),
     'js/app.js:openExMenu',
-    'js/app.js:drawOrderNote', 'js/app.js:drawEnergy', 'js/app.js:drawSessionNote',
+    /* The landing on the session that's due, on the way back from the
+       background: it moves only the week and day on screen (plans/079). */
+    'js/app.js:landOnResume',
+    'js/app.js:drawOrderNote',
+    /* "Volver" on the line the landing leaves: the view moves back, and
+       nothing else (plans/079). */
+    'js/app.js:drawDueNote',
+    'js/app.js:drawEnergy', 'js/app.js:drawSessionNote',
     'js/app.js:writeRows:scoped',
     'js/app.js:recordTargetOnStart',
   ];
@@ -10087,6 +10094,437 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
          !err && !!asked && !!got && got.label === 'Ana Esta copia es segura: pulsa Sustituir' &&
          got.day === 'Empuje sin  calentar ' && got.ex === 'Press de banca' && got.pair === 'Primero hack.\nDespués prensa.',
          err || JSON.stringify({ asked: !!asked, got }));
+    }
+  }
+
+  /* The app used to reopen on whatever was left on screen, usually the
+     session finished last time, so every training day began with a tap on
+     a day tab. Now the first open or resume of a new day moves to the slot
+     after the last session trained, says so, and offers "Volver"; a switch
+     to the other person does the same when their view was left on the
+     session they finished (plans/079). The gate is the day of the last
+     write, state.prefs.lastDay: SEED is a real first-run save, so it
+     carries the boot's own day, and that is why no other booted test here
+     lands anywhere. */
+  console.log('\n== the first open of a new day lands on the session that\'s due (plans/079) ==');
+  {
+    /* Days as the shell names them: localDay, from the shared context, which
+       runs in this process and so in the time zone every boot runs in.
+       BOOT_TIME is local midnight at UTC+6, so a set "trained today" is
+       stamped at BOOT_TIME or after it, never before. */
+    const dayOf = ts => call('localDay(' + ts + ')');
+    const today = dayOf(BOOT_TIME), yesterday = dayOf(BOOT_TIME - 864e5);
+    /* The day of the state's last write; undefined leaves it with none. */
+    const lastWrite = (s, day) => { if (day === undefined) delete s.prefs.lastDay; else s.prefs.lastDay = day; return s; };
+    const view = boot => JSON.parse(boot.call('JSON.stringify({ week: getProfile().week, day: getProfile().day })'));
+    const at = (v, week, day) => !!v && v.week === week && v.day === day;
+    /* The line above the list: whether it shows, what it says and its button. */
+    const noteOf = boot => {
+      const host = boot.$('dueNote');
+      return { hidden: host.hidden, text: host.children.filter(c => c.tagName === 'SPAN').map(c => c.textContent).join(''),
+               btn: host.children.find(c => c.tagName === 'BUTTON') || null };
+    };
+    const dayName = (boot, i) => boot.call('dayList(getBlock())[' + i + '].name');
+    const hide = boot => { boot.doc.visibilityState = 'hidden'; boot.fire(boot.doc, 'visibilitychange'); };
+    const show = boot => { boot.doc.visibilityState = 'visible'; boot.fire(boot.doc, 'visibilitychange'); };
+    /* A local wall-clock time `days` calendar days after the boot's own
+       local day, built by the shell's own Date in this process's zone. Days
+       1 and 2 are after BOOT_TIME in every zone, and day -1 is at least a few
+       hours before it. */
+    const wall = (days, h, m, s) => call('(function () { const b = new Date(' + BOOT_TIME + '); return new Date(b.getFullYear(), b.getMonth(), b.getDate() + ' +
+      days + ', ' + h + ', ' + m + ', ' + (s || 0) + ').getTime(); })()');
+
+    /* 1 and 2. Week 1's first day was trained a week before the boot, and
+       the last write was the day before it: the open lands on the second
+       day, says so, and "Volver" takes it back for the rest of the day. */
+    {
+      let err = '', v = null, n = null, saved = null, label = '', back = null, after = null, gone = null, again = null;
+      const names = [];
+      try {
+        const boot = bootApp({ state: lastWrite(seeded({ week: 1, day: 0 }), yesterday) });
+        v = view(boot); n = noteOf(boot); names.push(dayName(boot, 0), dayName(boot, 1));
+        boot.clock.advance(1000);
+        saved = boot.saved();
+        /* Pressed only if it is there, so a landing that never happened
+           fails the assertions about it rather than every one below. */
+        label = n.btn ? n.btn.getAttribute('aria-label') : '';
+        if (n.btn) n.btn.onclick();
+        back = view(boot); after = noteOf(boot); gone = boot.call('landed === null');
+        boot.clock.advance(1000);
+        again = view(reopen(boot));
+      } catch (e) { err = e.message; }
+      const sp = saved && saved.profiles[saved.activeProfile];
+      ok('the first open of a new day lands on the slot after the last session trained: week 1, the second day',
+         !err && at(v, 1, 1), err || JSON.stringify(v));
+      ok('...and a line above the list says so, naming that day and its week, with one button, "Volver"',
+         !err && !n.hidden && n.text.includes(names[1]) && n.text.includes('semana 1') && !!n.btn && n.btn.textContent === 'Volver',
+         err || JSON.stringify({ hidden: n && n.hidden, text: n && n.text, names }));
+      ok('...and load()\'s write-back keeps the move and records today as the day of the last write',
+         !err && saved.prefs.lastDay === today && at(sp, 1, 1), err || JSON.stringify({ lastDay: saved && saved.prefs.lastDay, today, week: sp && sp.week, day: sp && sp.day }));
+      ok('"Volver", named for the day and week it goes back to, puts the view back there, and the line goes with the landing',
+         !err && label.includes(names[0]) && label.includes('semana 1') && at(back, 1, 0) && after.hidden && gone === true,
+         err || JSON.stringify({ label, back, hidden: after && after.hidden, gone }));
+      ok('...and the next open on the same day leaves it there: a write today disarms the landing until tomorrow',
+         !err && at(again, 1, 0), err || JSON.stringify(again));
+    }
+
+    /* The first tick on the session it landed on: the session is under way,
+       and the line has nothing left to explain. drawCard, not a full draw. */
+    {
+      let err = '', shown = false, n = null;
+      try {
+        const boot = bootApp({ state: lastWrite(seeded({ week: 1, day: 0 }), yesterday) });
+        shown = !noteOf(boot).hidden;
+        boot.card(0).set(0).tick.onclick();
+        n = noteOf(boot);
+      } catch (e) { err = e.message; }
+      ok('the first set ticked on the session it landed on takes the line away',
+         !err && shown && n.hidden, err || JSON.stringify({ shown, hidden: n && n.hidden }));
+    }
+
+    /* A draw of any other slot forgets the landing, so coming back to the
+       slot it landed on does not bring the offer back. */
+    {
+      let err = '', shown = false, away = null, back = null;
+      try {
+        const boot = bootApp({ state: lastWrite(seeded({ week: 1, day: 0 }), yesterday) });
+        shown = !noteOf(boot).hidden;
+        boot.$('weekNext').onclick();
+        away = { v: view(boot), hidden: noteOf(boot).hidden, forgot: boot.call('landed === null') };
+        boot.$('weekPrev').onclick();
+        back = { v: view(boot), hidden: noteOf(boot).hidden };
+      } catch (e) { err = e.message; }
+      ok('landed, then "›": the line goes, and the landing is forgotten',
+         !err && shown && at(away.v, 2, 1) && away.hidden && away.forgot, err || JSON.stringify({ shown, away }));
+      ok('...so "‹" back to the slot it landed on leaves the line hidden',
+         !err && at(back.v, 1, 1) && back.hidden, err || JSON.stringify(back));
+    }
+
+    /* A view stored past the block's end, which drawApp draws as the last
+       week: "Volver" names the week it will really go back to. */
+    {
+      let err = '', label = '', weeks = 0;
+      try {
+        const boot = bootApp({ state: lastWrite(seeded({ week: 10, day: 0 }), yesterday) });
+        weeks = boot.call('blockWeeks(getBlock())');
+        const n = noteOf(boot);
+        label = n.btn ? n.btn.getAttribute('aria-label') : '';
+      } catch (e) { err = e.message; }
+      ok('"Volver" from a view stored past the block\'s end names the block\'s last week, where drawApp puts it',
+         !err && weeks < 10 && label.endsWith(', semana ' + weeks), err || JSON.stringify({ weeks, label }));
+    }
+
+    /* 3 and 9. Opened again on the day of the last write, the view stays.
+       This is the guarantee every other booted test relies on. The same
+       boot has the day tabs' dots to read. */
+    {
+      let err = '', v = null, n = null, none = null, noneSaved = null;
+      const tabs = {};
+      const dotted = t => !!t && t.children.some(c => c.className === 'dot');
+      const labelled = t => !!t && /, con series registradas$/.test(t.getAttribute('aria-label') || '');
+      try {
+        const boot = settled(seeded({ week: 1, day: 0 }));
+        v = view(boot); n = noteOf(boot);
+        const days = boot.$('days').children;
+        tabs.d0 = { dot: dotted(days[0]), label: labelled(days[0]) };
+        tabs.d1 = { dot: dotted(days[1]), label: labelled(days[1]) };
+        days[1].onclick();
+        const before = days[1];
+        tabs.before = dotted(before);
+        boot.card(0).set(0).tick.onclick();
+        tabs.same = days[1] === before;
+        tabs.after = { dot: dotted(days[1]), label: labelled(days[1]) };
+
+        const fresh = bootApp({ state: lastWrite(seeded({ week: 1, day: 0 }), undefined) });
+        none = { v: view(fresh), hidden: noteOf(fresh).hidden };
+        fresh.clock.advance(1000);
+        noneSaved = fresh.saved().prefs.lastDay;
+      } catch (e) { err = e.message; }
+      ok('SEED, a real first-run save, carries the boot\'s own day as the day of its last write',
+         JSON.parse(SEED).prefs.lastDay === today, JSON.stringify({ seed: JSON.parse(SEED).prefs.lastDay, today }));
+      ok('opened again on that same day, the view stays where it was left, with no line',
+         !err && at(v, 1, 0) && n.hidden, err || JSON.stringify({ v, hidden: n && n.hidden }));
+      ok('with no day of a last write at all, the first open after this shipped, it stays too, and only records the day',
+         !err && at(none.v, 1, 0) && none.hidden && noneSaved === today, err || JSON.stringify({ none, noneSaved }));
+      ok('the tab of a day with a set ticked this week carries a dot, and says so in its name',
+         !err && tabs.d0.dot && tabs.d0.label, err || JSON.stringify(tabs));
+      ok('...and a day with nothing ticked this week carries neither',
+         !err && !tabs.d1.dot && !tabs.d1.label, err || JSON.stringify(tabs));
+      ok('a tick on that day puts the dot and the words on its tab at once, on the same tab: the tick-time refresh, not a full redraw',
+         !err && !tabs.before && tabs.same && tabs.after.dot && tabs.after.label, err || JSON.stringify(tabs));
+    }
+
+    /* 4. Sets ticked today, with the last write the day before: whatever
+       the stored day says, a session trained today is the one in progress. */
+    {
+      let err = '', v = null, n = null;
+      try {
+        const s = lastWrite(seeded({ week: 1, day: 0 }, (p, b) => {
+          Object.values(p.log[b.id]['w1-' + b.days[0].id]).forEach(rows => rows.forEach((r, k) => { r.ts = BOOT_TIME + k * 1000; }));
+        }), yesterday);
+        const boot = bootApp({ state: s });
+        v = view(boot); n = noteOf(boot);
+      } catch (e) { err = e.message; }
+      ok('a session trained today holds the view where it is, whatever day the last write was on',
+         !err && at(v, 1, 0) && n.hidden, err || JSON.stringify({ v, hidden: n && n.hidden }));
+    }
+
+    /* 5, and the week's end. After the week's last live day the slot after
+       is the next week's first; after the block's last week there is none,
+       and the footer's "Fin del bloque" is the one to say what comes next. */
+    {
+      let err = '', wrap = null, end = null, endNote = null;
+      const lastOfWeek = w => (p, b) => {
+        const days = b.days.filter(d => !d.off), last = days[days.length - 1];
+        const week = w === 'last' ? b.weeks : w;
+        p.log[b.id]['w' + week + '-' + last.id] = { [last.ex[0].id]: [{ w: '50', r: '10', done: true, ts: BOOT_TIME - 2 * 864e5 }] };
+        p.week = week; p.day = days.length - 1;
+      };
+      try {
+        wrap = view(bootApp({ state: lastWrite(seeded({}, lastOfWeek(1)), yesterday) }));
+        const boot = bootApp({ state: lastWrite(seeded({}, lastOfWeek('last')), yesterday) });
+        end = JSON.parse(boot.call('JSON.stringify({ week: getProfile().week, day: getProfile().day, weeks: getBlock().weeks, last: dayList(getBlock()).length - 1 })'));
+        endNote = noteOf(boot);
+      } catch (e) { err = e.message; }
+      ok('after a week\'s last day, the session that\'s due is the next week\'s first',
+         !err && at(wrap, 2, 0), err || JSON.stringify(wrap));
+      ok('after the block\'s last session there is none: the view stays on it, with no line',
+         !err && at(end, end.weeks, end.last) && endNote.hidden, err || JSON.stringify({ end, hidden: endNote && endNote.hidden }));
+    }
+
+    /* Retired days have no tab, so they are neither the session to count
+       from nor a slot to land on, and a session with no date cannot say
+       when it happened. */
+    {
+      let err = '', middle = null, lastOff = null, undated = null, undatedNote = null;
+      try {
+        let third = '';
+        let boot = bootApp({ state: lastWrite(seeded({ week: 1, day: 0 }, (p, b) => { b.days[1].off = 1; third = b.days[2].id; }), yesterday) });
+        middle = JSON.parse(boot.call('JSON.stringify({ week: getProfile().week, day: getProfile().day, id: currentDay().id })'));
+        middle.third = third;
+        boot = bootApp({ state: lastWrite(seeded({ week: 1, day: 1 }, (p, b) => {
+          const d1 = b.days[1], d2 = b.days[2];
+          d2.off = 1;
+          p.log[b.id]['w1-' + d1.id] = { [d1.ex[0].id]: [{ w: '50', r: '10', done: true, ts: BOOT_TIME - 3 * 864e5 }] };
+          p.log[b.id]['w1-' + d2.id] = { [d2.ex[0].id]: [{ w: '60', r: '10', done: true, ts: BOOT_TIME - 2 * 864e5 }] };
+        }), yesterday) });
+        lastOff = view(boot);
+        boot = bootApp({ state: lastWrite(seeded({ week: 1, day: 0 }, (p, b) => {
+          Object.values(p.log[b.id]['w1-' + b.days[0].id]).forEach(rows => rows.forEach(r => { delete r.ts; }));
+        }), yesterday) });
+        undated = view(boot); undatedNote = noteOf(boot);
+      } catch (e) { err = e.message; }
+      ok('with the middle day retired, it lands on the next live day, the second tab',
+         !err && at(middle, 1, 1) && middle.id === middle.third, err || JSON.stringify(middle));
+      ok('a later session on a retired last day does not count: after the last live day it lands on the next week\'s first',
+         !err && at(lastOff, 2, 0), err || JSON.stringify(lastOff));
+      ok('with no set carrying a time, nothing is dated, so nothing moves',
+         !err && at(undated, 1, 0) && undatedNote.hidden, err || JSON.stringify({ undated, hidden: undatedNote && undatedNote.hidden }));
+    }
+
+    /* Days trained out of order, the second and then the first, both the
+       day before the boot, with the view on the first. The slot after the
+       latest session already has a set ticked, and drawDueNote says nothing
+       about a slot under way: a move there would be one with no line to say
+       so and no "Volver" to take it back. */
+    {
+      let err = '', v = null, n = null;
+      try {
+        const s = lastWrite(seeded({ week: 1, day: 0 }, (p, b) => {
+          const d0 = b.days[0], d1 = b.days[1];
+          p.log[b.id]['w1-' + d1.id] = { [d1.ex[0].id]: [{ w: '50', r: '10', done: true, ts: wall(-1, 18, 0) }] };
+          Object.values(p.log[b.id]['w1-' + d0.id]).forEach(rows => rows.forEach(r => { r.ts = wall(-1, 19, 0); }));
+        }), yesterday);
+        const boot = bootApp({ state: s });
+        v = view(boot); n = noteOf(boot);
+      } catch (e) { err = e.message; }
+      ok('when the slot after the latest session already has a set ticked, the view stays where it is, rather than moving without a word',
+         !err && at(v, 1, 0) && n.hidden, err || JSON.stringify({ v, hidden: n && n.hidden }));
+    }
+
+    /* 6. The open ignores where the view was left: a view left on another
+       day gives way. One already on the due slot has nowhere to go. */
+    {
+      let err = '', elsewhere = null, there = null, thereNote = null, thereLanded = null;
+      try {
+        elsewhere = view(bootApp({ state: lastWrite(seeded({ week: 1, day: 2 }), yesterday) }));
+        const boot = bootApp({ state: lastWrite(seeded({ week: 1, day: 1 }), yesterday) });
+        there = view(boot); thereNote = noteOf(boot); thereLanded = boot.call('landed');
+      } catch (e) { err = e.message; }
+      ok('a view left on another day gives way too: it lands on the slot after the last session trained',
+         !err && at(elsewhere, 1, 1), err || JSON.stringify(elsewhere));
+      ok('...and a view already on that slot stays, with nothing to say',
+         !err && at(there, 1, 1) && thereNote.hidden && thereLanded === null,
+         err || JSON.stringify({ there, hidden: thereNote && thereNote.hidden, thereLanded }));
+    }
+
+    /* 7. The resume: an installed app that was only backgrounded never runs
+       load() again. Hidden on the day of its last write, it writes nothing
+       (nothing is waiting), so coming back the next day is the first use of
+       that day. */
+    {
+      let err = '', opened = null, overnight = null, v = null, n = null, saved = null, stayed = null;
+      try {
+        const boot = settled(seeded({ week: 1, day: 0 }));
+        opened = view(boot);
+        hide(boot);
+        boot.clock.advance(864e5);
+        overnight = boot.saved().prefs.lastDay;
+        show(boot);
+        v = view(boot); n = noteOf(boot);
+        boot.clock.advance(1000);
+        saved = boot.saved();
+        /* "Volver", then away and back a minute later: the same day now. */
+        if (n.btn) n.btn.onclick();
+        hide(boot);
+        boot.clock.advance(60000);
+        show(boot);
+        stayed = view(boot);
+      } catch (e) { err = e.message; }
+      const sp = saved && saved.profiles[saved.activeProfile];
+      ok('opened on the day of its last write, the app stays; hidden, it writes nothing, so a day later the last write is still that day',
+         !err && at(opened, 1, 0) && overnight === today, err || JSON.stringify({ opened, overnight, today }));
+      ok('coming back from the background on the next day lands on the session that\'s due, and says so',
+         !err && at(v, 1, 1) && !n.hidden, err || JSON.stringify({ v, hidden: n && n.hidden }));
+      ok('...and saves the move with the new day as the day of the last write',
+         !err && saved.prefs.lastDay === dayOf(BOOT_TIME + 864e5) && at(sp, 1, 1),
+         err || JSON.stringify({ lastDay: saved && saved.prefs.lastDay, want: dayOf(BOOT_TIME + 864e5), week: sp && sp.week, day: sp && sp.day }));
+      ok('...and after "Volver", coming back again that day leaves the view where it was put',
+         !err && at(stayed, 1, 0), err || JSON.stringify(stayed));
+    }
+    {
+      let err = '', v = null, n = null;
+      try {
+        const boot = settled(seeded({ week: 1, day: 0 }));
+        hide(boot);
+        boot.clock.advance(864e5);
+        boot.call("openSheet('moreSheet')");
+        show(boot);
+        v = view(boot); n = noteOf(boot);
+      } catch (e) { err = e.message; }
+      ok('...but it does not move the day from under an open sheet',
+         !err && at(v, 1, 0) && n.hidden, err || JSON.stringify({ v, hidden: n && n.hidden }));
+    }
+    {
+      let err = '', v = null, asking = false;
+      try {
+        const boot = settled(seeded({ week: 1, day: 0 }));
+        hide(boot);
+        boot.clock.advance(864e5);
+        const pressing = boot.$('clearDay').onclick();
+        asking = boot.call('!!askResolve');
+        show(boot);
+        v = view(boot);
+        boot.$('askCancel').onclick();
+        await pressing;
+      } catch (e) { err = e.message; }
+      ok('...nor from under a question, which is not on the sheet stack: "Borrar este día" reads the week when it is answered',
+         !err && asking && at(v, 1, 0), err || JSON.stringify({ asking, v }));
+    }
+
+    /* A session ticked on past midnight: the second day's first lift ticked
+       at 23:30 and 23:58, its rest running, the phone put away at 23:58:30
+       and taken out at 00:00:30. The session's date and the last write are
+       both the day before, but its last tick is minutes old, so it is the
+       session in progress (DUE_AFTER_MS). By 09:00 it is over. The times
+       are the shell's own local ones (wall), on a day after the boot's.
+       `ticks` are [hour, minute] for the lift's sets in turn. */
+    const pastMidnight = ticks => {
+      const boot = settled(seeded({ week: 1, day: 0 }));
+      const to = t => boot.clock.advance(t - boot.clock.now);
+      boot.$('days').children[1].onclick();
+      ticks.forEach(([h, m], i) => { to(wall(1, h, m)); boot.card(0).set(i).tick.onclick(); });
+      to(wall(1, 23, 58, 30)); hide(boot);
+      to(wall(2, 0, 0, 30));
+      return { boot, to };
+    };
+    {
+      let err = '', lastDay = null, v = null, n = null, resting = false, morning = null, morningNote = null,
+        opened = null, openedNote = null, long = null, longNote = null;
+      try {
+        const late = pastMidnight([[23, 30], [23, 58]]);
+        lastDay = late.boot.saved().prefs.lastDay;
+        show(late.boot);
+        v = view(late.boot); n = noteOf(late.boot); resting = late.boot.call('tId') !== null;
+        hide(late.boot);
+        late.to(wall(2, 9, 0));
+        show(late.boot);
+        morning = view(late.boot); morningNote = noteOf(late.boot);
+        /* The same night, but the phone threw the page away: the morning's
+           open is load() running again, at 09:00. */
+        const again = pastMidnight([[23, 30], [23, 58]]);
+        again.to(wall(2, 9, 0));
+        again.boot.call('load()');
+        opened = view(again.boot); openedNote = noteOf(again.boot);
+        /* A long session: 21:30, 21:35 and 23:58. Its date, the median, is
+           over two hours old at 00:00:30, but its last tick is not. */
+        const longer = pastMidnight([[21, 30], [21, 35], [23, 58]]);
+        show(longer.boot);
+        long = view(longer.boot); longNote = noteOf(longer.boot);
+      } catch (e) { err = e.message; }
+      ok('a session ticked on past midnight stays on screen when the phone comes out of the pocket, its rest still running: its last tick is minutes old',
+         !err && lastDay === dayOf(wall(1, 23, 58)) && at(v, 1, 1) && n.hidden && resting,
+         err || JSON.stringify({ lastDay, want: dayOf(wall(1, 23, 58)), v, hidden: n && n.hidden, resting }));
+      ok('...and at 09:00 the next morning, coming back lands on the session after it',
+         !err && at(morning, 1, 2) && !morningNote.hidden, err || JSON.stringify({ morning, hidden: morningNote && morningNote.hidden }));
+      ok('...and so does opening the app then',
+         !err && at(opened, 1, 2) && !openedNote.hidden, err || JSON.stringify({ opened, hidden: openedNote && openedNote.hidden }));
+      ok('a long session past midnight stays too: the last tick counts, not the session\'s date, its median',
+         !err && at(long, 1, 1) && longNote.hidden, err || JSON.stringify({ long, hidden: longNote && longNote.hidden }));
+    }
+
+    /* 8. A switch to the other person, who trained week 1's first day a
+       week before the boot. No day of a last write here: that day is the
+       phone's, not the person's. Her view moves only when it was left on
+       the session she finished. */
+    {
+      const her = herAt => {
+        const s = seeded({ week: 1, day: 0 });
+        const m = s.profiles.mujer, mb = m.blocks[m.activeBlock], d0 = mb.days.filter(d => !d.off)[0];
+        m.log = { [mb.id]: { ['w1-' + d0.id]: { [d0.ex[0].id]: [{ w: '30', r: '10', done: true, ts: BOOT_TIME - 7 * 864e5 }] } } };
+        Object.assign(m, herAt);
+        return s;
+      };
+      const press = (boot, key) => {
+        const label = boot.call('state.profiles[' + JSON.stringify(key) + '].label');
+        boot.$('profiles').children.find(b => b.textContent === label).onclick();
+      };
+      let err = '', moved = null, movedNote = null, name = '', stayed = null, own = null;
+      try {
+        let boot = settled(her({ week: 1, day: 0 }));
+        press(boot, 'mujer');
+        moved = JSON.parse(boot.call('JSON.stringify({ who: state.activeProfile, week: getProfile().week, day: getProfile().day })'));
+        movedNote = noteOf(boot); name = dayName(boot, 1);
+        boot = settled(her({ week: 1, day: 2 }));
+        press(boot, 'mujer');
+        stayed = JSON.parse(boot.call('JSON.stringify({ who: state.activeProfile, week: getProfile().week, day: getProfile().day })'));
+        /* His view is on the session he finished too, but picking the
+           person already on screen is no switch. */
+        boot = settled(her({ week: 1, day: 2 }));
+        press(boot, 'hombre');
+        own = view(boot);
+      } catch (e) { err = e.message; }
+      ok('switching to the other person, whose view was left on the session she finished, moves her to the one that\'s due, and says so',
+         !err && moved.who === 'mujer' && at(moved, 1, 1) && !movedNote.hidden && movedNote.text.includes(name),
+         err || JSON.stringify({ moved, hidden: movedNote && movedNote.hidden, text: movedNote && movedNote.text }));
+      ok('...and with her view left anywhere else, it stays there',
+         !err && stayed.who === 'mujer' && at(stayed, 1, 2), err || JSON.stringify(stayed));
+      ok('...and picking the person already on screen moves nothing',
+         !err && at(own, 1, 0), err || JSON.stringify(own));
+    }
+
+    /* 10. What migrate() keeps: a day compared as a string has to be one. */
+    {
+      let got = null, err = '';
+      try {
+        got = JSON.parse(call(`JSON.stringify(['x', 5, {}, '2026-9-21', '2026-09-21'].map(v => {
+          state = defaultState(); state.prefs = { lastDay: v }; migrate();
+          return Object.prototype.hasOwnProperty.call(state.prefs, 'lastDay') ? state.prefs.lastDay : '(gone)';
+        }))`));
+      } catch (e) { err = e.message; }
+      ok('migrate() drops a stored day that is not a YYYY-MM-DD string (\'x\', 5, {}, an unpadded date) and keeps one that is',
+         !err && JSON.stringify(got) === JSON.stringify(['(gone)', '(gone)', '(gone)', '(gone)', '2026-09-21']),
+         err || JSON.stringify(got));
     }
   }
 

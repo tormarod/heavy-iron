@@ -4104,7 +4104,7 @@ const ok = (name, cond, extra) => {
 
     // 2. every control at least 24x24 outside a sheet (SC 2.5.8); the set
     //    row's own inputs and ticks held to a stricter, already-met floor.
-    const undersized = await page.evaluate(() => {
+    const undersizedNow = () => page.evaluate(() => {
       const bad = [];
       document.querySelectorAll('button, input, select').forEach(el => {
         if (el.closest('.sheet') || el.getClientRects().length === 0) return;
@@ -4118,6 +4118,7 @@ const ok = (name, cond, extra) => {
       });
       return bad;
     });
+    const undersized = await undersizedNow();
     ok('every visible button/input/select outside a sheet is at least 24x24',
        undersized.length === 0, undersized.join(', '));
 
@@ -4186,6 +4187,29 @@ const ok = (name, cond, extra) => {
     ok('scroll-padding-top reserves the header plus the top safe-area inset',
        /scroll-padding-top:\s*calc\([^;]*safe-area-inset-top/.test(cssText) && /^\d/.test(scrollPadTop),
        scrollPadTop);
+
+    // 6. the line a new day lands with (plans/079) is on screen on the first
+    //    open of every training day, so its "Volver" is held to the floor in
+    //    2. Seeded like the theme above: the last write yesterday, and week
+    //    1's first day trained a week ago.
+    await page.waitForFunction(() => !saveT && !held);
+    await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('heavy-iron-v1'));
+      const p = s.profiles[s.activeProfile], b = p.blocks[p.activeBlock], d = b.days[0];
+      p.log = { [b.id]: { ['w1-' + d.id]: { [d.ex[0].id]: [{ w: '40', r: '10', done: true, ts: Date.now() - 7 * 864e5 }] } } };
+      p.week = 1; p.day = 0;
+      s.prefs.lastDay = localDay(Date.now() - 864e5);
+      localStorage.setItem('heavy-iron-v1', JSON.stringify(s));
+    });
+    await page.reload({ waitUntil: 'networkidle' });
+    await dismissSetup(page);
+    const dueShown = await page.evaluate(() => {
+      const btn = document.querySelector('#dueNote button');
+      return !!btn && btn.getClientRects().length > 0;
+    });
+    const dueUndersized = await undersizedNow();
+    ok('the line a new day lands with is on screen, and every control, its "Volver" included, is at least 24x24',
+       dueShown && dueUndersized.length === 0, 'shown: ' + dueShown + '; ' + dueUndersized.join(', '));
 
     await ctx.close();
   });

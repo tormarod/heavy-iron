@@ -17,7 +17,8 @@ The first is who is training and which block — two chips, each opening a
 sheet to change it — and **⋯**, which opens the same **Más** sheet the bar
 does.
 The second is the three days: tap one, or use the arrow keys once the row
-has the keyboard. Under the header, `‹ Semana 1 de 8 · 3 RIR ›` is the
+has the keyboard. A dot on a day means something is logged on it in the
+week on screen. Under the header, `‹ Semana 1 de 8 · 3 RIR ›` is the
 week: the arrows step to the one either side, and a tap on the middle opens
 that week's goal text and the full strip, where a dot marks every week you
 have logged something in. A shared-station note is one line under that
@@ -517,7 +518,17 @@ charge, the line simply isn't there.
   first day of the week after. The last day of the block's last week names
   no week past the end. If there is a later block in the picker, the line
   points to its first day, week 1. If there isn't, it points to
-  **+ Nuevo bloque** under **Plan**.
+  **+ Nuevo bloque** under **Plan**. The app goes to the next session by
+  itself, too: the first time it is opened, or come back to, on a later
+  day, it moves to the session after the last one you trained in the
+  block, a line above the list says so, and **Volver** takes you back to
+  where it was. Only that first time — once you have ticked, typed or
+  tapped anything that day, it stays where you put it. It never moves on
+  a day you have already trained, nor within two hours of the last set
+  you ticked, so a session that runs past midnight stays on screen, and
+  it never moves onto a session that already has sets ticked. Switching
+  to the other person does the same for them, when their screen was left
+  on the session they last trained.
 - **The rest timer** can be nudged with **−30**/**+30** when the machine
   is still busy, and **Aviso sonoro** turns on the alarm at zero for when the phone
   is face-down or you are wearing headphones. One beep is easy to miss
