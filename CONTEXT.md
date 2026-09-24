@@ -68,9 +68,10 @@ browsing a day without touching it never starts one.
 _Avoid_: first tick, session open
 
 **Due session**:
-The slot after the last one trained in the block, once that was on an
-earlier day. The app opens on it the first time it is opened on a new
-day.
+The slot after the last one trained in the block, once that session is
+over (trained on an earlier day, its last set ticked more than two hours
+ago) and while nothing in the slot is ticked yet. The app opens on it the
+first time it is opened on a new day.
 _Avoid_: today's session (it may not be today), next workout
 
 **Extra set**:

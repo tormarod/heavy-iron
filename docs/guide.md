@@ -523,8 +523,10 @@ charge, the line simply isn't there.
   day, it moves to the session after the last one you trained in the
   block, a line above the list says so, and **Volver** takes you back to
   where it was. Only that first time — once you have ticked, typed or
-  tapped anything that day, it stays where you put it — and never on a
-  day you have already trained, whose session stays on screen. Switching
+  tapped anything that day, it stays where you put it. It never moves on
+  a day you have already trained, nor within two hours of the last set
+  you ticked, so a session that runs past midnight stays on screen, and
+  it never moves onto a session that already has sets ticked. Switching
   to the other person does the same for them, when their screen was left
   on the session they last trained.
 - **The rest timer** can be nudged with **−30**/**+30** when the machine
