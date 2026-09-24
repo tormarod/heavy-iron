@@ -1969,7 +1969,10 @@ function openSetup(firstRun) {
     units: state.prefs.units,
     plan: 'example',
     barWeight: state.prefs.barWeight,
-    platesText: state.prefs.plates.join(', '),
+    /* Shown with a decimal comma, semicolon-separated — the box reads
+       weights the way every other box in the app does, comma decimal
+       (plans/080 B). */
+    platesText: state.prefs.plates.map(p => String(p).replace('.', ',')).join('; '),
     inc: state.prefs.inc,
     bgAlarm: !!state.prefs.bgAlarm,
     /* On a first run the name boxes start empty, so the placeholder invites
@@ -2024,7 +2027,7 @@ function renderSetup() {
     b.onclick = () => { setupDraft.bgAlarm = on; renderSetup(); };
   });
   $('setupBgHint').textContent = setupDraft.bgAlarm
-    ? 'El aviso suena aunque bloquees el móvil o te vayas a otra app, y el descanso aparece en la pantalla de bloqueo con −30 / +30 / saltar. Para conseguirlo la app reproduce un sonido inaudible mientras dura el descanso: en algunos móviles eso pausa la música que estés escuchando. Si el móvil lo permite, además te avisa con una notificación.'
+    ? 'El aviso suena aunque bloquees el móvil o te vayas a otra app, y el descanso aparece en la pantalla de bloqueo con −30 / +30 / saltar. Para conseguirlo la app reproduce un sonido inaudible mientras dura el descanso: en algunos móviles eso pausa la música que estés escuchando. Si el móvil lo permite, además te avisa con una notificación. Al activarlo se enciende también el aviso sonoro del temporizador; puedes apagarlo ahí mismo.'
     : 'Con el móvil bloqueado o en otra app, el aviso llega cuando vuelves a mirar la pantalla. Actívalo si entrenas con el móvil en el bolsillo.';
   $('setupBarWeightU').textContent = setupDraft.units;
   $('setupIncU').textContent = setupDraft.units;
@@ -2098,6 +2101,11 @@ $('setupSave').onclick = () => {
   state.prefs.units = setupDraft.units;
   const bgAlarmTurnedOn = setupDraft.bgAlarm && !state.prefs.bgAlarm;
   state.prefs.bgAlarm = setupDraft.bgAlarm;
+  /* The alarm this setting keeps alive *is* the sound: with Aviso sonoro
+     off, turning the pocket alarm on pays the keep-alive's cost (a silent
+     loop that can pause your music) for nothing but a bare OS notification
+     at zero. Turning the alarm off leaves the sound as the user left it. */
+  if (bgAlarmTurnedOn) state.prefs.sound = true;
   if (!state.prefs.bgAlarm) keepAliveStop();
   /* The calculator fields are hidden on first run (there is nothing to edit
      yet — migrate() seeded them from the 'kg' fallback before the user ever
@@ -2113,7 +2121,13 @@ $('setupSave').onclick = () => {
   } else {
     const bw = num(setupDraft.barWeight);
     if (bw > 0) state.prefs.barWeight = bw;
-    const plates = cleanPlates(String(setupDraft.platesText || '').split(','), state.prefs.units);
+    /* The box used to split on ',', but a comma is the decimal key on a
+       Spanish keyboard — the same one num() reads everywhere else in the
+       app — so "1,25" read as two plates, 1 and 25. A comma followed by
+       whitespace is still read as a separator first (so a list typed the
+       old way, "20, 15, 10", still works); what is left is semicolons and
+       bare whitespace. No lookbehind — Safari 15 cannot parse one. */
+    const plates = cleanPlates(String(setupDraft.platesText || '').replace(/,\s+/g, ';').split(/[;\s]+/), state.prefs.units);
     if (plates.length) state.prefs.plates = plates;
     const inc = clampNum(setupDraft.inc, INC_MIN, INC_MAX, 0, INC_STEP);
     if (inc > 0) state.prefs.inc = inc;
@@ -5173,18 +5187,30 @@ function buildExCard(ctx, ex, i) {
     tick.onclick = () => {
       let adopted = '';
       writeRows(cardCtx, () => { adopted = tickRow(r, hint, Date.now()); });
-      if (r.done && ex.rest) startRest(ex.rest, ex.n + ' · serie ' + (si + 1), hints.next[si]);
-      if (r.done && !ex.rest) stopRest();
+      /* What the tick decided, said where the eye is next: the rest timer
+         this same tick is about to start, not just the status line at the
+         foot of the page, which a save() overwrites 400ms later (plans/080
+         C). Built once so both the timer and the status line say the same
+         thing. */
+      const adoptedNote = adopted ? 'Serie ' + (si + 1) + ' anotada con ' + adopted + ' ' + units() + ' (' + hintFrom + ') — cámbialo si no fue eso' : '';
+      /* dayCards holds every card's rows by live reference, so this reads
+         true only once every row across every exercise is done — including
+         the cards this redraw is not going to touch. Read once, since the
+         rest timer below and the backup counter after it both need it: a
+         countdown for a workout that is already over would take the bottom
+         bar's place — hiding Progreso, Plan and Más — until Saltar or three
+         minutes past zero, for a rest nobody is taking (plans/080 D). */
+      const dayDone = r.done && dayCards.every(c => c.rows.every(rr => rr.done));
+      if (r.done && ex.rest && !dayDone) startRest(ex.rest, ex.n + ' · serie ' + (si + 1), hints.next[si], adoptedNote);
+      if (r.done && (!ex.rest || dayDone)) stopRest();
       /* The tick that finishes the whole day counts as a session — see
-         maybeNagBackup. dayCards holds every card's rows by live reference,
-         so this reads true only once every row across every exercise is
-         done — including the cards this redraw is not going to touch. */
-      if (r.done && dayCards.every(c => c.rows.every(rr => rr.done))) {
+         maybeNagBackup. */
+      if (dayDone) {
         state.prefs.sessionsSinceBackup++;
         maybeNagBackup();
       }
       drawCard(ex.id);
-      if (adopted) mark('Serie ' + (si + 1) + ' anotada con ' + adopted + ' ' + units() + ' (' + hintFrom + ') — cámbialo si no fue eso');
+      if (adoptedNote) mark(adoptedNote);
     };
 
     /* ↓ adds a segment rather than opening a panel: there is nothing to
@@ -5468,9 +5494,14 @@ function drawSessionFoot(profile, block, days) {
   if (tonnage > 0) extra.push('Volumen: ' + fmtKg(tonnage) + ' movidos');
   if (prs) extra.push(prs === 1 ? '1 récord personal' : prs + ' récords personales');
   if (lastTs) extra.push('último registro ' + new Date(lastTs).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }));
+  /* Since the objetivo (v3) every set has its own answer, shown under its
+     own card — a footer repeating the old all-sets rule ("llega al tope
+     del rango en todas las series...") contradicted it on every unfinished
+     session, telling the lifter a blanket rule the card underneath had
+     already made obsolete (plans/080 E). */
   const head = doneN === total
     ? 'Sesión completa — ' + total + ' series registradas. ' + nextSessionLine(profile, block, days)
-    : doneN + ' de ' + total + ' series hechas. Llega al tope del rango en todas las series y sube el peso el próximo día.';
+    : doneN + ' de ' + total + ' series hechas.';
   $('note').textContent = head + (extra.length ? ' · ' + extra.join(' · ') + '.' : '');
 }
 
@@ -6040,6 +6071,15 @@ function diagVerdict(trend, sig) {
       return { lectura: 'Estancado de verdad — ni la serie tope ni los kilos por serie se mueven',
                cambio: 'No hay progreso escondido en las series de después: haz lo que mande el objetivo de la semana, y si lleva medio bloque igual, cambia el ejercicio.' };
     }
+    /* The work axis is withheld (no sig.workPct), and every session in the
+       window already carries an RIR: the fallback below used to tell this
+       lifter to start writing it down, which the log in front of them
+       contradicts. Plan 044 recorded the honest row and left the wording
+       to the maintainer; plan 080 F picks it. */
+    if (sig.rirLogged) {
+      return { lectura: 'Estancado con el esfuerzo bien puesto — el RIR apuntado no es ni holgado ni de fallo',
+               cambio: 'Llegas al RIR que toca y la serie tope no se mueve: cambia el estímulo — una serie más, otro rango de repeticiones u otro ejercicio.' };
+    }
     return { lectura: 'Estancado, sin una señal clara en el registro',
              cambio: 'Apunta el RIR de cada serie unas semanas: sin eso no se puede distinguir fatiga de falta de intensidad.' };
   }
@@ -6181,6 +6221,10 @@ function diagRows(profile, block, scope) {
         heldRir: est ? est.rirWeek : null,
         conf: est ? est.conf : null,
         gap: diagMedianGap(points),
+        /* Every one of the last sessions carries an RIR, so the flat
+           fallback's "write down your RIR" is advice the log already
+           contradicts (plan 044's maintenance note, plans/080 F). */
+        rirLogged: recent.length > 0 && recent.every(p => diagSessionRir(p.rirs) != null),
       };
       /* Withheld unless the set count held still across the whole window.
          Per-set already takes the count out of the total, but not out of

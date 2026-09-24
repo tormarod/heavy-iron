@@ -2393,6 +2393,13 @@ ok('a downward trend with no gap reads as a real strength loss',
    call('diagVerdict("down", { gap: 1 }).lectura') === 'Pierde fuerza de verdad');
 ok('a flat trend with no signals falls through to the generic stall',
    call('diagVerdict("flat", {}).lectura') === 'Estancado, sin una señal clara en el registro');
+/* plans/080 F: the same "no signal" fallback, but every recent session
+   already carries an RIR — so "write it down" is advice the log
+   contradicts, and the honest row (plan 044's maintenance note) is picked
+   instead. */
+ok('a flat trend with no signals but an RIR logged on every recent session reads as effort already accounted for',
+   call('diagVerdict("flat", { rirLogged: true }).lectura') ===
+     'Estancado con el esfuerzo bien puesto — el RIR apuntado no es ni holgado ni de fallo');
 ok('an upward trend with no signals reads as working as intended',
    call('diagVerdict("up", {}).lectura') === 'Funciona');
 ok('too few sessions is its own verdict',
@@ -4066,6 +4073,27 @@ const heldSess = () => [[12, '3'], [12, '3'], [11, '0']];
 ok('...and a session held back on most sets reads as lacking intensity whatever the last set did',
    diagProbe(three(heldSess()), false) === 'flat | Falta intensidad — RIR 2+ repetido',
    diagProbe(three(heldSess()), false));
+/* plans/080 F: the fallback below every other flat signal, reached only
+   when the work axis itself is withheld — which needs sessions whose set
+   count differs, since sig.workPct is computed only when every session in
+   the window agrees on how many sets it has. The reps stay the same
+   session to session (10, inside the exercise's 8-12 range and below its
+   top — a set at 12 is censored, which pulls the trend itself off flat)
+   so only the set count varies; 1 in reserve is typed on every set, so no
+   session fails (RIR 0) and none reads as easy (RIR 2+, at least two of
+   the last three). */
+const mixedSetCountSess = rir => [
+  [[10, rir], [10, rir], [10, rir]],
+  [[10, rir], [10, rir]],
+  [[10, rir], [10, rir], [10, rir]],
+];
+ok('a flat lift over sessions with different set counts, RIR 1 on every set, reads the effort as already accounted for',
+   diagProbe(mixedSetCountSess('1'), false) ===
+     'flat | Estancado con el esfuerzo bien puesto — el RIR apuntado no es ni holgado ni de fallo',
+   diagProbe(mixedSetCountSess('1'), false));
+ok('...and with no RIR typed at all, falls back to the same generic stall as ever',
+   diagProbe(mixedSetCountSess(null), false) === 'flat | Estancado, sin una señal clara en el registro',
+   diagProbe(mixedSetCountSess(null), false));
 const dsr = a => call('diagSessionRir(' + JSON.stringify(a) + ')');
 ok('diagSessionRir is the median of the typed sets, null when none is typed',
    dsr([3, 2, 1, 0]) === 1.5 && dsr([3, 3, 3, 0]) === 3 && dsr([0, 0, 1]) === 0 &&
@@ -11167,8 +11195,11 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
      different. Pressed on a booted app. */
   console.log('\n== "Guardar" in Ajustes keeps the plates migrate() would (plans/055) ==');
   {
-    /* The box is a comma-separated list, so its decimals are written with a
-       point; num() reads a comma decimal, which only a stored list holds. */
+    /* The box is semicolon-separated (plans/080 B): a comma is the decimal
+       key on a Spanish phone, the same one num() reads everywhere else. A
+       comma followed by whitespace, ", ", is still read as a separator
+       first, so a list typed the old way parses exactly as it always did —
+       which is what keeps this assertion passing unchanged. */
     const typedList = '25, 20, 20, 0.25, x, 100, 1.25';
     const boot = settled(JSON.parse(SEED));
     boot.call('openSetup(false); setupDraft.platesText = ' + JSON.stringify(typedList) + ';');
@@ -11178,6 +11209,37 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
       '.split(","); migrate(); JSON.stringify(state.prefs.plates)');
     ok('the same list comes out of Ajustes and out of a load: each size once, the unit\'s bounds kept, junk left out',
        typedPlates === '[25,20,0.25,1.25]' && loaded === typedPlates, typedPlates + ' / ' + loaded);
+
+    /* The box's actual shape now: semicolons between sizes, commas inside
+       one (plans/080 B). */
+    const boot2 = settled(JSON.parse(SEED));
+    boot2.call('openSetup(false); setupDraft.platesText = ' + JSON.stringify('20; 15; 2,5; 1,25') + ';');
+    boot2.$('setupSave').onclick();
+    const semicolonPlates = boot2.call('JSON.stringify(state.prefs.plates)');
+    ok('a semicolon-separated list with decimal commas reads as the weights it shows',
+       semicolonPlates === '[20,15,2.5,1.25]', semicolonPlates);
+
+    /* One plate, one decimal comma, and nothing else to separate it from —
+       the case the old split(',') got wrong (plans/080 B: "1,25" used to
+       save two plates, 1 and 25). */
+    const boot3 = settled(JSON.parse(SEED));
+    boot3.call('openSetup(false); setupDraft.platesText = ' + JSON.stringify('1,25') + ';');
+    boot3.$('setupSave').onclick();
+    const onePlate = boot3.call('JSON.stringify(state.prefs.plates)');
+    ok('a single decimal-comma plate saves as one plate, not two split on its comma',
+       onePlate === '[1.25]', onePlate);
+
+    /* Round trip: the text the box opens with — built from the stored list
+       the same way the kg defaults are shown, "1,25; 2,5; 5; 10; 15; 20" —
+       saved back untouched, gives back that same list (plans/080 B). */
+    const boot4 = settled(JSON.parse(SEED));
+    boot4.call('state.prefs.units = "kg"; state.prefs.plates = [1.25, 2.5, 5, 10, 15, 20]; save(); openSetup(false);');
+    const shownText = boot4.call('setupDraft.platesText');
+    boot4.$('setupSave').onclick();
+    const roundTripped = boot4.call('JSON.stringify(state.prefs.plates)');
+    ok('the text Ajustes opens with, saved unchanged, gives back the same plates',
+       shownText === '1,25; 2,5; 5; 10; 15; 20' && roundTripped === '[1.25,2.5,5,10,15,20]',
+       shownText + ' -> ' + roundTripped);
   }
 
   /* plans/010's promise, one level up from the block. A restore reads every
@@ -11487,6 +11549,90 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
      strandedReviewProbe.energyAltaWithStranded.n === 1 &&
      strandedReviewProbe.energyAltaWithStranded.kg === strandedReviewProbe.energyAlta.kg,
      JSON.stringify(strandedReviewProbe));
+
+  /* Six small gaps between what the app says and what it does on the
+     everyday path, found by the eleventh pass's direction lenses and
+     bundled for one review (plans/080). B's cases extend the plans/055
+     plates section in place, and F's sit next to the existing
+     diagVerdict/diagProbe cases, both elsewhere in this file — only A, C,
+     D and E are here. */
+  console.log('\n== six promises the session breaks, kept (plans/080) ==');
+  {
+    /* A. The pocket alarm's only audible half is Aviso sonoro, off by
+       default and reachable only from the rest timer, mid-rest — so
+       switching the alarm on used to buy a silent keep-alive loop and
+       nothing at zero but a bare OS notification. Turning the alarm on
+       now turns the sound on with it; turning the alarm off leaves the
+       sound as the user set it (plans/080 A). */
+    const boot = settled(JSON.parse(SEED));
+    boot.call('openSetup(false); setupDraft.bgAlarm = true;');
+    boot.$('setupSave').onclick();
+    ok('turning the pocket alarm on in Ajustes turns Aviso sonoro on with it',
+       boot.call('state.prefs.sound') === true && boot.call('state.prefs.bgAlarm') === true,
+       'sound ' + boot.call('state.prefs.sound') + ', bgAlarm ' + boot.call('state.prefs.bgAlarm'));
+    boot.$('tsound').onclick();
+    boot.call('openSetup(false);');
+    boot.$('setupSave').onclick();
+    ok('...but saving Ajustes again without touching the alarm leaves a sound turned back off alone',
+       boot.call('state.prefs.sound') === false && boot.call('state.prefs.bgAlarm') === true,
+       'sound ' + boot.call('state.prefs.sound') + ', bgAlarm ' + boot.call('state.prefs.bgAlarm'));
+  }
+  {
+    /* C. What a tick decided — the grey weight it took — used to be said
+       only in the status line at the foot of the page, replaced by
+       "Guardado hh:mm" 400ms later. Said now where the eye actually goes
+       next: the rest timer the same tick starts (plans/080 C). Week 2 of
+       `seeded` has week 1 fully logged, so its cards carry a grey weight. */
+    const boot = settled(seeded({ week: 2, day: 0 }));
+    boot.card(0).set(0).tick.onclick();
+    const tookNote = boot.$('tmsg').textContent;
+    ok('a tick that takes the grey weight says so on the rest timer it starts',
+       tookNote.indexOf('Serie 1 anotada con') === 0, tookNote);
+    boot.type(boot.card(0).set(1).w, '50');
+    boot.card(0).set(1).tick.onclick();
+    const typedNote = boot.$('tmsg').textContent;
+    ok('...but a tick with nothing adopted (the weight was typed) leaves the timer\'s fixed breathing tip alone',
+       typedNote.indexOf('Prueba de la frase') === 0, typedNote);
+  }
+  {
+    /* D. The day's very last tick used to start a full rest countdown for a
+       workout that is over, hiding Progreso/Plan/Más until Saltar or three
+       minutes past zero. Every exercise on the default day 1 has a rest
+       above 0, so every tick before the last starts one — and the last
+       tick, which finishes the day, must not (plans/080 D). The card is
+       rebuilt on every tick (drawCard), so it is looked up again each
+       time rather than kept from before. */
+    const boot = settled(seeded({ week: 2, day: 0 }));
+    const before = boot.call('state.prefs.sessionsSinceBackup');
+    const nCards = boot.call('dayCards.length');
+    let sawRestBeforeLast = false;
+    for (let i = 0; i < nCards; i++) {
+      const nRows = boot.card(i).rows.length;
+      for (let k = 0; k < nRows; k++) {
+        const isLast = i === nCards - 1 && k === nRows - 1;
+        if (isLast) sawRestBeforeLast = boot.$('timer').classList.contains('up');
+        boot.card(i).set(k).tick.onclick();
+      }
+    }
+    ok('just before the day\'s last tick, a rest from the tick before it is still running',
+       sawRestBeforeLast, String(sawRestBeforeLast));
+    ok('the day\'s last tick starts no rest: the timer does not take the bottom bar\'s place for a workout that is over',
+       !boot.$('timer').classList.contains('up'), boot.$('timer').className);
+    ok('...and still counts as the session it is: the backup counter went up by exactly one',
+       boot.call('state.prefs.sessionsSinceBackup') === before + 1,
+       'before ' + before + ', after ' + boot.call('state.prefs.sessionsSinceBackup'));
+  }
+  {
+    /* E. Since the objetivo (v3) every set has its own answer, shown under
+       its own card — the footer repeating the first commit's all-sets rule
+       ("Llega al tope del rango en todas las series...") contradicted it on
+       every unfinished session (plans/080 E). */
+    const boot = settled(seeded({ week: 2, day: 0 }));
+    boot.card(0).set(0).tick.onclick();
+    const note = boot.$('note').textContent;
+    ok('the footer counts sets done and stops there — no more restating the old all-sets rule',
+       /^1 de \d+ series hechas\./.test(note) && note.indexOf('Llega al tope') === -1, note);
+  }
 
   /* load() and the two imports that replace data wholesale, "Cargar copia"
      and loading a profile file, ran migrate() with nothing to catch a throw.

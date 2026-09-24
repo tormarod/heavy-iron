@@ -422,3 +422,41 @@ line; `node test/unit.js` → `0 failed`.
   alarm is on gets a silent pocket alarm again. That is their choice, made
   where the switch is. If it turns out to be a trap in practice, a
   separate switch in Ajustes is the next step.
+- The five mutation checks, run by hand before committing (applied, unit
+  suite run, reverted, `diff` against a pre-mutation copy confirmed an
+  exact restore each time):
+  - Reverting A's `if (bgAlarmTurnedOn) state.prefs.sound = true;` (deleted
+    the line): **fails as predicted** — "turning the pocket alarm on in
+    Ajustes turns Aviso sonoro on with it" (its first case) failed with
+    `sound false, bgAlarm true`; the second A case failed too, as a
+    consequence.
+  - Reverting B's split to `.split(',')`: **fails as predicted** — "a
+    single decimal-comma plate saves as one plate, not two split on its
+    comma" (the `'1,25'` case) failed, `[1,25]` instead of `[1.25]`. Two
+    other B cases failed alongside it (the semicolon-list and round-trip
+    cases), which the plan did not require but is consistent with the same
+    root cause.
+  - Dropping C's fourth argument (`startRest(ex.rest, ex.n + ' · serie ' +
+    (si + 1), hints.next[si])`, no `adoptedNote`): **fails as predicted**
+    — C's first case, "a tick that takes the grey weight says so on the
+    rest timer it starts", failed: `#tmsg` held the fixed breathing tip
+    instead of "Serie 1 anotada con …".
+  - Reverting D's `!dayDone` (back to `if (r.done && ex.rest) startRest(…)`
+    and `if (r.done && !ex.rest) stopRest();`): **fails as predicted** —
+    "the day's last tick starts no rest…" failed, `#timer` still carrying
+    the `up` class after the last tick.
+  - Removing F's `if (sig.rirLogged) { … }` block: **fails as predicted**
+    — the first `diagProbe` case, "a flat lift over sessions with
+    different set counts, RIR 1 on every set, reads the effort as already
+    accounted for", failed and fell back to `flat | Estancado, sin una
+    señal clara en el registro`. The plain `diagVerdict("flat", {
+    rirLogged: true })` case failed alongside it, as a consequence.
+- Step F's `diagProbe` case needed one iteration beyond the plan's own
+  description. The first attempt varied reps across sessions (10, 11, 10)
+  along with the set count, on the theory that only the top set's weight
+  (fixed at 40 by `diagProbe`) drives the trend; that read as `up`, not
+  `flat` — the estimated-1RM trend the rule reads is sensitive to reps
+  too, not just weight. Holding reps at a constant 10 across all three
+  sessions and varying only the set count (3, 2, 3) gets a `flat` trend
+  with the work axis withheld, as the plan intended. Not a STOP: the
+  `flat` case is reachable, just not with reps varying incidentally.

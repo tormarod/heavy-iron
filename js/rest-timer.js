@@ -32,8 +32,12 @@ let tLabel = '';
 
 /* `next` names the set you are walking back to, and is optional: an old
    cached app.js calls this with two arguments and the line simply stays
-   empty. */
-function startRest(sec, label, next) {
+   empty. `note` is what the tick that started this rest has to say — what
+   weight it took and where it came from — and it is shown where the eye
+   is next: this timer takes the bottom bar's place, while the status line
+   it used to go to sits below the fold and is gone in 400ms anyway
+   (plans/080 C). Left out, the fixed breathing tip stands. */
+function startRest(sec, label, next, note) {
   if (!sec) return;
   clearInterval(tId);
   stopAlarmLoop();
@@ -54,7 +58,7 @@ function startRest(sec, label, next) {
   if (nav) nav.hidden = true;
   $('tlbl').textContent = 'Descanso · ' + label;
   $('tmsg').setAttribute('aria-live', 'polite');
-  $('tmsg').textContent = 'Prueba de la frase: si puedes hablar sin quedarte sin aire, ya estás listo.';
+  $('tmsg').textContent = note || 'Prueba de la frase: si puedes hablar sin quedarte sin aire, ya estás listo.';
   tick();
   tId = setInterval(tick, 1000);
   requestWakeLock();

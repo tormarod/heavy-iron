@@ -187,7 +187,9 @@ load. That last one is what [the weekly objetivo](#the-weekly-objetivo)
 rounds to for every exercise that doesn't carry an `inc` of its own; an
 exercise that does carry one always wins over it. It starts at 2,5 kg
 (5 lb) and, like the bar weight, is seeded from whichever unit you picked
-and never rescaled afterwards.
+and never rescaled afterwards. The plates are separated by semicolons
+(`20; 15; 10; 5; 2,5; 1,25`), not commas, because the comma is the
+decimal key.
 
 It is only ever the *fallback* step, and only where the exercise's own
 logged weights cannot supply a rung: [the objetivo](#the-weekly-objetivo)
@@ -489,8 +491,9 @@ charge, the line simply isn't there.
 - **The weight box already knows what you did last time.** The greyed
   number in it is what you lifted on that same set the last week you
   logged it. Tick a set without typing anything and it takes that number,
-  telling you so in the status line — change it if the weight was
-  different. The number it shows is [the objetivo](#the-weekly-objetivo)'s
+  telling you so on the rest timer the tick starts, and in the status line
+  at the foot of the page — change it if the weight was different. The
+  number it shows is [the objetivo](#the-weekly-objetivo)'s
   own weight for that set; on an exercise with no history at all it falls
   back to last week's, and then to the block before. On the first week of a
   new block the band underneath still names the block and week the numbers
@@ -527,7 +530,8 @@ charge, the line simply isn't there.
   while it runs it holds a screen wake lock (where the browser has one) so
   the phone doesn't sleep between sets. Moving to another day, week, block
   or profile ends it, and so does an undo that puts a different session on
-  screen.
+  screen. The day's last set starts no rest: a countdown for a workout that
+  is already over would only hide the bar underneath until you skip it.
 - **The alarm can follow the phone into your pocket.** Off by default,
   switched on under **Ajustes → "Aviso con la pantalla apagada"**. A page
   the phone has stopped running can't beep, and locking the screen or
@@ -541,6 +545,10 @@ charge, the line simply isn't there.
   resting for, when it ends, and the same **−30** / **+30** / skip — and
   the end of the rest also posts a notification, but only when the app is
   out of sight. Coming back to the app takes the notification down.
+  Switching the pocket alarm on also turns on **Aviso sonoro**, since
+  a silent keep-alive with nothing to say at zero was the setting paying
+  its cost for nothing — turn the sound back off on the timer if you don't
+  want it.
 - **RIR, per set.** A third box in the set row, next to the reps: one
   digit, `0` to `5`, for how that set actually felt. Optional and empty by
   default, same as `share`/`ss`: skip it and nothing changes. It is the
@@ -1216,7 +1224,8 @@ exactly why guessing at a stall goes wrong.
 | plano | los kilos por serie suben | Las series de después se ponen al día | Déjalo correr — cuando dejen de sumar, entonces sí es un estancamiento |
 | plano | los kilos por serie bajan | Se vacían las series de después | Empieza más ligero, o quita una serie y haz enteras las que queden |
 | plano | los kilos por serie tampoco se mueven | Estancado de verdad | Haz lo que mande el objetivo de la semana; si lleva medio bloque igual, cambia el ejercicio |
-| plano | ninguna | Estancado sin señal clara | Apunta el RIR de cada serie unas semanas — sin eso no se distingue fatiga de falta de intensidad |
+| plano | ninguna, con el RIR apuntado en las últimas sesiones | Estancado con el esfuerzo bien puesto | Cambia el estímulo: una serie más, otro rango de repeticiones u otro ejercicio |
+| plano | ninguna, y sin RIR apuntado en las últimas sesiones | Estancado sin señal clara | Apunta el RIR de cada serie unas semanas — sin eso no se distingue fatiga de falta de intensidad |
 | bajando | huecos >7 días de mediana | Asistencia, no programa | Nada que tocar en el plan |
 | bajando | sin huecos | Pierde fuerza de verdad | Si varios ejercicios bajan a la vez, mira el descanso y lo que comes — eso la app no lo ve |
 | subiendo | la ficha no sube el peso esta semana | Sube, pero hoy no toca | Mismo peso a la RIR prevista — si las reps vuelven, sube; si vuelve a caer, el nivel se ajusta solo |
