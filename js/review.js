@@ -136,8 +136,7 @@ function buildBlockReview(profile, block) {
   notes.sort((a, b) => b.week - a.week || a.day.localeCompare(b.day, 'es'));
 
   /* The Diagnóstico sheet's own rows, scoped to this block whatever that
-     sheet's toggle says. The verdict text is what the reader needs; `est`
-     is a live object with functions behind it and stays out. */
+     sheet's toggle says. The verdict text is what the reader needs. */
   const exercises = diagRows(profile, block, 'block').map(x => {
     /* Sets, not sessions, since plans/035 made the RIR a per-set value —
        and read off the rows rather than through getRir, because "apuntado"

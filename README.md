@@ -21,8 +21,8 @@ what each screen does and why — is in **[the guide](docs/guide.md)**.
   timer whose alarm survives a locked screen, RIR per set, energy chips, a note
   per session and **RÉCORD** badges —
   [During the session](docs/guide.md#during-the-session).
-- **A weight and rep target for every set, every week**, read off the
-  exercise's whole history —
+- **A weight and rep target for every exercise, every week**, as double
+  progression read off your own log —
   [The weekly objetivo](docs/guide.md#the-weekly-objetivo).
 - **Weight drops** on any set, as a dropset or a forced drop —
   [Weight drops](docs/guide.md#weight-drops).
@@ -281,8 +281,8 @@ Field notes:
   under, whatever the week's phase text asks for. Set it (usually `1`) on
   the lifts nobody takes to failure — squat, Romanian deadlift, a heavy hip
   thrust — where a week prescribing 0–1 RIR is a number you are not going
-  to follow and a target solved for it is a weight you cannot make. Omitted
-  on machines and isolation work, which is the common case.
+  to follow, so the lift's RIR box never asks for it. Omitted on machines
+  and isolation work, which is the common case.
 - `priority` (block): optional list of muscle names — the muscles this
   block is *for*, using the same freeform names as `ex.muscle`. Trimmed,
   de-duplicated and capped at 12; anything blank or unrecognisable is
