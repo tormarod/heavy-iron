@@ -34,6 +34,11 @@ node tools/objetivo-sim/trace.js chestpress hybrid none 0.005 3 actual rango
 
 ## The rules
 
+`actual` is whatever `targetFor` is in the checkout it runs in. Since
+plans/081 that is the double-progression rule `plan` describes (with the
+bottom of the range after a step, rather than two under); the numbers in
+plans/081 for the rule before it come from the commit before that plan.
+
 See the header of `rules.js`. `actualFixed` patches the current rule's two
 input bugs from outside; `todas`, `primera`, `rango` and `plan` are
 one-weight double progressions that never read the RIR box, and `plan` is

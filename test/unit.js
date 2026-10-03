@@ -2194,10 +2194,9 @@ ok('lastTime reads the same cached sets on a second draw (resetRenderCache() in 
 ok('lastTime reads afresh once a write has emptied the history cache',
    renderCacheResult.differentAfterWrite);
 
-/* plans/047: targetNow's and brakeCached's memos used to be keyed with no
-   profile at all (target) or with no key at all (brake), so two profiles
-   asking the same question — both default profiles share the id "block-1" —
-   could read each other's answer. No resetRenderCache() here on purpose:
+/* plans/047: targetNow's memo used to be keyed with no profile at all, so
+   two profiles asking the same question — both default profiles share the
+   id "block-1" — could read each other's answer. No resetRenderCache() here on purpose:
    the render cache is whatever the tests above already left it (non-null,
    the same way a real draw leaves it for drawCard), which is exactly the
    condition that used to leak one profile's answer into another's. */
@@ -2222,29 +2221,6 @@ ok('targetNow keys its memo by profile: two profiles sharing block-1/day/exercis
    targetProfileIsolation.w2 != null && targetProfileIsolation.w1 !== targetProfileIsolation.w2,
    JSON.stringify(targetProfileIsolation));
 
-const brakeProfileIsolation = call(`
-  (function () {
-    state = defaultState(); migrate();
-    const p1 = state.profiles.hombre, p2 = state.profiles.mujer;
-    const b1 = p1.blocks[p1.blockOrder[0]], b2 = p2.blocks[p2.blockOrder[0]];
-    /* Stubbed the way the brake-counting probe above stubs it: the value
-       says which profile and week asked, so a stale slot answering for the
-       wrong one is caught by the value itself rather than by a call count. */
-    const real = brakeOn;
-    brakeOn = function (profile, block, week) { return (profile === p1 ? 'p1-w' : 'p2-w') + week; };
-    try {
-      const r1 = brakeCached(p1, b1, 3, Date.now());
-      const r2 = brakeCached(p2, b2, 5, Date.now());
-      return { r1: r1, r2: r2 };
-    } finally {
-      brakeOn = real;
-    }
-  })()
-`);
-ok('brakeCached keys its memo by profile, block and week: a second profile/week does not read the first slot filled',
-   brakeProfileIsolation.r1 === 'p1-w3' && brakeProfileIsolation.r2 === 'p2-w5',
-   JSON.stringify(brakeProfileIsolation));
-
 ok('slugifyCached("constructor") returns the slug of the string, not an inherited property',
    call('slugifyCached("constructor")') === 'constructor');
 ok('slugifyCached agrees with slugify for accented Spanish text',
@@ -2255,44 +2231,10 @@ ok('slugifyCached agrees with slugify for accented Spanish text',
    of plans/027: drawCard keeps what drawApp built instead of resetting it.
    Asserted against the source because the thing being pinned is a lifetime,
    not a value — a later edit that puts the bare reset back would leave every
-   assertion in this file green while every tick paid for brakeOn again. */
+   assertion in this file green while every tick rebuilt the plan facts. */
 ok('drawCard reuses the render cache rather than resetting it on every tick',
    /function drawCard\(exId\) \{[\s\S]{0,1600}if \(!renderCache\) resetRenderCache\(\);/.test(
      fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8')));
-
-/* And what that lifetime is worth, counted: brakeOn asks every exercise of
-   every live day of the block for its history, so one call per draw rather
-   than one per tick is the win. */
-const stubbable = call('typeof brakeOn') === 'function';
-const brakeCallProbe = call(`
-  (function() {
-    const profile = defaultState().profiles.hombre;
-    const block = profile.blocks[profile.blockOrder[0]];
-    const now = Date.now();
-    /* Restored in the finally: everything after this section reads the real
-       one, and a counting wrapper left behind would be invisible here and
-       wrong everywhere else. */
-    const real = brakeOn;
-    let calls = 0;
-    brakeOn = function() { calls++; return real.apply(null, arguments); };
-    try {
-      resetRenderCache();
-      brakeCached(profile, block, 1, now);
-      brakeCached(profile, block, 1, now);
-      const twoReads = calls;
-      resetRenderCache();
-      brakeCached(profile, block, 1, now);
-      return { twoReads: twoReads, afterReset: calls };
-    } finally {
-      brakeOn = real;
-    }
-  })()
-`);
-ok('two brakeCached reads inside one draw call brakeOn once',
-   stubbable && brakeCallProbe.twoReads === 1, String(brakeCallProbe.twoReads));
-ok('a resetRenderCache() in between makes the next brakeCached pay for brakeOn again',
-   brakeCallProbe.afterReset === 2 && call('brakeOn.toString().indexOf("calls++")') < 0,
-   String(brakeCallProbe.afterReset));
 
 console.log('\n== diagnostics statistics ==');
 ok('fitSlope is positive for a clean upward series', call('fitSlope([1,2,3])') > 0);
@@ -2408,9 +2350,12 @@ ok('the volume-margin verdict delimits the imported muscle tag',
    (() => { const v = call('diagVerdict("up", { volLow: true, volTag: "Pecho «x»" })'); return v.lectura.indexOf('«Pecho x»') >= 0 && v.cambio.indexOf('«Pecho x»') >= 0; })());
 
 /* On a deload week the rule returns a `descarga` target, which is `down` by
-   design; the Diagnóstico must not read that as "the weight was picked
-   wrong". Four identical sessions make the trend flat, which is the branch
-   that consults estDown. */
+   design. The Diagnóstico used to read a target that came down as "the
+   weight was picked wrong", and the deload had to be gated out of it; the
+   rule no longer lowers anything outside the deload (plans/081), so the
+   row is gone, and this pins that it does not come back through the one
+   target that still goes down. Four identical sessions make the trend
+   flat, the branch the row lived on. */
 const deloadVerdict = call(`
   (function () {
     state = defaultState(); migrate(); state.setupDone = true;
@@ -2440,45 +2385,10 @@ ok('on the deload week the rule returns a descarga target that is down',
 ok('and the Diagnóstico does not read it as a mis-chosen weight',
    deloadVerdict.lectura && deloadVerdict.lectura.indexOf('Peso mal elegido') < 0, JSON.stringify(deloadVerdict));
 
-/* The other side of the same gate: an ordinary `objetivo` target that comes
-   down (the exercise's reps sit well under its rep range at the same
-   weight, session after session) must still read as a mis-chosen weight.
-   Four flat sessions so the trend reaches the same branch as above. */
-const objetivoDownVerdict = call(`
-  (function () {
-    state = defaultState(); migrate(); state.setupDone = true;
-    const pr = state.profiles.hombre;
-    const blockId = pr.blockOrder[0];
-    const block = pr.blocks[blockId];
-    const day = block.days[0];
-    day.ex[0].reps = '10–15';
-    const exId = day.ex[0].id;
-    pr.log[blockId] = {};
-    for (let w = 1; w <= 4; w++) {
-      pr.log[blockId][slot(w, day.id)] = { [exId]: [
-        { w: '100', r: '4', done: true, ts: Date.now() - (5 - w) * 7 * 86400000 },
-        { w: '100', r: '4', done: true, ts: Date.now() - (5 - w) * 7 * 86400000 },
-        { w: '100', r: '4', done: true, ts: Date.now() - (5 - w) * 7 * 86400000 },
-      ] };
-    }
-    block.weeks = 8; block.deload = 0;
-    pr.week = 5;
-    const rows = diagRows(pr, block, 'block');
-    const row = rows.find(x => x.id === exId) || rows[0];
-    const est = targetNow(pr, block, day, day.ex[0], 5);
-    return { kind: est && est.kind, dir: est && est.dir, trend: row && row.trend, lectura: row && row.lectura };
-  })()
-`);
-ok('an ordinary objetivo target that comes down still reads as a mis-chosen weight',
-   objetivoDownVerdict.kind === 'objetivo' && objetivoDownVerdict.dir === 'down' &&
-   objetivoDownVerdict.trend === 'flat' &&
-   objetivoDownVerdict.lectura && objetivoDownVerdict.lectura.indexOf('Peso mal elegido') === 0,
-   JSON.stringify(objetivoDownVerdict));
-
 console.log('\n== the history fixture (plans/052) ==');
 /* The one fixture builder for a training history: sessions in, a profile
    out. Everything below that used to hand-roll its own bare profile —
-   the objetivo cases, the brake, the two-day split, the Diagnóstico, the
+   the objetivo cases, the two-day split, the Diagnóstico, the
    session reader and the history cache — builds on this instead, so a
    fixture bug is one fix rather than six, and the shape of "a session"
    is written down once (plans/052).
@@ -2533,24 +2443,19 @@ call(`
   }
 `);
 
-console.log('\n== objetivo: los quince casos de la v3 ==');
-/* The fifteen cases the rule was specified against, in the order the spec
-   lists them. Every one of them reads MORE than one session — which is the
-   whole change from v2 — so they belong here rather than in smoke.js: a
-   browser adds nothing to arithmetic over six sessions, and these run on
-   every commit for free.
+console.log('\n== objetivo: doble progresión (plans/081) ==');
+/* The rule the plans write in words — one weight, a rep more on every set
+   until every set reaches the top of the range, then the next rung and the
+   bottom of the range — as cases, each named for the thing it pins. They
+   read the log through the real targetFor, so they belong here rather than
+   in smoke.js: a browser adds nothing to arithmetic over a few sessions.
 
-   `sessions` is one entry per logged session, oldest first:
-   `{ sets: [[weight, reps], …], rir: '0'|'1'|'2+'|undefined, day }` where
-   `day` is days from an arbitrary Monday and defaults to one a week. The
-   target is asked for the week after the last one, at `day + 7`, unless
-   `opts.week` / `opts.now` say otherwise.
-
-   `rirs: ['3', null, …]` is the plans/035 record — one value per set,
-   written on the rows — and it is what the per-set cases below use. `rir`
-   stays the legacy one-per-session chip in the parallel map, which is what
-   every case written before that plan uses, and what the inheritance rule
-   has to keep reading exactly as it always did. */
+   `sessions` is one entry per logged session, oldest first, each in a week
+   of its own: `{ sets: [[weight, reps], …], rir, rirs, day }`, where `day`
+   is days from an arbitrary Monday and defaults to one a week. `rir` is
+   the legacy chip and `rirs` the per-set record (plans/035); the rule reads
+   neither, and two cases below say so. The target is asked for the week
+   after the last session unless `opts.week` says otherwise. */
 const targetProbe = `
   (function (sessions, opts) {
     opts = opts || {};
@@ -2558,17 +2463,12 @@ const targetProbe = `
     const week = opts.week || sessions.length + 1;
     const phase = {};
     for (let i = 1; i <= week + 4; i++) phase[i] = { r: (opts.rirWeek != null ? opts.rirWeek : 2) + ' RIR' };
-    /* Every week gets the same prescription unless a case overrides it, which
-       is the only way to reach weekRir's prose fallback: a phase somebody
-       wrote in their own words has no number in it at all. */
     if (opts.phase) for (const k in phase) phase[k] = opts.phase;
     const ex = { id: 'E', n: 'x', sets: opts.sets || 3, reps: opts.range || '10–15', inc: opts.inc || 2.5 };
     if (opts.add) ex.add = opts.add;
     if (opts.minRir) ex.minRir = opts.minRir;
-    let lastDay = 0;
     const sess = sessions.map(function (s, i) {
       const d = s.day != null ? s.day : i * 7;
-      lastDay = d;
       return { block: 'B', week: i + 1, day: 'D', lift: 'E', rir: s.rir,
         sets: s.sets.map(function (p, k) {
           const fields = { ts: T0 + d * DAY };
@@ -2589,411 +2489,156 @@ const targetProbe = `
       blocks: [{ id: 'B', weeks: 16, deload: opts.deload || 0, phase: phase, days: [{ id: 'D', ex: [ex] }] }],
       sessions: sess });
     const block = profile.blocks.B, day = block.days[0], liveEx = day.ex[0];
-    const now = T0 + (opts.now != null ? opts.now : lastDay + 7) * DAY;
     /* Calls targetFor directly, not targetNow, so this never touches
        renderCache at all — and the history cache below it needs no help
        either, because sessionFixture hands back a fresh profile every call
        and the history cache keys on profile identity (plans/045). */
-    const t = targetFor(profile, block, day, liveEx, week, now, !!opts.brake);
+    const t = targetFor(profile, block, day, liveEx, week);
     if (!t) return null;
     return {
-      kind: t.kind, conf: t.conf, dir: t.dir, notes: t.notes.join(','),
+      kind: t.kind, dir: t.dir, notes: t.notes.join(','),
       show: t.sets.map(function (x) {
         return String(Math.round(x.w * 100) / 100).replace('.', ',') + '×' + x.r + x.move;
       }).join(' · '),
       line: targetLine(t), says: targetNotes(t).join(' | '),
-      phi: t.phi ? t.phi.map(function (v) { return v.toFixed(3); }).join(' ') : '',
-      /* The rule's own workings, for the cases that have to assert on the
-         arithmetic rather than on the card: the floor in repsAt hides a
-         third of a rep, which is most of what the trend term is worth. */
-      g: t.g, level: t.level, rirWeek: t.rirWeek, sessions: t.sessions,
     };
   })
 `;
 const target = (sessions, opts) => call(targetProbe)(sessions, opts);
+const pressOpts = { range: '8–12', inc: 2.25, sets: 4 };
 
-/* T1 — the pec deck. The topped-out 39×15/15/15 cannot lower the level, so
-   the target is still priced off the 52×12 two sessions earlier; set 1
-   earned the next rung of a very coarse stack (39 → 45, `inc` 6) and sets
-   2 and 3 cannot reach the range there, so they stay and chase reps. */
-let t = target([
-  { sets: [[45, 15], [45, 12], [45, 10], [39, 12]], rir: '0' },
-  { sets: [[52, 12], [45, 12], [45, 10], [39, 12]], rir: '0' },
-  { sets: [[39, 15], [39, 15], [39, 15]], rir: '1' },
-], { range: '12–15', inc: 6, sets: 3, rirWeek: 1 });
-ok('T1 a topped-out session does not lower the level, and the stack is climbed by its own rungs',
-   t.show === '45×13↑ · 39×15 · 39×15' && t.conf === 'baja', JSON.stringify(t));
+ok('no history at all is no line, not a guess',
+   target([], pressOpts) === null);
 
-/* T2 — the one v2 froze solid: every set at the top of the range with the
-   last one at 0 RIR was a veto, so 25 kg never moved again. There is no
-   veto now; the RIR is already inside the capacity the step is priced on. */
-const contractora = [
-  { sets: [[25, 15], [25, 15], [25, 15], [25, 15]], rir: '1' },
-  { sets: [[25, 20], [25, 20], [25, 20]], rir: '0' },
+/* The session the old rule answered with fewer reps on every set — an
+   empty RIR box read as failure, the week's RIR taken off again. */
+let t = target([{ sets: [[45, 12], [45, 10], [45, 9], [45, 8]], rir: '0' }], pressOpts);
+ok('one weight, and a rep more than each set did, up to the top of the range',
+   t.show === '45×12 · 45×11 · 45×10 · 45×9' && t.kind === 'objetivo' && t.dir === '', JSON.stringify(t));
+ok('...written once for the whole session',
+   t.line === '→ objetivo: 45 × 12 · 11 · 10 · 9', t.line);
+ok('...and a set already at the top is said to be waiting, not stuck',
+   t.notes === 'top' && t.says === 'Las series que ya llegan a 12 se quedan ahí: el peso sube cuando lleguen todas.', t.says);
+
+t = target([
+  { sets: [[45, 12], [45, 11], [45, 10], [45, 9]] },
+  { sets: [[45, 10], [45, 9], [45, 8], [45, 7]] },
+], pressOpts);
+ok('a bad day never lowers the ask: each set chases its best at the weight, not its last',
+   t.show === '45×12 · 45×12 · 45×11 · 45×10', JSON.stringify(t));
+
+t = target([
+  { sets: [[45, 9], [45, 9], [45, 8], [45, 8]] },
+  { sets: [[50, 10], [50, 9], [50, 8], [50, 8]] },
+  { sets: [[45, 10], [45, 10], [45, 9], [45, 8]] },
+], pressOpts);
+ok('...and the best is read since the weight was last changed, not from an older run at the same weight',
+   t.show === '45×11 · 45×11 · 45×10 · 45×9', JSON.stringify(t));
+
+t = target([{ sets: [[45, 14], [45, 10], [45, 9], [45, 8]] }], pressOpts);
+ok('a set past the top is never asked for less than it did',
+   t.show === '45×14 · 45×11 · 45×10 · 45×9', JSON.stringify(t));
+t = target([{ sets: [[45, 12], [45, 10], [45, 7], [45, 5]] }], pressOpts);
+ok('a set under the range is asked back into it, not for one more rep under it',
+   t.show === '45×12 · 45×11 · 45×8 · 45×8', JSON.stringify(t));
+
+/* The step. */
+t = target([{ sets: [[20, 12], [20, 12], [20, 12], [20, 12]] }], { range: '8–12', inc: 2.5, sets: 4 });
+ok('every set at the top: the next rung, and every set starts again at the bottom of the range',
+   t.show === '22,5×8↑ · 22,5×8↑ · 22,5×8↑ · 22,5×8↑' && t.dir === 'up', JSON.stringify(t));
+ok('...on one line, rising',
+   t.line === '↗ objetivo: 22,5 × 8 · 8 · 8 · 8', t.line);
+ok('...that says the drop in reps is the step and not a step back',
+   t.notes === 'up' && t.says === 'Todas las series llegaron a 12: sube de peso y vuelve a empezar por 8.', t.says);
+
+t = target([
+  { sets: [[20, 12], [20, 12], [20, 12], [20, 12]] },
+  { sets: [[22.5, 9], [22.5, 8], [22.5, 7], [22.5, 6]] },
+], { range: '8–12', inc: 2.5, sets: 4 });
+ok('a first session at the new weight that fell under the range is not asked for less than the step asked',
+   t.show === '22,5×10 · 22,5×9 · 22,5×8 · 22,5×8', JSON.stringify(t));
+
+/* The shoulder press: 18 and 23 are both on the stack the log knows, and
+   23 is more than one and a half steps away, so the micro-plate wins. */
+t = target([
+  { sets: [[18, 12], [18, 12], [18, 12], [18, 11]] },
+  { sets: [[23, 10], [23, 9], [18, 10], [18, 10]] },
+  { sets: [[18, 12], [18, 12], [18, 12]] },
+], { range: '8–12', inc: 1, sets: 3 });
+ok('the next rung is the micro-step, not the far heavier weight also in the history',
+   t.show === '19×8↑ · 19×8↑ · 19×8↑', JSON.stringify(t));
+t = target([
+  { sets: [[39, 15], [39, 15], [39, 15]] },
+  { sets: [[45, 14], [45, 14], [45, 14]] },
+  { sets: [[39, 15], [39, 15], [39, 15]] },
+], { range: '12–15', inc: 6, sets: 3 });
+ok('...and a rung the log knows within a step and a half is the stack\'s own',
+   t.show === '45×12↑ · 45×12↑ · 45×12↑', JSON.stringify(t));
+
+t = target([{ sets: [[20, 12], [20, 12], [20, 12]] }], { range: '8–12', inc: 2.5, sets: 4 });
+ok('a session one set short did not reach the top on every set: no step, and the missing set is asked for the bottom',
+   t.show === '20×12 · 20×12 · 20×12 · 20×8' && t.dir === '', JSON.stringify(t));
+t = target([
+  { sets: [[45, 11], [45, 10], [45, 9], [45, 8]] },
+  { sets: [[45, 12], [45, 11], [45, 10], [45, 9]] },
+  { sets: [[45, 12], [45, 12], [45, 11], [45, 10]] },
+  { sets: [[45, 12], [45, 12], [45, 12], [45, 12]] },
+], { range: '8–12', inc: 2.25, sets: 4, add: 5 });
+ok('a set the plan adds this week does not hold back a step the sets that were done have earned',
+   t.show === '47,25×8↑ · 47,25×8↑ · 47,25×8↑ · 47,25×8↑ · 47,25×8↑', JSON.stringify(t));
+
+/* A calibration week that tried one heavy set and backed off for the rest
+   was trained at the lighter weight. */
+t = target([{ sets: [[40, 8], [30, 8], [30, 8]] }], { range: '8–12', inc: 2.5, sets: 3 });
+ok('the weight asked is the one most of the sets used, and a set never done at it is asked for the bottom',
+   t.show === '30×8 · 30×9 · 30×9', JSON.stringify(t));
+
+/* The deload: 45 × 0,6 is 27, and the 2,25 ladder from 45 lands on it
+   exactly; five sets halve to three. */
+t = target([
+  { sets: [[45, 12], [45, 10], [45, 9], [45, 8]] },
+  { sets: [[45, 12], [45, 11], [45, 9], [45, 8]] },
+], { range: '8–12', inc: 2.25, sets: 4, add: 5, week: 8, deload: 8 });
+ok('a deload is half the sets at the bottom of the range, on the first rung under 60 %',
+   t.kind === 'descarga' && t.dir === 'down' && t.show === '27×8 · 27×8 · 27×8', JSON.stringify(t));
+ok('...on one line, falling', t.line === '↘ descarga: 27 × 8 · 8 · 8', t.line);
+
+/* What the rule does not read. */
+const steady = [
+  { sets: [[45, 11], [45, 10], [45, 9], [45, 8]], day: 0 },
+  { sets: [[45, 12], [45, 10], [45, 9], [45, 8]], day: 7 },
 ];
-t = target(contractora, { range: '15–20', inc: 1, sets: 3, rirWeek: 1 });
-ok('T2 the top of the range at 0 RIR no longer freezes the exercise',
-   t.show === '26×17↑ · 26×17↑ · 26×17↑' && t.conf === 'baja' && t.notes.includes('moreRir'), JSON.stringify(t));
-ok('   and the line reads the way the spec writes it',
-   t.line === '↗ objetivo: 26×17 · 26×17 · 26×17', t.line);
-ok('   with the RIR the week asks for said out loud',
-   t.says.includes('Esta semana pide más RIR'), t.says);
-
-/* T3/T4/T9 — the chest press, with a back-off week, a twenty-day layoff and
-   the set `ex.add` brings in at week 5. */
-const chest = [
-  { sets: [[42.75, 11], [42.75, 10], [42.75, 9], [42.75, 8]], rir: '0', day: 0 },
-  { sets: [[45, 11], [45, 10], [45, 9], [45, 8]], rir: '0', day: 7 },
-  { sets: [[45, 12], [45, 10], [45, 9], [45, 8]], rir: '0', day: 14 },
-];
-const chestOpts = { range: '8–12', inc: 2.25, sets: 4, add: 5, rirWeek: 1 };
-t = target(chest, Object.assign({ now: 34 }, chestOpts));
-ok('T3 twenty days off repeats the last session rather than discounting it',
-   t.kind === 'vuelta' && t.show === '45×12 · 45×10 · 45×9 · 45×8', JSON.stringify(t));
-ok('   and says why', t.says.includes('Vuelta de parón'), t.says);
-
-const chest4 = chest.concat([{ sets: [[45, 12], [45, 10], [45, 9], [45, 8]], rir: '0', day: 34 }]);
-t = target(chest4, Object.assign({ now: 41 }, chestOpts));
-ok('T4 five sets, one up, one down, and the added set priced off the decay',
-   t.show === '47,25×9↑ · 45×9 · 45×8 · 42,75×9↓ · 42,75×8' && t.conf === 'media', JSON.stringify(t));
-ok('   the line is the one the spec prints',
-   t.line === '↗ objetivo: 47,25×9 · 45×9 · 45×8 · 42,75×9 · 42,75×8', t.line);
-/* The number the spec states for this exercise, and the one thing in the
-   rule that is measured rather than assumed. */
-ok('   and the decay profile is 1 · 0,952 · 0,929 · 0,904',
-   t.phi.indexOf('1.000 0.952 0.929 0.905') === 0, t.phi);
-/* 45 × 0,6 is 27, and the 2,25 ladder from 45 lands on it exactly. */
-t = target(chest4, Object.assign({ now: 41, week: 8, deload: 8 }, chestOpts));
-ok('T9 a deload is half the sets at the bottom of the range, on the first rung under 60 %',
-   t.kind === 'descarga' && t.show === '27×8 · 27×8 · 27×8', JSON.stringify(t));
-
-/* T5 — the shoulder press, where the stack the log knows about (18 and 23)
-   must not be read as "the next rung after 18 is 23": 23 is more than one
-   and a half steps away, so the micro-plate wins. */
-t = target([
-  { sets: [[18, 12], [18, 12], [18, 12], [18, 11]], rir: '0' },
-  { sets: [[23, 10], [23, 9], [18, 10], [18, 10]], rir: '0' },
-  { sets: [[18, 12], [18, 12], [18, 12]], rir: '2+' },
-], { range: '8–12', inc: 1, sets: 3, rirWeek: 1 });
-ok('T5 the next rung is the micro-step, not the far heavier weight also in the history',
-   t.show === '19×10↑ · 19×10↑ · 19×10↑' && t.conf === 'baja', JSON.stringify(t));
-
-/* T6 — the session that named the v2 rule, and the clearest case for
-   deciding per set: 32×15/15/12/12 was "mantener" as one weight, and is
-   two sets up and two sets chasing reps as four. */
-t = target([
-  { sets: [[32, 10], [27, 10], [27, 10], [27, 10]], rir: '1' },
-  { sets: [[32, 15], [32, 15], [32, 12], [32, 12]], rir: '1' },
-], { range: '10–15', inc: 2.25, sets: 4, rirWeek: 2 });
-ok('T6 the two sets that reached the top go up; the two that did not keep the weight',
-   t.show === '34,25×10↑ · 34,25×10↑ · 32×11 · 32×11' && t.conf === 'baja', JSON.stringify(t));
-
-/* T7 — the slack. Set 1 prices out at 11 reps on a 12–15 range, one under
-   the bottom; the base it was read off is a floor (the set ended at the
-   top), so one rep of slack lets it move. Without it the exercise is
-   frozen exactly the way the old RIR-0 veto froze T2. */
-t = target([
-  { sets: [[27, 12], [27, 12], [27, 12], [27, 12]], rir: '0' },
-  { sets: [[27, 15], [27, 15], [27, 13], [27, 12]], rir: '0' },
-  { sets: [[27, 15], [27, 15], [27, 13]], rir: '1' },
-], { range: '12–15', inc: 2.25, sets: 3, rirWeek: 1 });
-ok('T7 one rep of slack on a censored base is what stops a topped-out set freezing',
-   t.show === '29,25×12↑ · 29,25×12↑ · 27×15' && t.conf === 'baja', JSON.stringify(t));
-
-/* T8 — a light exercise with no `inc` of its own: the default 2,5 step is
-   a third of the weight, so nothing can go up and the answer is to say so
-   rather than to prescribe a jump nobody can make. */
-t = target([
-  { sets: [[6.8, 20], [6.8, 20], [6.8, 18], [6.8, 16]], rir: '1' },
-  { sets: [[6.8, 20], [6.8, 20], [6.8, 20], [6.8, 20]], rir: '1' },
-  { sets: [[6.8, 20], [6.8, 20], [6.8, 20], [6.8, 20]], rir: '1' },
-  { sets: [[6.8, 20], [6.8, 20], [6.8, 20], [6.8, 20]], rir: '1' },
-], { range: '12–20', inc: 2.5, sets: 4, rirWeek: 1 });
-ok('T8 a step too big for the range holds the weight and names the step',
-   t.show === '6,8×20 · 6,8×20 · 6,8×20 · 6,8×20' && t.notes.includes('step'), JSON.stringify(t));
-ok('   and the note gives the weight that would not fit',
-   t.says.includes('9,3 kg') && t.says.includes('micro-carga'), t.says);
-
-/* T10 — the same history as T2 with the brake on: nothing goes up and the
-   expected gain is zero, so every set repeats what it already did. */
-t = target(contractora, { range: '15–20', inc: 1, sets: 3, rirWeek: 1, brake: true });
-ok('T10 the global brake stops every rise, including the ones already earned',
-   t.show === '25×19 · 25×19 · 25×19' && t.conf === 'baja', JSON.stringify(t));
-
-/* T11/T12 — one bad session is a bad session; two in a row is the level. */
-const declining = [
-  { sets: [[40, 10], [40, 9], [40, 8]], rir: '1' },
-  { sets: [[40, 11], [40, 10], [40, 9]], rir: '1' },
-  { sets: [[40, 8], [40, 8], [40, 7]], rir: '1' },
-];
-t = target(declining, { range: '8–12', inc: 2.5, sets: 3, rirWeek: 1 });
-ok('T11 the first session under the level holds the weight without lowering it',
-   t.show === '40×11 · 40×10 · 40×8' && t.conf === 'media' && t.notes.includes('hold'), JSON.stringify(t));
-ok('   and says it is one session, not a verdict',
-   t.says.includes('hoy no sube la carga'), t.says);
-t = target(declining.concat([{ sets: [[40, 8], [40, 7], [40, 7]], rir: '1' }]),
-           { range: '8–12', inc: 2.5, sets: 3, rirWeek: 1 });
-ok('T12 the second one in a row moves the level down with it',
-   t.show === '40×9 · 40×8 · 37,5×10↓' && t.conf === 'alta' && t.notes.includes('confirmed'), JSON.stringify(t));
-ok('   and says the objetivo came down too',
-   t.says.includes('el objetivo baja contigo'), t.says);
-
-/* T13 — no chip anywhere. Every session is read as a floor, which is why
-   the confidence is low and why the estimate stays on the safe side. */
-t = target([
-  { sets: [[50, 10], [50, 9], [50, 8]] },
-  { sets: [[50, 11], [50, 10], [50, 9]] },
-], { range: '8–12', inc: 2.5, sets: 3, rirWeek: 2 });
-ok('T13 with no RIR marked every session is a minimum and the confidence says so',
-   t.show === '50×10 · 50×8 · 47,5×10↓' && t.conf === 'baja' && t.notes.includes('moreRir'), JSON.stringify(t));
-/* One rung down lands inside the range, so there is nothing to warn about:
-   the 'floor' note is for the walk that ran out of rungs, not for any
-   target that came down at all (plans/025). */
-ok('   and a set that comes down one rung INTO the range carries no floor note',
-   !t.notes.includes('floor'), JSON.stringify(t));
-
-/* T14 */
-ok('T14 no history at all is no line, not a guess',
-   target([], { range: '8–12', inc: 2.5, sets: 3, rirWeek: 1 }) === null);
-
-/* T15 — the brake itself. Three exercises whose latest session is a real
-   decline inside the last seven days; two is not enough. */
-const brakeProbe = `
-  (function (caps, nEx) {
-    const DAY = 86400000, T0 = Date.UTC(2026, 0, 5);
-    const phase = {}; for (let i = 1; i <= 8; i++) phase[i] = { r: '2 RIR' };
-    const ex = [];
-    for (let e = 0; e < nEx; e++) ex.push({ id: 'E' + e, n: 'x' + e, sets: 3, reps: '8–20', inc: 2.5 });
-    const sess = [];
-    caps.forEach(function (C, i) {
-      /* 10 reps at 1 RIR, so the set is neither past CENSOR_REPS nor at the
-         top of the range: the weight is whatever makes the capacity C. */
-      ex.forEach(function (e) {
-        sess.push({ block: 'B', week: i + 1, day: 'D', lift: e.id, rir: '1',
-                    sets: [[C * 30 / 41, 10, { ts: T0 + i * 3 * DAY }]] });
-      });
-    });
-    const profile = sessionFixture({ units: 'kg',
-      blocks: [{ id: 'B', weeks: 8, deload: 0, phase: phase, days: [{ id: 'D', ex: ex }] }],
-      sessions: sess });
-    /* Calls brakeOn directly, not brakeCached, so renderCache is never in
-       the loop here. */
-    return brakeOn(profile, profile.blocks.B, caps.length + 1, T0 + (caps.length * 3 + 2) * DAY);
-  })
-`;
-ok('T15 three exercises declining inside a week turn the brake on',
-   call(brakeProbe)([60, 62, 55], 3) === true);
-ok('   two do not', call(brakeProbe)([60, 62, 55], 2) === false);
-ok('   and neither does a sequence that never really fell',
-   call(brakeProbe)([60, 62, 62], 3) === false);
-
-/* ---- the trend term itself (plans/026) ----
-   The fifteen cases above cover the decisions and none of the arithmetic
-   that feeds them: at 4f7e037 the whole suite still passed with theilSen
-   stubbed to `return 0` and with MAX_SLOPE moved from 0,03 to 0,5. These
-   three assert on `g` — the expected gain, js/app.js's `t.g` — because a
-   third of a rep is what the trend is worth and Math.floor in repsAt eats
-   exactly that before it reaches the card. */
-
-/* T16 — a climb steeper than one rep a session: the trend is real and
-   MAX_SLOPE binds. Two reps a session at 40 kg is 2,67 of capacity per
-   session over a level of 57,33, i.e. 0,047 — clamped to 0,03. Every
-   session is uncensored (12 reps is neither past CENSOR_REPS nor at the
-   top of 6–15, and the chip is given), which `conf === 'alta'` witnesses. */
-t = target([
-  { sets: [[40, 4], [40, 4], [40, 4]], rir: '1' },
-  { sets: [[40, 6], [40, 6], [40, 6]], rir: '1' },
-  { sets: [[40, 8], [40, 8], [40, 8]], rir: '1' },
-  { sets: [[40, 10], [40, 10], [40, 10]], rir: '1' },
-  { sets: [[40, 12], [40, 12], [40, 12]], rir: '1' },
-], { range: '6–15', inc: 2.5, sets: 3, rirWeek: 1 });
-ok('T16 a steep climb reads as a trend and is clamped at MAX_SLOPE',
-   t && Math.abs(t.g - 0.03) < 1e-9, JSON.stringify(t));
-
-/* T17 — one rep a session is, by construction, exactly oneRep and tells
-   the trend term nothing: C = w(1 + (r + ρ)/30), so a rep a session is a
-   slope of w/30 and slope / level is 1 / (30 + r + ρ). This is why the
-   fifteen cases could not see theilSen at all. */
-t = target([
-  { sets: [[40, 6], [40, 6]], rir: '1' },
-  { sets: [[40, 7], [40, 7]], rir: '1' },
-  { sets: [[40, 8], [40, 8]], rir: '1' },
-  { sets: [[40, 9], [40, 9]], rir: '1' },
-  { sets: [[40, 10], [40, 10]], rir: '1' },
-], { range: '6–15', inc: 2.5, sets: 2, rirWeek: 1 });
-ok('T17 a one-rep-a-session climb is priced at exactly one more rep',
-   t && Math.abs(t.g - 1 / (30 + 10 + 1)) < 1e-9, JSON.stringify(t));
-
-/* T18 — a falling trend is discarded rather than extrapolated: the floor
-   is still one more rep. The last session recovers to 54,67 against a best
-   of 56, well inside DECLINE_DROP, so this is the trend arm and not the
-   hold arm — which would reach g = 0 by another route entirely. */
-t = target([
-  { sets: [[40, 12], [40, 12]], rir: '1' },
-  { sets: [[40, 11], [40, 11]], rir: '1' },
-  { sets: [[40, 10], [40, 10]], rir: '1' },
-  { sets: [[40, 9], [40, 9]], rir: '1' },
-  { sets: [[40, 10], [40, 10]], rir: '1' },
-], { range: '6–15', inc: 2.5, sets: 2, rirWeek: 1 });
-ok('T18 a falling trend never prices less than one more rep',
-   t && Math.abs(t.g - 1 / (30 + 10 + 1)) < 1e-9 && !t.notes.includes('hold'),
-   JSON.stringify(t));
+const steadyAsk = target(steady, pressOpts).show;
+ok('the clock is not an input: a month between sessions asks what a week does, and nothing is a "vuelta"',
+   target([steady[0], Object.assign({}, steady[1], { day: 40 })], pressOpts).show === steadyAsk, steadyAsk);
+ok('the RIR is not an input: typed on every set, typed as a chip, or left empty, the same ask',
+   target(steady.map(s => Object.assign({ rirs: ['3', '2', '1', '0'] }, s)), pressOpts).show === steadyAsk &&
+   target(steady.map(s => Object.assign({ rir: '0' }, s)), pressOpts).show === steadyAsk, steadyAsk);
+ok('...and neither is the RIR the week prescribes, nor a lift\'s minRir',
+   target(steady, Object.assign({ rirWeek: 0 }, pressOpts)).show === steadyAsk &&
+   target(steady, Object.assign({ rirWeek: 4, minRir: 2 }, pressOpts)).show === steadyAsk &&
+   target(steady, Object.assign({ phase: { r: 'Semana de técnica' } }, pressOpts)).show === steadyAsk, steadyAsk);
+ok('outside the deload the rule never asks for a lighter weight, whatever the history',
+   [[[100, 4], [100, 3], [100, 3]], [[60, 5], [60, 5], [60, 4]], [[40, 15], [40, 6], [40, 6]]].every(sets =>
+     target([{ sets: sets }, { sets: sets }], { range: '10–15', inc: 3, sets: 3 }).show
+       .split(' · ').every(x => parseFloat(x.replace(',', '.')) >= sets[0][0])));
 
 /* The pieces the cases above lean on, asserted on their own so a failure
    says which one moved. */
 ok('a censored session can never be read as a decline',
    call('declineAt([{C:60,cens:false},{C:62,cens:false},{C:50,cens:true}], 2)') === false);
-ok('repsAt lands on the integer it should: 63 over 47,25 is 9 reps, not 8',
-   call('repsAt(47.25, 63, 1)') === 9);
 ok('the load ladder climbs by the rungs the log knows and falls back to the step',
    call('nextLoad([18, 23], 18, 1)') === 19 && call('nextLoad([39, 45, 52], 39, 6)') === 45 &&
    call('prevLoad([42.75, 45], 45, 2.25)') === 42.75);
 
 /* ...and the rest of them (plans/026), so that a helper the cases only
-   reach through six sessions of arithmetic can fail by name. */
-ok('theilSen of nothing, or of one point, is a flat line', call('theilSen([])') === 0 && call('theilSen([[0, 5]])') === 0);
-/* [0,1] and [0,2] share an x and are skipped; the two remaining pairs give
-   slopes (3-1)/1 = 2 and (3-2)/1 = 1, whose median is 1,5. Two sets logged
-   in the same session is exactly that shape, which is why it is not an
-   Infinity waiting to be divided. */
-ok('theilSen skips pairs with the same x rather than dividing by zero',
-   call('theilSen([[0, 1], [0, 2], [1, 3]])') === 1.5);
-/* Six pairwise slopes: 1, 1, 10, 1, 14,5, 28 → sorted 1, 1, 1, 10, 14,5, 28
-   → even-length median (1 + 10) / 2 = 5,5. A least-squares line through the
-   same points would be steered by the outlier; the median is not, which is
-   the whole reason the rule uses this and not a regression. */
-ok('theilSen is the median of the pairwise slopes, not a least-squares fit',
-   call('theilSen([[0, 0], [1, 1], [2, 2], [3, 30]])') === 5.5);
+   reach through several sessions can fail by name. */
 ok('median of an odd and an even list', call('median([3, 1, 2])') === 2 && call('median([4, 1, 3, 2])') === 2.5);
 ok('loadLadder dedupes to float tolerance and sorts',
    JSON.stringify(call('loadLadder([{ sets: [{ w: 45 }, { w: 40 }] }, { sets: [{ w: 45.0000000001 }, { w: 42.5 }] }])')) === '[40,42.5,45]');
 ok('nextLoad takes the first rung within one and a half steps, else the step',
    call('nextLoad([40, 41, 45], 40, 2.5)') === 41 && call('nextLoad([40, 45], 40, 2.5)') === 42.5);
 ok('prevLoad mirrors it', call('prevLoad([35, 39, 40], 40, 2.5)') === 39 && call('prevLoad([30, 40], 40, 2.5)') === 37.5);
-
-/* ---- the arms of targetFor the fifteen never entered (plans/026) ----
-   Every case above is a block with one day, a numbered phase, one segment
-   and a set count that never changes, which leaves five branches of the
-   rule reachable only from test/smoke.js or from nothing at all. */
-
-/* A phase somebody wrote in their own words has no "RIR" in it, so the
-   week cannot say what reserve it wants and the reserve the last session
-   was left at stands in — which asks for no change rather than inventing
-   one. `phaseRir` only reads a number standing next to a RIR marker
-   (plans/058; plans/062 let "RIR: 2" and "2 reps en reserva" count too);
-   any other digit in the prose, or no digit at all, reads the same: null. */
-t = target([
-  { sets: [[40, 10], [40, 9]], rir: '2+' },
-  { sets: [[40, 10], [40, 9]], rir: '2+' },
-  { sets: [[40, 11], [40, 9]], rir: '2+' },
-], { range: '6–15', inc: 2.5, sets: 2, phase: { r: 'Semana de técnica' } });
-ok('a phase with no number in it falls back to the reserve the last session was left at',
-   t && t.rirWeek === 2, JSON.stringify(t));
-t = target([
-  { sets: [[40, 10], [40, 9]], rir: '0' },
-  { sets: [[40, 10], [40, 9]], rir: '0' },
-  { sets: [[40, 11], [40, 9]], rir: '0' },
-], { range: '6–15', inc: 2.5, sets: 2, phase: { r: 'Semana de técnica' } });
-ok('...including a zero, which is a reserve and not a missing one',
-   t && t.rirWeek === 0, JSON.stringify(t));
-t = target([
-  { sets: [[40, 10], [40, 9]], rir: '0' },
-  { sets: [[40, 10], [40, 9]], rir: '0' },
-  { sets: [[40, 11], [40, 9]], rir: '0' },
-], { range: '6–15', inc: 2.5, sets: 2, minRir: 1, phase: { r: 'Semana de técnica' } });
-ok('...and ex.minRir still floors what the fallback came back with',
-   t && t.rirWeek === 1, JSON.stringify(t));
-
-/* A phase label naming a week number and a rep scheme with no "RIR"
-   beside it (plans/058 item 3) used to read as the lowest digit in the
-   label — "Semana 6 · 10 reps" as 6 — and drive every card that week to
-   the floor via moreRir/floor, silently. It now reads null, exactly like
-   prose with no digit at all: same history, same sets, same reserve
-   carried over from the last session.
-
-   (The plan's other motivating example, "Descarga 60%", is not usable for
-   this comparison: the word "Descarga" already marks the week a deload
-   through saysDescarga/deloadAt — plans/054, predating this plan, renamed
-   from a lookbehind regex by plans/059 with no change in behaviour — so
-   targetFor takes the deload branch before weekRir/phaseRir are ever
-   reached, whatever number follows. That path is unrelated to this fix;
-   see the Maintenance notes.) */
-t = target([
-  { sets: [[40, 10], [40, 9]], rir: '2+' },
-  { sets: [[40, 10], [40, 9]], rir: '2+' },
-  { sets: [[40, 11], [40, 9]], rir: '2+' },
-], { range: '6–15', inc: 2.5, sets: 2, phase: { r: 'Semana 6 · 10 reps' } });
-ok('a week number and rep scheme with no "RIR" beside it falls back to the reserve the last session was left at, same as prose with no digits',
-   t && t.rirWeek === 2, JSON.stringify(t));
-const tPercent = t;
-t = target([
-  { sets: [[40, 10], [40, 9]], rir: '2+' },
-  { sets: [[40, 10], [40, 9]], rir: '2+' },
-  { sets: [[40, 11], [40, 9]], rir: '2+' },
-], { range: '6–15', inc: 2.5, sets: 2, phase: { r: '2 RIR' } });
-ok('...and prescribes exactly what the same history under an explicit "2 RIR" phase would, never a lower weight',
-   tPercent && t && tPercent.show === t.show, JSON.stringify([tPercent, t]));
-
-/* A layoff restarts the segment the level is read off: three sessions at
-   50 kg, twenty days away, three at 45. Measured against the whole run the
-   last three would still be the 45 kg ones, so the level alone cannot tell
-   the two apart — what can is that the run 50 → 45 reads as two declines
-   in a row, i.e. a CONFIRMED loss of the level, and inside the segment
-   there is no fall at all. */
-t = target([
-  { sets: [[50, 10]], rir: '1' },
-  { sets: [[50, 10]], rir: '1' },
-  { sets: [[50, 10]], rir: '1' },
-  { sets: [[45, 10]], rir: '1', day: 34 },
-  { sets: [[45, 10]], rir: '1', day: 41 },
-  { sets: [[45, 10]], rir: '1', day: 48 },
-], { range: '6–15', inc: 2.5, sets: 1, rirWeek: 1 });
-ok('a layoff restarts the segment, so coming back at 45 is the level and not a decline',
-   t && Math.abs(t.level - 45 * (1 + 11 / 30)) < 1e-6 && !t.notes.includes('confirmed'),
-   JSON.stringify(t));
-
-/* A second set that collapses from twelve reps to two is a ratio of 0,767,
-   under PSI_MIN — and the floor is there because a drop that size is a
-   mistyped row or a set done at a weight the rule could not see, not a
-   measurement of what the second set is worth. */
-t = target([
-  { sets: [[40, 12], [40, 2]], rir: '1' },
-  { sets: [[40, 12], [40, 2]], rir: '1' },
-  { sets: [[40, 12], [40, 2]], rir: '1' },
-  { sets: [[40, 12], [40, 2]], rir: '1' },
-], { range: '6–15', inc: 2.5, sets: 2, rirWeek: 1 });
-ok('a second set that collapses is floored at PSI_MIN rather than believed',
-   t && t.phi === '1.000 0.800', JSON.stringify(t));
-
-/* Four reps where the plan asks for ten, on a machine whose only logged
-   rung is 100: the walk down invents rungs of 3 and stops after three of
-   them, at 91, whether or not the bottom of the range is in reach yet. */
-t = target([
-  { sets: [[100, 4], [100, 3], [100, 3]] },
-  { sets: [[100, 4], [100, 3], [100, 2]] },
-], { range: '10–15', inc: 3, sets: 3, rirWeek: 1 });
-ok('coming down stops after three rungs, whether or not the range is back in reach',
-   t && t.show === '91×7↓ · 82×10↓ · 79×10↓', JSON.stringify(t));
-/* H1 — the set that ran out of rungs used to say nothing about it: reps
-   below the range under a header reading "3 × 10–15", with no note, while
-   the mirror case (a step UP that does not fit) has had one since v3. The
-   reps stay as computed — they are honest — and the note says why they sit
-   under the range (plans/025). */
-ok('H1 ...and the set that ran out of rungs is marked, not left to read as a miscount',
-   t && t.notes.includes('floor') && t.dir === 'down', JSON.stringify(t));
-ok('   and the note says so in words',
-   t && t.says.includes('escalones'), t && t.says);
-
-/* Back from a layoff the last session is repeated exactly — and the set
-   the plan has gained since was never done at all, so it takes the last
-   set's weight at the bottom of the range. */
-t = target([
-  { sets: [[40, 10], [35, 8]], rir: '1' },
-  { sets: [[40, 10], [35, 8]], rir: '1' },
-  { sets: [[40, 10], [35, 8]], rir: '1' },
-], { range: '6–15', inc: 2.5, sets: 3, rirWeek: 1, now: 34 });
-ok('a vuelta repeats the last session and gives a set gained since the last weight at the bottom of the range',
-   t && t.kind === 'vuelta' && t.show === '40×10 · 35×8 · 35×6', JSON.stringify(t));
 
 /* A rep range is the one field the rule cannot work around, and a plan
    that arrived as JSON can say anything at all in it. */
@@ -3033,9 +2678,7 @@ t = target([
   { sets: [[45, 15], [45, 15], [45, 15]], rir: '1' },
 ], { range: '10–15', inc: 2.5, sets: 3, rirWeek: 1 });
 ok('G1 a converted session behind the kg ones is never a rung the target can land on',
-   t && t.show.indexOf('45,36') < 0 &&
-   t.show.split(' · ').every(function (s) { return s.indexOf('47,5×') === 0 || s.indexOf('45×') === 0; }),
-   JSON.stringify(t));
+   t && t.show === '47,5×10↑ · 47,5×10↑ · 47,5×10↑', JSON.stringify(t));
 
 console.log('\n== loadLadder: cached per history (plans/064) ==');
 /* loadLadder rebuilt the ladder from scratch on every card on every draw,
@@ -3156,16 +2799,13 @@ ok('...while an earlier block\'s single day counts for both, oldest first',
 console.log('\n== el objetivo guardado, las variantes y minRir ==');
 
 /* `ex.minRir` is the reserve a lift never goes under, whatever the phase
-   text asks for — and it can only ever make the target easier, which is
-   the direction it exists to be wrong in. */
-let a = target([{ sets: [[40, 10], [40, 9], [40, 8]], rir: '1' },
-                { sets: [[40, 11], [40, 10], [40, 9]], rir: '1' }],
-               { range: '8–12', inc: 2.5, sets: 3, rirWeek: 0 });
-let b = target([{ sets: [[40, 10], [40, 9], [40, 8]], rir: '1' },
-                { sets: [[40, 11], [40, 10], [40, 9]], rir: '1' }],
-               { range: '8–12', inc: 2.5, sets: 3, rirWeek: 0, minRir: 2 });
-ok('minRir floors the week\'s RIR, so the target asks for fewer reps, never more',
-   a.show !== b.show && b.notes.includes('moreRir'), a.show + '  vs  ' + b.show);
+   text asks for. Since plans/081 the objetivo reads no RIR at all, so what
+   it floors is the number greyed into the lift's RIR boxes — the stop line
+   the week draws for it. */
+ok('minRir floors the RIR the week asks of a lift, and leaves a lift without one at the phase',
+   call(`weekRir({ phase: { 7: { r: '0–1 RIR' } } }, { minRir: 1 }, 7)`) === 1 &&
+   call(`weekRir({ phase: { 7: { r: '0–1 RIR' } } }, {}, 7)`) === 0 &&
+   call(`weekRir({ phase: { 3: { r: '3 RIR' } } }, { minRir: 1 }, 3)`) === 3);
 ok('and a block imported with minRir keeps it',
    call(`normalizeImportedBlock({ name: 'B', days: [{ ex: [{ n: 'x', reps: '8-12', minRir: 1 }] }] }).days[0].ex[0].minRir`) === 1);
 ok('while a nonsense one is dropped rather than rejecting the block',
@@ -3352,15 +2992,18 @@ ok('deloadWeek( is called only in app.js\'s own deloadWeeks and the editor\'s on
 const objRecord = call(`
   (function () {
     const p = { obj: {} };
-    const t = { conf: 'media', sets: [{ w: 45, r: 9, move: '\\u2191' }, { w: 42.75, r: 8, move: '' }] };
+    const t = { kind: 'objetivo', sets: [{ w: 45, r: 8, move: '\\u2191' }, { w: 45, r: 8, move: '\\u2191' }] };
     const first = recordTarget(p, 'B', 3, 'D', 'E', t);
-    const again = recordTarget(p, 'B', 3, 'D', 'E', { conf: 'alta', sets: [{ w: 99, r: 1, move: '' }] });
+    const again = recordTarget(p, 'B', 3, 'D', 'E', { kind: 'objetivo', sets: [{ w: 99, r: 1, move: '' }] });
     const rec = p.obj.B['w3-D'].E;
-    return { first: first, again: again, v: rec.v, conf: rec.conf, w: rec.sets[0].w, m: rec.sets[0].m, n: rec.sets.length };
+    return { first: first, again: again, v: rec.v, keys: Object.keys(rec).sort().join(','),
+             w: rec.sets[0].w, m: rec.sets[0].m, n: rec.sets.length };
   })()
 `);
-ok('the target shown is recorded once, with its moves and its confidence',
-   objRecord.first === true && objRecord.v === 3 && objRecord.conf === 'media' &&
+/* v 4 is the double-progression rule's (plans/081), and it carries nothing
+   the rule did not decide: no confidence, no hold or brake, no RIR. */
+ok('the target shown is recorded once, with its moves, as a v4 record and nothing the rule did not decide',
+   objRecord.first === true && objRecord.v === 4 && objRecord.keys === 'at,kind,sets,v' &&
    objRecord.w === 45 && objRecord.m === '↑' && objRecord.n === 2, JSON.stringify(objRecord));
 ok('and a second draw of the same session does not overwrite it',
    objRecord.again === false, JSON.stringify(objRecord));
@@ -3374,8 +3017,7 @@ const startRecord = call(`
   (function () {
     const p = { week: 2, obj: {} };
     const block = { id: 'B' }, day = { id: 'D' }, ex = { id: 'E' };
-    const t = { kind: 'objetivo', conf: 'alta', hold: false, brake: true,
-                sets: [{ w: 40, r: 10, move: '' }] };
+    const t = { kind: 'descarga', sets: [{ w: 40, r: 10, move: '' }] };
     const rows = [{ w: '', r: '', done: false }];
     const before = recordTargetOnStart(p, block, day, ex, rows, false, t);   // nothing typed yet
     rows[0].w = '40';
@@ -3383,17 +3025,14 @@ const startRecord = call(`
     const started = recordTargetOnStart(p, block, day, ex, rows, false, t);  // the transition
     const again = recordTargetOnStart(p, block, day, ex, rows, false, t);
     const rec = p.obj.B['w2-D'].E;
-    return { before: before, browsed: browsed, started: started, again: again,
-             kind: rec.kind, brake: rec.brake, hold: rec.hold };
+    return { before: before, browsed: browsed, started: started, again: again, kind: rec.kind };
   })()
 `);
 ok('an untouched row records nothing', startRecord.before === false, JSON.stringify(startRecord));
 ok('rows that were already a session record nothing (browsing a logged week)',
    startRecord.browsed === false, JSON.stringify(startRecord));
-ok('the first row of a session records the target, with its kind and the brake',
-   startRecord.started === true && startRecord.kind === 'objetivo' && startRecord.brake === true,
-   JSON.stringify(startRecord));
-ok('hold is stored only when true', startRecord.hold === false, JSON.stringify(startRecord));
+ok('the first row of a session records the target, with its kind',
+   startRecord.started === true && startRecord.kind === 'descarga', JSON.stringify(startRecord));
 ok('and a second start of the same session does not overwrite it',
    startRecord.again === false, JSON.stringify(startRecord));
 
@@ -3483,7 +3122,7 @@ const recordsRoundTrip = call(`
     return { conf: rec && rec.conf, w: rec && rec.sets[0].w, m: rec && rec.sets[0].m,
              kind: rec && rec.kind, hold: rec && rec.hold,
              brakeKept: !!rec && ('brake' in rec), brake: rec && rec.brake,
-             junkKind: junk && ('kind' in junk), junkConf: junk && junk.conf,
+             junkKind: junk && ('kind' in junk), junkConf: junk && ('conf' in junk),
              variant: after.variants.chestpress && after.variants.chestpress.length,
              since: after.variants.chestpress && after.variants.chestpress[1].since,
              bogus: !!after.variants.bogus };
@@ -3491,9 +3130,10 @@ const recordsRoundTrip = call(`
 `);
 ok('a restored profile keeps the objetivo it was shown',
    recordsRoundTrip.conf === 'alta' && recordsRoundTrip.w === 60 && recordsRoundTrip.m === '↑', JSON.stringify(recordsRoundTrip));
-/* The false brake as well as the true hold: recordTarget stores both flags
-   whatever their value, and the app's own file gives them back as it
-   stored them (plans/077). */
+/* The false brake as well as the true hold: a v3 record carries both flags
+   whatever their value, and the app's own file gives them back as they
+   were stored (plans/077). The rule that wrote them is gone (plans/081);
+   what it showed is still the record. */
 ok('...and what kind of objetivo it was, with its false brake kept as stored',
    recordsRoundTrip.kind === 'descarga' && recordsRoundTrip.hold === true &&
    recordsRoundTrip.brakeKept === true && recordsRoundTrip.brake === false,
@@ -3502,7 +3142,7 @@ ok('...and what kind of objetivo it was, with its false brake kept as stored',
    pre-plans/021 record from a v3 one by the absence of the field, so an
    invented value would read as a genuine descarga. */
 ok('a kind and a confianza the validator does not know are dropped, not carried through',
-   recordsRoundTrip.junkKind === false && recordsRoundTrip.junkConf === 'baja',
+   recordsRoundTrip.junkKind === false && recordsRoundTrip.junkConf === false,
    JSON.stringify(recordsRoundTrip));
 ok('and its variant history, with an undatable entry dropped rather than guessed at',
    recordsRoundTrip.variant === 2 && recordsRoundTrip.since === '2026-03-04' && recordsRoundTrip.bogus === false,
@@ -3894,49 +3534,8 @@ const nothing = exSess([null, null, null, null]);
 ok('a session with nothing recorded is every set at zero and every set a floor',
    nothing.rho === '0,0,0,0' && nothing.cens === 'cccc' && nothing.rir === null, JSON.stringify(nothing));
 
-/* The session the whole change is about: 60 kg for 10, 9, 8, 8 reps, paced
-   3 → 2 → 1 → 0 down the four sets. Read at the one chip the lifter tapped
-   for the last set, every set was priced as if it had gone to failure. */
-const pacedOpts = { range: '10–15', inc: 2.5, sets: 4, rirWeek: 2 };
-const pacedRows = [[60, 10], [60, 9], [60, 8], [60, 8]];
-const pacedT = target([{ sets: pacedRows, rirs: ['3', '2', '1', '0'] }], pacedOpts);
-const chipT = target([{ sets: pacedRows, rir: '0' }], pacedOpts);
-ok('a session paced down its sets reads its first set at what that set proved, not at the last set’s reserve',
-   pacedT.level === 86 && chipT.level === 80, JSON.stringify({ paced: pacedT.level, chip: chipT.level }));
-ok('...so the first set is asked for the reps it earned instead of a back-off',
-   pacedT.show.indexOf('60×12 · 60×10') === 0 && chipT.show.indexOf('57,5×10↓') === 0,
-   pacedT.show + '  vs  ' + chipT.show);
-ok('...the between-set decay is measured on capacities that are comparable, so it reports the reserve really spent',
-   pacedT.phi === '1.000 0.974 0.927 0.903' && chipT.phi === '1.000 0.975 0.950 0.950',
-   pacedT.phi + '  vs  ' + chipT.phi);
-ok('...and the level rises further than that decay costs, so the last set is asked for more rather than less',
-   pacedT.show.slice(-6) === '55×11↓' && chipT.show.slice(-5) === '55×10',
-   pacedT.show + '  vs  ' + chipT.show);
-
-/* Three identical sets, 60×10, the first held at 3 in reserve and the rest
-   taken to 0 — under a brake, so the trend term is zero and what is left is
-   nothing but the reserves. It pins per-set CAPACITY pricing, not the
-   same-weight floor: the floor cannot be reached (see its own comment in
-   targetFor), and this case does not move if it is reverted to rhoLast.
-   What it does measure is that the first set is priced at what a set
-   stopped three reps early actually proved, so it is asked for 11 rather
-   than the 8 one chip for the whole session produced. */
-const heldOpts = { range: '8–12', inc: 2.5, sets: 3, rirWeek: 2, brake: true };
-const heldT = target([{ sets: [[60, 10], [60, 10], [60, 10]], rirs: ['3', '0', '0'] }], heldOpts);
-const heldChipT = target([{ sets: [[60, 10], [60, 10], [60, 10]], rir: '0' }], heldOpts);
-ok('a first set held at 3 in reserve is priced at what it proved, so a stricter week still asks it for more reps, not fewer',
-   heldT.show === '60×11 · 60×8 · 60×8' && heldChipT.show === '60×8 · 60×8 · 60×8',
-   heldT.show + '  vs  ' + heldChipT.show);
-
-/* oneRep is the FIRST set's rep-equivalent, so it is priced at the first
-   set's reserve: 1/(30 + 10 + 3). Reading the last set's instead — what the
-   code did while one chip was all there was — gives 1/(30 + 10 + 0), which
-   is the number this assertion refuses. */
-const oneRepT = target([{ sets: [[60, 10], [60, 10]], rirs: ['3', '0'] }],
-                       { range: '8–12', inc: 2.5, sets: 2, rirWeek: 2 });
-ok('the expected gain is the first set’s rep-equivalent, not the last set’s',
-   Math.abs(oneRepT.g - 1 / 43) < 1e-12 && Math.abs(oneRepT.g - 1 / 40) > 1e-6, String(oneRepT.g));
-
+/* The level the Diagnóstico's trend is read off (levelOf): what typing the
+   first set's RIR buys. The objetivo itself no longer reads it (plans/081). */
 const levelProbe = call(`
   (function (rir) {
     const p = { log: { B: { 'w1-D': { E: [{ w: '60', r: '10', done: true, rir: rir },
@@ -3949,22 +3548,6 @@ const levelProbe = call(`
 ok('a first set typed at 1 in reserve is a reading, and the level can move on it',
    levelProbe('1') === 'false|82', levelProbe('1'));
 ok('...typed at 2 it stays a floor', levelProbe('2') === 'true|84', levelProbe('2'));
-const sixSessions = n => Array.from({ length: 6 }, () => ({ sets: [[60, 10], [60, 9], [60, 8]], rirs: [n, null, '0'] }));
-ok('and the confidence chip is what typing the first set buys: it climbs from baja to alta',
-   target(sixSessions('1'), { range: '8–12', inc: 2.5, sets: 3, rirWeek: 2 }).conf === 'alta' &&
-   target(sixSessions('2'), { range: '8–12', inc: 2.5, sets: 3, rirWeek: 2 }).conf === 'baja');
-
-const recProbe = call(`
-  (function () {
-    const p = { obj: {} };
-    recordTarget(p, 'B', 1, 'D', 'E', { conf: 'alta', kind: 'objetivo', rirWeek: 2, sets: [{ w: 60, r: 10, move: '' }] });
-    recordTarget(p, 'B', 1, 'D', 'F', { conf: 'baja', kind: 'descarga', sets: [{ w: 40, r: 10, move: '' }] });
-    const sl = p.obj.B['w1-D'];
-    return [sl.E.rir, sl.F.rir === null ? 'null' : String(sl.F.rir)].join('|');
-  })()
-`);
-ok('recordTarget keeps the week’s RIR the reps were solved for, and none for a descarga that was solved for no reserve',
-   recProbe === '2|null', recProbe);
 const objRir = call(`
   (function () {
     const rawBlock = { name: 'B', weeks: 8, deload: 0, days: [{ id: 'd0', name: 'D', ex: [{ id: 'e1', n: 'Ex', sets: 3, reps: '10-15' }] }] };
@@ -4006,10 +3589,9 @@ ok('the decay line quotes the RIR of the set the drop was measured FROM — the 
 const diagProbe = call(`
   (function (sessions, useMap) {
     const DAY = 86400000, start = Date.now() - 28 * DAY;
-    /* A flat '2 RIR' every week, same as brakeProbe above: the weight
-       never moves and every logged rep count sits inside the 8-12 range,
-       so which reserve the week nominally asks for cannot tip est.dir to
-       'down' and steal the verdict from the signal each case is pinning. */
+    /* A flat '2 RIR' every week: the weight never moves and every logged
+       rep count sits inside the 8-12 range, so nothing about the week
+       itself can steal the verdict from the signal each case is pinning. */
     const phase = {}; for (let i = 1; i <= sessions.length + 4; i++) phase[i] = { r: '2 RIR' };
     const sess = sessions.map(function (rows, i) {
       const last = rows[rows.length - 1][1];
@@ -4388,7 +3970,7 @@ const objProbe = call(`
     const held = kept(run('w1-' + dayId, exId, rec({ hold: true })));
     const truthyHold = kept(run('w1-' + dayId, exId, rec({ hold: 'yes' })));
     return {
-      confInherited: !!inherited && inherited.conf === 'baja',
+      confInherited: !!inherited && !('conf' in inherited),
       kindKept: !!deload && deload.kind === 'descarga',
       kindDropped: !!madeUpKind && !('kind' in madeUpKind),
       holdKept: !!held && held.hold === true,
@@ -4404,7 +3986,7 @@ const objProbe = call(`
       clampedW: !!bad && bad.sets[0].w === 9999,
       clampedR: !!bad && bad.sets[0].r === 0,
       droppedMove: !!bad && bad.sets[0].m === '',
-      confFallback: !!bad && bad.conf === 'baja',
+      confFallback: !!bad && !('conf' in bad),
       atFallback: !!bad && bad.at === 0,
     };
   })()
@@ -4419,7 +4001,9 @@ ok('...and neither is a record with no sets left in it kept', objProbe.setsEmpty
 ok('a weight past the cap clamps instead of rejecting the record', objProbe.clampedW, JSON.stringify(objProbe));
 ok('a negative rep count clamps to zero', objProbe.clampedR, JSON.stringify(objProbe));
 ok('a move marker that is neither arrow becomes no marker', objProbe.droppedMove, JSON.stringify(objProbe));
-ok('a confidence normalizeImportedObj does not recognise reads as "baja"', objProbe.confFallback, JSON.stringify(objProbe));
+/* It used to read as "baja", which since plans/081 would hand every v4
+   record — the rule after it has no confidence — one it never had. */
+ok('a confidence normalizeImportedObj does not recognise is dropped, not read as "baja"', objProbe.confFallback, JSON.stringify(objProbe));
 ok('a timestamp that is not a number reads as 0', objProbe.atFallback, JSON.stringify(objProbe));
 /* These five were deferred by plans/026 to whichever plan introduced
    TARGET_CONF_OPTIONS, because until then `conf` was a truthy lookup on a
@@ -4431,6 +4015,33 @@ ok('a kind it cannot is dropped, leaving the record looking pre-v3 rather than m
    objProbe.kindDropped, JSON.stringify(objProbe));
 ok('hold round-trips when it is exactly true', objProbe.holdKept, JSON.stringify(objProbe));
 ok('...and a merely truthy hold is dropped rather than coerced', objProbe.holdDropped, JSON.stringify(objProbe));
+
+/* plans/081: the double-progression rule writes v 4, with no confidence, no
+   flags and no RIR, and a restore has to give it back exactly that — the
+   validator used to stamp every record v 3 and fill a missing confidence
+   in as "baja", which would have rewritten every new record on its way
+   through the app's own backup. Anything but a 4 still reads as a 3. */
+const objV4 = call(`
+  (function () {
+    const rawBlock = { name: 'B', weeks: 8, deload: 0, days: [{ id: 'd0', name: 'D', ex: [{ id: 'e1', n: 'Ex', sets: 3, reps: '10-15' }] }] };
+    const normalized = normalizeImportedBlock(rawBlock);
+    const run = function (rec) {
+      const out = normalizeImportedObj({ 'w1-d0': { e1: rec } }, rawBlock, normalized);
+      return out['w1-' + normalized.days[0].id][normalized.days[0].ex[0].id];
+    };
+    const four = { v: 4, at: 5, kind: 'objetivo', sets: [{ w: 47.5, r: 10, m: '\\u2191' }] };
+    /* Key order aside, the way plans/077 compares the app's own files. */
+    const back = run(four);
+    return { four: Object.keys(back).sort().join() === Object.keys(four).sort().join() &&
+                   back.v === 4 && back.at === 5 && back.kind === 'objetivo' &&
+                   JSON.stringify(back.sets) === JSON.stringify(four.sets),
+             other: run({ v: 7, at: 5, sets: [{ w: 40, r: 8, m: '' }] }).v };
+  })()
+`);
+ok('a v4 record comes back exactly as written, with no confidence filled in',
+   objV4.four === true, JSON.stringify(objV4));
+ok('...and a version the app never wrote reads as the old rule\'s',
+   objV4.other === 3, JSON.stringify(objV4));
 
 console.log('\n== normalizeImportedProfile: a restore runs the same per-row limits QR already had (plans/008 item 4) ==');
 const restoreProbe = call(`
@@ -5440,8 +5051,7 @@ const writeProbe = call(`
     if (typeof writeRows !== 'function') return { missing: true };
     const p = { week: 2, obj: {} };
     const block = { id: 'B' }, day = { id: 'D' }, ex = { id: 'E' };
-    const est = { kind: 'objetivo', conf: 'alta', hold: false, brake: false, rirWeek: 2,
-                  sets: [{ w: 40, r: 10, move: '' }, { w: 42.5, r: 9, move: '\\u2191' }] };
+    const est = { kind: 'objetivo', sets: [{ w: 40, r: 10, move: '' }, { w: 42.5, r: 9, move: '\\u2191' }] };
     const card = (rows, week) => ({ profile: p, block: block, day: day, ex: ex, rows: rows, est: est,
                                     here: { profile: p, block: 'B', week: week, day: 'D', lift: 'E' } });
     const rec = w => (p.obj.B && p.obj.B[slot(w, 'D')] && p.obj.B[slot(w, 'D')].E) || null;
@@ -7179,7 +6789,7 @@ console.log('\n== a restore keeps what the app reads, and nothing else (plans/05
     setNoteText(profile, block.id, 1, day.id, 'Bien');
     setEnergy(profile, block.id, 1, day.id, 'alta');
     setOrder(profile, block.id, 1, day.id, day.ex.map(e => e.id).reverse());
-    recordTarget(profile, block.id, 1, day.id, ex.id, { conf: 'alta', kind: 'objetivo', hold: true, brake: true, rirWeek: 2, sets: [{ w: 40, r: 10, move: '↑' }] });
+    recordTarget(profile, block.id, 1, day.id, ex.id, { kind: 'objetivo', sets: [{ w: 40, r: 10, move: '↑' }] });
     recordVariant(profile, ex.id, ex.n, ex.n + ' en máquina', Date.now());
     migrate();
     const before = JSON.parse(JSON.stringify(state));
@@ -7238,8 +6848,8 @@ console.log('\n== RECORD_PARTS: each part says how it is accepted (plans/051) ==
     setNoteText(profile, block.id, 1, day.id, 'Buena sesión');
     setEnergy(profile, block.id, 1, day.id, 'alta');
     moveSessionEx(profile, block, 1, day, b.id, -1);
-    recordTarget(profile, block.id, 1, day.id, a.id, { conf: 'media', kind: 'objetivo', hold: true, brake: true, rirWeek: 2,
-      sets: [{ w: 42.5, r: 10, move: '↑' }, { w: 40, r: 9, move: '' }] });
+    recordTarget(profile, block.id, 1, day.id, a.id, { kind: 'objetivo',
+      sets: [{ w: 42.5, r: 10, move: '↑' }, { w: 42.5, r: 9, move: '↑' }] });
     recordVariant(profile, a.id, a.n, a.n + ' en máquina', Date.UTC(2026, 0, 12));
 
     /* A day of two lifts with an order recorded, then one of them sent to
@@ -7668,7 +7278,7 @@ console.log('\n== the history cache: one read per question, dropped by the write
        save() the tick handler calls, with the card's scope. Everything
        reading that week sees it at once — including the objetivo held in
        the draw's render cache, which drawCard keeps — and what stops before
-       it (every other card, the brake) is kept, not re-read. */
+       it (every other card) is kept, not re-read. */
     const tick = JSON.parse(call(`(function () {
       const p = cacheFixture(), b = p.blocks.A, d1 = b.days[0], bp = d1.ex[1], sq = d1.ex[0];
       const n0 = sessionsOf(p, ${Q}).length;

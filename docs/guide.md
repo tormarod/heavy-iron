@@ -95,12 +95,11 @@ objetivo, built on the block before it.
   block you have ever run, either as raw weight or as an estimated one-rep
   max (Epley) so a program moving between rep ranges still shows a
   consistent strength trend.
-- **A target weight and rep count for every SET, every week**, read off the
-  whole history of that exercise rather than guessed: a set that reached the
-  top of its range goes up a rung, one the range says is out of reach comes
-  down, the rest chase a rep, and a chip beside the line says how much the
-  numbers are worth arguing with. See
-  [The weekly objetivo](#the-weekly-objetivo).
+- **A target weight and rep count for every exercise, every week**, as
+  double progression read straight off your log: one weight, a rep more on
+  every set until every set reaches the top of its range, then the next
+  rung. It never asks for fewer reps than you did, or a lighter weight
+  outside the deload. See [The weekly objetivo](#the-weekly-objetivo).
 - **The order the session was actually done in**, corrected with two arrows
   when the machine you wanted was taken — see
   [During the session](#during-the-session).
@@ -184,8 +183,8 @@ history, which is what blocks are for instead.
 because there is nothing to set them against yet: your bar weight and the
 plates you have, used by [the calculator](#warm-ups-and-plate-maths), and
 your **default weight increment** — the smallest step you can actually
-load. That last one is what [the weekly objetivo](#the-weekly-objetivo)
-rounds to for every exercise that doesn't carry an `inc` of its own; an
+load. That last one is the step [the weekly objetivo](#the-weekly-objetivo)
+goes up by for every exercise that doesn't carry an `inc` of its own; an
 exercise that does carry one always wins over it. It starts at 2,5 kg
 (5 lb) and, like the bar weight, is seeded from whichever unit you picked
 and never rescaled afterwards. The plates are separated by semicolons
@@ -196,8 +195,9 @@ It is only ever the *fallback* step, and only where the exercise's own
 logged weights cannot supply a rung: [the objetivo](#the-weekly-objetivo)
 climbs the stack the log already knows about, so on any exercise with a
 history the real notches win over both this and `ex.inc`. Where it does
-apply — a brand-new exercise, or a jump the stack has never made — a step
-too big for the rep range is refused and named rather than prescribed.
+apply — a brand-new exercise, or a jump the stack has never made — it is
+the number the next step lands on, so set it to what the machine really
+adds.
 
 **About units.** `kg`/`lb` is a *label*, not a conversion. The app never
 touches the number you typed — you write down what's on the machine, and
@@ -568,8 +568,9 @@ charge, the line simply isn't there.
   — and the week's own target is the greyed number in the box. Empty it to
   clear it. Anything outside `0`–`5` is refused rather than stored: past
   five in reserve the number stops saying anything a lifter can feel. The
-  objetivo prices each set on its own reserve; the Diagnóstico and the
-  block review read the last set's as the session's. It travels with a
+  Diagnóstico's level prices the first set on its own reserve and the
+  block review reads the last set's as the session's; the objetivo does
+  not read it at all. It travels with a
   "plan + registro" QR share on the row itself, and the `rir` column of the
   CSV export is the set's own value, blank where you typed nothing — a
   session logged before the release that moved the record onto the row
@@ -586,15 +587,13 @@ charge, the line simply isn't there.
   taper by something like 10–25 % by the fourth one, so `15·15·12·12` is an
   ordinary session and `8·7·6·5` is not, even though both "drop 3 reps".
   Judging it on the absolute number alone flagged every high-rep machine
-  session as a first set taken to failure. It no longer *decides* anything
-  — the objetivo measures the drop between sets properly now, and this line
-  names the one thing that measurement cannot: that the first set of the
+  session as a first set taken to failure. It decides nothing: it names
+  the one thing the sets alone cannot say — that the first set of the
   session you are in was probably taken closer to failure than the rest.
 - **An objetivo for this week's weight and reps, also for free.** Under the
-  sets, in the same voice as the rep-decay line, one answer per set:
-  `↗ objetivo: 47,25×9 · 45×9 · 45×8 · 42,75×9`. The reps decide whether
-  each set goes up, down or holds; the RIR scales what those reps were
-  worth; the estimated 1RM only sizes the step once it has been earned. See
+  sets, in the same voice as the rep-decay line: one weight and the reps
+  for each set, `→ objetivo: 45 × 12 · 11 · 10 · 9`. A rep more on every
+  set until every set reaches the top of the range, then the next rung. See
   [The weekly objetivo](#the-weekly-objetivo) below for what it does and
   does not claim.
 - **Energía, three chips before you start.** `baja` / `normal` / `alta`,
@@ -631,12 +630,8 @@ charge, the line simply isn't there.
   **⋯** menu opens the same fold with the cursor already in the field.
 - **Rellenar con el objetivo writes what the objetivo says**, set by set.
   It calls the same rule the line under the sets shows and the same one the
-  placeholder in each weight box shows, so the three can never disagree:
-  the sets that earned a rung get it, the sets the range says are out of
-  reach come down one, and the rest keep their weight. The status line says
-  how many exercises moved which way. It used to carry its own inline copy
-  of double progression — top of range plus `ex.inc` — which could only
-  ever answer "same weight" or "one increment more".
+  placeholder in each weight box shows, so the three can never disagree.
+  The status line says how many exercises go up a rung.
 
 Everything above is keyboard reachable, the set ticks are real buttons
 with pressed state, dialogs close with `Escape`, and pinch-zoom is no
@@ -677,8 +672,8 @@ merging them into one. The same machine done first on Monday and fourth on
 Thursday, after everything that came before it, is not the same set:
 pre-fatigue on a machine press is worth 10–20 %, and the two slots are
 often prescribed different rep ranges for different jobs. Feed the fresher
-day's numbers into the tired day's target and the app prescribes a weight
-you cannot hit, then reads the miss as a decline. Across *blocks* the day
+day's numbers into the tired day's target and the app asks the tired day
+for reps it cannot do. Across *blocks* the day
 is not part of the key, because an earlier block's days were renumbered by
 whoever wrote it and matching on them would throw the history away rather
 than separate it.
@@ -690,233 +685,119 @@ yours.
 
 ## The weekly objetivo
 
-Under the sets of every exercise, one line — and one answer per set:
+Under the sets of every exercise, one line:
 
 ```
-↗ objetivo: 47,25×9 · 45×9 · 45×8 · 42,75×9 · 42,75×8   confianza media
-   Esta semana pide más RIR: las reps pueden bajar y no es retroceso.
+→ objetivo: 45 × 12 · 11 · 10 · 9
+   Las series que ya llegan a 12 se quedan ahí: el peso sube cuando lleguen todas.
 ```
 
-It answers the only question you actually have standing in front of the
-machine, and it costs almost no new input. The weights and reps are in the
-log, the RIR is optional — per set, with the week's own prescription
-standing in — and the range, the step and the phase text are in the plan.
+It is double progression, the way the plans themselves write it — *sube
+el peso cuando todas las series lleguen al tope del rango* — with nothing
+estimated in between. It reads the weights and reps you logged and the
+range and step in the plan, and nothing else.
 
-**Double progression is still rep-first.** The reps decide the case and the
-estimated 1RM only sizes the step, and only once the reps have earned the
-move. An estimator driven off e1RM alone tells a lifter who put up
-`32×15/15/12/12` on a 10–15 range to jump to 35 kg and start again at 10 —
-throwing away two sets of 15 he already owns and restarting him at the
-bottom of a range he never finished.
+### The rule
 
-What changed is how much evidence goes into each decision, and how many
-decisions there are. The rule used to price ONE weight for the whole
-exercise off the LAST set of LAST week. That is a single session spent on a
-question the log has months of data for, and it froze two shapes of session
-solid: the one that ends every set at the top of the range (nothing left to
-compare, so nothing moved) and the one whose first set is plainly stronger
-than its fourth (one weight for both, priced off whichever end the rule
-happened to read).
+- **One weight for the whole session**: the one most of last session's
+  sets were done at. A calibration week that tried one heavy set and
+  backed off for the rest (`40 · 30 · 30`) was trained at 30, so 30 is
+  what comes back.
+- **Each set asks for one rep more than its best at that weight**, up to
+  the top of the range. *Best*, not *last*: over every session since the
+  weight last changed, so a bad day never lowers the ask. A number you
+  missed stays where it was until you meet it — the only repeat left is a
+  number you have not done yet.
+- **Never under the bottom of the range, never under what the set already
+  did.** A set that fell under the range is asked back into it; a set at
+  or past the top holds there, which is what *corta al tope del rango*
+  asks of it, and the line says so (*se quedan ahí: el peso sube cuando
+  lleguen todas*).
+- **Every set at the top: the next rung**, and every set starts again at
+  the bottom of the range:
 
-### What a set is worth — and when it is only a floor
+  ```
+  ↗ objetivo: 22,5 × 8 · 8 · 8 · 8
+     Todas las series llegaron a 12: sube de peso y vuelve a empezar por 8.
+  ```
 
-Every set is read as an estimated 1RM with the session's reserve added back
-in, which is what it would have been worth taken to failure:
+  The bottom of the range is a floor, not a forecast: across the real
+  log this rule was measured on, every first set at a new weight cleared
+  it, and nearly every set after it did too. Whatever you actually do at
+  the new weight is what the next asks climb from.
+- **"Every set" means every set that was asked for.** A set the plan adds
+  this week (`+1 serie desde semana N`) was never done, and does not hold
+  back a step the others earned; a set you skipped last time does, because
+  that session did not reach the top on every set. A set with no history
+  at the current weight — newly added, or done at a lighter back-off
+  weight — is asked for the bottom of the range.
 
-```
-e = w × (1 + (reps + rir) / 30)      Epley, the same est1RM the charts use
-```
+**The week's RIR is where you stop, not an input.** It is the greyed
+number in every RIR box, as before — *corta al RIR de la semana o al tope
+del rango, lo que llegue antes*. In a week that asks for more reserve than
+the last (a new block's 3 RIR after the last block's 0–1), you will fall
+short of the number, and that is the plan working: the number waits.
 
-A set is **censored** — a floor under the capacity rather than a reading of
-it — when any of these is true:
+### Why it changed
 
-| | why |
-|---|---|
-| it ended at the top of the rep range | it was cut off there; it never went near failure |
-| you wrote 2 or more in reserve | open-ended: it may have been four |
-| nothing was written for it | nothing says how close to failure it was |
-| it ran past twelve reps | above that the reserve people report stops being reliable |
+It replaced a model that priced every set on its own: an estimated 1RM
+from the first sets of the last three sessions, a measured drop between
+sets, a trend, a confidence chip and a brake. Replayed against a real
+log — one block, every session — that model asked for fewer reps than
+had just been done at the same weight in a quarter of its answers, for a
+lighter weight in another quarter, and for nothing more than the last
+session in four out of ten, and was beaten on three sets out of four. Three causes,
+each in the model rather than the lifter:
 
-Every one of those pushes the estimate **down**, which is the safe side: a
-target one rep light costs one slightly easy set, a target one rep heavy
-costs the session. So a censored set may only ever *raise* the level, never
-lower it — a session of `39×15/15/15` at the top of a 12–15 range is not
-evidence that you got weaker — and the set that has to guess how much is in
-reserve gets one rep of slack when it decides whether the next rung fits.
-Without that slack a set that always finishes at the top of its range could
-never go up: the estimate it is judged on is the very number being
-under-read.
+- **An empty RIR box read as a set taken to failure**, and the week's RIR
+  then taken off again: `60 × 9·8·8·7` in a 3-RIR week came back as
+  `60×8 · 60×6 · 60×6 · 57,5×7` for the 2-RIR week after it, with a note
+  saying the week asked for *more* reserve.
+- **Ten days between sessions read as a layoff**: *Vuelta de parón: repite
+  la última sesión*. A deload week does not count as a session, so the
+  first week of every block was one, and so was an ordinary fortnight
+  between two sessions of the same day.
+- **Epley does not describe the machines it was pricing.** On that log's
+  23 load increases it under-read the reps at the new weight by a median
+  of six; two of the 23 landed within two reps of it. A step cost the
+  first set one or two reps whatever its size, from +9 % to +56 %.
 
-Each of the four rows above is read **per set**, on that set's own number.
-A set you left blank takes the reserve of the next set that has one — the
-set before a set you took to 0 had at least that much left, so pricing it
-there under-reads it, which is the safe direction — and a set with nothing
-after it either is the "nothing was written" row. That inheritance is
-exactly what the one chip per session used to do to every set, which is why
-a log with no per-set values reads precisely as it always did.
-
-**The set worth writing down is the first one.** `level` reads the first set
-of each session, so a first set you marked at 0 or 1 is a *reading* the
-level can move on, while one marked 2 or more — or left blank — stays a
-floor. That is what the `confianza` chip is counting: it climbs from `baja`
-to `alta` as the first sets stop being floors.
-
-**And a session you paced now reads as one.** Run four sets at 3 → 2 → 1 → 0
-in reserve and the old single chip priced every one of them as if it had
-gone to failure: the first set came out worth less than it was, and the
-drop across the session looked smaller than it was. Priced per set the
-first set is read at what it proved, the decline between sets is the
-reserve you really spent, and the last set ends up asked for more rather
-than less.
-
-### Three estimates, three different questions
-
-| | what it answers | how |
-|---|---|---|
-| `level` | what the first set can do today | the best capacity of the last three sessions |
-| `phi[k]` | what is left by set k | the median ratio between consecutive sets, over the last six sessions |
-| `g` | what one more session is worth | Theil–Sen over the last six, floored at one more rep |
-
-The **level** is a maximum over three sessions, so one bad night cannot move
-it and three sessions renew it completely. Going *down* takes more than a
-bad night: a session at least 5 % under the best of the three before it, read
-off a set that was not censored. One of those holds the load where it is —
-nothing goes up for that exercise (`La última sesión bajó: hoy no sube la
-carga`) — though a set the range says is out of reach still comes down a
-rung. Two in a row is the level itself moving, and the line says so.
-
-**`phi[k]` is measured between consecutive sets and in capacity, not in
-reps** — which is what lets a back-off set at another weight count. `45×9`
-after `45×12` and `42,75×9` after `45×12` say the same thing about fatigue,
-and only the ratio of the two capacities knows it. A censored set says
-nothing about the drop *into* it, but it does bound the drop *out* of it
-from above. On the real chest-press history that comes out as
-`1 · 0,952 · 0,929 · 0,904`: the fourth set keeps 90 % of what the first
-one was worth. This is also what prices the set `ex.add` brings in
-mid-block, which has never been done at all.
-
-**`g` is a rate, and Theil–Sen is the median of the slopes between every
-pair of points.** A least-squares line through six sessions is steered by
-whichever one went worst; the median of the pairwise slopes is not, which
-matters because the one bad session is exactly the point a training log
-always has. It is capped at 3 % per session — above that the "trend" is the
-learning curve of a new movement, and extrapolating it prescribes a weight
-nobody can lift in three weeks. In the first three sessions of a variant the
-trend is not read at all, for the same reason. The floor is always one more
-rep on the first set: a flat trend still gets asked for a rep, and whether
-that ask keeps failing is the Diagnóstico's question, not this one's.
-
-`g` only applies to the sets that **keep** their weight. Going up a rung is
-the progression; adding a rep on top of it is asking for both at once.
-
-### One decision per set
-
-```
-base   = max(what this set did last time, level × phi[k])
-```
-
-Taking the better of the two claims is what stops a pessimistic decay
-profile — the kind a calibration week full of back-offs leaves behind — from
-prescribing less than the set has already proved it can do. Then:
-
-| when | answer |
-|---|---|
-| the set reached the top of the range, and the reps still land inside it one rung up | **up a rung**, into the bottom half of the range |
-| the model and last week's own reps agree the bottom of the range is out of reach | **down a rung**, up to three |
-| anything else | same weight, and the reps `base × (1 + g)` predicts |
-
-**After a step up the target lands in the bottom half of the range**, never
-at the top of what the estimate allows. A jump priced off an optimistic
-reading would otherwise earn the next jump on the same reading, and two
-weeks later the weight is somewhere nobody lifted.
-
-**At the same weight the target never asks for less than was already done**,
-minus only what a stricter RIR this week honestly costs **that set**. A set
-you did at 3 in reserve, asked for 2 this week, gives up nothing — whatever
-the last set of that session was done at.
-
-**A set is never heavier than the set before it.** That is not a refinement,
-it is the difference between a prescription and a list of numbers: sets get
-harder down a session, never easier.
-
-The clearest case for deciding per set is the one that named the old rule.
-`32×15/15/12/12` on a 10–15 range was "mantener" as one weight. As four
-decisions it is two sets up and two sets chasing reps:
-`↗ objetivo: 34,25×10 · 34,25×10 · 32×11 · 32×11`. The other half of the
-argument is the chest press, whose first set sat capped at 12 reps for
-weeks: for all four sets to reach 12 at once, the first would have to be
-good for 16,5 reps to failure — four to six reps past the range it is being
-measured in.
+The rule above reads none of the three — not the RIR box, not the clock,
+not a model of the lifter. The reps decide, as the plan says they do.
 
 ### The ladder is the stack, not the ruler
 
-`ex.inc` says what one step is worth, but a plate stack is not a ruler: the
-lateral raise goes 18 → 19 and the pec deck goes 39 → 45 → 52. The weights
-already logged against an exercise **are** the stack, so the next rung up is
-the lowest of them within one and a half steps, and only when there is none
-does `ex.inc` have to invent one. That is what keeps a 2,5 kg default from
-proposing 20,5 on a machine whose next pin is 23, and what lets a 1 kg
-micro-plate be a real rung.
+`ex.inc` says what one step is worth, but a plate stack is not a ruler:
+the lateral raise goes 18 → 19 and the pec deck goes 39 → 45 → 52. The
+weights already logged against an exercise **are** the stack, so the next
+rung up is the lowest of them within one and a half steps, and only when
+there is none does `ex.inc` have to invent one. That is what keeps a
+2,5 kg default from proposing 20,5 on a machine whose next pin is 23, and
+what lets a 1 kg micro-plate be a real rung. On a machine whose add-on is
+2,3 kg, set `inc` to 2,3 in **Editar plan**, or the first step it has
+never made lands on a number the stack does not have.
 
-When the only step available overshoots the range, the line says so instead
-of prescribing a jump nobody can make: `El siguiente escalón (9,3 kg) no
-cabe en el rango: micro-carga, medio escalón o más tempo`.
-
-### Coming back, and going down
-
-**A layoff of more than ten days repeats the last session, set by set.**
-Nothing moves. Three weeks off does not cost a trained lifter maximal
-strength, and discounting it prescribes a week of work already owned —
-Rodrigo's chest press came back to its week-3 level in the first session
-after two weeks away. Neither is it the week to add anything. The level is
-then rebuilt inside the run of sessions since the layoff, because coming
-back at 90 % and being measured against the best week of two months ago
-prices every set as a failure. `phi[k]` is deliberately *not* cut there:
-how much a fourth set gives away is a property of the exercise, not of the
-month.
+### The deload
 
 **A deload prescribes half the sets at the bottom of the range**, at the
-first rung at or under 60 % of the last session's opening weight — walked
+first rung at or under 60 % of the last session's working weight — walked
 down the same ladder everything else moves on, because 60 % of a stack is
-usually not a number the stack has.
-
-### The brake
-
-Three exercises whose latest session is a real decline, inside a week, is
-not three programming problems. It is sleep, food or fatigue, and the whole
-day says so before any card is read:
-
-```
-Esta semana no sube nada: 3 ejercicios han bajado a la vez.
-Mira sueño, comida o fatiga antes que el plan.
-```
-
-Nothing goes up that day and every exercise's expected gain drops to zero,
-which is the cheapest possible way to be wrong about it: one week of
-repeating a session you can certainly do. It is worked out once when the day
-is drawn and handed to the rule as an argument, so the rule itself never
-reads the clock or the other exercises.
-
-### Confidence
-
-A chip beside the line — `confianza baja` / `media` / `alta` — counting how
-many of the last six sessions read the first set rather than only bounding
-it. Nothing downstream changes with it. It is there because a number built
-on six censored sessions and a number built on six clean ones are not the
-same number, and the lifter is the one who has to decide how hard to argue
-with it.
+usually not a number the stack has. It is the only thing the objetivo
+ever asks to go lighter. Deload weeks are also kept out of the history the
+rule reads: a week at 60 % by design is evidence about nothing.
 
 ### What it writes down
 
 Two records, neither of which asks you to type anything:
 
 - **`obj`** — the objetivo that was on the screen, kept once the session
-  starts and never rewritten. It holds the confidence, the kind of target
-  (objetivo, descarga, vuelta), whether the day was held or braked, and
-  each set's weight, reps and arrow — not the notes, the level or the
-  trend. It is the only thing that can later tell a back-off the rule
-  *asked for* from a weight that had to come off, and the only way to
-  measure the rule's own error instead of assuming it.
+  starts and never rewritten: each set's weight, reps and arrow, and
+  whether it was an objetivo or a descarga. `v` says which rule wrote it:
+  4 for this one, 3 for the model before it, whose records also carry its
+  confidence, the hold and brake flags and the week's RIR it solved for.
+  It is the only thing that can later tell what was asked from what was
+  done, and so the only way to measure a rule's error instead of assuming
+  it.
 - **`variants`** — the names an exercise has had, with the date each one
   started. Renaming an exercise in the plan editor usually means a different
   machine or a different groove, and the loads are not comparable;
@@ -926,54 +807,26 @@ Two records, neither of which asks you to type anything:
 
 Both travel in the backup, in a profile file and in the QR "perfil"
 transfer, and every reader copes with them missing — which is what every
-backup written before this rule looks like.
+backup written before v3 looks like.
 
-### The guardrails
+### What it reads, and what it leaves out
 
-They are listed here by what they protect, not in the order the code
-applies them — the code first drops what does not count (deload weeks,
-sessions before a rename, the other day of a split lift), then answers "no
-history, no line", then the deload and the layoff, and only then reads the
-week's RIR against the one you typed.
-
-- **`2+` is read as exactly 2**, and a set with nothing written as 0. Both
-  come out low, which is the right direction to be wrong in — and both
-  censor that set anyway, so neither can raise the estimate on its own.
-- **The week's RIR is read from its goal, the way people write it.**
-  `2 RIR`, `RIR 2`, `RIR: 1-2`, `RIR objetivo 2`, `2 a 3 RIR` and
-  `2-3 reps en reserva` all count, and a range reads its lower end (below).
-  A decimal (`1,5 RIR`), a number above 5, the week's own number
-  (`Semana 3`, `S3`) or the reps of a sets×reps scheme is not a reserve and
-  is passed over — `3×10 RIR 2` reads 2 — and a week whose goal holds none
-  keeps the one the last session was left at.
-- **A prescribed range reads as its hard end.** `"2–3 RIR"` is a week you
-  are meant to be able to take to 2; reading it as 3 quietly under-loads
-  everything built on it.
-- **`ex.minRir` is a floor the week cannot get under.** For the lifts nobody
-  takes to failure — a squat, a Romanian deadlift — a week prescribing 0–1
-  RIR is a number you are not going to follow, and a target solved for it is
-  a weight you cannot make. Set it per exercise in **Editar plan** →
-  **RIR mínimo**; empty means no floor.
-- **Deload weeks and the sessions before a variant change are out of every
-  window.** A deload is ~60 % of the working weight by design and is
-  evidence about nothing.
+- **Deload weeks and the sessions before a variant change are out of the
+  history**, as above.
 - **A lift the plan puts on two days keeps two histories.** The same machine
   pressed first on Monday and fourth on Thursday is not the same set;
-  folding them would prescribe a weight set on the fresher day and then read
-  the fatigued one as a decline. Across blocks the day is not part of the
-  key, because an earlier block's days were renumbered by whoever wrote it.
+  folding them would ask the tired day for the fresher day's reps. Across
+  blocks the day is not part of the key, because an earlier block's days
+  were renumbered by whoever wrote it.
+- **Week 1 of a new block reads the block before it**, by exercise id, so
+  it already has an objetivo.
 - **No history, no line.** The objetivo appears with the first logged
   session and says nothing before it.
 
 **One rule, one place.** `Rellenar con el objetivo` writes exactly these
 numbers, set by set, and the greyed placeholder in every weight box shows
 the same thing — so ticking a set without typing takes the objetivo, which
-is the contract that box has always had with a better number inside it. The
-`Diagnóstico` reads this rule's own `level` rather than fitting a second
-line through the same log with a different definition of "how strong is this
-today" — and everything else on its row, from the session count to the
-signals, reads the very sessions this rule reads. Two screens that disagree
-in public are two screens nobody trusts.
+is the contract that box has always had.
 
 **What it still does not do.** It never logs anything for you. The line is
 something you read and the placeholder is something you can overwrite; the
@@ -999,8 +852,8 @@ point of recording this:
 - **Forzado** — you couldn't reach the target reps at that weight, so you
   dropped and finished them lighter. This one is amber. It used to veto
   next week's increase outright; it no longer does, and nothing is lost by
-  that — the reps done at the working weight are what the level is read
-  from, and the stripped ones were never working sets to begin with. What
+  that — the reps done at the working weight are what the objetivo reads,
+  and the stripped ones were never working sets to begin with. What
   it still does is flag the session in the [Diagnóstico](#diagnóstico),
   which is where "why did this happen" belongs. A dropset says nothing of
   the sort and never did.
@@ -1194,17 +1047,16 @@ current plan at once and sorts them **worst first**: `bajando` · `plano` ·
 `subiendo`. Like everything else here it asks for no new input — it reads
 the weights, reps, RIR and timestamps you are already recording.
 
-- **The slope** is least squares over the last 6 sessions of the same
-  `level` [the weekly objetivo](#the-weekly-objetivo) is built on,
-  expressed as a percentage of its own average so a lateral raise and a leg
-  press are comparable. Inside ±0,5 % per session is flat. It used to be
-  fitted through the best e1RM of each session instead, and that is a
-  different number from the one the target is built on: a session that
-  ended `15/15/15` at the top of its range is a *floor* under the capacity,
-  and reading it as a measurement reported the pec deck as "pierde fuerza"
-  and the shoulder press, the incline press and the Romanian deadlift as
-  "planos" while the card right next to them was putting the weight up.
-- **A decline the rule has already confirmed outranks the fitted line.**
+- **The slope** is least squares over the last 6 sessions of the
+  [level](#the-level), expressed as a percentage of its own average so a
+  lateral raise and a leg press are comparable. Inside ±0,5 % per session
+  is flat. It used to be fitted through the best e1RM of each session
+  instead: a session that ended `15/15/15` at the top of its range is a
+  *floor* under the capacity, and reading it as a measurement reported the
+  pec deck as "pierde fuerza" and the shoulder press, the incline press and
+  the Romanian deadlift as "planos" while the card right next to them was
+  putting the weight up.
+- **A decline the level has already confirmed outranks the fitted line.**
   Two sessions in a row under the level is the thing the line is trying to
   detect, already detected.
 - **A second slope, over kilos per set**, is fitted the same way — see
@@ -1213,8 +1065,7 @@ the weights, reps, RIR and timestamps you are already recording.
   noise, not a stall.
 - **Sessions past 15 reps count like any other.** The line is the
   `level`, which reads the first set of each session and a set past twelve
-  reps only as a floor under what it could do (see
-  [What a set is worth](#what-a-set-is-worth--and-when-it-is-only-a-floor)):
+  reps only as a floor under what it could do (see [the level](#the-level)):
   a 20-rep back-off set never reaches it, and a lift trained at 15–20 reps
   is judged on its sessions like any other.
 - **Este bloque / Todos los bloques** switches between the current block's
@@ -1228,7 +1079,6 @@ exactly why guessing at a stall goes wrong.
 
 | e1RM | Señal en el registro | Lectura | Qué cambias |
 |---|---|---|---|
-| plano | objetivo por debajo del peso actual (no un reinicio) | Peso mal elegido | Baja al objetivo y sube el rango de reps como es debido |
 | plano | RIR 0 en la serie típica de la sesión, o una bajada forzada | Fatiga, no falta de esfuerzo | Mismo peso, vuelve a 1–2 RIR. Apretar más es la palanca equivocada |
 | plano | caída de reps ≥3, y la primera serie no apuntada a 2+ | Primera serie al fallo | Empieza más ligero para que las series 2 y 3 sumen volumen |
 | plano | RIR 2+ en la serie típica, en dos de las últimas tres sesiones | Falta intensidad | Sube carga o reps: te dejas el estímulo sin usar |
@@ -1239,7 +1089,6 @@ exactly why guessing at a stall goes wrong.
 | plano | ninguna, y sin RIR apuntado en las últimas sesiones | Estancado sin señal clara | Apunta el RIR de cada serie unas semanas — sin eso no se distingue fatiga de falta de intensidad |
 | bajando | huecos >7 días de mediana | Asistencia, no programa | Nada que tocar en el plan |
 | bajando | sin huecos | Pierde fuerza de verdad | Si varios ejercicios bajan a la vez, mira el descanso y lo que comes — eso la app no lo ve |
-| subiendo | la ficha no sube el peso esta semana | Sube, pero hoy no toca | Mismo peso a la RIR prevista — si las reps vuelven, sube; si vuelve a caer, el nivel se ajusta solo |
 | subiendo | el músculo va bajo la franja | Margen sin usar | Va bien con pocas series — si añades, añádeselas ahí primero |
 | subiendo | — | Funciona | No toques nada |
 
@@ -1247,20 +1096,11 @@ exactly why guessing at a stall goes wrong.
 working sets. A session paced 3 → 2 → 1 → 0 has a typical set with a rep
 in reserve and is not read as fatigue; one ground out at 0 on every set
 is. A session where you only wrote the last set's RIR reads exactly as it
-did before this: the objetivo's inheritance rule (see [The weekly
-objetivo](#the-weekly-objetivo)) gives every earlier set that value, so
-its median is that value.
+did before this: the inheritance rule (see [the level](#the-level)) gives
+every earlier set that value, so its median is that value.
 
 The volume row reads **Registrado**, not **Plan**: "you have room to add
 sets" is a claim about the sets you actually did.
-
-The `subiendo` + "hoy no toca" row is not a stall — the trend really did
-climb. It is the rule holding the weight for a day, either because the last
-session came in under the level or because
-[the brake](#the-brake) is on across the whole day, and it reads the
-target's own answer rather than re-deriving anything. Before this row the
-session screen held the weight while Diagnóstico said *no toques nada* —
-one log, two screens, opposite instructions.
 
 The signals are read off the most recent sessions rather than the whole
 window, because what you change on Monday answers to how last Monday went.
@@ -1292,6 +1132,37 @@ had been fitted on four. Three things follow from the one history:
 Two readings the old count had of its own went with it: a session done
 entirely past 15 reps counts like any other, and **Todos los bloques** on
 an earlier block stops at that block, where its line always stopped.
+
+### The level
+
+The line is fitted through one number per session: what its **first set**
+was worth, because it is the only set done fresh and so the only one
+comparable across sessions of different lengths. The set is read as an
+estimated 1RM with its reserve added back in — what it would have been
+worth taken to failure, `w × (1 + (reps + rir) / 30)` — and the **level**
+is the best of the last three, so one bad night cannot move it.
+
+A set is a **floor** under that number rather than a reading of it when it
+ended at the top of the range (it was cut off there), when you wrote 2 or
+more in reserve (open-ended), when nothing was written for it, or when it
+ran past twelve reps (where the reserve people report stops being
+reliable). A floor may only ever raise the level, never lower it: a
+`39×15/15/15` at the top of a 12–15 range is not evidence you got weaker.
+Going *down* takes a session at least 5 % under the best of the three
+before it, read off a set that was not a floor; two of those in a row is
+the level itself moving, and the line says *bajando* without waiting for
+the fit.
+
+A set you left blank takes the reserve of the next set that has one — the
+set before a set you took to 0 had at least that much left — and a set
+with nothing after it either is the "nothing was written" floor. That is
+exactly what the old one chip per session did to every set, which is why a
+log with no per-set values reads precisely as it always did. **The RIR worth
+writing down is the first set's**: at 0 or 1 it is a reading the level can
+move on.
+
+This is the Diagnóstico's number only. [The weekly objetivo](#the-weekly-objetivo)
+used to be built on it, and is not any more: it reads the reps.
 
 ### The work axis
 
@@ -1647,7 +1518,7 @@ Every exercise in both plans declares an `inc` — the smallest step that
 machine can really be loaded with, 1 kg on cable lateral raises, 2,5 on the
 machine presses, 5 on the hack squat, leg press and hip thrust. That is
 what double progression adds when you hit the top of the range, and what
-the weekly objetivo rounds to. Only new installs get them: an existing log
+the weekly objetivo steps up by. Only new installs get them: an existing log
 is never rewritten, so set them yourself in **Editar plan** if you started
 before this. The same is true of the **RIR mínimo** floor on the hack
 squat, the Romanian deadlift and her hip thrust: an existing install does
@@ -1709,8 +1580,8 @@ explicitly (hit the top of the rep range on every set → add the smallest
 increment next week) and restrict week 7's to-failure sets to machines
 and isolation work rather than hack squats, RDLs and heavy hip thrusts.
 The hack squat, the Romanian deadlift and her hip thrust carry a
-**RIR mínimo** of 1, so the objetivo never prices them past 1 RIR even in
-the week that asks for 0–1.
+**RIR mínimo** of 1, so their RIR box never asks for less than 1 in
+reserve, even in the week that asks for 0–1.
 
 The two RIR ramps differ, because the two lifters do. His runs 3 RIR in
 week 1 down to 0–1 by week 7. Hers starts at 4 and ends at 1–2, which is
