@@ -35,5 +35,17 @@ node tools/objetivo-sim/trace.js chestpress hybrid none 0.005 3 actual rango
 ## The rules
 
 See the header of `rules.js`. `actualFixed` patches the current rule's two
-input bugs from outside; `todas`, `primera` and `rango` are one-weight
-double progressions that never read the RIR box.
+input bugs from outside; `todas`, `primera`, `rango` and `plan` are
+one-weight double progressions that never read the RIR box, and `plan` is
+the only one with no Epley anywhere.
+
+## What a real log said that the simulation could not
+
+Replayed against one real backup (one block, 23 load increases), Epley —
+which the current rule and `rango` both price steps with — under-read the
+reps at the new weight by a median of six; only 2 of the 23 landed within
+two reps of it. A step cost the first set one or two reps whatever its
+size, from +9 % to +56 %. The simulated lifter is built on Epley, so on
+that question the simulation flatters every rule that uses it, and the
+real log is the better witness. That is why `plan` exists. The backup
+itself is personal data and is not in the repository.

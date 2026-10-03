@@ -9,6 +9,10 @@
      primera      one weight, the first set alone decides the step
      rango        one weight, the step comes when the next rung keeps every
                   set inside the range
+     plan         the plan's own text, with no Epley anywhere: one weight,
+                  +1 rep per set up to the top, and when every set reached
+                  the top last time, the next rung with the bottom of the
+                  range as the ask
 
    The three new ones prescribe ONE weight per exercise, read nothing but
    the log and the plan (no RIR), and never ask a set for fewer reps at the
@@ -46,11 +50,22 @@ function deload(ctx, hist) {
   const w = Math.max(inc, Math.floor(W * 0.6 / inc) * inc);
   return { kind: 'descarga', sets: Array.from({ length: ctx.n }, () => ({ w, r: ctx.lo })) };
 }
-/* The run of sessions at one weight, ending at `end`. */
+/* A session's working weight: the one most of its sets were done at, the
+   heavier on a tie. Not simply the first set's — a calibration week that
+   tries one heavy set and backs off for the rest (40 · 30 · 30) was
+   trained at 30. */
+function workW(s) {
+  const n = new Map();
+  s.sets.forEach(x => n.set(x.w, (n.get(x.w) || 0) + 1));
+  let W = s.sets[0].w;
+  n.forEach((c, w) => { if (c > n.get(W) || (c === n.get(W) && w > W)) W = w; });
+  return W;
+}
+/* The run of sessions at one working weight, ending at `end`. */
 function runAt(hist, end) {
-  const W = hist[end].sets[0].w, run = [];
+  const W = workW(hist[end]), run = [];
   let i = end;
-  for (; i >= 0 && same(hist[i].sets[0].w, W); i--) run.push(hist[i]);
+  for (; i >= 0 && same(workW(hist[i]), W); i--) run.push(hist[i]);
   return { W, run, prevEnd: i };
 }
 function perSetBest(run, W, n) {
@@ -62,20 +77,22 @@ function perSetBest(run, W, n) {
 /* Each set's best at the current weight. A bad day cannot lower it; only a
    new weight starts it again — and a first session at a new weight that
    falls short of what the step promised (the old weight's best, priced at
-   the new one) does not lower the ask either. A set the plan has just
-   added (ex.add) has no history: it is asked for two under the set before. */
-function bestAtWeight(hist, n, hi) {
+   the new one) does not lower the ask either. A set with no history at
+   this weight — one the plan has just added (ex.add), or one that was
+   backed off to a lighter weight — is asked for the bottom of the range. */
+function bestAtWeight(hist, n, lo, hi, promised) {
+  const price = promised || ((b, W1, W2) => Math.min(hi, repsAtSameEffort(b, W1, W2)));
   const { W, run, prevEnd } = runAt(hist, hist.length - 1);
   const own = perSetBest(run, W, n);
   let promise = null;
   if (prevEnd >= 0) {
     const p = runAt(hist, prevEnd);
-    if (p.W < W) promise = perSetBest(p.run, p.W, n).map(b => b == null ? null : Math.min(hi, repsAtSameEffort(b, p.W, W)));
+    if (p.W < W) promise = perSetBest(p.run, p.W, n).map(b => b == null ? null : price(b, p.W, W));
   }
   const best = [], fresh = [];
   own.forEach((b, k) => {
     if (b != null) { best.push(promise && promise[k] != null ? Math.max(b, promise[k] - 1) : b); fresh.push(false); }
-    else { best.push(best.length ? Math.max(1, best[best.length - 1] - 2) : run[0].sets[0].r); fresh.push(true); }
+    else { best.push(lo); fresh.push(true); }
   });
   return { W, best, fresh, run };
 }
@@ -93,7 +110,7 @@ function todas(ctx) {
   const hist = hardOf(ctx);
   if (!hist.length) return null;
   if (ctx.deload) return deload(ctx, hist);
-  const { W, best, fresh } = bestAtWeight(hist, ctx.n, ctx.hi);
+  const { W, best, fresh } = bestAtWeight(hist, ctx.n, ctx.lo, ctx.hi);
   if (hist[hist.length - 1].sets.every(s => s.r >= ctx.hi)) {
     const W2 = nextRung(hist, W, ctx.ex.inc);
     return { kind: 'up', sets: stepUp(W, W2, best).map(s => ({ w: s.w, r: Math.min(ctx.hi, s.r) })) };
@@ -112,7 +129,7 @@ function firstLeads(ctx, everySet) {
   const hist = hardOf(ctx);
   if (!hist.length) return null;
   if (ctx.deload) return deload(ctx, hist);
-  const { W, best, fresh, run } = bestAtWeight(hist, ctx.n, ctx.hi);
+  const { W, best, fresh, run } = bestAtWeight(hist, ctx.n, ctx.lo, ctx.hi);
   const W2 = nextRung(hist, W, ctx.ex.inc);
   const fits = best[0] >= ctx.hi && repsAtSameEffort(best[0], W, W2) >= ctx.lo;
   const shown = run.some(h => h.sets[0].r >= ctx.hi && h.sets.every(x => repsAtSameEffort(x.r, W, W2) >= ctx.lo));
@@ -122,4 +139,31 @@ function firstLeads(ctx, everySet) {
 const primera = ctx => firstLeads(ctx, false);
 const rango = ctx => firstLeads(ctx, true);
 
-module.exports = { actual, actualFixed, todas, primera, rango, repsAtSameEffort };
+/* ---- plan: double progression with no model at all ----
+   On a real log (one lifter, 23 load increases) Epley under-read the reps
+   at the new weight by a median of six, and a step cost the first set one
+   or two reps whatever its size, from +9 % to +56 %. A rule that prices
+   steps with it refuses steps the lifter makes easily. So this one prices
+   nothing: the reps decide when to go up, and after a step each set is
+   asked for two reps under what it did, never under the bottom of the
+   range — on that log, two under was met on 70 % of the sets after a
+   step, one under on 58 %, the bottom of the range on 97 %. The first
+   session at the new weight then sets the baseline the next asks climb
+   from. Sets at the top hold there (the plan says "corta a 12 reps")
+   while the others catch up. */
+function plan(ctx) {
+  const hist = hardOf(ctx);
+  if (!hist.length) return null;
+  if (ctx.deload) return deload(ctx, hist);
+  const twoUnder = b => Math.max(ctx.lo, Math.min(ctx.hi, b) - 2);
+  const { W, best, fresh } = bestAtWeight(hist, ctx.n, ctx.lo, ctx.hi, twoUnder);
+  const last = hist[hist.length - 1];
+  const all = last.sets.length >= ctx.n && last.sets.slice(0, ctx.n).every(x => x.w >= W - 1e-6 && x.r >= ctx.hi);
+  if (all) {
+    const W2 = nextRung(hist, W, ctx.ex.inc);
+    return { kind: 'up', sets: best.map(b => ({ w: W2, r: twoUnder(b) })) };
+  }
+  return { kind: 'reps', sets: moreReps(W, best, fresh, ctx.hi, false) };
+}
+
+module.exports = { actual, actualFixed, todas, primera, rango, plan, repsAtSameEffort };

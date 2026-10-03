@@ -6,7 +6,7 @@
 const S = require('./lifter.js');
 const R = require('./rules.js');
 const env = (k, d) => process.env[k] || d;
-const rules = env('RULES', 'actual,actualFixed,todas,primera,rango').split(',');
+const rules = env('RULES', 'actual,actualFixed,todas,primera,rango,plan').split(',');
 const behaves = env('BEHAVE', 'target,hybrid,rir,capped').split(',');
 const logs = env('LOGS', 'none,honest').split(',');
 const gains = process.env.GAIN ? [+process.env.GAIN] : [0.012, 0.005, 0];
