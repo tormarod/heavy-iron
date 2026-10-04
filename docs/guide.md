@@ -29,7 +29,7 @@ once by `kg · rep · RIR`:
 
 | Control | What it does |
 |---|---|
-| the three boxes | the weight, the reps and the RIR of that set. The greyed number in each is what the week asks of it — the objetivo's weight and reps for that set, and the week's own RIR; before there is an objetivo to ask anything, the weight box shows what you lifted on that set the last week you logged it and the rep box shows the plan's range. `22,5` works. Tick the set and every box you left empty takes the greyed number in it — the weight, the reps and the RIR — so a set done as the week asked is one tap; a box you typed into keeps what you typed. When the rep box shows the plan's range (`8–12`, before an exercise has an objetivo) the tick takes its bottom, 8 — the count every new weight starts from, so the next session asks one more. The rest timer says what the tick took. |
+| the three boxes | the weight, the reps and the RIR of that set. The greyed number in each is what the week asks of it — the objetivo's weight and reps for that set, and the week's own RIR; before there is an objetivo to ask anything, the weight box shows what you lifted on that set the last week you logged it and the rep box shows the plan's range. `22,5` works. Tick the set and every box you left empty takes the greyed number in it — the weight, the reps and the RIR — so a set done as the week asked is one tap; a box you typed into keeps what you typed. When the rep box shows the plan's range (`8–12`, before an exercise has an objetivo) the tick takes its bottom, 8 — the count every new weight starts from, so the next session asks one more. The rest timer says what the tick took, on a row under the count, and when it took the reps that row has **−1 rep** and **+1 rep** to put the count right. |
 | **↓** | records weight coming off *that* set — a dropset, or the drop you needed to finish the reps. Adds an indented row with its own boxes; up to four per set. See [Weight drops](#weight-drops). |
 | **✓** | marks the set done, and starts the rest timer. This is the control that counts: only ticked sets feed the chart, the **RÉCORD** badge and the totals. |
 | the name | tap it for what the card does not print: the alternative exercise, the amber cue, and the machine settings — seat height, pin position, saved to the plan rather than to the log. The chevron at the end of the plan line is what says it opens. |
@@ -54,9 +54,10 @@ past the end of the block, the totals line, the save status and the
 version.
 
 Once a set is ticked the rest timer takes the bar's place: **−30**/**+30**
-move the finish line, **Saltar** ends it, the line underneath names the set
-you are going back to and what it is asking for, and **Aviso sonoro** is
-the switch for the alarm at zero.
+move the finish line, **Saltar** ends it, the row under the count says what
+the tick wrote into the set from its grey numbers, the line underneath names
+the set you are going back to and what it is asking for, and **Aviso
+sonoro** is the switch for the alarm at zero.
 
 **Week to week.** Fill the rep range at the prescribed RIR, then next week
 press **Rellenar con el objetivo** on the same day: it writes the weight
@@ -494,7 +495,16 @@ charge, the line simply isn't there.
   logged it. Tick a set without typing anything and it takes that number,
   and the reps and RIR greyed in beside it, telling you so on the rest
   timer the tick starts, and in the status line at the foot of the page —
-  change whichever one was different. The
+  change whichever one was different. The reps have a shortcut: when the
+  tick took them, the timer's row carries **−1 rep** and **+1 rep**, so
+  the set you got one short of the ask is one tap from the truth while
+  you rest, with no keyboard and no hunting for the box under the timer.
+  Each press is saved like a typed number, and the row then says what is
+  logged, `— corregido`. It is only the reps because they are the number
+  the objetivo climbs from: ticked as shown week after week, a lift goes
+  up a rep a week whatever was lifted. A superset's first exercise and
+  the day's last set start no rest, so they have no row; their numbers
+  are in the boxes you just ticked. The
   number it shows is [the objetivo](#the-weekly-objetivo)'s
   own weight for that set; on an exercise with no history at all it falls
   back to last week's, and then to the block before. On the first week of a
@@ -734,6 +744,16 @@ range and step in the plan, and nothing else.
   that session did not reach the top on every set. A set with no history
   at the current weight — newly added, or done at a lighter back-off
   weight — is asked for the bottom of the range.
+- **Each set is read by its own place.** The third set's history is what
+  the third set did, so a set you skipped, or ticked with no reps, is
+  asked for the bottom of the range and the sets after it still read
+  their own numbers. It used to hand its place to the set after it:
+  `50×10 · 50×9 · — · 50×11` came back as `11 · 10 · 12 · 8`, and a tick
+  on the fourth set logged 8 after it had done 11.
+- **Week 1 of a new block counts the sets the old block asked for.** A
+  block that adds a set to a lift steps it on the sets that were done, the
+  way a set added inside a block does; a set the new block drops cannot
+  hold the step back.
 
 **The week's RIR is where you stop, not an input.** It is the greyed
 number in every RIR box, as before — *corta al RIR de la semana o al tope

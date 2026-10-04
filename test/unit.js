@@ -2471,6 +2471,9 @@ const targetProbe = `
       const d = s.day != null ? s.day : i * 7;
       return { block: 'B', week: i + 1, day: 'D', lift: 'E', rir: s.rir,
         sets: s.sets.map(function (p, k) {
+          /* Anything but a [weight, reps] pair is a stored row as it is —
+             an unticked set, or one ticked with no reps (plans/082). */
+          if (!Array.isArray(p)) return p;
           const fields = { ts: T0 + d * DAY };
           /* A third element is the unit the row was written in. The key is
              added only when there is one, because that is what the app writes:
@@ -2586,6 +2589,56 @@ t = target([
 ], { range: '8–12', inc: 2.25, sets: 4, add: 5 });
 ok('a set the plan adds this week does not hold back a step the sets that were done have earned',
    t.show === '47,25×8↑ · 47,25×8↑ · 47,25×8↑ · 47,25×8↑ · 47,25×8↑', JSON.stringify(t));
+
+/* Set k is the k-th set of the plan, by the row it was logged on, not the
+   k-th set that happens to have been ticked (plans/082). The skipped third
+   set used to hand its place to the fourth: 50 × 11 · 10 · 12 · 8, and a
+   tick on the fourth logged 8 after it had done 11. */
+const skipped = { w: '', r: '', done: false };
+t = target([{ sets: [[50, 10], [50, 9], skipped, [50, 11]] }], { range: '8–12', inc: 2.5, sets: 4 });
+ok('a set skipped in the middle is asked for the bottom, and every set after it reads its own history',
+   t.show === '50×11 · 50×10 · 50×8 · 50×12' && t.dir === '', JSON.stringify(t));
+t = target([{ sets: [[50, 12], { w: '50', r: '', done: true }, [50, 9], [50, 8]] }], { range: '8–12', inc: 2.5, sets: 4 });
+ok('...and so does a set ticked with a weight and no reps, the tick every log before a311fa4 is full of',
+   t.show === '50×12 · 50×8 · 50×10 · 50×9', JSON.stringify(t));
+t = target([
+  { sets: [[50, 11], [50, 10], [50, 10], [50, 9]] },
+  { sets: [[50, 12], [50, 12], skipped, [50, 11]] },
+], { range: '8–12', inc: 2.5, sets: 4 });
+ok('...over every session since the weight changed: the skipped set keeps its best from the session before',
+   t.show === '50×12 · 50×12 · 50×11 · 50×12', JSON.stringify(t));
+t = target([{ sets: [[50, 12], [50, 12], skipped, [50, 12], [50, 12]] }], { range: '8–12', inc: 2.5, sets: 4 });
+ok('a fifth ticked row past the plan cannot stand in for a skipped third: no step',
+   t.show === '50×12 · 50×12 · 50×8 · 50×12' && t.dir === '', JSON.stringify(t));
+
+/* Week 1 of a new block reads the block before it, and "every set that was
+   asked for" is what that block asked (plans/082). It used to be this
+   block's own count, so a block that added a set never stepped on its
+   first week, where the same history inside one block did. */
+const crossProbe = call(`
+  (function (oldSets, newSets, rows) {
+    const T0 = Date.UTC(2026, 0, 5);
+    const exA = { id: 'E', n: 'x', sets: oldSets, reps: '8–12', inc: 2.5 };
+    const exB = { id: 'E', n: 'x', sets: newSets, reps: '8–12', inc: 2.5 };
+    const p = sessionFixture({ units: 'kg',
+      blocks: [{ id: 'A', weeks: 8, deload: 0, phase: {}, days: [{ id: 'DA', ex: [exA] }] },
+               { id: 'B', weeks: 8, deload: 0, phase: {}, days: [{ id: 'DB', ex: [exB] }] }],
+      sessions: [{ block: 'A', week: 8, day: 'DA', lift: 'E',
+        sets: rows.map(function (r) { return r ? [r[0], r[1], { ts: T0 }] : { w: '', r: '', done: false }; }) }] });
+    const b = p.blocks.B;
+    const t = targetFor(p, b, b.days[0], b.days[0].ex[0], 1);
+    return t ? t.sets.map(function (x) { return String(x.w).replace('.', ',') + '×' + x.r + x.move; }).join(' · ') : null;
+  })
+`);
+ok('a new block that adds a set steps on the sets the old block asked for, as ex.add does inside a block',
+   crossProbe(3, 4, [[50, 12], [50, 12], [50, 12]]) === '52,5×8↑ · 52,5×8↑ · 52,5×8↑ · 52,5×8↑',
+   crossProbe(3, 4, [[50, 12], [50, 12], [50, 12]]));
+ok('...a set the old block asked for and skipped still holds it back, read by its place',
+   crossProbe(4, 4, [[50, 12], [50, 12], null, [50, 12]]) === '50×12 · 50×12 · 50×8 · 50×12',
+   crossProbe(4, 4, [[50, 12], [50, 12], null, [50, 12]]));
+ok('...and a set the new block no longer asks for cannot hold back the sets it does ask for',
+   crossProbe(4, 3, [[50, 12], [50, 12], [50, 12], null]) === '52,5×8↑ · 52,5×8↑ · 52,5×8↑',
+   crossProbe(4, 3, [[50, 12], [50, 12], [50, 12], null]));
 
 /* A calibration week that tried one heavy set and backed off for the rest
    was trained at the lighter weight. */
@@ -5208,6 +5261,7 @@ const hintProbe = call(`
       none: setHints(rows, null, ['', '', ''], null, ''),
       single: setHints(rows, est, ['50', '', ''], null, '12', 0),
       odd: setHints(rows, null, ['', '', ''], null, '7,5–10', 7),
+      reps: setHints(rows, { sets: [{ w: 47.25, r: 10, move: '' }, { w: 45, r: 9, move: '' }] }, ['', '', ''], null, '8–12', 2),
     };
     state.prefs.units = prev;
     return out;
@@ -5235,6 +5289,9 @@ ok('"Siguiente" prices the next set with what its box shows, and the last set sa
    hintProbe.own.next[0] === 'Siguiente: serie 2 · 45,36 kg × 8–12' &&
    hintProbe.none.next.join(' / ') === 'Siguiente: serie 2 / Siguiente: serie 3 / Última serie hecha',
    JSON.stringify(hintProbe));
+ok('..."× 9" when the objetivo asks the next set for 9, not the plan\'s range over a box that says 9 (plans/082)',
+   !hintProbe.missing && hintProbe.reps.next[0] === 'Siguiente: serie 2 · 45 kg × 9' &&
+   hintProbe.reps.sets[1].placeholder.r === '9', JSON.stringify(hintProbe.reps));
 ok('the set to do next is the first not ticked, and it is marked only against an objetivo',
    !hintProbe.missing && hintProbe.est.nextAt === 1 && hintProbe.own.nextAt === -1 && hintProbe.none.nextAt === -1,
    JSON.stringify(hintProbe));
@@ -8388,7 +8445,7 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
       const p = getProfile(), k = slot(p.week, currentDay().id), id = exList(currentDay())[0].id;
       return (((p.log[getBlock().id] || {})[k] || {})[id] || [])[0] || null;
     })())`));
-    const note = boot.$('tmsg').textContent;
+    const note = boot.$('ttookMsg').textContent;
     ok('a first session\'s tick takes the bottom of the plan\'s rep range and the week\'s RIR, and leaves the weight it had no number for',
        !err && !want.est && Number(want.r) < want.top && !!want.rir && !!row &&
        row.done === true && row.w === '' && row.r === want.r && row.rir === want.rir,
@@ -11741,12 +11798,12 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
        and its phase a reserve, for the tick to take. */
     const boot = settled(seeded({ week: 2, day: 0 }));
     boot.card(0).set(0).tick.onclick();
-    const tookNote = boot.$('tmsg').textContent;
+    const tookNote = boot.$('ttookMsg').textContent;
     ok('a tick that takes the grey numbers says so on the rest timer it starts: weight × reps, and the RIR',
        /^Serie 1 anotada con [\d,]+ kg × \d+ \(lo que pide el objetivo de esta semana\) y RIR \d — /.test(tookNote), tookNote);
     boot.type(boot.card(0).set(1).w, '50');
     boot.card(0).set(1).tick.onclick();
-    const weightTyped = boot.$('tmsg').textContent;
+    const weightTyped = boot.$('ttookMsg').textContent;
     ok('...a weight typed is left out of it, and the reps and RIR the tick did take are still named',
        /^Serie 2 anotada con \d+ reps \(lo que pide el objetivo de esta semana\) y RIR \d — /.test(weightTyped), weightTyped);
     boot.type(boot.card(0).set(2).w, '50');
@@ -11756,6 +11813,9 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
     const typedNote = boot.$('tmsg').textContent;
     ok('...but a tick with nothing adopted (all three boxes typed) leaves the timer\'s fixed breathing tip alone',
        typedNote.indexOf('Prueba de la frase') === 0, typedNote);
+    ok('...and hides the row the last tick\'s note was on, rather than leaving that set\'s note under this one\'s rest (plans/083)',
+       boot.$('ttook').hidden === true && boot.$('ttookMsg').textContent === '' && !boot.$('timer').classList.contains('took'),
+       JSON.stringify({ hidden: boot.$('ttook').hidden, msg: boot.$('ttookMsg').textContent }));
   }
   {
     /* D. The day's very last tick used to start a full rest countdown for a
@@ -11795,6 +11855,90 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
     const note = boot.$('note').textContent;
     ok('the footer counts sets done and stops there — no more restating the old all-sets rule',
        /^1 de \d+ series hechas\./.test(note) && note.indexOf('Llega al tope') === -1, note);
+  }
+
+  /* What a tick took used to go to the coaching line, which a phone hides,
+     and to the status line, which "Guardado" replaces 400ms later — so on
+     the household's phones it was never on screen. It has a row of its own
+     on the timer, and when the tick took the reps, −1 and +1 for them
+     (plans/083). The row's display is the smoke suite's to see; this pins
+     what the buttons write. Week 2 of `seeded` has week 1 logged, so every
+     card carries an objetivo and the week's phase a reserve. */
+  console.log('\n== what a tick took, on a row of the rest timer, and its reps a tap either way (plans/083) ==');
+  {
+    const firstRow = boot => JSON.parse(boot.call(`JSON.stringify((function () {
+      const p = getProfile(), k = slot(p.week, currentDay().id), id = exList(currentDay())[0].id;
+      return (((p.log[getBlock().id] || {})[k] || {})[id] || [])[0] || null;
+    })())`));
+    const savedRow = boot => {
+      const s = boot.saved(), p = s.profiles[s.activeProfile], b = p.blocks[p.activeBlock], d = b.days[p.day];
+      return ((p.log[b.id] || {})[boot.call('slot')(p.week, d.id)] || {})[d.ex[0].id][0];
+    };
+    const boot = settled(seeded({ week: 2, day: 0 }));
+    boot.card(0).set(0).tick.onclick();
+    const took = firstRow(boot);
+    const reps = Number(took && took.r);
+    ok('a tick that took the reps puts its note on the timer\'s own row, with −1 and +1 beside it',
+       boot.$('timer').classList.contains('up') && boot.$('ttook').hidden === false &&
+       boot.$('timer').classList.contains('took') &&
+       /^Serie 1 anotada con [\d,]+ kg × \d+ \(lo que pide el objetivo de esta semana\) y RIR \d — cámbialo si no fue eso$/.test(boot.$('ttookMsg').textContent) &&
+       boot.$('trepMinus').hidden === false && boot.$('trepPlus').hidden === false && reps > 1,
+       JSON.stringify({ took: took, msg: boot.$('ttookMsg').textContent, minus: boot.$('trepMinus').hidden }));
+    ok('...and the buttons name the set they are for',
+       boot.$('trepMinus').getAttribute('aria-label') === 'Una repetición menos en la serie 1 de ' + boot.card(0).ex.n &&
+       boot.$('trepPlus').getAttribute('aria-label') === 'Una repetición más en la serie 1 de ' + boot.card(0).ex.n,
+       boot.$('trepMinus').getAttribute('aria-label'));
+    boot.$('trepMinus').onclick();
+    const less = firstRow(boot);
+    boot.clock.advance(1000);
+    ok('−1 takes a rep off that set, and nothing else about it, and the save carries it',
+       less.r === String(reps - 1) && less.w === took.w && less.rir === took.rir && less.done === true &&
+       less.ts === took.ts && savedRow(boot).r === less.r,
+       JSON.stringify({ took: took, less: less, saved: savedRow(boot) }));
+    ok('...the card is drawn again with it in the rep box',
+       boot.card(0).set(0).r.value === String(reps - 1), boot.card(0).set(0).r.value);
+    ok('...and the row says what is logged now',
+       boot.$('ttookMsg').textContent === 'Serie 1 anotada con ' + took.w + ' kg × ' + (reps - 1) + ' y RIR ' + took.rir + ' — corregido',
+       boot.$('ttookMsg').textContent);
+    boot.$('trepPlus').onclick();
+    boot.$('trepPlus').onclick();
+    ok('+1 adds one each press', firstRow(boot).r === String(reps + 1), firstRow(boot).r);
+    for (let i = 0; i < reps + 3; i++) boot.$('trepMinus').onclick();
+    ok('−1 stops at one rep, and says so by being disabled: a set of none is not a set the objetivo or the totals read',
+       firstRow(boot).r === '1' && boot.$('trepMinus').disabled === true && boot.$('trepPlus').disabled === false,
+       JSON.stringify({ r: firstRow(boot).r, disabled: boot.$('trepMinus').disabled }));
+  }
+  {
+    /* Reps typed before the tick: the tick took the weight and the RIR,
+       and the row says so, but there is nothing of its own to correct. */
+    const boot = settled(seeded({ week: 2, day: 0 }));
+    boot.type(boot.card(0).set(0).r, '7');
+    boot.card(0).set(0).tick.onclick();
+    ok('a tick that took the weight but not the reps shows its note without −1 and +1',
+       boot.$('ttook').hidden === false && /^Serie 1 anotada con [\d,]+ kg /.test(boot.$('ttookMsg').textContent) &&
+       boot.$('trepMinus').hidden === true && boot.$('trepPlus').hidden === true,
+       JSON.stringify({ msg: boot.$('ttookMsg').textContent, minus: boot.$('trepMinus').hidden }));
+  }
+  {
+    /* A press is for the set on screen, still ticked, under a rest still
+       running. Unticking it clears the row; a stale press — after the
+       session on screen changed — writes nothing. */
+    const boot = settled(seeded({ week: 2, day: 0 }));
+    boot.card(0).set(0).tick.onclick();
+    const took = boot.card(0).rows[0].r;
+    boot.card(0).set(0).tick.onclick();
+    ok('unticking the set clears the row, and with it the buttons',
+       boot.$('ttook').hidden === true && boot.$('trepMinus').hidden === true, String(boot.$('ttook').hidden));
+    boot.$('trepMinus').onclick();
+    ok('...so a press after it writes nothing', boot.card(0).rows[0].r === took, boot.card(0).rows[0].r);
+    boot.card(0).set(0).tick.onclick();
+    const again = boot.card(0).rows[0].r;
+    boot.$('weekNext').onclick();
+    boot.$('trepPlus').onclick();
+    boot.$('weekPrev').onclick();
+    ok('a press after moving to another week writes nothing to either week',
+       boot.card(0).rows[0].r === again && !boot.$('timer').classList.contains('up'),
+       JSON.stringify({ before: again, after: boot.card(0).rows[0].r }));
   }
 
   /* load() and the two imports that replace data wholesale, "Cargar copia"

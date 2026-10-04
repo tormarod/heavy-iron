@@ -3909,6 +3909,33 @@ const ok = (name, cond, extra) => {
       ok(label + ': the bar is out of the way while a rest runs', r.navHidden === true, String(r.navHidden));
       ok(label + ': page does not scroll sideways', r.scroll <= r.vw, r.scroll + ' > ' + r.vw);
 
+      /* What the tick took was the coaching line's text, and the coaching
+         line is display:none below 620px — so on a phone it was never on
+         screen, which no unit test could see (plans/083). The weight was
+         typed and this is week 1 of a first run, so the tick took the
+         plan's bottom rep and the week's RIR: the row shows, with −1/+1. */
+      const took = await page.evaluate(() => {
+        const box = el => { const x = el.getBoundingClientRect(); return { l: Math.round(x.left), r: Math.round(x.right), t: Math.round(x.top), b: Math.round(x.bottom), h: Math.round(x.height) }; };
+        const row = document.getElementById('ttook');
+        return {
+          vw: window.innerWidth, vh: window.innerHeight,
+          display: getComputedStyle(row).display, row: box(row),
+          msg: document.getElementById('ttookMsg').textContent,
+          btns: ['trepMinus', 'trepPlus'].map(id => box(document.getElementById(id))),
+          reps: document.querySelector('.ex .set-row .r-in').value,
+        };
+      });
+      ok(label + ': the rest timer shows what the tick took, on screen, with −1 and +1 at 44px',
+         took.display !== 'none' && took.row.t >= 0 && took.row.b <= took.vh &&
+         /^Serie 1 anotada con \d+ reps .* — cámbialo si no fue eso$/.test(took.msg) &&
+         took.btns.every(x => x.l >= 0 && x.r <= took.vw && x.h >= 44 && x.b <= took.vh),
+         JSON.stringify(took));
+      await page.click('#trepMinus');
+      const fewer = await page.locator('.ex').first().locator('.set-row').first().locator('.r-in').inputValue();
+      ok(label + ': and −1 takes a rep off the set\'s own box',
+         fewer === String(Number(took.reps) - 1) && (await page.textContent('#ttookMsg')).endsWith('— corregido'),
+         took.reps + ' → ' + fewer);
+
       await page.click('#tskip');
       /* Both halves of both switches, because hiding is the easy one to get
          right: a bar stuck hidden passes every "it is not on screen" check
