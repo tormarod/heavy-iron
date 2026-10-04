@@ -103,6 +103,8 @@ below so it is not lost or re-audited.
 | 079 | [The first open of a new day lands on the session that's due, and the day tabs show what is done](done/079-land-on-the-due-session.md) | P2 | S–M | LOW–MED | — (bumps) | DONE (#194, v147). `prefs.lastDay` gates the landing to the first open or resume of a new day; "Te toca … · Volver"; a dot on each day tab. **Review changed decision 1 twice**: it now holds the view while the block's last tick is under two hours old, since a session past midnight was pulled forward mid-rest; and it never lands on a slot that already has a ticked set, since that move could not be announced. `.ord-reset` is now 24 px tall (it was 21), held by a new "tamaños" smoke case. 38 assertions, passing under six time zones; the full gate ran on the final head (588/0) |
 | 080 | [Six small promises the session breaks, kept](done/080-session-fixes.md) | P2 | S | LOW | — (bumps) | DONE (#193, v146). Turning on the pocket alarm turns on Aviso sonoro; the plates box reads a decimal comma, with `;` between sizes; the rest timer says what weight a tick took; no rest after the day's last set; the footer drops the old all-sets rule; the Diagnóstico's flat fallback says "cambia el estímulo" once every recent session carries an RIR (the wording is a draft the maintainer may reword). 14 assertions, 5 mutation checks. Review fixed one guide sentence that separated "That last one" from the increment it names |
 | 081 | [The weekly objetivo is double progression, read straight off the log](done/081-objetivo-double-progression.md) | P1 | M | MED | — (bumps) | DONE (#195, v148) — one weight, a rep more on every set until every set is at the top of the range, then the next rung at the bottom of it. Replaces the v3 estimated-1RM rule, which on the household's own log asked for fewer reps 26 % of the time, a lighter weight 27 %, and was beaten on 76 % of sets. The brake, the confidence chip, the vuelta and the two Diagnóstico rows that read them are gone; `obj` records are `v: 4` |
+| 082 | [The objetivo reads each set by its own place, week 1 counts what the old block asked, and "Siguiente" says the box's reps](done/082-objetivo-reads-each-set-by-its-place.md) | P1 | S | LOW–MED | — (bumps) | DONE (v151) — `readSession` keeps each set's row index and `targetFor` reads set k through `setAt`, so a skipped or rep-less set no longer hands its place to the next; across a block boundary `asked` is what the last session's own block asked (`setsAskedOf`); the timer's "Siguiente" prints the next box's grey number. Eight unit cases, seven failing on the old code |
+| 083 | [What a tick took is on the rest timer at every width, with −1/+1 for the reps](done/083-tick-note-on-the-phone-timer.md) | P1 | S–M | LOW | 082 (same branch) | DONE (v151) — the note has its own row under the count (`#ttook`), shown on a phone; −1 rep / +1 rep write the ticked set through `writeRows`, stop at 1 and 99, and do nothing for a set no longer on screen; the phone toast stands at 225px while the row shows. Booted tests press the buttons; the "layout" smoke section checks the row at 375/412/768 |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
@@ -1779,8 +1781,8 @@ Ranked by what the household meets next. "Bumps" means `CACHE_VERSION`.
 
 | # | Option | Why now | Effort | Proposed |
 |---|---|---|---|---|
-| 1 | **The objetivo asks each set from that set** (D1), **counts the last block's asked sets on week 1** (D3), and **the timer's "Siguiente" says the box's reps** (D4) | D1 writes a wrong number into the log on one tap, and that number becomes the set's history | S | plan, P1, bumps |
-| 2 | **What a tick fills in is seen, and can be corrected in one tap.** The note on the phone timer (it can take `#tnext`'s line for the length of the rest), also on rest-0 and last-set ticks, and not overwritten by "Guardado"; a **−1 / +1 rep** pair on the timer for the set just ticked | Without it a311fa4's "cámbialo si no fue eso" does not exist on a phone, and the objetivo's one rep a week becomes the logged rate of progress | S–M | plan, P1, bumps |
+| 1 | **The objetivo asks each set from that set** (D1), **counts the last block's asked sets on week 1** (D3), and **the timer's "Siguiente" says the box's reps** (D4) | D1 writes a wrong number into the log on one tap, and that number becomes the set's history | S | **082**, done |
+| 2 | **What a tick fills in is seen, and can be corrected in one tap.** The note on the phone timer (it can take `#tnext`'s line for the length of the rest), also on rest-0 and last-set ticks, and not overwritten by "Guardado"; a **−1 / +1 rep** pair on the timer for the set just ticked | Without it a311fa4's "cámbialo si no fue eso" does not exist on a phone, and the objetivo's one rep a week becomes the logged rate of progress | S–M | **083**, done |
 | 3 | **The log knows which numbers were filled in.** A per-row record of the boxes the tick took, cleared box by box when one is typed into, carried by the row codec, the QR share and a restore. The decay line, the Diagnóstico's `easy`/`failure`/`decay` and the review's "RIR apuntado" read only what was reported, and `obj` can tell a met target from a tap again | Four readers now read the plan's prescription as the lifter's report | M | **decision first**: the field's shape, and whether filled reps, not only RIR, are kept out of those readers |
 | 4 | **A set the plan adds is asked what it can do, not the bottom of the range.** It is asked the bottom in its first week, and from the week after it gates the step until it climbs. Ticked as asked, a 6–10 lift that adds a set in week 5 asks it 6 → 7 → 8 and cannot step again before the deload (probed). The default plans add a set in week 5 on five lifts and in week 7 on three | `js/data.js` (`add: 5` ×5, `add: 7` ×3); `js/app.js:7302-7330` | S | **decision first** (methodology): ask the added set what the set before it is asked, or don't let it gate the step until it has had a session |
 | 5 | **The storage wall, measured and warned about before it is hit.** Confirm the ceiling on the household's phones; warn at a share of it, with a backup in hand; slim `obj`, which is a third of the growth; write the backup compact | About 2–3 years from now on Safari, and past the first toast the failure loses data silently | M (spike first) | spike |
@@ -1882,6 +1884,20 @@ New signals from the walk, worth carrying:
   a lighter weight in week 1, from the other day's history. That is at
   odds with "the only thing the objetivo ever asks to go lighter"
   (`:788`), and no shipped plan does it.
+
+### Twelfth pass — executed (2026-10-04)
+
+The maintainer picked shortlist #1 and #2. Both were built directly in this
+session on one branch, two commits, one bump (v151): **082** (D1, D3, D4)
+and **083** (D2, and −1/+1 on the timer). Each file in `plans/done/`
+records its decisions:
+
+- 082 keeps `min(n, …)` across a block boundary, so a set the new block
+  drops cannot hold a step back;
+- 083 gives no row to a tick that starts no rest.
+
+Still open from the shortlist: #3, which needs a decision on the field's
+shape, #4, a methodology decision, and #5–#9.
 
 ### Twelfth pass — not audited
 
