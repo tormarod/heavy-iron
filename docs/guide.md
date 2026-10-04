@@ -734,6 +734,16 @@ range and step in the plan, and nothing else.
   that session did not reach the top on every set. A set with no history
   at the current weight — newly added, or done at a lighter back-off
   weight — is asked for the bottom of the range.
+- **Each set is read by its own place.** The third set's history is what
+  the third set did, so a set you skipped, or ticked with no reps, is
+  asked for the bottom of the range and the sets after it still read
+  their own numbers. It used to hand its place to the set after it:
+  `50×10 · 50×9 · — · 50×11` came back as `11 · 10 · 12 · 8`, and a tick
+  on the fourth set logged 8 after it had done 11.
+- **Week 1 of a new block counts the sets the old block asked for.** A
+  block that adds a set to a lift steps it on the sets that were done, the
+  way a set added inside a block does; a set the new block drops cannot
+  hold the step back.
 
 **The week's RIR is where you stop, not an input.** It is the greyed
 number in every RIR box, as before — *corta al RIR de la semana o al tope

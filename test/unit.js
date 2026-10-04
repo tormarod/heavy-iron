@@ -2471,6 +2471,9 @@ const targetProbe = `
       const d = s.day != null ? s.day : i * 7;
       return { block: 'B', week: i + 1, day: 'D', lift: 'E', rir: s.rir,
         sets: s.sets.map(function (p, k) {
+          /* Anything but a [weight, reps] pair is a stored row as it is —
+             an unticked set, or one ticked with no reps (plans/082). */
+          if (!Array.isArray(p)) return p;
           const fields = { ts: T0 + d * DAY };
           /* A third element is the unit the row was written in. The key is
              added only when there is one, because that is what the app writes:
@@ -2586,6 +2589,56 @@ t = target([
 ], { range: '8–12', inc: 2.25, sets: 4, add: 5 });
 ok('a set the plan adds this week does not hold back a step the sets that were done have earned',
    t.show === '47,25×8↑ · 47,25×8↑ · 47,25×8↑ · 47,25×8↑ · 47,25×8↑', JSON.stringify(t));
+
+/* Set k is the k-th set of the plan, by the row it was logged on, not the
+   k-th set that happens to have been ticked (plans/082). The skipped third
+   set used to hand its place to the fourth: 50 × 11 · 10 · 12 · 8, and a
+   tick on the fourth logged 8 after it had done 11. */
+const skipped = { w: '', r: '', done: false };
+t = target([{ sets: [[50, 10], [50, 9], skipped, [50, 11]] }], { range: '8–12', inc: 2.5, sets: 4 });
+ok('a set skipped in the middle is asked for the bottom, and every set after it reads its own history',
+   t.show === '50×11 · 50×10 · 50×8 · 50×12' && t.dir === '', JSON.stringify(t));
+t = target([{ sets: [[50, 12], { w: '50', r: '', done: true }, [50, 9], [50, 8]] }], { range: '8–12', inc: 2.5, sets: 4 });
+ok('...and so does a set ticked with a weight and no reps, the tick every log before a311fa4 is full of',
+   t.show === '50×12 · 50×8 · 50×10 · 50×9', JSON.stringify(t));
+t = target([
+  { sets: [[50, 11], [50, 10], [50, 10], [50, 9]] },
+  { sets: [[50, 12], [50, 12], skipped, [50, 11]] },
+], { range: '8–12', inc: 2.5, sets: 4 });
+ok('...over every session since the weight changed: the skipped set keeps its best from the session before',
+   t.show === '50×12 · 50×12 · 50×11 · 50×12', JSON.stringify(t));
+t = target([{ sets: [[50, 12], [50, 12], skipped, [50, 12], [50, 12]] }], { range: '8–12', inc: 2.5, sets: 4 });
+ok('a fifth ticked row past the plan cannot stand in for a skipped third: no step',
+   t.show === '50×12 · 50×12 · 50×8 · 50×12' && t.dir === '', JSON.stringify(t));
+
+/* Week 1 of a new block reads the block before it, and "every set that was
+   asked for" is what that block asked (plans/082). It used to be this
+   block's own count, so a block that added a set never stepped on its
+   first week, where the same history inside one block did. */
+const crossProbe = call(`
+  (function (oldSets, newSets, rows) {
+    const T0 = Date.UTC(2026, 0, 5);
+    const exA = { id: 'E', n: 'x', sets: oldSets, reps: '8–12', inc: 2.5 };
+    const exB = { id: 'E', n: 'x', sets: newSets, reps: '8–12', inc: 2.5 };
+    const p = sessionFixture({ units: 'kg',
+      blocks: [{ id: 'A', weeks: 8, deload: 0, phase: {}, days: [{ id: 'DA', ex: [exA] }] },
+               { id: 'B', weeks: 8, deload: 0, phase: {}, days: [{ id: 'DB', ex: [exB] }] }],
+      sessions: [{ block: 'A', week: 8, day: 'DA', lift: 'E',
+        sets: rows.map(function (r) { return r ? [r[0], r[1], { ts: T0 }] : { w: '', r: '', done: false }; }) }] });
+    const b = p.blocks.B;
+    const t = targetFor(p, b, b.days[0], b.days[0].ex[0], 1);
+    return t ? t.sets.map(function (x) { return String(x.w).replace('.', ',') + '×' + x.r + x.move; }).join(' · ') : null;
+  })
+`);
+ok('a new block that adds a set steps on the sets the old block asked for, as ex.add does inside a block',
+   crossProbe(3, 4, [[50, 12], [50, 12], [50, 12]]) === '52,5×8↑ · 52,5×8↑ · 52,5×8↑ · 52,5×8↑',
+   crossProbe(3, 4, [[50, 12], [50, 12], [50, 12]]));
+ok('...a set the old block asked for and skipped still holds it back, read by its place',
+   crossProbe(4, 4, [[50, 12], [50, 12], null, [50, 12]]) === '50×12 · 50×12 · 50×8 · 50×12',
+   crossProbe(4, 4, [[50, 12], [50, 12], null, [50, 12]]));
+ok('...and a set the new block no longer asks for cannot hold back the sets it does ask for',
+   crossProbe(4, 3, [[50, 12], [50, 12], [50, 12], null]) === '52,5×8↑ · 52,5×8↑ · 52,5×8↑',
+   crossProbe(4, 3, [[50, 12], [50, 12], [50, 12], null]));
 
 /* A calibration week that tried one heavy set and backed off for the rest
    was trained at the lighter weight. */
@@ -5208,6 +5261,7 @@ const hintProbe = call(`
       none: setHints(rows, null, ['', '', ''], null, ''),
       single: setHints(rows, est, ['50', '', ''], null, '12', 0),
       odd: setHints(rows, null, ['', '', ''], null, '7,5–10', 7),
+      reps: setHints(rows, { sets: [{ w: 47.25, r: 10, move: '' }, { w: 45, r: 9, move: '' }] }, ['', '', ''], null, '8–12', 2),
     };
     state.prefs.units = prev;
     return out;
@@ -5235,6 +5289,9 @@ ok('"Siguiente" prices the next set with what its box shows, and the last set sa
    hintProbe.own.next[0] === 'Siguiente: serie 2 · 45,36 kg × 8–12' &&
    hintProbe.none.next.join(' / ') === 'Siguiente: serie 2 / Siguiente: serie 3 / Última serie hecha',
    JSON.stringify(hintProbe));
+ok('..."× 9" when the objetivo asks the next set for 9, not the plan\'s range over a box that says 9 (plans/082)',
+   !hintProbe.missing && hintProbe.reps.next[0] === 'Siguiente: serie 2 · 45 kg × 9' &&
+   hintProbe.reps.sets[1].placeholder.r === '9', JSON.stringify(hintProbe.reps));
 ok('the set to do next is the first not ticked, and it is marked only against an objetivo',
    !hintProbe.missing && hintProbe.est.nextAt === 1 && hintProbe.own.nextAt === -1 && hintProbe.none.nextAt === -1,
    JSON.stringify(hintProbe));
