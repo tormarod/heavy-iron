@@ -102,7 +102,7 @@ below so it is not lost or re-audited.
 | 078 | [The plan editor can say which lifts never go to failure, and the default plans say it for theirs](done/078-min-rir-in-the-editor.md) | P1 | S | LOW | — (bumps; land before the household's week 7) | DONE (#192, v145). A **RIR mínimo** box in Editar plan, bound through `EX_FIELDS`' own `accept`. The default plans' hack squat, Romanian deadlift and her hip thrust carry `minRir: 1` (new installs only; an existing install sets it in the box). 10 assertions, 2 mutation checks. Two small deviations, recorded in its Maintenance notes: a comment reworded so its own grep count holds, and the test section placed above plans/060's preamble comment |
 | 079 | [The first open of a new day lands on the session that's due, and the day tabs show what is done](done/079-land-on-the-due-session.md) | P2 | S–M | LOW–MED | — (bumps) | DONE (#194, v147). `prefs.lastDay` gates the landing to the first open or resume of a new day; "Te toca … · Volver"; a dot on each day tab. **Review changed decision 1 twice**: it now holds the view while the block's last tick is under two hours old, since a session past midnight was pulled forward mid-rest; and it never lands on a slot that already has a ticked set, since that move could not be announced. `.ord-reset` is now 24 px tall (it was 21), held by a new "tamaños" smoke case. 38 assertions, passing under six time zones; the full gate ran on the final head (588/0) |
 | 080 | [Six small promises the session breaks, kept](done/080-session-fixes.md) | P2 | S | LOW | — (bumps) | DONE (#193, v146). Turning on the pocket alarm turns on Aviso sonoro; the plates box reads a decimal comma, with `;` between sizes; the rest timer says what weight a tick took; no rest after the day's last set; the footer drops the old all-sets rule; the Diagnóstico's flat fallback says "cambia el estímulo" once every recent session carries an RIR (the wording is a draft the maintainer may reword). 14 assertions, 5 mutation checks. Review fixed one guide sentence that separated "That last one" from the increment it names |
-| 081 | [The weekly objetivo is double progression, read straight off the log](done/081-objetivo-double-progression.md) | P1 | M | MED | — (bumps) | DONE — one weight, a rep more on every set until every set is at the top of the range, then the next rung at the bottom of it. Replaces the v3 estimated-1RM rule, which on the household's own log asked for fewer reps 26 % of the time, a lighter weight 27 %, and was beaten on 76 % of sets. The brake, the confidence chip, the vuelta and the two Diagnóstico rows that read them are gone; `obj` records are `v: 4` |
+| 081 | [The weekly objetivo is double progression, read straight off the log](done/081-objetivo-double-progression.md) | P1 | M | MED | — (bumps) | DONE (#195, v148) — one weight, a rep more on every set until every set is at the top of the range, then the next rung at the bottom of it. Replaces the v3 estimated-1RM rule, which on the household's own log asked for fewer reps 26 % of the time, a lighter weight 27 %, and was beaten on 76 % of sets. The brake, the confidence chip, the vuelta and the two Diagnóstico rows that read them are gone; `obj` records are `v: 4` |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)
@@ -1575,6 +1575,324 @@ touched; `js/vendor/`; the training methodology; visual design. The smoke
 suite was not run; each plan names the sections to run. The household's
 current week is inferred from the repo's age (first commit 2026-08-13;
 block 1 is 8 weeks), not known.
+
+## Twelfth pass (2026-10-04) — what to improve next
+
+A pass at `3b7eddb` (shell v150), asked for as "come up with improvements
+for the app". Four read-only sweeps ran in parallel:
+
+- the status of every option the eleventh pass carried, after 078–081 and
+  two commits that landed outside any plan;
+- a correctness review of the newest code — 081's objetivo and the two tick
+  commits — probed in `loadApp()` and on the booted card through
+  `bootApp()`;
+- a walk of the app in Chromium as a phone (390×844, then 360 and 320
+  wide, light and dark) over seeded history for both profiles;
+- storage and speed with years of history: the default plans logged
+  through the real handlers for up to 32 blocks (about five years), timed
+  in Node and in Chromium at 4× CPU throttle.
+
+Every finding below was re-opened at its cited line, and every defect was
+reproduced. The baseline was `node test/unit.js` 1580/1580. The smoke
+suite was not run. No secrets and no prompt-injection content were found.
+
+### Landed outside any plan since the eleventh pass
+
+- **a311fa4 (#196, v149): a tick takes the grey reps and RIR too**, not
+  just the weight. It reverses plans/035 Step H.4 and the eleventh pass's
+  rejection of "a per-set control that types the objetivo's reps"; the
+  household asked for it. Its commit message names one cost: the
+  Diagnóstico now reads a reserve ticked as shown as done at the week's
+  RIR.
+- **89157db (#197, v150): a tick on a plan's rep range takes its bottom.**
+
+Neither was recorded here until now. Both change what the log means, and
+that is this pass's headline.
+
+### The headline: the log now holds numbers the app wrote
+
+Until a311fa4 every rep count and every reserve in the log had been typed
+by someone. Several readers were built on that, and say so in their
+comments. They now read the app's own fills as the lifter's report:
+
+- **The objetivo feeds on its own ask.** It asks each set one rep more
+  than its best at the weight (`targetFor`, `js/app.js:7322-7330`), and
+  one tap now logs exactly that. Ticked as shown week after week, a lift
+  climbs one rep a week and steps every four or five, whatever was lifted
+  (probed: `70 × 8·8·8·8` → `9·9·9·9` → `10·10·10·10` → `↗ 72,5 × 6·6·6·6`
+  → …). The rule is only as good as the ticks are honest, so how cheap a
+  correction is now decides how good the log is.
+- **The correction is not on a phone's screen.** The tick's note ("Serie 1
+  anotada con 70 kg × 10 … — cámbialo si no fue eso") goes to
+  `.timer-msg`, which is `display: none` below 620 px
+  (`css/style.css:801-802`). On a phone it is left only in the status line
+  at the foot of the page, and `writeState` overwrites that with
+  "Guardado" 400 ms later (`js/app.js:1343`, `:1368`). Rest-0 cards and
+  the day's last set start no timer at all (`js/app.js:5289-5299`), so
+  their note gets only the status line too. The guide promises "The rest
+  timer says what the tick took" (`docs/guide.md:32`). plans/080 C moved
+  the note onto the timer for exactly this reason, and a311fa4 measured
+  the timer above the breakpoint only.
+- **The rep-decay line fires on the objetivo's own shape.** `decayLine`
+  (`js/app.js:2554`) trusts the first set's reserve as "its OWN value
+  only" (`:2549-2551`), and the tick now writes it. The guide's own
+  example, `45 × 12·11·10·9`, ticked as shown in a 2-RIR week, prints
+  "⚠ caída de 3 reps con la primera serie holgada (RIR 2): ¿descansos
+  cortos?". On the phone walk, week 5's added set, asked at the bottom of
+  the range (`70 × 10·10·10·10·6`) and ticked as shown, printed "⚠ caída
+  de 4 reps: primera serie a 1 RIR — las de después se vacían". The app
+  asks for a shape and then warns about it.
+- **The Diagnóstico's effort signals read the plan back.** `easy` (median
+  RIR of 2 or more in two of the last three sessions, `js/app.js:6435`)
+  fires on any flat lift ticked as shown in a week asking 2 or more. That
+  is all of her weeks 1–6 (`js/data.js:47-52`), and the verdict is
+  "Falta intensidad — RIR 2+ repetido · Sube carga o reps"
+  (`:6293-6294`). In his 0–1 week 7, `failure` fires instead (`:6436`).
+  `decay` stands down whenever the filled-in first-set reserve is 2 or
+  more (`:6444`). The unit cases at `test/unit.js:3615-3620` pin the rule,
+  not where its input came from.
+- **The review export calls the fills "RIR apuntado"**
+  (`js/review.js:236, 248`), and the guide says "the RIR you typed on each
+  set" (`docs/guide.md:1314`). That text is what the AI that writes the
+  next block is told.
+- **`obj` can no longer tell a met target from a tap.** Its purpose is to
+  measure a rule's error (`docs/guide.md:800-803`). For a set ticked as
+  shown, asked and done are now the same numbers by construction.
+
+The household's choice stands, and nothing here proposes reverting it.
+What a guess needs is two things: to be seen when it is made, and to be
+known for a guess afterwards.
+
+### Defects found, by severity
+
+| # | Defect | Reproduction | Evidence | Effort |
+|---|---|---|---|---|
+| D1 | **Each set's ask comes from the k-th worked set, not from set k.** `ruleSession` keeps only worked sets, so a set skipped in the middle, or one ticked with a weight and no reps (the documented tick before a311fa4, so older logs are full of them), shifts every later set's history one place left | 4 × 8–12, last week `50×10 · 50×9 · — · 50×11` → `→ objetivo: 50 × 11 · 10 · 12 · 8`. On the default chest press (6–10) the booted card asks `50 × 10 · 10 · 11 · 6`, and one tap logs set 4 as 50×6 after it did 11. That number then becomes set 4's history | `js/app.js:6838, 6856` (the filter), `:7326` (the per-set best), `:7303` (the step check); `docs/guide.md:709, 714` | S |
+| D2 | **The tick's note is never seen on a phone**: see the headline | | `css/style.css:802`; `js/app.js:1343, 5289-5299`; `docs/guide.md:32` | S |
+| D3 | **Week 1 of a new block counts this block's sets as "asked"**, not the last block's. A block that adds a set holds back a step the old block earned. One that drops a set takes a step that a skipped set should have held back | old block 3 × 8–12, all at 50×12, new block plans 4 → `→ 50 × 12·12·12·8`, no step. The same history inside one block, with the fourth set from `ex.add`, gives `↗ 52,5 × 8·8·8·8` | `js/app.js:7302`; `docs/guide.md:731`; plans/081 decision 4 | S |
+| D4 | **The timer's "Siguiente" says the plan's range, not the box's reps**: "Siguiente: serie 2 · 42,5 kg × 6–10" while set 2's box shows 6 and its tick writes 6. The line predates the tick commits, but its comment promises it "says what the box is about to say", and the box now logs it | any lift with an objetivo | `js/app.js:4893-4895`, comment `:4856-4860` | S |
+| D5 | **The Diagnóstico counts the week on screen as missed.** `freqRows` multiplies by `profile.week`, so standing on week 5 with nothing logged reads "4 de 5 sesiones (80 %)". Since 079 the app lands on the new week by itself on the first open of a day, so this is what it shows most mornings | open the Diagnóstico on a week not yet trained | `js/app.js:6107`; `js/diagnostics.js:230` | S |
+| D6 | **"Press de hombros en máquina" is "Sin clasificar"** in Volumen, the Diagnóstico and the review. It ships with no `muscle`, and `MUSCLE_BY_ID` has no entry for it, so `migrate()`'s backfill (`js/app.js:4142`) has nothing to give. One entry there repairs every install | default plans | `js/data.js:64, 95`; `js/app.js:856` | S |
+| D7 | **A free-text rep field misreads.** `"12-10-8"` gives no objetivo, and the tick writes 12 on every set as "lo mínimo que pide el plan". `"10-12 + 1 al fallo"` reads its top as 1, so there is never an objetivo and the tick writes 10 every week | type it in Editar plan | `js/app.js:2570-2583, 4864-4869` | S (warn in the editor) |
+| D8 | **A first-ever set ticked with an empty weight box** logs the bottom of the range and the RIR with no weight: counted as logged, not a working set. Minor | fresh install, ✓ on any set | `js/app.js:4919-4926` | S |
+
+### The phone walk: layout and copy
+
+Nothing was broken: no page error, no console error and no CSP violation
+across every flow. What a lifter meets:
+
+- **The weight box clips at 320 and 360 px.** `.set-row` gives the weight
+  and rep boxes `minmax(0, 1fr)` and the RIR a fixed 56 px
+  (`css/style.css:588`). At 320 the weight box is 41 px inside, so "140"
+  shows as "14(" and a typed "142,5" as "142". It is the number the tick
+  is about to log.
+- **The greyed numbers are the browser's default placeholder grey.** No
+  `::placeholder` rule exists, so Chromium draws #757575: 3.8:1 on
+  `--sunk` in light and 3.3:1 in dark. They are now the numbers a tick
+  logs, and the contrast suite cannot check a colour the stylesheet never
+  declares.
+- **The first set row starts about 560 px down an 844 px screen.** The
+  header, the week row, JUNTOS, the energy chips, the Rellenar/Calculadora
+  row and the landing line all come first. **"Rellenar con el objetivo" is
+  the largest button, and now writes less than a tick does**: weights only
+  (`copyPrev`), where a tick takes all three numbers. Its only visible
+  effect is the grey weights turning black. The eleventh pass rejected
+  demoting it as a product call; now there is a functional reason too.
+- **Last week's session note shows below the last card** (`lastNote`,
+  `js/app.js:5849`), so it is read after the session it was meant to warn
+  about.
+- **Five targets are under 24 px**: `.drop-chip` 67×22; in the plan
+  editor ↑/↓ 25×23, "Quitar día" 61×23 and "Eliminar" 57×23; the
+  JUNTOS/superset checkboxes 13×13.
+- **The plan editor's name, alternative and cue inputs are about 150 px
+  wide in a 330 px card**, and they cut names off. They sit in
+  `.u-flex-grow` (`css/style.css:1397`), whose parent is not a flex
+  container. The sheet is 11,744 px tall, and its 12 px inputs will make
+  iOS zoom on focus (inferred, not observed).
+- **Chart text is 5–8 px.** SVG text scales with the viewBox
+  (`#chartHost`, `#volumeHost`), and the all-blocks chart clips its last x
+  label.
+- **The timer's label and "Siguiente" are cut off with an ellipsis** at
+  390 and 320. At 320 the cut falls on "70 kg × 6…", the part that says
+  what to do.
+- **Copy**:
+  - the Hombre plan's pair notes have no accents ("Compartis… jalon…
+    septimo", `js/data.js:61, 70, 80`), where the Mujer plan's do;
+  - Ajustes still says "al copiar los pesos de la semana anterior",
+    Rellenar's old name (`index.html:335`);
+  - decimals are a comma in the boxes but a point in "desc. 2.5 min"
+    (`js/app.js:5044`), the increment field, "discos de 1.25/2.5" and the
+    chart's table;
+  - the chest press cue says "en las 4 series" in a 5-set week;
+  - "+ Nuevo bloque" has no Cancel;
+  - the heat map has no legend and no week labels.
+
+  The accents and the cue are plan text stored in each install, so a fix
+  in `js/data.js` reaches new installs only.
+- **The calculator opened from a card's ⋯ is empty** and says "No está
+  ligada a ningún ejercicio" (`js/app.js:5461-5464`). That is #16 again,
+  met on the walk.
+
+### Storage and speed with years of history
+
+Measured by logging the default plans through the real handlers: every
+set with weight, reps and RIR, energy every session, a note on a quarter
+of them, and a new block every 8 weeks.
+
+- **One profile grows about 3K characters a session**: 1.6K of log (about
+  61 per set), **1.1K of `obj`**, and 0.3K of the plan copy each new block
+  makes. Two profiles at 3 days a week come to 0.94M characters a year,
+  2.8M at three years and 4.7M at five.
+- **Safari's quota is the wall.** Chromium measured 5,242,880 characters.
+  WebKit counts two bytes a character for any string with a character
+  above U+00FF, and the state has thousands of them, mostly the "–" of
+  every rep range. That puts Safari's ceiling near 2.6M characters:
+  **about 2.8 years at 3 days a week, and 2.1 at 4**. This was not
+  measured in Safari, because only Chromium is installed here. It is the
+  first thing a spike should confirm on the household's phones.
+- **The app assumes no quota.** `writeState` catches the failure, says so
+  and toasts once (`js/app.js:1319-1352`). From then on, everything since
+  the last good write is lost on a reload, and nothing trims. `logBytes`
+  (`:1564`) shows the size and compares it with nothing.
+- **`obj` is 36 % of all growth, and nothing on screen reads it**
+  (`recordTarget`, `js/app.js:7073`): one record per lift per session,
+  never pruned. The backup download is pretty-printed, at 3.4× the state.
+- **Speed is fine until the save.** A tick paints in about 32 ms at every
+  size (4× throttle), and nothing on the tick path is O(n²).
+  - **The save is what grows**: the 400 ms-debounced write that follows
+    every tick, every typing pause and every navigation stringifies the
+    whole state and runs `pruneLog` (`js/app.js:1263`, `:1342`). It is a
+    **200 ms long task at three years and 366 ms at five**.
+  - **Opening and the first week change.** First paint is 0.7 s at three
+    years and 1.0 s at five. `load()` ends with an unscoped `save()`
+    (`:805`), which empties the history cache the first draw just built,
+    so the first week change reads everything again cold (168 ms at three
+    years, 264 at five).
+  - **Smaller hotspots**: `deloadAt` re-derives the deload list on every
+    slot read (`:6805`; 26 % of a cold render); `readSessions` has no
+    index by lift (`:3377`); and `loadLadder` costs sets × distinct
+    weights (`:7188`).
+
+### The shortlist
+
+Ranked by what the household meets next. "Bumps" means `CACHE_VERSION`.
+
+| # | Option | Why now | Effort | Proposed |
+|---|---|---|---|---|
+| 1 | **The objetivo asks each set from that set** (D1), **counts the last block's asked sets on week 1** (D3), and **the timer's "Siguiente" says the box's reps** (D4) | D1 writes a wrong number into the log on one tap, and that number becomes the set's history | S | plan, P1, bumps |
+| 2 | **What a tick fills in is seen, and can be corrected in one tap.** The note on the phone timer (it can take `#tnext`'s line for the length of the rest), also on rest-0 and last-set ticks, and not overwritten by "Guardado"; a **−1 / +1 rep** pair on the timer for the set just ticked | Without it a311fa4's "cámbialo si no fue eso" does not exist on a phone, and the objetivo's one rep a week becomes the logged rate of progress | S–M | plan, P1, bumps |
+| 3 | **The log knows which numbers were filled in.** A per-row record of the boxes the tick took, cleared box by box when one is typed into, carried by the row codec, the QR share and a restore. The decay line, the Diagnóstico's `easy`/`failure`/`decay` and the review's "RIR apuntado" read only what was reported, and `obj` can tell a met target from a tap again | Four readers now read the plan's prescription as the lifter's report | M | **decision first**: the field's shape, and whether filled reps, not only RIR, are kept out of those readers |
+| 4 | **A set the plan adds is asked what it can do, not the bottom of the range.** It is asked the bottom in its first week, and from the week after it gates the step until it climbs. Ticked as asked, a 6–10 lift that adds a set in week 5 asks it 6 → 7 → 8 and cannot step again before the deload (probed). The default plans add a set in week 5 on five lifts and in week 7 on three | `js/data.js` (`add: 5` ×5, `add: 7` ×3); `js/app.js:7302-7330` | S | **decision first** (methodology): ask the added set what the set before it is asked, or don't let it gate the step until it has had a session |
+| 5 | **The storage wall, measured and warned about before it is hit.** Confirm the ceiling on the household's phones; warn at a share of it, with a backup in hand; slim `obj`, which is a third of the growth; write the backup compact | About 2–3 years from now on Safari, and past the first toast the failure loses data silently | M (spike first) | spike |
+| 6 | **The phone-walk fixes**: the weight box at 320/360; a placeholder token the contrast suite checks; the editor's inputs; the five sub-24 px targets; chart text; the Diagnóstico's current week (D5); last week's note at the top; the shoulder press's muscle (D6); Ajustes' stale hint; "+ Nuevo bloque"'s Cancel; decimal commas | The household meets most of them every session | S each, M as a bundle | plan, P2, bumps |
+| 7 | **Docs and comments after 081 and the tick commits** (below) | Stale text gives the next executor the wrong contract | S | plan, P3; bumps only if a comment in `js/` changes |
+| 8 | **The save stops being the slow part**: `load()` keeps the cache it just built, `deloadWeeks` is memoised per block, and `readSessions` gets an index by lift | Invisible today; 200 ms after every tick by year three | S each | P3, after 5 |
+| 9 | **Rellenar earns its place or moves into ⋯** | It writes less than a tick and takes the screen's biggest button, above the first set | S | the maintainer's call |
+
+### Docs and comments made stale (for #7)
+
+- **`docs/guide.md`**:
+  - `:61-64`, Rellenar as the week-to-week step;
+  - `:493`, "what you lifted on that same set" (081 uses one working
+    weight);
+  - `:800-803`, `obj` as "the only way to measure a rule's error";
+  - `:834-836`, "It never logs anything for you";
+  - `:1148-1163`, "nothing was written" and "the RIR worth writing down";
+  - `:1314`, "the RIR you typed on each set".
+- **`README.md`**: `:20`, "last week's weight already in the box" (it is
+  the objetivo's weight, reps and RIR now); `:187`, the objetivo rule "read
+  by … the Diagnóstico" (since 081 only the card and Rellenar read it,
+  through `targetNow`).
+- **`CONTEXT.md:96-99`**: the objetivo record, "so the rule's advice can
+  later be told apart from what was done" (not for a set ticked as
+  shown).
+- **Comments**:
+  - `js/diagnostics.js:9-11`, "target weight from targetFor()";
+  - `js/app.js:2549-2551`, a reserve nobody typed;
+  - `:2811-2813` and `:2832-2833`, `weekRir` falling back to the last
+    reserve (it returns 0, `:6815`);
+  - `:3162-3164`, copyPrev "reads the level";
+  - `:4104-4105`, minRir "a target solved for it";
+  - `:6225-6234`, "One log, one definition" (the Diagnóstico's level and
+    the objetivo are two definitions again);
+  - `js/review.js:144`.
+- **Dead fields**: `targetFor`'s `from`, `week` and `sessions`
+  (`js/app.js:7271-7272`); `diagLevelTrend`'s `hold` (`:6246`); and a
+  fourth argument that `:5183` still passes to `weekRir`.
+- **This file**: 081's row lacked its PR and version (added in this pass:
+  #195, v148). The eleventh pass's rejection of "a per-set control that
+  types the objetivo's reps" was reversed by a311fa4.
+
+### Carried options, status at `3b7eddb`
+
+Changed since the eleventh pass:
+
+- **Shipped**: N2 and eighth-a (079). Half of N29: the day's last set
+  starts no rest (080 D). An exercise's last set and an auto-start
+  preference are still open.
+- **Moot**:
+  - #17, more so than before: one tap now takes all three numbers;
+  - the eighth audit's "decay term weighted by the typed RIR": 081 has no
+    decay term.
+- **Dearer, or changed in meaning**:
+  - **N6, early deload**: 081 removed the brake and v4 `obj` records carry
+    none, so only "half the plan bajando" is left as a trigger;
+  - **the `obj` readout and the rule-error spike**: see #3 above;
+  - **#9, the week-goal editor**: what `phaseRir` parses is now written
+    into every ticked set's RIR;
+  - **N18, open-ended reps**: "8+" parses as 8–8, so 081 steps the weight
+    every session that reaches 8, and the tick takes "8 (las del plan)";
+  - **N5, machine taken**: logging the alternative under the main lift
+    now resets the working-weight run (`js/app.js:7248`);
+  - **N50**: `theilSen` is gone, and only `fitSlope` remains.
+- **Unchanged**: everything else the eleventh pass carried, and all ten of
+  its "new signals" (spot-checked at their cited lines).
+
+New signals from the walk, worth carrying:
+
+- the "next" outline sits on every card's first row at once, not on one
+  set;
+- Progreso and Plan cannot be reached during a rest without "Saltar";
+- after an exercise's last set the timer still says "Última serie hecha"
+  rather than naming the next card. This is the eleventh pass's signal,
+  met on every card.
+
+### Checked and fine
+
+- **The objetivo**:
+  - rep strings "8-12", "8–12", "8 a 12", "12" and "8-12/lado" parse;
+    AMRAP, "al fallo" and blank give no line;
+  - a one-set lift steps correctly;
+  - the deload is 60 % walked down the ladder, including 225 → 135 lb,
+    and the week after a deload ignores it;
+  - a bad day does not lower the ask, and a set past the top holds;
+  - `ex.add` does not block the step in its own week;
+  - a lift on two days keeps two histories;
+  - a lighter back-off set is asked for the bottom of the range;
+  - micro-steps work and logged rungs are preferred;
+  - kg/lb conversion of the target and of what the tick writes.
+- **The tick**:
+  - a typed box is kept;
+  - ticking out of order works, and an untick keeps the values;
+  - "Rellenar" then the tick logs the objetivo exactly;
+  - `minRir` caps the RIR the tick writes;
+  - drop rows do not feed the rule.
+- **Recorded, intended**: across blocks the day is not part of the key
+  (`docs/guide.md:679`). So a lift the plan puts on two days can be asked
+  a lighter weight in week 1, from the other day's history. That is at
+  odds with "the only thing the objetivo ever asks to go lighter"
+  (`:788`), and no shipped plan does it.
+
+### Twelfth pass — not audited
+
+- Security beyond the input paths the sweeps crossed.
+- `js/vendor/`.
+- The QR and profile-transfer flows beyond opening their sheets.
+- Safari itself: the quota, the 12 px zoom and the placeholder grey were
+  inferred from WebKit's behaviour, not observed.
+
+The phone walk ran Chromium with Google Fonts served from Node, because
+the sandbox's proxy certificate is not trusted by the browser.
 
 ## Worth doing, not yet planned
 
