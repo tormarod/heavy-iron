@@ -4793,7 +4793,7 @@ function drawApp() {
 /* ---------- what a card decides ----------
    The three answers below lived as closures inside buildExCard, where the
    unit suite cannot reach: its document is inert and builds no card, so the
-   tick's contract — adopt the weight, never the RIR — and which hint wins
+   tick's contract — which grey numbers it adopts — and which hint wins
    were pinned only in a browser. Each is an answer from its inputs now,
    and the card paints what they say. */
 
@@ -4821,13 +4821,16 @@ function recordFlags(bar, rows) {
 
 /* Every greyed number on a card and where it came from: for each set, the
    weight a tick on its empty box adopts (`hint`), the parenthetical the
-   tick's message names it by (`from`) and what its weight and rep boxes
-   show (`placeholder`); the set you are about to do (`nextAt`, the first
-   not yet ticked); and the rest timer's second line after each set
-   (`next`). The inputs are the three places a weight hint can come from —
-   the objetivo (`est`, targetNow), your own earlier weeks in this block
-   (`own`, priorWeight for each set) and the block before (`prior`,
-   priorBlockSets) — and the plan's rep range (`reps`).
+   tick's message names it by (`from`), the rep count and reserve it adopts
+   (`reps`, `rir`) and where that rep count came from (`repsFrom`), and
+   what its three boxes show (`placeholder`); the set you are about to do
+   (`nextAt`, the first not yet ticked); and the rest timer's second line
+   after each set (`next`). The inputs are the three places a weight hint
+   can come from — the objetivo (`est`, targetNow), your own earlier weeks
+   in this block (`own`, priorWeight for each set) and the block before
+   (`prior`, priorBlockSets) — the plan's rep range (`reps`) and the week's
+   own reserve (`rir`, the card's weekRir, or null for a phase with no
+   number in it).
 
    The objetivo wins: the greyed weight is the target's own weight for THIS
    set — one rule, one number — so the box's old contract ("tick without
@@ -4842,6 +4845,12 @@ function recordFlags(bar, rows) {
    what the objetivo asks of THIS set, and without one — the first session
    of a lift — the plan's own rep range, the only thing there is to ask for.
 
+   A tick takes a box's grey number only when it is one number. A range
+   ("8–12") is not a count anybody did, and taking either end of it would
+   be the app making one up, so the rep box adopts the objetivo's count for
+   the set or a plan that names a single count, and nothing else. The RIR
+   box has nothing else to show: it is the same reserve for every set.
+
    One answer read from two places, the box and the "Siguiente" line that
    prices the set you are walking back to: two copies would disagree the
    first time the objetivo's rule moved, and the whole point of the line is
@@ -4849,19 +4858,27 @@ function recordFlags(bar, rows) {
    timer reads as something that failed to load, so the last set says so
    instead. `nextAt` is -1 without an objetivo: the boxes are empty then,
    and there is nothing to point at. */
-function setHints(rows, est, own, prior, reps) {
+function setHints(rows, est, own, prior, reps, rir) {
+  const lo = repRangeBottom(reps);
+  const planReps = lo > 0 && lo === repRangeTop(reps) && Math.round(lo) === lo ? String(lo) : '';
+  const reserve = rir != null && /^[0-5]$/.test(String(rir)) ? String(rir) : '';
   const sets = rows.map((r, si) => {
     const tgt = est && est.sets[si];
     const prv = (!tgt && !own[si] && prior) ? (prior.sets[si] || prior.sets[prior.sets.length - 1]) : null;
     const hint = tgt ? loadText(tgt.w) : (own[si] || (prv ? weightText(prv.wLogged, prv.unit) : ''));
+    /* The whole parenthetical rather than a noun the line then glues "lo
+       de" in front of: "lo de el objetivo" is not Spanish. */
+    const from = tgt ? 'lo que pide el objetivo de esta semana'
+      : own[si] ? 'lo de la semana anterior'
+      : (prv ? 'lo de "' + prior.block.name + '", semana ' + prior.week : '');
+    const tgtReps = tgt && tgt.r ? String(tgt.r) : '';
     return {
       hint: hint,
-      /* The whole parenthetical rather than a noun the line then glues "lo
-         de" in front of: "lo de el objetivo" is not Spanish. */
-      from: tgt ? 'lo que pide el objetivo de esta semana'
-        : own[si] ? 'lo de la semana anterior'
-        : (prv ? 'lo de "' + prior.block.name + '", semana ' + prior.week : ''),
-      placeholder: { w: hint || '—', r: tgt && tgt.r ? String(tgt.r) : (reps || '—') },
+      from: from,
+      reps: tgtReps || planReps,
+      repsFrom: tgtReps ? 'lo que pide el objetivo de esta semana' : (planReps ? 'las del plan' : ''),
+      rir: reserve,
+      placeholder: { w: hint || '—', r: tgtReps || reps || '—', rir: reserve || '—' },
     };
   });
   return {
@@ -4873,30 +4890,55 @@ function setHints(rows, est, own, prior, reps) {
   };
 }
 
-/* What a tick does to its set; writeRows does the rest. Ticking a set whose
-   weight box is still empty takes `hint`, the greyed number showing in it
-   (setHints). It is the common case, but it is also a guess, so the answer
-   is what was adopted ('' for nothing) and the handler says so. The adopted
+/* What a tick does to its set; writeRows does the rest. Ticking a set takes
+   the grey number in each of its boxes that is still empty — `hint`, `reps`
+   and `rir` of its entry in setHints — so a set done as the week asked is
+   one tap. It is the common case, but it is also a guess, so the answer is
+   what was adopted, box by box ('' for nothing), and the handler says so
+   (tickNote). A box somebody typed into is never touched. The adopted
    weight is a write in the unit on screen like a typed one, so it goes
    through stampForWrite: the rest of the set is converted, not relabelled.
 
-   Only the weight box has this contract. The RIR box's placeholder is what
-   the week ASKS for, and a reserve nobody reported is not a measurement
-   (plans/035 Step H.4): a blank RIR box stays blank on tick and the set
-   reads as a floor, which is what it always did. The rep box has never
-   adopted either — an unreported rep count would go straight into the
-   objetivo's arithmetic.
+   The rep and RIR boxes used to stay blank on tick (plans/035 Step H.4),
+   because a count nobody reported is not a measurement. It cost more than
+   it kept: a set ticked with no reps is not a set to anything that reads
+   one — rowWorked needs reps, so it moved no kilos and the objetivo and
+   the record badges never saw it — and since plans/081 the objetivo reads
+   no RIR at all. The household asked for the tap to take all three. What
+   it costs is the Diagnóstico's: a reserve left blank read as a floor, and
+   one ticked as shown now reads as done at the week's own RIR.
 
    `now` is the caller's clock, so the unit suite can pin the rule without
-   one. An untick keeps the time the set was done at. */
-function tickRow(r, hint, now) {
-  let adopted = '';
+   one. An untick keeps the time the set was done at, and what it took. */
+function tickRow(r, take, now) {
+  const adopted = { w: '', r: '', rir: '' };
   if (!r.done) {
-    if ((r.w === '' || r.w == null) && hint) { r.w = hint; adopted = hint; stampForWrite(r, r); }
+    if ((r.w === '' || r.w == null) && take.hint) { r.w = take.hint; adopted.w = take.hint; stampForWrite(r, r); }
+    if ((r.r === '' || r.r == null) && take.reps) { r.r = take.reps; adopted.r = take.reps; }
+    if ((r.rir === '' || r.rir == null) && take.rir) { r.rir = take.rir; adopted.rir = take.rir; }
     r.ts = now;
   }
   r.done = !r.done;
   return adopted;
+}
+
+/* What a tick took, for the rest timer the same tick starts and the status
+   line (plans/080 C), or '' when it took nothing. Each number says where
+   it came from, because the three boxes' grey numbers come from up to
+   three places — the objetivo, an earlier week, the plan — and "cámbialo
+   si no fue eso" is only any use if you can tell which one was off. A
+   weight and a rep count from the same objetivo read as one "47,25 kg × 8";
+   the reserve has one source only, the week's, and is not glossed, which
+   keeps the line short enough for the timer. */
+function tickNote(si, took, set) {
+  const same = !!(took.w && took.r) && set.repsFrom === set.from;
+  const parts = [];
+  if (took.w) parts.push(took.w + ' ' + units() + (same ? ' × ' + took.r : '') + ' (' + set.from + ')');
+  if (took.r && !same) parts.push(took.r + (took.r === '1' ? ' rep' : ' reps') + ' (' + set.repsFrom + ')');
+  if (took.rir) parts.push('RIR ' + took.rir);
+  if (!parts.length) return '';
+  const what = parts.length > 1 ? parts.slice(0, -1).join(', ') + ' y ' + parts[parts.length - 1] : parts[0];
+  return 'Serie ' + (si + 1) + ' anotada con ' + what + ' — cámbialo si no fue eso';
 }
 
 /* One exercise's card, built detached and handed back for the caller to put
@@ -5128,8 +5170,9 @@ function buildExCard(ctx, ex, i) {
      objetivo's weight is greyed into the weight box. phaseRir first rather
      than weekRir alone: weekRir answers 0 for a phase with no number in it
      (a deload, or a week somebody wrote in their own words), and a box
-     that quietly says "0" is telling you to go to failure. No number in
-     the phase, no placeholder. */
+     that quietly says "0" is telling you to go to failure — and, since a
+     tick takes what the box shows, writes 0 into the set. No number in
+     the phase, no placeholder and nothing to take. */
   const wkRir = phaseRir(block, profile.week) == null
     ? null : weekRir(block, ex, profile.week, null);
 
@@ -5145,7 +5188,7 @@ function buildExCard(ctx, ex, i) {
   box.appendChild(setHead);
 
   const hints = setHints(rows, est,
-    rows.map((r, si) => priorWeight(profile, block.id, profile.week, day.id, ex.id, si)), prior, ex.reps);
+    rows.map((r, si) => priorWeight(profile, block.id, profile.week, day.id, ex.id, si)), prior, ex.reps, wkRir);
 
   rows.forEach((r, si) => {
     if (r.done) {
@@ -5174,12 +5217,12 @@ function buildExCard(ctx, ex, i) {
       '<button type="button" class="tick' + (r.done ? ' on' : '') + '" aria-pressed="' + (r.done ? 'true' : 'false') + '">✓</button>';
 
     const [wIn, rIn, rirIn] = row.querySelectorAll('input');
-    const { hint, from: hintFrom, placeholder } = hints.sets[si];
+    const { placeholder } = hints.sets[si];
     wIn.value = r.w; rIn.value = r.r;
     rirIn.value = r.rir == null ? '' : r.rir;
     wIn.placeholder = placeholder.w;
     rIn.placeholder = placeholder.r;
-    rirIn.placeholder = wkRir == null ? '—' : String(wkRir);
+    rirIn.placeholder = placeholder.rir;
     wIn.setAttribute('aria-label', 'Peso, serie ' + (si + 1) + ' de ' + ex.n);
     rIn.setAttribute('aria-label', 'Repeticiones, serie ' + (si + 1) + ' de ' + ex.n);
     rirIn.setAttribute('aria-label', 'RIR, serie ' + (si + 1) + ' de ' + ex.n);
@@ -5222,14 +5265,14 @@ function buildExCard(ctx, ex, i) {
     const tick = row.querySelector('.tick');
     tick.setAttribute('aria-label', (r.done ? 'Desmarcar' : 'Marcar') + ' serie ' + (si + 1) + ' de ' + ex.n);
     tick.onclick = () => {
-      let adopted = '';
-      writeRows(cardCtx, () => { adopted = tickRow(r, hint, Date.now()); });
+      let adopted = null;
+      writeRows(cardCtx, () => { adopted = tickRow(r, hints.sets[si], Date.now()); });
       /* What the tick decided, said where the eye is next: the rest timer
          this same tick is about to start, not just the status line at the
          foot of the page, which a save() overwrites 400ms later (plans/080
          C). Built once so both the timer and the status line say the same
          thing. */
-      const adoptedNote = adopted ? 'Serie ' + (si + 1) + ' anotada con ' + adopted + ' ' + units() + ' (' + hintFrom + ') — cámbialo si no fue eso' : '';
+      const adoptedNote = tickNote(si, adopted, hints.sets[si]);
       /* dayCards holds every card's rows by live reference, so this reads
          true only once every row across every exercise is done — including
          the cards this redraw is not going to touch. Read once, since the

@@ -1941,30 +1941,30 @@ const ok = (name, cond, extra) => {
        await card.locator('.set-row').first().locator('input').first().inputValue());
     ok('y dice de dónde salió',
        (await page.textContent('#status')).includes('el objetivo de esta semana'), await page.textContent('#status'));
-    /* Only the weight box has the adoption contract, and the tick that just
-       fired is the one place that could quietly break it. The RIR box was
-       showing the week's own target in grey at that moment — week 4 of the
-       seed plan reads "1–2 RIR" — and a reserve nobody reported is not a
-       measurement (plans/035 Step H.4, plans/036 Step C.5): the set has to
-       read as a floor, which is what sessionRirs, the objetivo's censoring
-       and the Diagnóstico all assume of a blank one. Adopting it would
-       feed the rule a number the lifter never gave it.
+    /* The tick takes all three grey numbers, and this is what only a
+       browser shows of it: the boxes that were showing the objetivo's reps
+       and the week's own reserve in grey — week 4 of the seed plan reads
+       "1–2 RIR" — now show them as typed, and the saved row carries them.
+       A set ticked with no reps was no working set at all to the objetivo,
+       the records or the totals; the household asked for the tap to take
+       them (plans/035 Step H.4, reversed).
 
        The rule itself is tickRow's and test/unit.js pins it (plans/048),
        and since plans/052 it also presses this same tick through bootApp
-       and pins what the tick writes. What only a browser shows is the other
-       half: the grey "1" standing in the RIR box, unadopted, beside the
-       weight that was. */
+       and pins what the tick writes. */
     const adopt = await page.evaluate(() => {
       const row = document.querySelectorAll('.ex')[0].querySelector('.set-row');
       const saved = getProfile().log['block-1']['w4-d0'].chestpress[0];
       return { rirShown: row.querySelector('.rir-in').placeholder,
                rirTyped: row.querySelector('.rir-in').value,
-               keys: Object.keys(saved).sort().join(','), w: saved.w };
+               repsShown: row.querySelector('.r-in').placeholder,
+               repsTyped: row.querySelector('.r-in').value,
+               w: saved.w, r: saved.r, rir: saved.rir };
     });
-    ok('marcar no adopta el RIR que enseña la casilla, sólo el peso',
-       adopt.rirShown === '1' && adopt.rirTyped === '' &&
-       adopt.w === '47,25' && !adopt.keys.split(',').includes('rir'),
+    ok('marcar también toma las reps y el RIR que enseñan sus casillas, y quedan escritos en ellas',
+       adopt.rirShown === '1' && adopt.rirTyped === '1' && adopt.rir === '1' &&
+       /^\d+$/.test(adopt.repsShown) && adopt.repsTyped === adopt.repsShown && adopt.r === adopt.repsShown &&
+       adopt.w === '47,25',
        JSON.stringify(adopt));
     if (await page.locator('#timer.up').count()) await page.click('#tskip');
 

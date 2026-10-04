@@ -97,15 +97,15 @@
    that inset is live and .top is really 177-192px tall, not 133. A flat
    140px there would put a focused control 37-52px under the header on
    exactly the devices plans/032's safe-area work was written for.
-   190px covers the rest timer when it is up — the same number, and for the
+   250px covers the rest timer when it is up — the same number, and for the
    same reason, as #app's reserve below; see the comment there. The bar is
    never the thing to reserve for here: #app.kb-open hides it, and typing is
    the only way focus moves under a keyboard. Anything that changes the
    header's height changes the 140, and anything that changes the timer's
-   changes the 190 — update them here, rather than adding a second rule. */
+   changes the 250 — update them here, rather than adding a second rule. */
 html {
   scroll-padding-top: calc(140px + env(safe-area-inset-top));
-  scroll-padding-bottom: calc(190px + env(safe-area-inset-bottom));
+  scroll-padding-bottom: calc(250px + env(safe-area-inset-bottom));
 }
 
 body {
@@ -121,20 +121,24 @@ body {
    before plans/037 (plans/032); 120, sized for the bar, put the version
    line 17px underneath the two-line timer instead.
 
-   190 is measured, not estimated. Below the 620px breakpoint the timer is
+   250 is measured, not estimated. Below the 620px breakpoint the timer is
    exactly 137px whatever the exercise is called, because .timer-msg is
-   hidden there, so that half is 53px of clearance. Above it the coaching
-   line comes back and takes whatever width the exercise's name leaves it,
-   so the height rises with the name: 147px short, 157 for the shipped
-   plan's "Press de pecho en máquina", 172 for its longest,
-   "Elevaciones laterales en polea" — 18px of clearance at the worst name
-   this app ships. An imported 80-character name (IMPORT_LIMITS.name) can
-   still squeeze the coaching line into a 20px column 217px tall and go
-   under; that squeeze predates this plan and no reserve can chase it.
+   hidden there. Above it the coaching line comes back and takes whatever
+   width the exercise's name leaves it, so the height rises with the name:
+   147px short, 157 for the shipped plan's "Press de pecho en máquina", 172
+   for its longest, "Elevaciones laterales en polea". The tallest line in
+   that column is not the coaching tip, though, but what a tick took
+   ("Serie 4 anotada con 147,25 kg × 12 (lo que pide el objetivo de esta
+   semana) y RIR 2 — …", plans/080 C): 188px for the press, 219 for the
+   raise, 234 at 621px — 16px of clearance at the worst name this app
+   ships. 190, sized for the tip, had the version line under that note
+   since the note first carried the weight. An imported 80-character name
+   (IMPORT_LIMITS.name) can still squeeze the line into a 20px column and
+   go under; that squeeze predates this plan and no reserve can chase it.
 
    Over-reserving costs nothing: it is blank scroll past the version line,
    below everything anyone reads. */
-#app { min-height: 100vh; padding-bottom: calc(190px + env(safe-area-inset-bottom)); }
+#app { min-height: 100vh; padding-bottom: calc(250px + env(safe-area-inset-bottom)); }
 /* Each profile carries an accent. `hombre`/`mujer` are the names the app
    shipped with and are kept as aliases so existing saved profiles do not
    change colour; new ones pick `azul` or `verde` by name. */
@@ -843,22 +847,24 @@ body {
    for the shipped plan's "Press de pecho en máquina", 172 for its longest,
    "Elevaciones laterales en polea", and 296 for an imported 80-character
    one (IMPORT_LIMITS.name), where .timer-msg is a 20px column 217px tall.
-   At exactly 621 the same names give 147/172/188/296.
+   At exactly 621 the same names give 147/172/188/296. The line a tick
+   leaves in that column when it took the grey numbers (plans/080 C) is
+   longer than the coaching tip: 147/188/219 at 768, 157/203/234 at 621.
 
    Below the breakpoint there is nothing to measure: .timer-msg is hidden,
    so the timer is exactly 137px whatever the exercise is called, and 150
    is that plus the 13px the toast stands on.
 
-   Above it, one constant cannot be exact, so it is the same 190 #app
+   Above it, one constant cannot be exact, so it is the same 250 #app
    reserves for the same worst shipped case — clearing every name this app
-   ships (43/33/18px at 768, down to 2px at 621 on the longest) at the
-   price of standing 43px clear of the common one. That direction is the
-   safe one: the toast is z-index 70 over the
+   ships with a tick's line on the timer (103/62/31px at 768, down to 16px
+   at 621 on the longest) at the price of standing 103px clear of the
+   common one. That direction is the safe one: the toast is z-index 70 over the
    timer's 55, so an offset that is too small covers the timer's controls
    with the toast's own buttons, while one that is too large only floats a
    notice higher up a screen that has the room. Anything that changes the
    timer's height changes both numbers; #app's comment holds the reasoning. */
-.timer.up ~ .toast { bottom: calc(190px + env(safe-area-inset-bottom)); }
+.timer.up ~ .toast { bottom: calc(250px + env(safe-area-inset-bottom)); }
 @media (max-width: 620px) {
   .timer.up ~ .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
 }

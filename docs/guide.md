@@ -29,7 +29,7 @@ once by `kg · rep · RIR`:
 
 | Control | What it does |
 |---|---|
-| the three boxes | the weight, the reps and the RIR of that set. The greyed number in each is what the week asks of it — the objetivo's weight and reps for that set, and the week's own RIR; before there is an objetivo to ask anything, the weight box shows what you lifted on that set the last week you logged it and the rep box shows the plan's range. `22,5` works. Tick without typing and the set takes the **weight** showing; the other two stay empty, because a rep count or a reserve nobody reported is not a measurement. |
+| the three boxes | the weight, the reps and the RIR of that set. The greyed number in each is what the week asks of it — the objetivo's weight and reps for that set, and the week's own RIR; before there is an objetivo to ask anything, the weight box shows what you lifted on that set the last week you logged it and the rep box shows the plan's range. `22,5` works. Tick the set and every box you left empty takes the greyed number in it — the weight, the reps and the RIR — so a set done as the week asked is one tap; a box you typed into keeps what you typed. The rep box takes its number only when it shows one: a range like `8–12` stays empty, since it is not a count anybody did. The rest timer says what the tick took. |
 | **↓** | records weight coming off *that* set — a dropset, or the drop you needed to finish the reps. Adds an indented row with its own boxes; up to four per set. See [Weight drops](#weight-drops). |
 | **✓** | marks the set done, and starts the rest timer. This is the control that counts: only ticked sets feed the chart, the **RÉCORD** badge and the totals. |
 | the name | tap it for what the card does not print: the alternative exercise, the amber cue, and the machine settings — seat height, pin position, saved to the plan rather than to the log. The chevron at the end of the plan line is what says it opens. |
@@ -492,8 +492,9 @@ charge, the line simply isn't there.
 - **The weight box already knows what you did last time.** The greyed
   number in it is what you lifted on that same set the last week you
   logged it. Tick a set without typing anything and it takes that number,
-  telling you so on the rest timer the tick starts, and in the status line
-  at the foot of the page — change it if the weight was different. The
+  and the reps and RIR greyed in beside it, telling you so on the rest
+  timer the tick starts, and in the status line at the foot of the page —
+  change whichever one was different. The
   number it shows is [the objetivo](#the-weekly-objetivo)'s
   own weight for that set; on an exercise with no history at all it falls
   back to last week's, and then to the block before. On the first week of a
@@ -561,18 +562,20 @@ charge, the line simply isn't there.
   its cost for nothing — turn the sound back off on the timer if you don't
   want it.
 - **RIR, per set.** A third box in the set row, next to the reps: one
-  digit, `0` to `5`, for how that set actually felt. Optional and empty by
-  default, same as `share`/`ss`: skip it and nothing changes. It is the
-  other half of the RIR target `phase` already prescribes per week — that
-  number says what the set was supposed to cost, this one says what it did
-  — and the week's own target is the greyed number in the box. Empty it to
-  clear it. Anything outside `0`–`5` is refused rather than stored: past
+  digit, `0` to `5`, for how that set actually felt. It is the other half
+  of the RIR target `phase` already prescribes per week — that number says
+  what the set was supposed to cost, this one says what it did — and the
+  week's own target is the greyed number in the box. Tick the set without
+  typing one and it takes that target, the way the weight and rep boxes
+  take theirs, so type over it when the set felt different; a week whose
+  phase names no RIR (a deload, or one written in words) shows no number
+  and the box stays empty. Empty it to clear it. Anything outside `0`–`5` is refused rather than stored: past
   five in reserve the number stops saying anything a lifter can feel. The
   Diagnóstico's level prices the first set on its own reserve and the
   block review reads the last set's as the session's; the objetivo does
   not read it at all. It travels with a
   "plan + registro" QR share on the row itself, and the `rir` column of the
-  CSV export is the set's own value, blank where you typed nothing — a
+  CSV export is the set's own value, blank where the set has none — a
   session logged before the release that moved the record onto the row
   carries its one chip on that session's last row.
 - **A rep-decay warning, for free.** No input needed: if the first set of an
@@ -824,9 +827,9 @@ backup written before v3 looks like.
   session and says nothing before it.
 
 **One rule, one place.** `Rellenar con el objetivo` writes exactly these
-numbers, set by set, and the greyed placeholder in every weight box shows
-the same thing — so ticking a set without typing takes the objetivo, which
-is the contract that box has always had.
+weights, set by set, and the greyed placeholders in every weight and rep
+box show the same thing — so ticking a set without typing takes the
+objetivo, its weight and its reps for that set.
 
 **What it still does not do.** It never logs anything for you. The line is
 something you read and the placeholder is something you can overwrite; the
