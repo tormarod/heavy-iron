@@ -4845,11 +4845,14 @@ function recordFlags(bar, rows) {
    what the objetivo asks of THIS set, and without one — the first session
    of a lift — the plan's own rep range, the only thing there is to ask for.
 
-   A tick takes a box's grey number only when it is one number. A range
-   ("8–12") is not a count anybody did, and taking either end of it would
-   be the app making one up, so the rep box adopts the objetivo's count for
-   the set or a plan that names a single count, and nothing else. The RIR
-   box has nothing else to show: it is the same reserve for every set.
+   A tick takes a box's grey number, and from a rep box showing the plan's
+   range ("8–12") its bottom: the count double progression starts every
+   new weight from (targetFor), so a first session ticked as shown reads
+   as one that met the range, and the next asks one rep more. Leaving it
+   empty, the first rule, left the set with no reps and so no working set
+   at all; the household chose the bottom over that. A plan whose bottom is
+   not a whole count ("7,5–10") gives nothing to take. The RIR box has
+   nothing else to show: it is the same reserve for every set.
 
    One answer read from two places, the box and the "Siguiente" line that
    prices the set you are walking back to: two copies would disagree the
@@ -4860,7 +4863,10 @@ function recordFlags(bar, rows) {
    and there is nothing to point at. */
 function setHints(rows, est, own, prior, reps, rir) {
   const lo = repRangeBottom(reps);
-  const planReps = lo > 0 && lo === repRangeTop(reps) && Math.round(lo) === lo ? String(lo) : '';
+  const planReps = lo > 0 && Math.round(lo) === lo ? String(lo) : '';
+  /* Said apart from a single count, because "8 reps (las del plan)" for a
+     plan that asks 8 to 12 would read as the plan asking exactly 8. */
+  const planFrom = !planReps ? '' : lo === repRangeTop(reps) ? 'las del plan' : 'lo mínimo que pide el plan';
   const reserve = rir != null && /^[0-5]$/.test(String(rir)) ? String(rir) : '';
   const sets = rows.map((r, si) => {
     const tgt = est && est.sets[si];
@@ -4876,7 +4882,7 @@ function setHints(rows, est, own, prior, reps, rir) {
       hint: hint,
       from: from,
       reps: tgtReps || planReps,
-      repsFrom: tgtReps ? 'lo que pide el objetivo de esta semana' : (planReps ? 'las del plan' : ''),
+      repsFrom: tgtReps ? 'lo que pide el objetivo de esta semana' : planFrom,
       rir: reserve,
       placeholder: { w: hint || '—', r: tgtReps || reps || '—', rir: reserve || '—' },
     };

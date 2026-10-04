@@ -5168,6 +5168,7 @@ const noteProbe = call(`
       plan: tickNote(2, { w: '50', r: '10', rir: '2' }, own),
       rir: tickNote(3, { w: '', r: '', rir: '0' }, own),
       one: tickNote(0, { w: '', r: '1', rir: '' }, own),
+      range: tickNote(0, { w: '50', r: '8', rir: '2' }, { from: 'lo de la semana anterior', repsFrom: 'lo mínimo que pide el plan' }),
       none: tickNote(0, { w: '', r: '', rir: '' }, obj),
     };
     state.prefs.units = prev;
@@ -5183,7 +5184,8 @@ ok('...numbers from two places each say theirs, and one rep is not "1 reps"',
    !noteProbe.missing &&
    noteProbe.plan === 'Serie 3 anotada con 50 kg (lo de la semana anterior), 10 reps (las del plan) y RIR 2 — cámbialo si no fue eso' &&
    noteProbe.rir === 'Serie 4 anotada con RIR 0 — cámbialo si no fue eso' &&
-   noteProbe.one === 'Serie 1 anotada con 1 rep (las del plan) — cámbialo si no fue eso',
+   noteProbe.one === 'Serie 1 anotada con 1 rep (las del plan) — cámbialo si no fue eso' &&
+   noteProbe.range === 'Serie 1 anotada con 50 kg (lo de la semana anterior), 8 reps (lo mínimo que pide el plan) y RIR 2 — cámbialo si no fue eso',
    JSON.stringify(noteProbe));
 ok('...and a tick that took nothing says nothing, so the timer keeps its own line',
    !noteProbe.missing && noteProbe.none === '', JSON.stringify(noteProbe));
@@ -5205,7 +5207,7 @@ const hintProbe = call(`
       own: setHints(rows, null, ['50', '', ''], prior, '8–12'),
       none: setHints(rows, null, ['', '', ''], null, ''),
       single: setHints(rows, est, ['50', '', ''], null, '12', 0),
-      odd: setHints(rows, null, ['', '', ''], null, '10,5', 7),
+      odd: setHints(rows, null, ['', '', ''], null, '7,5–10', 7),
     };
     state.prefs.units = prev;
     return out;
@@ -5237,23 +5239,29 @@ ok('the set to do next is the first not ticked, and it is marked only against an
    !hintProbe.missing && hintProbe.est.nextAt === 1 && hintProbe.own.nextAt === -1 && hintProbe.none.nextAt === -1,
    JSON.stringify(hintProbe));
 
-/* What a tick on the rep and RIR boxes takes: the box's grey number when it
-   is one number, and nothing when it is a range or a dash. */
+/* What a tick on the rep and RIR boxes takes: the box's grey number, the
+   bottom of the plan's range when the box shows one, and nothing for a
+   dash. */
 const takeOf = s => s && s.placeholder ? [s.reps, s.repsFrom, s.placeholder.r, s.rir, s.placeholder.rir].join(' | ') : JSON.stringify(s);
-ok('setHints: the rep box offers a tick the objetivo\'s count for its set, and nothing for the plan\'s range',
+ok('setHints: the rep box offers a tick the objetivo\'s count for its set, and the bottom of the plan\'s range without one, said as the plan\'s minimum',
    !hintProbe.missing &&
    takeOf(hintProbe.est.sets[0]) === '10 | lo que pide el objetivo de esta semana | 10 | 2 | 2' &&
-   takeOf(hintProbe.est.sets[1]) === ' |  | 8–12 | 2 | 2' &&
-   takeOf(hintProbe.est.sets[2]) === ' |  | 8–12 | 2 | 2', JSON.stringify(hintProbe));
+   takeOf(hintProbe.est.sets[1]) === '8 | lo mínimo que pide el plan | 8–12 | 2 | 2' &&
+   takeOf(hintProbe.est.sets[2]) === '8 | lo mínimo que pide el plan | 8–12 | 2 | 2' &&
+   takeOf(hintProbe.own.sets[0]) === '8 | lo mínimo que pide el plan | 8–12 |  | —', JSON.stringify(hintProbe));
 ok('...a plan that names one count offers that count, said as the plan\'s, where the objetivo asks none',
    !hintProbe.missing &&
    takeOf(hintProbe.single.sets[0]) === '10 | lo que pide el objetivo de esta semana | 10 | 0 | 0' &&
    takeOf(hintProbe.single.sets[1]) === '12 | las del plan | 12 | 0 | 0' &&
    takeOf(hintProbe.single.sets[2]) === '12 | las del plan | 12 | 0 | 0', JSON.stringify(hintProbe));
+ok('...a range whose bottom is not a whole count offers nothing, and neither does a plan with no reps',
+   !hintProbe.missing &&
+   hintProbe.odd.sets.every(s => s.reps === '' && s.repsFrom === '' && s.placeholder.r === '7,5–10') &&
+   hintProbe.none.sets.every(s => s.reps === '' && s.placeholder.r === '—'), JSON.stringify(hintProbe));
 ok('...and the RIR box offers the week\'s reserve to every set, a reserve of 0 included, and nothing without one or past RIR_MAX',
    !hintProbe.missing &&
    hintProbe.none.sets.every(s => takeOf(s) === ' |  | — |  | —') &&
-   hintProbe.odd.sets.every(s => takeOf(s) === ' |  | 10,5 |  | —'), JSON.stringify(hintProbe));
+   hintProbe.odd.sets.every(s => takeOf(s) === ' |  | 7,5–10 |  | —'), JSON.stringify(hintProbe));
 
 /* The two badges of each set, against the bar from before this session:
    heaviest weight, best estimated 1RM. 'P' is the weight record, 'E' the
@@ -8359,6 +8367,35 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
     ok('the tick started the real rest timer on the fake clock, and it stops itself three minutes over: no timer is left to hold Node open',
        resting && boot.call('tId') === null && boot.clock.pending() === 0,
        'started ' + resting + ', running ' + (boot.call('tId') !== null) + ', timers left ' + boot.clock.pending());
+  }
+
+  /* The same tick on a lift's first session: nothing logged, so no objetivo
+     and no grey weight, and the rep box shows the plan's range. The tick
+     takes the bottom of it — the count double progression starts a weight
+     from — and the week's own RIR, and the timer says the reps are the
+     plan's minimum rather than its whole ask. */
+  {
+    const boot = settled(JSON.parse(SEED));
+    const want = JSON.parse(boot.call(`JSON.stringify((function () {
+      const p = getProfile(), b = getBlock(), ex = exList(currentDay())[0];
+      return { reps: ex.reps, r: String(repRangeBottom(ex.reps)), top: repRangeTop(ex.reps),
+               rir: phaseRir(b, p.week) == null ? null : String(weekRir(b, ex, p.week)),
+               est: !!targetNow(p, b, currentDay(), ex, p.week) };
+    })())`));
+    let err = '';
+    try { boot.card(0).set(0).tick.onclick(); } catch (e) { err = e.message; }
+    const row = JSON.parse(boot.call(`JSON.stringify((function () {
+      const p = getProfile(), k = slot(p.week, currentDay().id), id = exList(currentDay())[0].id;
+      return (((p.log[getBlock().id] || {})[k] || {})[id] || [])[0] || null;
+    })())`));
+    const note = boot.$('tmsg').textContent;
+    ok('a first session\'s tick takes the bottom of the plan\'s rep range and the week\'s RIR, and leaves the weight it had no number for',
+       !err && !want.est && Number(want.r) < want.top && !!want.rir && !!row &&
+       row.done === true && row.w === '' && row.r === want.r && row.rir === want.rir,
+       err || JSON.stringify({ want: want, row: row }));
+    ok('...and the rest timer names those reps as the plan\'s minimum',
+       note === 'Serie 1 anotada con ' + want.r + ' reps (lo mínimo que pide el plan) y RIR ' + want.rir + ' — cámbialo si no fue eso',
+       note);
   }
 
   /* "Rellenar con el objetivo" (#copyPrev) on a week with a session behind
