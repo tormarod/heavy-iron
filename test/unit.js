@@ -5099,47 +5099,94 @@ ok('...and a reserve typed first starts the session like any other value',
    writeProbe.rir.claims.join() === 'slot,view', JSON.stringify(writeProbe));
 
 /* The tick's contract, which lived only in the smoke suite while it was a
-   closure: an empty weight box takes the greyed weight, the RIR box never
-   takes its placeholder (plans/035 Step H.4), and the weight taken is a
-   write in the unit on screen, so the rest of the set is converted rather
-   than relabelled (stampForWrite). */
+   closure: each empty box takes the grey number its entry in setHints says
+   a tick takes — the weight, the reps and the RIR — a box typed into keeps
+   what was typed, and the weight taken is a write in the unit on screen, so
+   the rest of the set is converted rather than relabelled (stampForWrite).
+   The rep and RIR boxes stayed blank on tick until the household asked for
+   the tap to take all three (plans/035 Step H.4, reversed). */
 const tickProbe = call(`
   (function () {
     if (typeof tickRow !== 'function') return { missing: true };
     const prev = state.prefs.units;
     const now = 1726000000000;
     const copy = r => JSON.parse(JSON.stringify(r));
+    const take = { hint: '47,25', reps: '10', rir: '2' };
+    const nothing = { hint: '', reps: '', rir: '' };
     state.prefs.units = 'kg';
     const a = { w: '', r: '', done: false };
-    const adoptedA = tickRow(a, '47,25', now);
+    const adoptedA = tickRow(a, take, now);
     const tickedA = copy(a);
-    const unticked = tickRow(a, '47,25', now + 60000);
+    const unticked = tickRow(a, take, now + 60000);
     const b = { w: '50', r: '8', done: false, rir: '1' };
-    const adoptedB = tickRow(b, '47,25', now);
-    const e = { w: '', r: '10', done: false };
-    const adoptedE = tickRow(e, '', now);
+    const adoptedB = tickRow(b, take, now);
+    const e = { w: '', r: '', done: false };
+    const adoptedE = tickRow(e, nothing, now);
+    const z = { w: '', r: '', done: false };
+    const adoptedZ = tickRow(z, { hint: '', reps: '', rir: '0' }, now);
     state.prefs.units = 'lb';
     const c = { w: '', r: '', done: false, d: [{ w: '100', r: '5' }] };
-    const adoptedC = tickRow(c, '220', now);
+    const adoptedC = tickRow(c, { hint: '220', reps: '', rir: '' }, now);
     state.prefs.units = prev;
     return { adoptedA: adoptedA, tickedA: tickedA, unticked: unticked, untickedA: copy(a),
-             adoptedB: adoptedB, b: b, adoptedE: adoptedE, e: e, adoptedC: adoptedC, c: c };
+             adoptedB: adoptedB, b: b, adoptedE: adoptedE, e: e, adoptedZ: adoptedZ, z: z,
+             adoptedC: adoptedC, c: c };
   })()
 `);
-ok('tickRow: an empty weight box takes the greyed weight, marks the set done at the tick\'s time, and says what it took',
-   !tickProbe.missing && tickProbe.adoptedA === '47,25' &&
-   JSON.stringify(tickProbe.tickedA) === '{"w":"47,25","r":"","done":true,"ts":1726000000000}', JSON.stringify(tickProbe));
-ok('...and never the RIR: a blank reserve stays blank, a typed one stays as it was',
-   !tickProbe.missing && !('rir' in tickProbe.tickedA) && tickProbe.b.rir === '1', JSON.stringify(tickProbe));
-ok('...a weight already typed is kept, and with no hint there is nothing to take',
-   !tickProbe.missing && tickProbe.adoptedB === '' && tickProbe.b.w === '50' && tickProbe.b.done === true &&
-   tickProbe.adoptedE === '' && tickProbe.e.w === '' && tickProbe.e.done === true, JSON.stringify(tickProbe));
-ok('...unticking keeps the weight and the time the set was done at',
-   !tickProbe.missing && tickProbe.unticked === '' && tickProbe.untickedA.done === false &&
-   tickProbe.untickedA.w === '47,25' && tickProbe.untickedA.ts === 1726000000000, JSON.stringify(tickProbe));
+const tookOf = t => t ? [t.w, t.r, t.rir].join(' | ') : JSON.stringify(t);
+ok('tickRow: each empty box takes its grey number — weight, reps and RIR — the set is done at the tick\'s time, and the answer says what it took',
+   !tickProbe.missing && tookOf(tickProbe.adoptedA) === '47,25 | 10 | 2' &&
+   JSON.stringify(tickProbe.tickedA) === '{"w":"47,25","r":"10","done":true,"rir":"2","ts":1726000000000}', JSON.stringify(tickProbe));
+ok('...a box already typed into keeps what was typed, all three of them, and nothing is taken',
+   !tickProbe.missing && tookOf(tickProbe.adoptedB) === ' |  | ' && tickProbe.b.w === '50' && tickProbe.b.r === '8' &&
+   tickProbe.b.rir === '1' && tickProbe.b.done === true, JSON.stringify(tickProbe));
+ok('...with nothing grey there is nothing to take, and a reserve of 0 is a number like any other',
+   !tickProbe.missing && tookOf(tickProbe.adoptedE) === ' |  | ' && tickProbe.e.w === '' && tickProbe.e.r === '' &&
+   !('rir' in tickProbe.e) && tickProbe.e.done === true &&
+   tickProbe.adoptedZ.rir === '0' && tickProbe.z.rir === '0' && tickProbe.z.r === '', JSON.stringify(tickProbe));
+ok('...unticking keeps what was taken and the time the set was done at',
+   !tickProbe.missing && tookOf(tickProbe.unticked) === ' |  | ' && tickProbe.untickedA.done === false &&
+   tickProbe.untickedA.w === '47,25' && tickProbe.untickedA.r === '10' && tickProbe.untickedA.rir === '2' &&
+   tickProbe.untickedA.ts === 1726000000000, JSON.stringify(tickProbe));
 ok('...and a weight taken after a switch to lb converts the set\'s kg drop instead of relabelling it',
-   !tickProbe.missing && tickProbe.adoptedC === '220' && tickProbe.c.w === '220' && tickProbe.c.u === 'lb' &&
+   !tickProbe.missing && tickProbe.adoptedC.w === '220' && tickProbe.c.w === '220' && tickProbe.c.u === 'lb' &&
    tickProbe.c.d[0].w === '220,46', JSON.stringify(tickProbe));
+
+/* What the tick then says, on the rest timer and the status line: every
+   number it took, each with where it came from, a weight and reps from the
+   same objetivo as one "kg × reps", and the week's reserve unglossed. */
+const noteProbe = call(`
+  (function () {
+    if (typeof tickNote !== 'function') return { missing: true };
+    const prev = state.prefs.units;
+    state.prefs.units = 'kg';
+    const obj = { from: 'lo que pide el objetivo de esta semana', repsFrom: 'lo que pide el objetivo de esta semana' };
+    const own = { from: 'lo de la semana anterior', repsFrom: 'las del plan' };
+    const out = {
+      all: tickNote(0, { w: '47,25', r: '8', rir: '1' }, obj),
+      reps: tickNote(1, { w: '', r: '8', rir: '' }, obj),
+      plan: tickNote(2, { w: '50', r: '10', rir: '2' }, own),
+      rir: tickNote(3, { w: '', r: '', rir: '0' }, own),
+      one: tickNote(0, { w: '', r: '1', rir: '' }, own),
+      none: tickNote(0, { w: '', r: '', rir: '' }, obj),
+    };
+    state.prefs.units = prev;
+    return out;
+  })()
+`);
+ok('tickNote: a weight and reps from the objetivo read as one, the reserve after them',
+   !noteProbe.missing &&
+   noteProbe.all === 'Serie 1 anotada con 47,25 kg × 8 (lo que pide el objetivo de esta semana) y RIR 1 — cámbialo si no fue eso' &&
+   noteProbe.reps === 'Serie 2 anotada con 8 reps (lo que pide el objetivo de esta semana) — cámbialo si no fue eso',
+   JSON.stringify(noteProbe));
+ok('...numbers from two places each say theirs, and one rep is not "1 reps"',
+   !noteProbe.missing &&
+   noteProbe.plan === 'Serie 3 anotada con 50 kg (lo de la semana anterior), 10 reps (las del plan) y RIR 2 — cámbialo si no fue eso' &&
+   noteProbe.rir === 'Serie 4 anotada con RIR 0 — cámbialo si no fue eso' &&
+   noteProbe.one === 'Serie 1 anotada con 1 rep (las del plan) — cámbialo si no fue eso',
+   JSON.stringify(noteProbe));
+ok('...and a tick that took nothing says nothing, so the timer keeps its own line',
+   !noteProbe.missing && noteProbe.none === '', JSON.stringify(noteProbe));
 
 /* Which hint each set gets and what it says it came from, the set to do
    next, and the rest timer's line: one answer that the boxes and
@@ -5154,9 +5201,11 @@ const hintProbe = call(`
     const est = { sets: [{ w: 47.25, r: 10, move: '' }, { w: 45, r: null, move: '' }] };
     const prior = { block: { name: 'Bloque 1' }, week: 7, sets: [{ wLogged: '100', unit: 'lb' }] };
     const out = {
-      est: setHints(rows, est, ['50', '', '52,5'], prior, '8–12'),
+      est: setHints(rows, est, ['50', '', '52,5'], prior, '8–12', 2),
       own: setHints(rows, null, ['50', '', ''], prior, '8–12'),
       none: setHints(rows, null, ['', '', ''], null, ''),
+      single: setHints(rows, est, ['50', '', ''], null, '12', 0),
+      odd: setHints(rows, null, ['', '', ''], null, '10,5', 7),
     };
     state.prefs.units = prev;
     return out;
@@ -5187,6 +5236,24 @@ ok('"Siguiente" prices the next set with what its box shows, and the last set sa
 ok('the set to do next is the first not ticked, and it is marked only against an objetivo',
    !hintProbe.missing && hintProbe.est.nextAt === 1 && hintProbe.own.nextAt === -1 && hintProbe.none.nextAt === -1,
    JSON.stringify(hintProbe));
+
+/* What a tick on the rep and RIR boxes takes: the box's grey number when it
+   is one number, and nothing when it is a range or a dash. */
+const takeOf = s => s && s.placeholder ? [s.reps, s.repsFrom, s.placeholder.r, s.rir, s.placeholder.rir].join(' | ') : JSON.stringify(s);
+ok('setHints: the rep box offers a tick the objetivo\'s count for its set, and nothing for the plan\'s range',
+   !hintProbe.missing &&
+   takeOf(hintProbe.est.sets[0]) === '10 | lo que pide el objetivo de esta semana | 10 | 2 | 2' &&
+   takeOf(hintProbe.est.sets[1]) === ' |  | 8–12 | 2 | 2' &&
+   takeOf(hintProbe.est.sets[2]) === ' |  | 8–12 | 2 | 2', JSON.stringify(hintProbe));
+ok('...a plan that names one count offers that count, said as the plan\'s, where the objetivo asks none',
+   !hintProbe.missing &&
+   takeOf(hintProbe.single.sets[0]) === '10 | lo que pide el objetivo de esta semana | 10 | 0 | 0' &&
+   takeOf(hintProbe.single.sets[1]) === '12 | las del plan | 12 | 0 | 0' &&
+   takeOf(hintProbe.single.sets[2]) === '12 | las del plan | 12 | 0 | 0', JSON.stringify(hintProbe));
+ok('...and the RIR box offers the week\'s reserve to every set, a reserve of 0 included, and nothing without one or past RIR_MAX',
+   !hintProbe.missing &&
+   hintProbe.none.sets.every(s => takeOf(s) === ' |  | — |  | —') &&
+   hintProbe.odd.sets.every(s => takeOf(s) === ' |  | 10,5 |  | —'), JSON.stringify(hintProbe));
 
 /* The two badges of each set, against the bar from before this session:
    heaviest weight, best estimated 1RM. 'P' is the weight record, 'E' the
@@ -8254,15 +8321,17 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
      doing — a box typed into first is a write of its own, which starts the
      session and schedules the save before the tick is pressed. With a
      session behind it the card was drawn with an objetivo, so the empty
-     weight box was showing the objetivo's weight for that set, and the tick
-     takes it; the rep and RIR boxes it leaves as they were, since a count
-     nobody reported is not a measurement. Pinned until now as tickRow and
-     setHints each on its own (plans/048). */
+     boxes were showing the objetivo's weight and reps for that set and the
+     week's own RIR, and the tick takes all three. Pinned until now as
+     tickRow and setHints each on its own (plans/048). */
   {
     const boot = settled(seeded({ week: 2, day: 0 }));
     const want = JSON.parse(boot.call(`JSON.stringify((function () {
-      const p = getProfile(), day = currentDay(), t = targetNow(p, getBlock(), day, exList(day)[0], p.week);
-      return t ? { w: loadText(t.sets[0].w), sets: t.sets.map(x => x.w) } : { w: 'no objetivo', sets: null };
+      const p = getProfile(), b = getBlock(), day = currentDay(), ex = exList(day)[0];
+      const t = targetNow(p, b, day, ex, p.week);
+      const rir = phaseRir(b, p.week) == null ? null : String(weekRir(b, ex, p.week));
+      return t ? { w: loadText(t.sets[0].w), r: String(t.sets[0].r), rir: rir, sets: t.sets.map(x => x.w) }
+        : { w: 'no objetivo', sets: null };
     })())`));
     const read = booted => JSON.parse(booted.call(`JSON.stringify((function () {
       const p = getProfile(), b = getBlock(), k = slot(p.week, currentDay().id), id = exList(currentDay())[0].id;
@@ -8276,9 +8345,10 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
       resting = boot.call('tId') !== null;
     } catch (e) { err = e.message; }
     const got = read(boot);
-    ok('a tick on the real card writes its set: done, at the clock\'s time, with the objetivo\'s weight its empty box showed — and no reps or RIR',
-       !err && !!got.row && got.row.w === want.w && got.row.done === true && got.row.ts === at && got.row.r === '' && !('rir' in got.row),
-       err || JSON.stringify({ want: want.w, row: got.row }));
+    ok('a tick on the real card writes its set: done, at the clock\'s time, with the objetivo\'s weight and reps and the week\'s RIR its empty boxes showed',
+       !err && !!got.row && !!want.rir && got.row.w === want.w && got.row.r === want.r && got.row.rir === want.rir &&
+       got.row.done === true && got.row.ts === at,
+       err || JSON.stringify({ want: want, row: got.row }));
     ok('...and, as the session\'s first write, files the objetivo that was on screen as its record',
        !!want.sets && JSON.stringify(got.record) === JSON.stringify(want.sets), JSON.stringify({ want: want.sets, record: got.record }));
     boot.clock.advance(1000);
@@ -11626,20 +11696,28 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
        'sound ' + boot.call('state.prefs.sound') + ', bgAlarm ' + boot.call('state.prefs.bgAlarm'));
   }
   {
-    /* C. What a tick decided — the grey weight it took — used to be said
+    /* C. What a tick decided — the grey numbers it took — used to be said
        only in the status line at the foot of the page, replaced by
        "Guardado hh:mm" 400ms later. Said now where the eye actually goes
        next: the rest timer the same tick starts (plans/080 C). Week 2 of
-       `seeded` has week 1 fully logged, so its cards carry a grey weight. */
+       `seeded` has week 1 fully logged, so its cards carry an objetivo,
+       and its phase a reserve, for the tick to take. */
     const boot = settled(seeded({ week: 2, day: 0 }));
     boot.card(0).set(0).tick.onclick();
     const tookNote = boot.$('tmsg').textContent;
-    ok('a tick that takes the grey weight says so on the rest timer it starts',
-       tookNote.indexOf('Serie 1 anotada con') === 0, tookNote);
+    ok('a tick that takes the grey numbers says so on the rest timer it starts: weight × reps, and the RIR',
+       /^Serie 1 anotada con [\d,]+ kg × \d+ \(lo que pide el objetivo de esta semana\) y RIR \d — /.test(tookNote), tookNote);
     boot.type(boot.card(0).set(1).w, '50');
     boot.card(0).set(1).tick.onclick();
+    const weightTyped = boot.$('tmsg').textContent;
+    ok('...a weight typed is left out of it, and the reps and RIR the tick did take are still named',
+       /^Serie 2 anotada con \d+ reps \(lo que pide el objetivo de esta semana\) y RIR \d — /.test(weightTyped), weightTyped);
+    boot.type(boot.card(0).set(2).w, '50');
+    boot.type(boot.card(0).set(2).r, '8');
+    boot.type(boot.card(0).set(2).rir, '1');
+    boot.card(0).set(2).tick.onclick();
     const typedNote = boot.$('tmsg').textContent;
-    ok('...but a tick with nothing adopted (the weight was typed) leaves the timer\'s fixed breathing tip alone',
+    ok('...but a tick with nothing adopted (all three boxes typed) leaves the timer\'s fixed breathing tip alone',
        typedNote.indexOf('Prueba de la frase') === 0, typedNote);
   }
   {
