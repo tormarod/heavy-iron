@@ -4957,6 +4957,82 @@ function tickNote(si, took, set) {
   return 'Serie ' + (si + 1) + ' anotada con ' + what + ' — cámbialo si no fue eso';
 }
 
+/* ---------- what the tick took, on the rest timer ----------
+   Since a tick takes the objetivo's reps as well as its weight, the log is
+   only as good as the ticks are honest: the objetivo asks each set one rep
+   more than its best, and a set ticked as shown logs exactly that, so a
+   lift ticked as shown climbs a rep a week whatever was lifted. The note
+   saying what the tick took was the check on that, and it never reached a
+   phone: it went to the coaching line, which is hidden below 620px, and to
+   the status line at the foot of the page, which "Guardado" replaces 400ms
+   later (plans/083).
+
+   So it has a row of its own on the timer, and when the tick took the reps
+   that row carries −1 and +1 for them: you are resting, the phone is in
+   your hand, and the alternative was finding the set's rep box under the
+   timer and typing over it. Only the reps: they are the number the
+   objetivo climbs from, the weight is the grey number you could see before
+   you ticked, and the RIR feeds no target at all.
+
+   Lives here and not in js/rest-timer.js because the buttons write the log
+   (writeRows), and the row is cleared by the next tick rather than by the
+   end of the rest, so it needs nothing from that file. The rows it holds
+   are checked against the card on screen before every press: an undo, a
+   write from another tab or a move to another session replaces them. */
+let tookSet = null;
+const TOOK_MIN_REPS = 1, TOOK_MAX_REPS = 99;
+
+function showTook(note, took) {
+  tookSet = took && took.adopted && took.adopted.r ? took : null;
+  const row = $('ttook');
+  if (!row) return;
+  row.hidden = !note;
+  $('timer').classList.toggle('took', !!note);
+  $('ttookMsg').textContent = note || '';
+  $('trepMinus').hidden = !tookSet;
+  $('trepPlus').hidden = !tookSet;
+  if (tookSet) labelTookButtons();
+}
+
+function labelTookButtons() {
+  const t = tookSet, n = num(t.r.r);
+  $('trepMinus').setAttribute('aria-label', 'Una repetición menos en la serie ' + (t.si + 1) + ' de ' + t.card.ex.n);
+  $('trepPlus').setAttribute('aria-label', 'Una repetición más en la serie ' + (t.si + 1) + ' de ' + t.card.ex.n);
+  $('trepMinus').disabled = !(n > TOOK_MIN_REPS);
+  $('trepPlus').disabled = !(n < TOOK_MAX_REPS);
+}
+
+/* The set a press is for, if it is still the set on screen and still done;
+   null otherwise, and the row's buttons go with it. The row object is what
+   is compared, not the card's list: every build slices a fresh list (entry)
+   over the same row objects, and a replaced state replaces those. */
+function tookLive() {
+  const t = tookSet;
+  const c = t && dayCards.find(x => x && x.ex.id === t.card.ex.id);
+  if (t && c && c.rows[t.si] === t.r && t.r.done &&
+      $('timer').classList.contains('up')) return t;
+  showTook($('ttookMsg') ? $('ttookMsg').textContent : '', null);
+  return null;
+}
+
+function nudgeTookReps(delta) {
+  const t = tookLive();
+  if (!t) return;
+  const now = num(t.r.r);
+  if (!(now > 0)) return;
+  const next = Math.max(TOOK_MIN_REPS, Math.min(TOOK_MAX_REPS, now + delta));
+  if (next === now) return;
+  writeRows(t.card, () => { t.r.r = String(next); });
+  drawCard(t.card.ex.id);
+  const r = t.r;
+  $('ttookMsg').textContent = 'Serie ' + (t.si + 1) + ' anotada con ' +
+    (r.w !== '' && r.w != null ? r.w + ' ' + units() + ' × ' + r.r : r.r + (r.r === '1' ? ' rep' : ' reps')) +
+    (r.rir != null && r.rir !== '' ? ' y RIR ' + r.rir : '') + ' — corregido';
+  labelTookButtons();
+}
+$('trepMinus').onclick = () => nudgeTookReps(-1);
+$('trepPlus').onclick = () => nudgeTookReps(1);
+
 /* One exercise's card, built detached and handed back for the caller to put
    in place: drawApp appends all of them, drawCard swaps one out. `ctx` is
    everything that is the same for every card in the day, and the two
@@ -5297,8 +5373,13 @@ function buildExCard(ctx, ex, i) {
          bar's place — hiding Progreso, Plan and Más — until Saltar or three
          minutes past zero, for a rest nobody is taking (plans/080 D). */
       const dayDone = r.done && dayCards.every(c => c.rows.every(rr => rr.done));
-      if (r.done && ex.rest && !dayDone) startRest(ex.rest, ex.n + ' · serie ' + (si + 1), hints.next[si], adoptedNote);
+      const resting = r.done && ex.rest && !dayDone;
+      if (resting) startRest(ex.rest, ex.n + ' · serie ' + (si + 1), hints.next[si]);
       if (r.done && (!ex.rest || dayDone)) stopRest();
+      /* The timer's own row for it (showTook), after startRest so it is the
+         rest this tick started that carries it. Every tick sets it, so one
+         that took nothing, or started no rest, clears the last one's. */
+      showTook(resting ? adoptedNote : '', resting ? { card: cardCtx, r: r, si: si, adopted: adopted } : null);
       /* The tick that finishes the whole day counts as a session — see
          maybeNagBackup. */
       if (dayDone) {

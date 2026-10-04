@@ -8445,7 +8445,7 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
       const p = getProfile(), k = slot(p.week, currentDay().id), id = exList(currentDay())[0].id;
       return (((p.log[getBlock().id] || {})[k] || {})[id] || [])[0] || null;
     })())`));
-    const note = boot.$('tmsg').textContent;
+    const note = boot.$('ttookMsg').textContent;
     ok('a first session\'s tick takes the bottom of the plan\'s rep range and the week\'s RIR, and leaves the weight it had no number for',
        !err && !want.est && Number(want.r) < want.top && !!want.rir && !!row &&
        row.done === true && row.w === '' && row.r === want.r && row.rir === want.rir,
@@ -11798,12 +11798,12 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
        and its phase a reserve, for the tick to take. */
     const boot = settled(seeded({ week: 2, day: 0 }));
     boot.card(0).set(0).tick.onclick();
-    const tookNote = boot.$('tmsg').textContent;
+    const tookNote = boot.$('ttookMsg').textContent;
     ok('a tick that takes the grey numbers says so on the rest timer it starts: weight × reps, and the RIR',
        /^Serie 1 anotada con [\d,]+ kg × \d+ \(lo que pide el objetivo de esta semana\) y RIR \d — /.test(tookNote), tookNote);
     boot.type(boot.card(0).set(1).w, '50');
     boot.card(0).set(1).tick.onclick();
-    const weightTyped = boot.$('tmsg').textContent;
+    const weightTyped = boot.$('ttookMsg').textContent;
     ok('...a weight typed is left out of it, and the reps and RIR the tick did take are still named',
        /^Serie 2 anotada con \d+ reps \(lo que pide el objetivo de esta semana\) y RIR \d — /.test(weightTyped), weightTyped);
     boot.type(boot.card(0).set(2).w, '50');
@@ -11813,6 +11813,9 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
     const typedNote = boot.$('tmsg').textContent;
     ok('...but a tick with nothing adopted (all three boxes typed) leaves the timer\'s fixed breathing tip alone',
        typedNote.indexOf('Prueba de la frase') === 0, typedNote);
+    ok('...and hides the row the last tick\'s note was on, rather than leaving that set\'s note under this one\'s rest (plans/083)',
+       boot.$('ttook').hidden === true && boot.$('ttookMsg').textContent === '' && !boot.$('timer').classList.contains('took'),
+       JSON.stringify({ hidden: boot.$('ttook').hidden, msg: boot.$('ttookMsg').textContent }));
   }
   {
     /* D. The day's very last tick used to start a full rest countdown for a
@@ -11852,6 +11855,90 @@ console.log('\n== buildCsv survives a day id of __proto__ or constructor (plans/
     const note = boot.$('note').textContent;
     ok('the footer counts sets done and stops there — no more restating the old all-sets rule',
        /^1 de \d+ series hechas\./.test(note) && note.indexOf('Llega al tope') === -1, note);
+  }
+
+  /* What a tick took used to go to the coaching line, which a phone hides,
+     and to the status line, which "Guardado" replaces 400ms later — so on
+     the household's phones it was never on screen. It has a row of its own
+     on the timer, and when the tick took the reps, −1 and +1 for them
+     (plans/083). The row's display is the smoke suite's to see; this pins
+     what the buttons write. Week 2 of `seeded` has week 1 logged, so every
+     card carries an objetivo and the week's phase a reserve. */
+  console.log('\n== what a tick took, on a row of the rest timer, and its reps a tap either way (plans/083) ==');
+  {
+    const firstRow = boot => JSON.parse(boot.call(`JSON.stringify((function () {
+      const p = getProfile(), k = slot(p.week, currentDay().id), id = exList(currentDay())[0].id;
+      return (((p.log[getBlock().id] || {})[k] || {})[id] || [])[0] || null;
+    })())`));
+    const savedRow = boot => {
+      const s = boot.saved(), p = s.profiles[s.activeProfile], b = p.blocks[p.activeBlock], d = b.days[p.day];
+      return ((p.log[b.id] || {})[boot.call('slot')(p.week, d.id)] || {})[d.ex[0].id][0];
+    };
+    const boot = settled(seeded({ week: 2, day: 0 }));
+    boot.card(0).set(0).tick.onclick();
+    const took = firstRow(boot);
+    const reps = Number(took && took.r);
+    ok('a tick that took the reps puts its note on the timer\'s own row, with −1 and +1 beside it',
+       boot.$('timer').classList.contains('up') && boot.$('ttook').hidden === false &&
+       boot.$('timer').classList.contains('took') &&
+       /^Serie 1 anotada con [\d,]+ kg × \d+ \(lo que pide el objetivo de esta semana\) y RIR \d — cámbialo si no fue eso$/.test(boot.$('ttookMsg').textContent) &&
+       boot.$('trepMinus').hidden === false && boot.$('trepPlus').hidden === false && reps > 1,
+       JSON.stringify({ took: took, msg: boot.$('ttookMsg').textContent, minus: boot.$('trepMinus').hidden }));
+    ok('...and the buttons name the set they are for',
+       boot.$('trepMinus').getAttribute('aria-label') === 'Una repetición menos en la serie 1 de ' + boot.card(0).ex.n &&
+       boot.$('trepPlus').getAttribute('aria-label') === 'Una repetición más en la serie 1 de ' + boot.card(0).ex.n,
+       boot.$('trepMinus').getAttribute('aria-label'));
+    boot.$('trepMinus').onclick();
+    const less = firstRow(boot);
+    boot.clock.advance(1000);
+    ok('−1 takes a rep off that set, and nothing else about it, and the save carries it',
+       less.r === String(reps - 1) && less.w === took.w && less.rir === took.rir && less.done === true &&
+       less.ts === took.ts && savedRow(boot).r === less.r,
+       JSON.stringify({ took: took, less: less, saved: savedRow(boot) }));
+    ok('...the card is drawn again with it in the rep box',
+       boot.card(0).set(0).r.value === String(reps - 1), boot.card(0).set(0).r.value);
+    ok('...and the row says what is logged now',
+       boot.$('ttookMsg').textContent === 'Serie 1 anotada con ' + took.w + ' kg × ' + (reps - 1) + ' y RIR ' + took.rir + ' — corregido',
+       boot.$('ttookMsg').textContent);
+    boot.$('trepPlus').onclick();
+    boot.$('trepPlus').onclick();
+    ok('+1 adds one each press', firstRow(boot).r === String(reps + 1), firstRow(boot).r);
+    for (let i = 0; i < reps + 3; i++) boot.$('trepMinus').onclick();
+    ok('−1 stops at one rep, and says so by being disabled: a set of none is not a set the objetivo or the totals read',
+       firstRow(boot).r === '1' && boot.$('trepMinus').disabled === true && boot.$('trepPlus').disabled === false,
+       JSON.stringify({ r: firstRow(boot).r, disabled: boot.$('trepMinus').disabled }));
+  }
+  {
+    /* Reps typed before the tick: the tick took the weight and the RIR,
+       and the row says so, but there is nothing of its own to correct. */
+    const boot = settled(seeded({ week: 2, day: 0 }));
+    boot.type(boot.card(0).set(0).r, '7');
+    boot.card(0).set(0).tick.onclick();
+    ok('a tick that took the weight but not the reps shows its note without −1 and +1',
+       boot.$('ttook').hidden === false && /^Serie 1 anotada con [\d,]+ kg /.test(boot.$('ttookMsg').textContent) &&
+       boot.$('trepMinus').hidden === true && boot.$('trepPlus').hidden === true,
+       JSON.stringify({ msg: boot.$('ttookMsg').textContent, minus: boot.$('trepMinus').hidden }));
+  }
+  {
+    /* A press is for the set on screen, still ticked, under a rest still
+       running. Unticking it clears the row; a stale press — after the
+       session on screen changed — writes nothing. */
+    const boot = settled(seeded({ week: 2, day: 0 }));
+    boot.card(0).set(0).tick.onclick();
+    const took = boot.card(0).rows[0].r;
+    boot.card(0).set(0).tick.onclick();
+    ok('unticking the set clears the row, and with it the buttons',
+       boot.$('ttook').hidden === true && boot.$('trepMinus').hidden === true, String(boot.$('ttook').hidden));
+    boot.$('trepMinus').onclick();
+    ok('...so a press after it writes nothing', boot.card(0).rows[0].r === took, boot.card(0).rows[0].r);
+    boot.card(0).set(0).tick.onclick();
+    const again = boot.card(0).rows[0].r;
+    boot.$('weekNext').onclick();
+    boot.$('trepPlus').onclick();
+    boot.$('weekPrev').onclick();
+    ok('a press after moving to another week writes nothing to either week',
+       boot.card(0).rows[0].r === again && !boot.$('timer').classList.contains('up'),
+       JSON.stringify({ before: again, after: boot.card(0).rows[0].r }));
   }
 
   /* load() and the two imports that replace data wholesale, "Cargar copia"

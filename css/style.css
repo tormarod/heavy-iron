@@ -126,15 +126,19 @@ body {
    hidden there. Above it the coaching line comes back and takes whatever
    width the exercise's name leaves it, so the height rises with the name:
    147px short, 157 for the shipped plan's "Press de pecho en máquina", 172
-   for its longest, "Elevaciones laterales en polea". The tallest line in
-   that column is not the coaching tip, though, but what a tick took
-   ("Serie 4 anotada con 147,25 kg × 12 (lo que pide el objetivo de esta
-   semana) y RIR 2 — …", plans/080 C): 188px for the press, 219 for the
-   raise, 234 at 621px — 16px of clearance at the worst name this app
-   ships. 190, sized for the tip, had the version line under that note
-   since the note first carried the weight. An imported 80-character name
-   (IMPORT_LIMITS.name) can still squeeze the line into a 20px column and
-   go under; that squeeze predates this plan and no reserve can chase it.
+   for its longest, "Elevaciones laterales en polea" (188 at exactly 621).
+
+   On top of either comes the row saying what a tick took (.timer-took,
+   plans/083), at every width, under the count. It used to be the coaching
+   line's own text (plans/080 C), which put 234px at 621 and showed a phone
+   nothing at all. Measured with Barlow on the shipped plans, the note
+   beside −1/+1: below the breakpoint 196px at 360–430 and 212 at 320,
+   where it wraps to four lines; above it 242 at 621 for the raise — the
+   188 plus the row's 54 — and 226 at 768. That 242 is 8px of clearance at
+   the worst name this app ships. An imported 80-character name
+   (IMPORT_LIMITS.name) can still squeeze the coaching line into a 20px
+   column and go under; that squeeze predates both plans and no reserve
+   can chase it.
 
    Over-reserving costs nothing: it is blank scroll past the version line,
    below everything anyone reads. */
@@ -794,6 +798,18 @@ body {
   font-weight: 600; cursor: pointer; letter-spacing: 0.04em;
 }
 .timer-btn:hover { border-color: var(--timer-ink); }
+/* What the tick took, under the count. It used to be the coaching line's
+   text, and the coaching line is hidden on a phone (below), so on the
+   household's phones the one sentence that says "the app wrote this, change
+   it if it was not so" was never on screen (plans/083). A row of its own
+   is shown at every width; the coaching line keeps the breathing tip. */
+.timer-took { display: flex; align-items: center; gap: 6px; margin-top: 10px; }
+.timer-took[hidden] { display: none; }
+.timer-took-msg {
+  flex: 1 1 auto; min-width: 0; margin-right: 4px;
+  font-size: 12px; line-height: 1.35; color: var(--timer-ink);
+}
+.timer-took .timer-btn { flex: 0 0 auto; padding: 0 10px; }
 /* On a phone the three controls and the coaching line do not both fit; the
    controls are the part you reach for mid-set. They keep their full 44px
    here — the fourth control left the row for the switch on the line below,
@@ -847,19 +863,22 @@ body {
    for the shipped plan's "Press de pecho en máquina", 172 for its longest,
    "Elevaciones laterales en polea", and 296 for an imported 80-character
    one (IMPORT_LIMITS.name), where .timer-msg is a 20px column 217px tall.
-   At exactly 621 the same names give 147/172/188/296. The line a tick
-   leaves in that column when it took the grey numbers (plans/080 C) is
-   longer than the coaching tip: 147/188/219 at 768, 157/203/234 at 621.
+   At exactly 621 the same names give 147/172/188/296. The row a tick that
+   took the grey numbers adds under the count (.timer-took, plans/083)
+   takes it to 242 at 621 for the raise and 226 at 768.
 
-   Below the breakpoint there is nothing to measure: .timer-msg is hidden,
-   so the timer is exactly 137px whatever the exercise is called, and 150
-   is that plus the 13px the toast stands on.
+   Below the breakpoint .timer-msg is hidden, so the timer is exactly 137px
+   whatever the exercise is called, and 150 is that plus the 13px the toast
+   stands on. With the tick's row it is 196 at 360–430 and 212 at 320,
+   where the note wraps to four lines beside −1/+1: 225 clears that, and
+   is only asked for while the row is showing (.took), so a rest that took
+   nothing keeps the toast where it was.
 
    Above it, one constant cannot be exact, so it is the same 250 #app
    reserves for the same worst shipped case — clearing every name this app
-   ships with a tick's line on the timer (103/62/31px at 768, down to 16px
-   at 621 on the longest) at the price of standing 103px clear of the
-   common one. That direction is the safe one: the toast is z-index 70 over the
+   ships with a tick's row on the timer (24px at 768 and 8 at 621 on the
+   longest) at the price of standing 103px clear of a rest that took
+   nothing. That direction is the safe one: the toast is z-index 70 over the
    timer's 55, so an offset that is too small covers the timer's controls
    with the toast's own buttons, while one that is too large only floats a
    notice higher up a screen that has the room. Anything that changes the
@@ -867,6 +886,7 @@ body {
 .timer.up ~ .toast { bottom: calc(250px + env(safe-area-inset-bottom)); }
 @media (max-width: 620px) {
   .timer.up ~ .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
+  .timer.up.took ~ .toast { bottom: calc(225px + env(safe-area-inset-bottom)); }
 }
 
 /* ---- sheets (modals) ---- */

@@ -649,6 +649,16 @@
           <button class="timer-btn" id="tskip" type="button">Saltar</button>
         </div>
       </div>
+      <!-- What the tick that started this rest wrote into the set from its
+           grey numbers, on a row of its own so a phone shows it too, and a
+           rep either way for the count it took: the correction is one tap
+           while the phone is still in your hand (plans/083). Hidden when
+           the tick took nothing. -->
+      <div class="timer-took" id="ttook" hidden>
+        <div class="timer-took-msg" id="ttookMsg" role="status" aria-live="polite"></div>
+        <button class="timer-btn" id="trepMinus" type="button">−1 rep</button>
+        <button class="timer-btn" id="trepPlus" type="button">+1 rep</button>
+      </div>
       <!-- Under the count rather than above it: the bar reads as the ground
            the next set's line stands on (plans/031-mockups/opcion4-descanso.png). -->
       <div class="timer-fill" id="tfill"></div>
